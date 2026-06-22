@@ -1,0 +1,10 @@
+{
+  "name": "orquesta-codex-skill",
+  "version": "0.1.0-beta.1",
+  "private": false,
+  "description": "Codex skill for coordinating long-lived specialist threads with a local Orquesta dashboard.",
+  "scripts": {
+    "dashboard": "node orquesta/dashboard-server.js",
+    "check": "node --check orquesta/dashboard-server.js && node --check orquesta/assets/dashboard/app.js"
+  }
+}

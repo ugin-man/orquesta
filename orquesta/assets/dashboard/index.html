@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Orquesta Dashboard</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="hero">
+      <nav class="nav">
+        <div class="brand">
+          <span class="brand-mark">O</span>
+          <div>
+            <h1>Orquesta</h1>
+            <p data-i18n="brand.subtitle">Production command board for long-lived Codex teammates</p>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="view-switch" role="tablist" aria-label="Dashboard view">
+            <button class="view-tab active" type="button" data-view-target="operations" data-i18n="view.operations">Operations</button>
+            <button class="view-tab" type="button" data-view-target="user" data-i18n="view.userTasks">User Tasks</button>
+          </div>
+          <div class="sync-chip" id="syncChip">Sample state</div>
+          <button class="lang-toggle" id="langToggle" type="button" aria-label="Switch language">日本語</button>
+          <label class="file-button" data-i18n-title="load.title" title="Load agents.json, tasks.json, directives.json, events.jsonl, questions.json, and answers.json">
+            <span data-i18n="load.button">Load state</span>
+            <input id="stateFiles" type="file" multiple accept=".json,.jsonl">
+          </label>
+        </div>
+      </nav>
+
+      <section class="hero-grid">
+        <div class="attention-panel">
+          <span class="eyebrow" data-i18n="eyebrow.attention">attention</span>
+          <h2 id="attentionTitle">Ready for orchestration</h2>
+          <p id="attentionText">Load live state files to inspect active agents, accepted work, review items, and fresh specialist reports.</p>
+          <div class="attention-actions" id="attentionActions"></div>
+        </div>
+        <div class="metrics" id="metrics"></div>
+      </section>
+    </header>
+
+    <main>
+      <section class="dashboard-view active" data-view-panel="operations">
+        <section class="team-visualizer panel">
+          <div class="section-title">
+            <div>
+              <span class="eyebrow" data-i18n="eyebrow.teamMap">team map</span>
+              <h2 data-i18n="section.teamVisualizer">Team Visualizer</h2>
+            </div>
+            <span id="teamCount"></span>
+          </div>
+          <div class="visualizer-shell">
+            <div id="teamTree" class="team-tree" aria-live="polite"></div>
+            <aside id="agentInspector" class="agent-inspector"></aside>
+          </div>
+        </section>
+
+        <section class="operations-grid compact">
+          <article class="panel progress-panel">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.progress">progress</span>
+                <h2 data-i18n="section.progress">Work Progress</h2>
+              </div>
+              <span id="progressCount"></span>
+            </div>
+            <div id="progressPanel" class="progress-body"></div>
+          </article>
+
+          <article class="panel">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.work">work</span>
+                <h2 data-i18n="section.tasks">Task Flow</h2>
+              </div>
+              <span id="taskCount"></span>
+            </div>
+            <div id="tasks" class="list"></div>
+          </article>
+        </section>
+
+        <section class="board-grid lower single">
+          <article class="panel panel-wide">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.timeline">timeline</span>
+                <h2 data-i18n="section.events">Recent Events</h2>
+              </div>
+              <span id="eventCount"></span>
+            </div>
+            <div id="events" class="timeline"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="dashboard-view" data-view-panel="user">
+        <section class="user-task-hero panel">
+          <div class="section-title">
+            <div>
+              <span class="eyebrow" data-i18n="eyebrow.userTasks">your desk</span>
+              <h2 data-i18n="section.userTasks">User Tasks</h2>
+            </div>
+            <span id="userTaskCount"></span>
+          </div>
+          <div id="userTaskSummary" class="user-task-summary"></div>
+        </section>
+
+        <section class="repair-panel panel">
+          <div class="section-title">
+            <div>
+              <span class="eyebrow" data-i18n="eyebrow.repairs">repairs</span>
+              <h2 data-i18n="section.repairs">Repair Cards</h2>
+            </div>
+            <span id="repairCount"></span>
+          </div>
+          <div id="repairCards" class="repair-cards"></div>
+        </section>
+
+        <section class="vision-panel panel">
+          <div class="section-title">
+            <div>
+              <span class="eyebrow" data-i18n="eyebrow.vision">vision</span>
+              <h2 data-i18n="section.vision">Vision Questions</h2>
+            </div>
+            <span id="visionCount"></span>
+          </div>
+          <div id="visionPanel" class="vision-body"></div>
+        </section>
+
+        <section class="board-grid lower single">
+          <article class="panel panel-wide">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.intent">intent</span>
+                <h2 data-i18n="section.directives">Directives</h2>
+              </div>
+              <span id="directiveCount"></span>
+            </div>
+            <div id="directives" class="list"></div>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <template id="emptyTemplate">
+      <div class="empty" data-i18n="empty.records">No records yet</div>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

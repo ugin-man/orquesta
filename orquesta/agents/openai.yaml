@@ -1,0 +1,5 @@
+interface:
+  display_name: "Orquesta"
+  short_description: "Coordinate long-lived Codex thread agents for game production."
+  default_prompt: "Use Orquesta to coordinate long-lived specialist Codex threads, keep state synchronized, and report project progress."
+
