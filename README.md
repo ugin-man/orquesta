@@ -8,6 +8,14 @@ It is designed for human-in-the-loop game development and other creative softwar
 
 This repository is beta-quality. The core workflow is usable, but the bootstrap flow should still be tested in a clean project after installing from GitHub.
 
+## Looking For Collaborators
+
+I am sincerely looking for people who want to develop Orquesta together.
+
+This project is still small and experimental, but I believe there is something important here: a way to make Codex work with the user as a long-lived creative team instead of a pile of disposable tasks.
+
+If you are interested in multi-agent workflows, Codex skills, game-development tools, human-in-the-loop creative systems, dashboard design, or just making this strange thing actually usable, please reach out. I am genuinely, urgently looking for collaborators.
+
 ## What Orquesta Provides
 
 - A long-lived orchestrator thread for routing, state, blockers, approvals, and final reports.
