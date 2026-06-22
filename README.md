@@ -8,6 +8,8 @@ It is designed for human-in-the-loop game development and other creative softwar
 
 This repository is beta-quality. The core workflow is usable, but the bootstrap flow should still be tested in a clean project after installing from GitHub.
 
+The first GitHub-install bootstrap smoke test passed on 2026-06-22. The skill installed from this repository, initialized a separate project, created the foundation roles, and served the dashboard from a fallback port after detecting a local `4177` port conflict.
+
 ## Looking For Collaborators
 
 I am sincerely looking for people who want to develop Orquesta together.
@@ -97,6 +99,8 @@ The dashboard reads `.orquesta/` state from the current project and refreshes ab
 node --check orquesta/dashboard-server.js
 node --check orquesta/assets/dashboard/app.js
 ```
+
+See [GitHub install bootstrap smoke test](docs/testing/github-install-bootstrap-smoke-test.md) for the first external install result.
 
 ## License
 
