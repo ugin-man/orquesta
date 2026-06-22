@@ -74,8 +74,10 @@ Expected bootstrap behavior:
 2. The orchestrator thread is renamed to `★ Orquesta 統括` and pinned when thread tools are available.
 3. Orquesta creates or reuses foundation roles.
 4. Orquesta initializes file-backed state under `.orquesta/`.
-5. Orquesta gives you the dashboard URL.
-6. Only after setup does it plan production specialists for the user's actual task.
+5. Orquesta verifies the dashboard with `/api/state`.
+6. Orquesta opens the verified dashboard URL in your external browser when possible.
+7. Orquesta gives you the dashboard URL in chat as a fallback.
+8. Only after setup does it plan production specialists for the user's actual task.
 
 ## Dashboard
 

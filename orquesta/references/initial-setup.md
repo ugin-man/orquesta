@@ -98,10 +98,11 @@ When `.orquesta/CURRENT_ORCHESTRA.md` is missing:
 6. Create or reuse the four foundation Codex sessions.
 7. Start the dashboard server if possible.
 8. Verify the dashboard with `/api/state`, not only HTTP 200.
-9. Give the verified dashboard URL.
-10. Present a short first-run menu.
-11. Record selected options, title policy, pin policy, and bootstrap status in `.orquesta/setup/options.json`.
-12. Only then classify the user's project task and propose production roles such as `implementation-001`, `visual-art-001`, `world-lore-001`, `playtest-qa-001`, or project-specific teams.
+9. Open the verified dashboard URL in the user's external browser when possible.
+10. Give the verified dashboard URL in chat even if browser opening succeeds.
+11. Present a short first-run menu.
+12. Record selected options, title policy, pin policy, dashboard open status, and bootstrap status in `.orquesta/setup/options.json`.
+13. Only then classify the user's project task and propose production roles such as `implementation-001`, `visual-art-001`, `world-lore-001`, `playtest-qa-001`, or project-specific teams.
 
 If the dashboard server cannot start, record a failure incident and ask whether to wake `error-concierge` after it exists.
 
@@ -120,6 +121,24 @@ Verify dashboard ownership by requesting `/api/state` from the candidate port an
 - expected foundation agent IDs are present
 
 If the default port is occupied by another process, record an incident such as `local_server_startup` and start the dashboard on a fallback port. Update `.orquesta/setup/options.json`, `.orquesta/CURRENT_ORCHESTRA.md`, and the final user report with the actual verified dashboard URL.
+
+## Dashboard Browser Handoff
+
+After the dashboard URL is verified, try to open it in the user's normal external browser so the user notices the dashboard exists.
+
+Use the safest platform command available:
+
+- Windows PowerShell: `Start-Process <verified-dashboard-url>`
+- macOS: `open <verified-dashboard-url>`
+- Linux: `xdg-open <verified-dashboard-url>`
+
+Rules:
+
+- Open only the verified URL for the current project.
+- Do not open a URL before `/api/state` proves the dashboard belongs to this project.
+- Record whether browser opening was attempted and whether it appeared to succeed in `.orquesta/setup/options.json`.
+- If opening fails, do not treat setup as failed. Report the URL clearly and let the user open it manually.
+- Do not repeatedly open browser tabs on every setup resume. Only auto-open during first successful dashboard verification, or when the user explicitly asks.
 
 ## First-Run Menu
 

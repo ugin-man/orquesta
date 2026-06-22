@@ -297,6 +297,11 @@ One JSON object per line:
   "admin_agent_id": "orquesta-admin",
   "admin_thread_id": null,
   "dashboard_url": "http://127.0.0.1:4177/",
+  "dashboard_verified_at": null,
+  "dashboard_open_policy": "open_verified_url_once",
+  "dashboard_open_attempted": false,
+  "dashboard_opened_at": null,
+  "dashboard_open_error": null,
   "enabled_packs": ["minimal_core"],
   "available_packs": [
     {

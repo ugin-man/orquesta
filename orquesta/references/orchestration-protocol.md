@@ -36,11 +36,14 @@ Use this before the normal operating loop when Orquesta is invoked in a project 
    - `orquesta-admin`
 7. Start the dashboard server or record why it cannot start.
 8. Verify the dashboard through `/api/state`; do not rely on HTTP 200 alone.
-9. Give the user the verified dashboard URL.
-10. Present setup option packs.
-11. Only after the foundation is ready, classify the user's product task and decide which production specialists are needed.
+9. Open the verified dashboard URL in the user's external browser when possible.
+10. Give the user the verified dashboard URL.
+11. Present setup option packs.
+12. Only after the foundation is ready, classify the user's product task and decide which production specialists are needed.
 
 Bootstrap is idempotent. If setup runs again, inspect existing state and create only the missing foundation pieces.
+
+Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open once after first successful dashboard verification, then store the open attempt in setup state.
 
 4. Appointment
    - Create or update an agent contract.
