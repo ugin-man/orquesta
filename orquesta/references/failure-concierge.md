@@ -101,6 +101,19 @@ Do not quietly downgrade visual verification, asset generation, browser testing,
 5. Accepted user-side work is exposed as repair cards.
 6. Codex retries only after the relevant action is completed or explicitly skipped.
 
+## Stale Failure Reports
+
+Failure reports are snapshots. If an incident is recorded after `error-concierge` has already reported "no failures", that earlier report is stale.
+
+When this happens:
+
+1. Keep the incident in `.orquesta/failures/incidents.json` as the source of truth.
+2. Ask `error-concierge` to re-read incidents and user actions.
+3. Update or append the concierge report.
+4. Only then mark setup or the affected task as fully synchronized.
+
+This matters during bootstrap because foundation sessions may write readiness reports before the orchestrator finishes dashboard startup and failure logging.
+
 ## Boundaries
 
 `error-concierge` must not:

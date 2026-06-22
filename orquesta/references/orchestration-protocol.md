@@ -35,9 +35,10 @@ Use this before the normal operating loop when Orquesta is invoked in a project 
    - `error-concierge`
    - `orquesta-admin`
 7. Start the dashboard server or record why it cannot start.
-8. Give the user the dashboard URL.
-9. Present setup option packs.
-10. Only after the foundation is ready, classify the user's product task and decide which production specialists are needed.
+8. Verify the dashboard through `/api/state`; do not rely on HTTP 200 alone.
+9. Give the user the verified dashboard URL.
+10. Present setup option packs.
+11. Only after the foundation is ready, classify the user's product task and decide which production specialists are needed.
 
 Bootstrap is idempotent. If setup runs again, inspect existing state and create only the missing foundation pieces.
 
@@ -59,6 +60,7 @@ Bootstrap is idempotent. If setup runs again, inspect existing state and create 
    - Add unresolved creative questions to `.orquesta/vision/questions.json` when specialist work reveals ambiguity.
    - Add repeated or user-actionable command failures to `.orquesta/failures/incidents.json`.
    - Append a short event to `events.jsonl`.
+   - Treat reports as snapshots. If state changes after a specialist report is written, update JSON state first and ask the affected specialist to re-read before relying on that report.
 
 7. Acceptance
    - Orchestrator checks the report against acceptance checks.
@@ -128,6 +130,14 @@ Use this flow:
 4. Concierge clusters related incidents and writes a report plus repair cards in `.orquesta/failures/user_actions.json`.
 5. Orchestrator accepts or rejects the concierge report.
 6. Codex retries, routes a Codex-fixable task, or asks the user to complete/skip the repair card.
+
+If a new incident is recorded after `error-concierge` has already written a "no failures" or readiness report, that report is stale. Wake or message `error-concierge` to re-read incidents and user actions before final setup acceptance.
+
+## Report Freshness
+
+`.orquesta/state/*.json`, `.orquesta/setup/options.json`, `.orquesta/failures/*.json`, `.orquesta/vision/*.json`, and `.orquesta/user_tasks/*.json` are the current source of truth.
+
+Reports under `.orquesta/reports/` are snapshots written at a point in time. Do not assume report text is current after later state edits, port changes, new incidents, thread status changes, or answer curation. Final setup acceptance should re-check the relevant JSON state and, when needed, send a narrow re-sync prompt to stale foundation threads.
 
 ## Stop Conditions
 

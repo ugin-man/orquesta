@@ -97,14 +97,29 @@ When `.orquesta/CURRENT_ORCHESTRA.md` is missing:
 5. Add the foundation agents to `agents.json`.
 6. Create or reuse the four foundation Codex sessions.
 7. Start the dashboard server if possible.
-8. Give the dashboard URL: `http://127.0.0.1:4177/`.
-9. Present a short first-run menu.
-10. Record selected options, title policy, pin policy, and bootstrap status in `.orquesta/setup/options.json`.
-11. Only then classify the user's project task and propose production roles such as `implementation-001`, `visual-art-001`, `world-lore-001`, `playtest-qa-001`, or project-specific teams.
+8. Verify the dashboard with `/api/state`, not only HTTP 200.
+9. Give the verified dashboard URL.
+10. Present a short first-run menu.
+11. Record selected options, title policy, pin policy, and bootstrap status in `.orquesta/setup/options.json`.
+12. Only then classify the user's project task and propose production roles such as `implementation-001`, `visual-art-001`, `world-lore-001`, `playtest-qa-001`, or project-specific teams.
 
 If the dashboard server cannot start, record a failure incident and ask whether to wake `error-concierge` after it exists.
 
 If setup is interrupted, resume from `.orquesta/setup/options.json` instead of starting over.
+
+## Dashboard Verification
+
+Do not treat an HTTP 200 from `http://127.0.0.1:4177/` as proof that the current project dashboard is running. Another Orquesta project or unrelated process may already own the port.
+
+Verify dashboard ownership by requesting `/api/state` from the candidate port and checking:
+
+- the response parses as JSON
+- `source` is `server`
+- the returned state includes the current project's `.orquesta` data
+- `project_cwd` or equivalent session/project paths match the current project when available
+- expected foundation agent IDs are present
+
+If the default port is occupied by another process, record an incident such as `local_server_startup` and start the dashboard on a fallback port. Update `.orquesta/setup/options.json`, `.orquesta/CURRENT_ORCHESTRA.md`, and the final user report with the actual verified dashboard URL.
 
 ## First-Run Menu
 

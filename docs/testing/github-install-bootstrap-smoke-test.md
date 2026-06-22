@@ -58,8 +58,24 @@ Verified API summary:
 - The current bootstrap path is still mostly protocol-driven: the agent builds state files from the references rather than calling a dedicated bootstrap script.
 - A future `orquesta/scripts/bootstrap` helper would make clean-project setup more deterministic and easier to verify.
 
+## Operational Findings
+
+Formal recorded incidents: 1
+
+Operational issues observed during the smoke test:
+
+1. GitHub skill installation completed without issue.
+2. The default dashboard port `4177` was occupied and produced `EADDRINUSE`.
+3. A foundation agent initially misread HTTP 200 on `4177` as dashboard success, but that response came from another process. Dashboard verification must check `/api/state` for the current project, not only page availability.
+4. `error-concierge` initially reported no failures because it read state before `F001` was recorded. The report had to be refreshed after the incident and repair card existed.
+5. `agents.json` and `sessions.json` temporarily disagreed about active, idle, and standby states while foundation threads were still finishing. Final setup corrected all foundation agents to standby.
+6. Some report text remained stale after state was corrected. Orquesta should treat JSON state as authoritative and reports as point-in-time snapshots.
+7. PowerShell and Node quoting around Japanese text caused command-check friction. Future scripts should avoid embedding non-ASCII literals in shell-generated JavaScript and use UTF-8 or Unicode escapes where needed.
+
 ## Follow-Up Candidates
 
 - Add a first-class bootstrap script that creates `.orquesta` state skeletons.
 - Add a deterministic dashboard port selection helper.
+- Make dashboard verification check `/api/state` and current project identity.
+- Add a report freshness rule: JSON state is current truth; reports are snapshots.
 - Add a smoke-test checklist to the README.

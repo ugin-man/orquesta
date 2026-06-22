@@ -93,6 +93,8 @@ http://127.0.0.1:4177/
 
 The dashboard reads `.orquesta/` state from the current project and refreshes about every five seconds.
 
+When verifying a dashboard after setup, check `/api/state` for the current project. A plain HTTP 200 on the dashboard port is not enough, because another local Orquesta dashboard may already be using that port.
+
 ## Development Checks
 
 ```powershell
