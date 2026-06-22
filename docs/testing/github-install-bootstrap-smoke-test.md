@@ -71,6 +71,7 @@ Operational issues observed during the smoke test:
 5. `agents.json` and `sessions.json` temporarily disagreed about active, idle, and standby states while foundation threads were still finishing. Final setup corrected all foundation agents to standby.
 6. Some report text remained stale after state was corrected. Orquesta should treat JSON state as authoritative and reports as point-in-time snapshots.
 7. PowerShell and Node quoting around Japanese text caused command-check friction. Future scripts should avoid embedding non-ASCII literals in shell-generated JavaScript and use UTF-8 or Unicode escapes where needed.
+8. A later dashboard visualizer check found that `node --check` alone is not enough for UI changes. A helper-name typo can pass syntax checks but crash the browser render and leave the map showing only the user node.
 
 ## Follow-Up Candidates
 
@@ -78,4 +79,5 @@ Operational issues observed during the smoke test:
 - Add a deterministic dashboard port selection helper.
 - Make dashboard verification check `/api/state` and current project identity.
 - Add a report freshness rule: JSON state is current truth; reports are snapshots.
+- Run a browser DOM smoke check after dashboard UI changes: verify `[data-agent-id]` nodes render and browser console has no `ReferenceError`, `TypeError`, or `SyntaxError`.
 - Add a smoke-test checklist to the README.

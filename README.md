@@ -102,6 +102,14 @@ node --check orquesta/dashboard-server.js
 node --check orquesta/assets/dashboard/app.js
 ```
 
+For dashboard UI changes, also run a browser DOM smoke check against a running dashboard:
+
+```powershell
+npm run smoke:dashboard -- http://127.0.0.1:4177/
+```
+
+This check catches the user-only visualizer failure mode by asserting that agent nodes render and that the browser console has no render-stopping errors.
+
 See [GitHub install bootstrap smoke test](docs/testing/github-install-bootstrap-smoke-test.md) for the first external install result.
 
 ## License

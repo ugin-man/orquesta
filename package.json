@@ -5,6 +5,7 @@
   "description": "Codex skill for coordinating long-lived specialist threads with a local Orquesta dashboard.",
   "scripts": {
     "dashboard": "node orquesta/dashboard-server.js",
-    "check": "node --check orquesta/dashboard-server.js && node --check orquesta/assets/dashboard/app.js"
+    "check": "node --check orquesta/dashboard-server.js && node --check orquesta/assets/dashboard/app.js && node --check orquesta/scripts/dashboard-dom-smoke.js",
+    "smoke:dashboard": "node orquesta/scripts/dashboard-dom-smoke.js"
   }
 }

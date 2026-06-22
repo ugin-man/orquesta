@@ -139,6 +139,20 @@ If a new incident is recorded after `error-concierge` has already written a "no 
 
 Reports under `.orquesta/reports/` are snapshots written at a point in time. Do not assume report text is current after later state edits, port changes, new incidents, thread status changes, or answer curation. Final setup acceptance should re-check the relevant JSON state and, when needed, send a narrow re-sync prompt to stale foundation threads.
 
+## Dashboard UI Verification
+
+For dashboard UI changes, syntax checks are not enough. A helper-name typo can pass `node --check` and still crash browser rendering.
+
+After dashboard UI edits:
+
+1. Run `node --check` on dashboard scripts.
+2. Load the dashboard in a real browser.
+3. Check browser console errors, especially `ReferenceError`, `TypeError`, and `SyntaxError`.
+4. Verify `/api/state` returns the expected project state.
+5. Verify DOM agent nodes exist with `document.querySelectorAll("[data-agent-id]").length > 0`.
+
+If `/api/state` has agents but the DOM has zero agent nodes, treat it as a frontend render failure, not a backend state failure.
+
 ## Stop Conditions
 
 Stop and report instead of continuing when:
