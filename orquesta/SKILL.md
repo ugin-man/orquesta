@@ -96,6 +96,8 @@ The responsibility split is:
 
 Store this layer under `.orquesta/vision/`. Raw answers are not adopted direction until the orchestrator reflects them into `profile.md`, `anti_vision.md`, `decisions.md`, or a specialist vision file.
 
+Treat user answers as thinking seeds, not commands. Questions exist to help the user notice and refine ideas, including ideas they had not consciously formed yet. Unless the user explicitly marks an answer as a hard requirement, `vision-curator` should turn answers into discussion seeds, strong signals, candidate rules, counterproposals, and review-needed items before the orchestrator adopts anything as implementation direction.
+
 ## Failure Concierge
 
 Orquesta treats repeated tool, environment, permission, and local runtime failures as project state, not disposable terminal noise. Use the Failure Concierge Layer when Codex hits a failure that might be solved faster or better by user-side action.
@@ -148,15 +150,22 @@ The source of truth is not chat history. The source of truth is:
 - `.orquesta/failures/user_actions.json`
 - `.orquesta/user_tasks/queue.json`
 - `.orquesta/setup/options.json`
+- `.orquesta/setup/wizard.json`
+- `.orquesta/setup/project_intake.json`
+- `.orquesta/project/completion_map.json`
 - `.orquesta/CURRENT_ORCHESTRA.md`
 - `.orquesta/reports/*.md`
 
 Keep reports short. Link artifacts instead of copying large outputs into the orchestrator conversation.
 
+When writing user-visible non-English text into `.orquesta` state, protect encoding explicitly. Prefer `apply_patch`, UTF-8-aware script files, or Unicode-escaped JavaScript literals over shell here-strings. Run `npm run check:encoding` when available after state writes. Repeated literal question marks such as `???` in `.orquesta` JSON are a failure, not a harmless display issue.
+
 ## Dashboard
 
 The bundled dashboard lives at `assets/dashboard/index.html`. It is a static inspection tool for Orquesta state. Use it to view:
 - agent roster
+- first-run setup wizard and project intake
+- completion map
 - task board
 - blockers
 - pending approvals

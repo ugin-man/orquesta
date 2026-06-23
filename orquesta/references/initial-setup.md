@@ -102,7 +102,15 @@ When `.orquesta/CURRENT_ORCHESTRA.md` is missing:
 10. Give the verified dashboard URL in chat even if browser opening succeeds.
 11. Present a short first-run menu.
 12. Record selected options, title policy, pin policy, dashboard open status, and bootstrap status in `.orquesta/setup/options.json`.
-13. Only then classify the user's project task and propose production roles such as `implementation-001`, `visual-art-001`, `world-lore-001`, `playtest-qa-001`, or project-specific teams.
+13. Create or update `.orquesta/setup/wizard.json` so the dashboard can show the user's current setup step.
+14. Ask the user to describe the project they want to make, and store the submitted description in `.orquesta/setup/project_intake.json`.
+15. Generate required project questions from that description and block production until the required questions are answered. The dashboard setup wizard can trigger this generation and should surface the required questions first.
+16. Have `vision-curator` interpret the answers as provisional thinking seeds, not user commands.
+17. Convert the interpretation into discussion seeds, strong signals, candidate rules, AI counterproposals, and `do_not_adopt_yet` items.
+18. Ask the user to review the important adoption candidates unless the candidate is a low-risk operating rule.
+19. Create or revise `.orquesta/project/completion_map.json`: the large pieces required to finish the project. Treat this map as a proposal until the user approves it.
+20. Ask for user approval of the Completion Map before creating production specialists. The dashboard setup wizard may record this approval in `.orquesta/setup/wizard.json`, but must reject approval while required setup questions remain unanswered.
+21. Only then classify the approved map and propose production roles such as `implementation-001`, `visual-art-001`, `world-lore-001`, `playtest-qa-001`, or project-specific teams.
 
 If the dashboard server cannot start, record a failure incident and ask whether to wake `error-concierge` after it exists.
 
@@ -139,6 +147,20 @@ Rules:
 - Record whether browser opening was attempted and whether it appeared to succeed in `.orquesta/setup/options.json`.
 - If opening fails, do not treat setup as failed. Report the URL clearly and let the user open it manually.
 - Do not repeatedly open browser tabs on every setup resume. Only auto-open during first successful dashboard verification, or when the user explicitly asks.
+
+## Non-English State Safety
+
+Orquesta must support projects whose visible names, questions, reports, and dashboard text are not English.
+
+When setup or a specialist writes user-visible non-ASCII text into `.orquesta` state:
+
+- Do not write Japanese or other non-ASCII JSON through shell snippets unless the command path has been proven UTF-8 safe.
+- Prefer `apply_patch`, a UTF-8-aware script file, or Unicode-escaped JavaScript literals for generated state.
+- After writing state, run `npm run check:encoding` from the Orquesta repository root when available.
+- Treat repeated literal question marks such as `???` in `.orquesta` JSON as a setup failure, not cosmetic text.
+- If the dashboard displays garbled questions or names, inspect the source JSON first. Do not start by changing the dashboard renderer.
+
+The dashboard server also reports encoding warnings in `/api/state` under `health.encodingWarnings`.
 
 ## First-Run Menu
 
@@ -215,5 +237,22 @@ The user may talk to either:
 - admin session ID
 - setup status
 - setup notes
+
+`.orquesta/setup/wizard.json` should track:
+
+- setup status
+- current setup step
+- visible step list
+- project intake gate state
+- required-question gate state
+- Completion Map approval state
+
+`.orquesta/setup/project_intake.json` should track:
+
+- project title
+- project description
+- submission status
+- source
+- update time
 
 The source of truth stays file-backed. The first-run chat is not enough.

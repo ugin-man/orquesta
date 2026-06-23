@@ -118,8 +118,11 @@ Use this flow:
 2. Orchestrator records them in `.orquesta/vision/questions.json` with `status: "draft"`.
 3. Wake `vision-curator` only when a trigger in `references/vision-alignment.md` is met.
 4. Curator rewrites question batches or interprets answer batches into a report.
-5. Orchestrator accepts the report and updates `.orquesta/vision/profile.md`, `anti_vision.md`, `decisions.md`, or `specialists/*.md`.
-6. Specialist threads read adopted vision files relevant to their role before future work.
+5. Curator separates answers into discussion seeds, strong signals, candidate rules, counterproposals, and `do_not_adopt_yet` items.
+6. Orchestrator accepts the report as curation, but does not automatically adopt the content as product direction.
+7. Creative, product, UX, story, visual, and completion-map changes usually become `needs_user_review` before adoption.
+8. Only user-confirmed or explicitly low-risk operating-rule candidates are reflected into `.orquesta/vision/profile.md`, `anti_vision.md`, `decisions.md`, or `specialists/*.md`.
+9. Specialist threads read adopted vision files relevant to their role before future work.
 
 ## Failure Concierge Sync
 

@@ -17,6 +17,25 @@ const state = {
     tasks: [],
     policy: {}
   },
+  setup: {
+    options: { available_packs: [], enabled_packs: [] },
+    wizard: { steps: [], gates: {} },
+    projectIntake: { status: "empty" },
+    specialistPlan: { status: "not_generated", candidates: [] },
+    productionStart: { status: "not_started", activation_requests: [] }
+  },
+  completionMap: {
+    project_title: "",
+    status: "draft",
+    definition_of_done: "",
+    revision_policy: {},
+    phases: []
+  },
+  health: {
+    encodingWarnings: []
+  },
+  reportReviews: [],
+  handoffDrafts: [],
   events: [
     {
       ts: "2026-06-21T13:55:00+09:00",
@@ -35,6 +54,16 @@ const state = {
   currentView: "operations",
   answerDrafts: {},
   answerStatus: null,
+  reviewDrafts: {},
+  reviewStatus: null,
+  reportReviewDrafts: {},
+  reportReviewStatus: null,
+  handoffStatus: null,
+  setupDraft: {},
+  setupStatus: null,
+  specialistPlanDrafts: {},
+  productionStartDrafts: {},
+  isSetupEditing: false,
   selectedQuestionId: null,
   showAllQuestions: false,
   isAnswerEditing: false,
@@ -166,6 +195,72 @@ const sample = {
       coordinator_agent_id: "user-liaison",
       managed_agents: ["vision-curator", "error-concierge"]
     }
+  },
+  setup: {
+    options: {
+      dashboard_url: "http://127.0.0.1:4177/",
+      enabled_packs: ["minimal_core", "vision_alignment"],
+      available_packs: [
+        { pack_id: "minimal_core", label: "Minimal Core", status: "enabled", description: "Orquesta Admin plus production orchestrator." },
+        { pack_id: "vision_alignment", label: "Vision Alignment", status: "enabled", description: "Question curation and answer interpretation." },
+        { pack_id: "research_team", label: "Research Team", status: "available", description: "Future external research team." }
+      ]
+    },
+    wizard: {
+      status: "in_progress",
+      current_step: "completion_map_review",
+      steps: [
+        { step_id: "welcome", title: "ようこそOrquestaへ", summary: "進め方を説明する。", status: "done" },
+        { step_id: "project_intake", title: "プロジェクト説明", summary: "作りたいものを説明する。", status: "done" },
+        { step_id: "question_gate", title: "必須質問への回答", summary: "質問に答えて方向性を固める。", status: "done" },
+        { step_id: "completion_map_review", title: "完成マップ確認", summary: "完成までの大項目を承認する。", status: "active" },
+        { step_id: "specialist_planning", title: "専門AI編成", summary: "必要な専門AI候補を決める。", status: "queued" }
+      ],
+      gates: {
+        completion_map_approved: false
+      }
+    },
+    projectIntake: {
+      status: "submitted",
+      project_title: "Orquesta ベータ",
+      project_description: "長期的に付き合う専門AIチームをセッション単位で管理するマルチエージェント運用システム。"
+    },
+    specialistPlan: {
+      status: "not_generated",
+      candidates: []
+    }
+  },
+  completionMap: {
+    project_title: "Orquesta ベータ",
+    status: "in_progress",
+    definition_of_done: "統括者から専門AIへ作業を割り振り、完了報告を受け、統括者が受理する一連の流れを確認する。",
+    revision_policy: {
+      review_triggers: ["major_direction_change", "repeated_failure"]
+    },
+    phases: [
+      {
+        phase_id: "CM001",
+        title: "基盤システム",
+        summary: "最低限の基礎AI、ダッシュボード、状態管理を揃える。",
+        status: "done",
+        owner_agent_id: "orchestrator",
+        items: [
+          { item_id: "CM001.1", title: "基礎AIが存在している", status: "done" },
+          { item_id: "CM001.2", title: "ダッシュボードが状態を読める", status: "done" }
+        ]
+      },
+      {
+        phase_id: "CM002",
+        title: "案内付き初回セットアップ",
+        summary: "READMEを全部読まなくても使い始められる状態にする。",
+        status: "in_progress",
+        owner_agent_id: "orquesta-admin",
+        items: [
+          { item_id: "CM002.1", title: "最初の案内を表示する", status: "queued" },
+          { item_id: "CM002.2", title: "プロジェクト説明の入口を用意する", status: "queued" }
+        ]
+      }
+    ]
   }
 };
 
@@ -173,14 +268,16 @@ Object.assign(state, sample);
 
 const $ = (id) => document.getElementById(id);
 const LANG_KEY = "orquesta.dashboard.lang";
-let currentLang = localStorage.getItem(LANG_KEY) === "ja" ? "ja" : "en";
+const savedLang = localStorage.getItem(LANG_KEY);
+let currentLang = savedLang || ((navigator.language || "").toLowerCase().startsWith("ja") ? "ja" : "en");
 
 const dictionary = {
   en: {
     "brand.subtitle": "Production command board for long-lived Codex teammates",
     "load.button": "Load state",
-    "load.title": "Load agents.json, tasks.json, directives.json, and events.jsonl",
+    "load.title": "Load Orquesta state files, including agents.json, tasks.json, events.jsonl, and completion_map.json",
     "view.operations": "Operations",
+    "view.setup": "Setup",
     "view.userTasks": "User Tasks",
     "eyebrow.attention": "attention",
     "eyebrow.progress": "progress",
@@ -191,6 +288,8 @@ const dictionary = {
     "eyebrow.work": "work",
     "eyebrow.intent": "intent",
     "eyebrow.timeline": "timeline",
+    "eyebrow.completion": "completion",
+    "eyebrow.setup": "setup",
     "eyebrow.vision": "vision",
     "eyebrow.userTasks": "your desk",
     "eyebrow.repairs": "repairs",
@@ -202,6 +301,8 @@ const dictionary = {
     "section.tasks": "Task Flow",
     "section.directives": "Directives",
     "section.events": "Recent Events",
+    "section.completionMap": "Completion Map",
+    "section.setupWizard": "First Setup Wizard",
     "section.vision": "Vision Questions",
     "section.userTasks": "User Tasks",
     "section.repairs": "Repair Cards",
@@ -210,6 +311,9 @@ const dictionary = {
     "user.blockedTasks": "Blocked asks",
     "user.repairCards": "Repair cards",
     "user.liaisonTasks": "Liaison tasks",
+    "user.visionReviews": "Vision reviews",
+    "user.reportReviews": "Specialist reports",
+    "user.handoffDrafts": "Handoff drafts",
     "user.noTasks": "Nothing needs you right now",
     "user.noTasksDetail": "The AI team has no user-side action queued.",
     "user.questionsDetail": "Ready Vision Alignment questions waiting for your answers.",
@@ -217,6 +321,52 @@ const dictionary = {
     "user.blockedDetail": "Tasks that need user input before the team can continue.",
     "user.repairsDetail": "Environment or permission fixes proposed by the Failure Concierge.",
     "user.liaisonDetail": "Accepted user-side work sequenced by the User Liaison.",
+    "user.visionReviewDetail": "Answer interpretations waiting for your adoption decision.",
+    "user.reportReviewDetail": "Specialist completion reports waiting for orchestrator acceptance.",
+    "user.handoffDraftDetail": "Copy-ready prompts for sending work or revisions to specialist threads.",
+    "handoff.title": "Thread handoff draft",
+    "handoff.empty": "No handoff drafts waiting",
+    "handoff.emptyDetail": "Prepared production tasks and requested revisions will appear here as copy-ready prompts.",
+    "handoff.agent": "Agent",
+    "handoff.thread": "Thread",
+    "handoff.mode": "Mode",
+    "handoff.prompt": "Prompt",
+    "handoff.copy": "Copy prompt",
+    "handoff.copied": "Handoff prompt copied",
+    "handoff.copyError": "Could not copy handoff prompt",
+    "report.title": "Specialist report review",
+    "report.empty": "No specialist reports waiting",
+    "report.emptyDetail": "Submitted specialist reports will appear here before they are accepted or sent back.",
+    "report.agent": "Agent",
+    "report.file": "Report",
+    "report.excerpt": "Excerpt",
+    "report.result": "Result",
+    "report.note": "Orchestrator note",
+    "report.notePlaceholder": "Optional: acceptance summary, revision request, or reason for holding.",
+    "report.accept": "Accept report",
+    "report.request_changes": "Request changes",
+    "report.hold": "Hold for review",
+    "report.save": "Save report review",
+    "report.saved": "Report review saved",
+    "report.saveError": "Could not save report review",
+    "report.choose": "Choose a report review decision.",
+    "review.title": "Review before adoption",
+    "review.batch": "Answer batch",
+    "review.prompt": "Prompt",
+    "review.seeds": "Discussion seeds",
+    "review.signals": "Strong signals",
+    "review.questions": "Needs review",
+    "review.note": "Your note",
+    "review.notePlaceholder": "Optional: what should change before Orquesta adopts this?",
+    "review.save": "Save review",
+    "review.localOnly": "Review saving works from the localhost dashboard.",
+    "review.saved": "Review saved",
+    "review.saveError": "Could not save review",
+    "review.choose": "Choose a review decision.",
+    "review.keep_as_is": "Keep as-is",
+    "review.revise": "Revise",
+    "review.reject": "Reject",
+    "review.ask_orquesta_for_alternatives": "Ask Orquesta for alternatives",
     "repair.noCards": "No repair cards queued",
     "repair.noCardsDetail": "Environment, permission, and fallback issues will appear here when user action can help.",
     "repair.why": "Why",
@@ -238,18 +388,22 @@ const dictionary = {
     "attention.review.text": "A user-to-specialist update needs orchestrator review.",
     "attention.active.title": "{count} active tasks in motion",
     "attention.stale.title": "{count} active agents without heartbeat",
+    "attention.encoding.title": "{count} encoding warnings in state files",
+    "attention.encoding.text": "Some Orquesta state text may be garbled. Run npm run check:encoding and inspect the listed files.",
     "metric.agents": "Agents",
     "metric.tasks": "Tasks",
     "metric.blocked": "Blocked",
     "metric.review": "Review",
     "metric.vision": "Vision",
     "metric.sessions": "Sessions",
+    "metric.completion": "Map",
     "metric.agents.detail": "{active} active · {standby} standby",
     "metric.tasks.detail": "{active} active · {accepted} accepted",
     "metric.blocked.detail": "hard stops",
     "metric.review.detail": "directives + stale",
     "metric.vision.detail": "{ready} ready · {draft} draft",
     "metric.sessions.detail": "{linked} linked · {unassigned} unassigned",
+    "metric.completion.detail": "{done} done · {active} active",
     "count.total": "{count} total",
     "count.complete": "{count}% complete",
     "count.noTasks": "no tasks",
@@ -265,6 +419,79 @@ const dictionary = {
     "progress.accepted": "Accepted",
     "progress.active": "Active",
     "progress.blocked": "Blocked",
+    "completion.definition": "Definition of done",
+    "completion.remaining": "{count} remaining",
+    "completion.done": "{count} done",
+    "completion.current": "Current focus",
+    "completion.revision": "Revision triggers",
+    "completion.noMap": "No completion map yet",
+    "completion.noMapDetail": "After project intake, Orquesta will generate the big pieces needed to finish the project.",
+    "completion.noItems": "No milestone items recorded",
+    "completion.owner": "Owner",
+    "setup.welcome": "Welcome",
+    "setup.current": "Current step",
+    "setup.project": "Project intake",
+    "setup.projectTitle": "Project title",
+    "setup.projectDescription": "Project description",
+    "setup.projectPlaceholder": "Describe what you want to make, what matters, and what should be avoided.",
+    "setup.saveProject": "Save project description",
+    "setup.generateQuestions": "Generate required questions",
+    "setup.approveMap": "Approve Completion Map",
+    "setup.approvedMap": "Completion Map approved",
+    "setup.generateSpecialists": "Generate specialist candidates",
+    "setup.saveSpecialistPlan": "Save specialist decisions",
+    "setup.specialistPlan": "Specialist candidates",
+    "setup.specialistPlanDetail": "Choose which specialists should be available for the next production step. This does not create new sessions.",
+    "setup.specialistPlanEmpty": "No specialist candidates generated yet.",
+    "setup.specialistGenerated": "Generated {count} specialist candidates",
+    "setup.specialistReviewed": "Saved {count} specialist decisions",
+    "setup.specialistError": "Could not save specialist plan",
+    "setup.productionStart": "Production start",
+    "setup.productionStartDetail": "Prepare first handoff tasks for approved specialists. This does not create sessions or send messages.",
+    "setup.productionStartEmpty": "Approve specialist candidates before preparing production handoffs.",
+    "setup.prepareProduction": "Prepare handoff tasks",
+    "setup.productionPrepared": "Prepared {count} handoff tasks",
+    "setup.productionError": "Could not prepare production start",
+    "setup.handoffReady": "Handoff ready",
+    "setup.handoffPrepared": "Handoff prepared",
+    "setup.handoffSent": "Sent by orchestrator",
+    "setup.handoffAccepted": "Report accepted",
+    "setup.productionLocked": "Handoff tasks already prepared",
+    "setup.noSessionsCreated": "No session created",
+    "setup.productionLegend": "Status legend",
+    "setup.legendSelected": "Selected before preparation",
+    "setup.legendPrepared": "Task prepared; orchestrator still needs to send",
+    "setup.legendSent": "Sent to the specialist thread",
+    "setup.legendAccepted": "Specialist report accepted",
+    "setup.selectForHandoff": "Select for handoff",
+    "setup.waitForLater": "Keep waiting",
+    "setup.noThreadMessage": "No thread message sent",
+    "setup.approveNow": "Approve for next step",
+    "setup.later": "Later",
+    "setup.reject": "Do not use",
+    "setup.revise": "Revise",
+    "setup.reuse": "Reuse existing agent",
+    "setup.newAgent": "New agent candidate",
+    "setup.scope": "Scope",
+    "setup.reading": "Reading",
+    "setup.deferred": "Deferred topics",
+    "setup.next": "Next",
+    "setup.enabledPacks": "Enabled packs",
+    "setup.availablePacks": "Available packs",
+    "setup.gates": "Setup gates",
+    "setup.dashboard": "Dashboard",
+    "setup.localOnly": "Saving works from the localhost dashboard.",
+    "setup.noSteps": "No setup steps recorded",
+    "setup.saved": "Project description saved",
+    "setup.saveError": "Could not save setup",
+    "setup.approveError": "Could not approve Completion Map",
+    "setup.noDescription": "Write a project description before saving.",
+    "setup.readyForSpecialists": "Ready to plan specialists from the approved map.",
+    "setup.questionsReady": "{count} required questions ready",
+    "setup.questionsAnswered": "{answered}/{total} required questions answered",
+    "setup.questionsGenerated": "Generated {count} required questions",
+    "setup.generateError": "Could not generate questions",
+    "setup.mapBlockedByQuestions": "Answer required questions before approving the Completion Map.",
     "running.noTask": "No current task recorded",
     "running.taskOwner": "task owner",
     "team.user": "User",
@@ -327,6 +554,7 @@ const dictionary = {
     "vision.noAnswers": "No answer batches yet",
     "time.none": "no time",
     "value.active": "active",
+    "value.in-progress": "in progress",
     "value.accepted": "accepted",
     "value.blocked": "blocked",
     "value.queued": "queued",
@@ -364,7 +592,7 @@ const dictionary = {
   ja: {
     "brand.subtitle": "長期稼働するCodexチームメイトの制作司令盤",
     "load.button": "状態を読み込む",
-    "load.title": "agents.json, tasks.json, directives.json, events.jsonl を読み込む",
+    "load.title": "agents.json, tasks.json, events.jsonl, completion_map.json などを読み込む",
     "eyebrow.attention": "注目",
     "eyebrow.progress": "進行",
     "eyebrow.now": "稼働中",
@@ -374,6 +602,7 @@ const dictionary = {
     "eyebrow.work": "作業",
     "eyebrow.intent": "意図",
     "eyebrow.timeline": "履歴",
+    "eyebrow.completion": "完成",
     "section.progress": "作業進行度",
     "section.running": "現在稼働中",
     "section.command": "指揮マップ",
@@ -382,6 +611,7 @@ const dictionary = {
     "section.tasks": "タスク進行",
     "section.directives": "ユーザー指示",
     "section.events": "最近のイベント",
+    "section.completionMap": "完成マップ",
     "empty.records": "まだ記録がありません",
     "lang.toggle": "English",
     "sync.live": "ライブ · {count}ファイル",
@@ -394,16 +624,20 @@ const dictionary = {
     "attention.review.text": "ユーザーと専門AIの会話更新に、統括者の確認が必要です。",
     "attention.active.title": "{count}件のタスクが進行中です",
     "attention.stale.title": "{count}体の稼働AIにハートビートがありません",
+    "attention.encoding.title": "状態ファイルに{count}件の文字化け警告があります",
+    "attention.encoding.text": "Orquestaの状態テキストが壊れている可能性があります。npm run check:encoding を実行して対象ファイルを確認してください。",
     "metric.agents": "AI",
     "metric.tasks": "タスク",
     "metric.blocked": "停止",
     "metric.review": "確認",
     "metric.sessions": "セッション",
+    "metric.completion": "完成",
     "metric.agents.detail": "稼働 {active} · 待機 {standby}",
     "metric.tasks.detail": "進行 {active} · 完了 {accepted}",
     "metric.blocked.detail": "作業停止要因",
     "metric.review.detail": "指示 + stale",
     "metric.sessions.detail": "紐付き {linked} · 未任命 {unassigned}",
+    "metric.completion.detail": "完了 {done} · 進行 {active}",
     "count.total": "全{count}件",
     "count.complete": "{count}% 完了",
     "count.noTasks": "タスクなし",
@@ -419,6 +653,15 @@ const dictionary = {
     "progress.accepted": "受理済み",
     "progress.active": "進行中",
     "progress.blocked": "停止",
+    "completion.definition": "完成条件",
+    "completion.remaining": "残り {count}件",
+    "completion.done": "完了 {count}件",
+    "completion.current": "現在の焦点",
+    "completion.revision": "見直し条件",
+    "completion.noMap": "完成マップはまだありません",
+    "completion.noMapDetail": "プロジェクト説明後に、Orquestaが完成に必要な大項目を作ります。",
+    "completion.noItems": "項目未記録",
+    "completion.owner": "担当",
     "running.noTask": "現在タスクの記録なし",
     "running.taskOwner": "タスク担当",
     "team.user": "ユーザー",
@@ -452,6 +695,7 @@ const dictionary = {
     "task.notAccepted": "未受理",
     "time.none": "時刻なし",
     "value.active": "稼働中",
+    "value.in-progress": "進行中",
     "value.accepted": "受理済み",
     "value.blocked": "停止",
     "value.queued": "待機",
@@ -526,16 +770,22 @@ Object.assign(dictionary.ja, {
 
 Object.assign(dictionary.ja, {
   "view.operations": "運用",
+  "view.setup": "セットアップ",
   "view.userTasks": "ユーザータスク",
   "eyebrow.userTasks": "あなたの席",
   "eyebrow.repairs": "修理",
+  "eyebrow.setup": "セットアップ",
   "section.userTasks": "ユーザータスク",
   "section.repairs": "修理カード",
+  "section.setupWizard": "初回セットアップ",
   "user.readyQuestions": "回答待ち質問",
   "user.reviewDirectives": "確認待ち",
   "user.blockedTasks": "相談待ち",
   "user.repairCards": "修理カード",
   "user.liaisonTasks": "窓口タスク",
+  "user.visionReviews": "回答レビュー",
+  "user.reportReviews": "専門AI報告",
+  "user.handoffDrafts": "ハンドオフ文面",
   "user.noTasks": "今あなた待ちの作業はありません",
   "user.noTasksDetail": "AIチーム側に、ユーザーが今すぐ対応する項目はありません。",
   "user.questionsDetail": "回答できる Vision Alignment 質問です。",
@@ -543,6 +793,52 @@ Object.assign(dictionary.ja, {
   "user.blockedDetail": "ユーザー入力がないと進めにくいタスクです。",
   "user.repairsDetail": "Failure Concierge が提案した、環境・権限まわりのユーザー側対応です。",
   "user.liaisonDetail": "User Liaison が整理した、ユーザー側で対応する作業です。",
+  "user.visionReviewDetail": "回答の解釈を採用前に見直す項目です。",
+  "user.reportReviewDetail": "専門AIの完了報告を、統括者が受理するか差し戻すか確認します。",
+  "user.handoffDraftDetail": "専門AIスレッドへ送る作業依頼や差し戻し依頼の文面です。",
+  "handoff.title": "スレッド用ハンドオフ文面",
+  "handoff.empty": "送信待ちのハンドオフ文面はありません",
+  "handoff.emptyDetail": "準備済み制作タスクや差し戻しが発生すると、コピー可能な文面として表示されます。",
+  "handoff.agent": "担当AI",
+  "handoff.thread": "スレッド",
+  "handoff.mode": "種別",
+  "handoff.prompt": "文面",
+  "handoff.copy": "文面をコピー",
+  "handoff.copied": "ハンドオフ文面をコピーしました",
+  "handoff.copyError": "ハンドオフ文面をコピーできませんでした",
+  "report.title": "専門AI報告レビュー",
+  "report.empty": "確認待ちの専門AI報告はありません",
+  "report.emptyDetail": "専門AIが完了報告を出すと、受理または差し戻し前にここへ表示されます。",
+  "report.agent": "担当AI",
+  "report.file": "報告書",
+  "report.excerpt": "抜粋",
+  "report.result": "結果",
+  "report.note": "統括メモ",
+  "report.notePlaceholder": "任意: 受理理由、差し戻し内容、保留理由を書く",
+  "report.accept": "報告を受理",
+  "report.request_changes": "差し戻す",
+  "report.hold": "保留する",
+  "report.save": "報告レビューを保存",
+  "report.saved": "報告レビューを保存しました",
+  "report.saveError": "報告レビューを保存できませんでした",
+  "report.choose": "報告レビューの判断を選んでください。",
+  "review.title": "採用前レビュー",
+  "review.batch": "回答バッチ",
+  "review.prompt": "確認内容",
+  "review.seeds": "議論の種",
+  "review.signals": "強いシグナル",
+  "review.questions": "確認したいこと",
+  "review.note": "メモ",
+  "review.notePlaceholder": "任意: 採用前にどう直したいかを書く",
+  "review.save": "レビューを保存",
+  "review.localOnly": "レビュー保存は localhost のダッシュボードで使えます。",
+  "review.saved": "レビューを保存しました",
+  "review.saveError": "レビューを保存できませんでした",
+  "review.choose": "レビュー判断を選んでください。",
+  "review.keep_as_is": "このまま採用",
+  "review.revise": "書き換えて採用",
+  "review.reject": "採用しない",
+  "review.ask_orquesta_for_alternatives": "Orquestaに代案を出させる",
   "repair.noCards": "待機中の修理カードはありません",
   "repair.noCardsDetail": "環境、権限、品質劣化回避に関わるユーザー対応が必要になったらここに表示されます。",
   "repair.why": "理由",
@@ -551,7 +847,87 @@ Object.assign(dictionary.ja, {
   "repair.risk": "リスク",
   "list.showMore": "すべて表示 {count}件",
   "list.showLess": "折りたたむ",
-  "list.showing": "{total}件中 {shown}件を表示"
+  "list.showing": "{total}件中 {shown}件を表示",
+  "setup.welcome": "ようこそ",
+  "setup.current": "現在の段階",
+  "setup.project": "プロジェクト説明",
+  "setup.projectTitle": "プロジェクト名",
+  "setup.projectDescription": "プロジェクト説明",
+  "setup.projectPlaceholder": "作りたいもの、重視したい体験、避けたい方向性を書く",
+  "setup.saveProject": "プロジェクト説明を保存",
+  "setup.generateQuestions": "必須質問を生成",
+  "setup.approveMap": "完成マップを承認",
+  "setup.approvedMap": "完成マップ承認済み",
+  "setup.generateSpecialists": "専門AI候補を生成",
+  "setup.saveSpecialistPlan": "専門AI判断を保存",
+  "setup.specialistPlan": "専門AI候補",
+  "setup.specialistPlanDetail": "次の制作段階で使う専門AIを選びます。ここでは新しいセッションは作成しません。",
+  "setup.specialistPlanEmpty": "専門AI候補はまだ生成されていません。",
+  "setup.specialistGenerated": "{count}件の専門AI候補を生成しました",
+  "setup.specialistReviewed": "{count}件の専門AI判断を保存しました",
+  "setup.specialistError": "専門AI計画を保存できませんでした",
+  "setup.productionStart": "制作開始",
+  "setup.productionStartDetail": "承認済み専門AIに最初のハンドオフタスクを準備します。セッション作成やメッセージ送信は行いません。",
+  "setup.productionStartEmpty": "制作開始の前に専門AI候補を承認してください。",
+  "setup.prepareProduction": "ハンドオフタスクを準備",
+  "setup.productionPrepared": "{count}件のハンドオフタスクを準備しました",
+  "setup.productionError": "制作開始を準備できませんでした",
+  "setup.handoffReady": "ハンドオフ準備済み",
+  "setup.handoffPrepared": "ハンドオフ準備済み",
+  "setup.handoffSent": "統括者から送信済み",
+  "setup.handoffAccepted": "報告受理済み",
+  "setup.productionLocked": "ハンドオフタスクは準備済み",
+  "setup.noSessionsCreated": "セッション作成なし",
+  "setup.productionLegend": "状態の見方",
+  "setup.legendSelected": "準備前に選択されている状態",
+  "setup.legendPrepared": "タスクは準備済み。統括者の送信待ち",
+  "setup.legendSent": "専門AIスレッドへ送信済み",
+  "setup.legendAccepted": "専門AIの報告を受理済み",
+  "setup.selectForHandoff": "ハンドオフ対象",
+  "setup.waitForLater": "待機のまま",
+  "setup.noThreadMessage": "スレッド送信なし",
+  "setup.approveNow": "次に使う",
+  "setup.later": "後で",
+  "setup.reject": "使わない",
+  "setup.revise": "見直し",
+  "setup.reuse": "既存AIを再利用",
+  "setup.newAgent": "新規AI候補",
+  "setup.scope": "担当範囲",
+  "setup.reading": "読むもの",
+  "setup.deferred": "後で研究",
+  "setup.next": "次に進む",
+  "setup.enabledPacks": "有効な機能",
+  "setup.availablePacks": "追加できる機能",
+  "setup.gates": "セットアップ条件",
+  "setup.dashboard": "ダッシュボード",
+  "setup.localOnly": "保存はlocalhostのダッシュボードで使えます。",
+  "setup.noSteps": "セットアップ段階はまだ記録されていません",
+  "setup.saved": "プロジェクト説明を保存しました",
+  "setup.saveError": "セットアップを保存できませんでした",
+  "setup.approveError": "完成マップを承認できませんでした",
+  "setup.noDescription": "保存する前にプロジェクト説明を書いてください。",
+  "setup.readyForSpecialists": "承認済みの完成マップをもとに、専門AI編成へ進めます。",
+  "setup.questionsReady": "必須質問 {count}件が回答待ちです",
+  "setup.questionsAnswered": "必須質問 {total}件中 {answered}件回答済み",
+  "setup.questionsGenerated": "必須質問を{count}件生成しました",
+  "setup.generateError": "質問を生成できませんでした",
+  "setup.mapBlockedByQuestions": "完成マップを承認する前に、必須質問へ回答してください。"
+});
+
+Object.assign(dictionary.en, {
+  "completion.trigger.major-direction-change": "major direction change",
+  "completion.trigger.user-changes-project-goal": "user changes project goal",
+  "completion.trigger.repeated-failure": "repeated failure",
+  "completion.trigger.completion-item-no-longer-matches-project": "completion item no longer matches",
+  "completion.trigger.new-required-surface-discovered": "new required surface discovered"
+});
+
+Object.assign(dictionary.ja, {
+  "completion.trigger.major-direction-change": "大きな方向転換",
+  "completion.trigger.user-changes-project-goal": "ユーザーが目的を変更した",
+  "completion.trigger.repeated-failure": "同種の失敗が繰り返された",
+  "completion.trigger.completion-item-no-longer-matches-project": "完成項目が現在の企画と合わなくなった",
+  "completion.trigger.new-required-surface-discovered": "新しく必要な画面や機能が見つかった"
 });
 
 function t(key, vars = {}, fallback = key) {
@@ -562,6 +938,11 @@ function t(key, vars = {}, fallback = key) {
 function valueLabel(value, vars = {}) {
   const key = String(value || "unknown").toLowerCase().replaceAll("_", "-").replace(/\s+/g, "-");
   return t(`value.${key}`, vars, value);
+}
+
+function completionTriggerLabel(value) {
+  const key = String(value || "unknown").toLowerCase().replaceAll("_", "-").replace(/\s+/g, "-");
+  return t(`completion.trigger.${key}`, {}, value);
 }
 
 function applyLanguage() {
@@ -642,16 +1023,21 @@ function getSignals() {
   const reviewDirectives = state.directives.filter((directive) => String(directive.status).includes("review"));
   const activeAgents = state.agents.filter((agent) => agent.status === "active");
   const staleAgents = state.agents.filter((agent) => agent.status === "active" && !agent.last_heartbeat);
-  return { blockedTasks, activeTasks, reviewDirectives, activeAgents, staleAgents };
+  const encodingWarnings = state.health?.encodingWarnings || [];
+  return { blockedTasks, activeTasks, reviewDirectives, activeAgents, staleAgents, encodingWarnings };
 }
 
 function renderAttention() {
-  const { blockedTasks, activeTasks, reviewDirectives, staleAgents } = getSignals();
+  const { blockedTasks, activeTasks, reviewDirectives, staleAgents, encodingWarnings } = getSignals();
   let title = t("attention.ready.title");
   let text = t("attention.ready.text");
   const actions = [];
 
-  if (blockedTasks.length) {
+  if (encodingWarnings.length) {
+    title = t("attention.encoding.title", { count: encodingWarnings.length });
+    text = encodingWarnings.slice(0, 3).map((warning) => `${warning.file}: ${warning.kind}`).join(" · ") || t("attention.encoding.text");
+    actions.push(pill("Encoding", "blocked"));
+  } else if (blockedTasks.length) {
     title = t("attention.blocked.title", { count: blockedTasks.length });
     text = blockedTasks.map((task) => `${task.task_id}: ${(task.blocked_by || []).join(", ")}`).join(" · ");
     actions.push(pill("Blocked", "blocked"));
@@ -685,13 +1071,15 @@ function renderMetrics() {
   const visionStats = getVisionStats();
   const linkedSessions = state.agents.filter((agent) => agent.codex_session).length;
   const unassignedSessions = state.agents.filter((agent) => agent.role === "session").length;
+  const completion = completionMapCounts();
   $("metrics").innerHTML = [
     [t("metric.agents"), state.agents.length, t("metric.agents.detail", { active: activeAgents.length, standby })],
     [t("metric.sessions"), state.sessions.length, t("metric.sessions.detail", { linked: linkedSessions, unassigned: unassignedSessions })],
     [t("metric.tasks"), state.tasks.length, t("metric.tasks.detail", { active: activeTasks.length, accepted })],
     [t("metric.blocked"), blockedTasks.length, t("metric.blocked.detail")],
     [t("metric.review"), reviewDirectives.length + staleAgents.length, t("metric.review.detail")],
-    [t("metric.vision"), visionStats.totalQuestions, t("metric.vision.detail", { ready: visionStats.ready, draft: visionStats.draft })]
+    [t("metric.vision"), visionStats.totalQuestions, t("metric.vision.detail", { ready: visionStats.ready, draft: visionStats.draft })],
+    [t("metric.completion"), `${completion.percent}%`, t("metric.completion.detail", { done: completion.done, active: completion.active })]
   ].map(([label, value, detail]) => `
     <div class="metric">
       <strong>${value}</strong>
@@ -733,14 +1121,21 @@ function getUserTaskStats() {
   const reviewDirectives = state.directives.filter((directive) => String(directive.status || "").includes("review"));
   const blockedTasks = state.tasks.filter((task) => (task.blocked_by || []).some((blocker) => String(blocker).toLowerCase().includes("user")));
   const repairCards = (state.failures?.userActions || []).filter((action) => !["resolved", "skipped", "retired"].includes(String(action.status || "").toLowerCase()));
-  const liaisonTasks = (state.userTasks?.tasks || []).filter((task) => !["resolved", "skipped", "retired"].includes(String(task.status || "").toLowerCase()));
+  const openUserTasks = (state.userTasks?.tasks || []).filter((task) => !["resolved", "skipped", "retired"].includes(String(task.status || "").toLowerCase()));
+  const visionReviewTasks = openUserTasks.filter((task) => task.source === "vision_answer_review");
+  const liaisonTasks = openUserTasks.filter((task) => task.source !== "vision_answer_review");
+  const reportReviews = state.reportReviews || [];
+  const handoffDrafts = state.handoffDrafts || [];
   return {
     readyQuestions,
     reviewDirectives,
     blockedTasks,
     repairCards,
+    visionReviewTasks,
     liaisonTasks,
-    total: readyQuestions.length + reviewDirectives.length + blockedTasks.length + repairCards.length + liaisonTasks.length
+    reportReviews,
+    handoffDrafts,
+    total: readyQuestions.length + reviewDirectives.length + blockedTasks.length + repairCards.length + visionReviewTasks.length + liaisonTasks.length + reportReviews.length + handoffDrafts.length
   };
 }
 
@@ -763,11 +1158,198 @@ function renderViewSwitch() {
   });
 }
 
+function reviewChoiceLabel(choice) {
+  return t(`review.${choice}`) || valueLabel(choice);
+}
+
+function batchForReviewTask(task) {
+  const batchId = (task.source_ids || [])[0];
+  return (state.vision?.answerBatches || []).find((batch) => batch.batch_id === batchId) || null;
+}
+
+function renderReviewList(title, items) {
+  return (items || []).length
+    ? `
+      <div class="review-list-block">
+        <b>${escapeHtml(title)}</b>
+        <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </div>
+    `
+    : "";
+}
+
+function renderVisionReviewTasks(tasks) {
+  const canSave = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  if (!tasks.length) return "";
+
+  return `
+    <section class="vision-review-board">
+      <div class="section-title compact-title">
+        <div>
+          <span class="eyebrow">${escapeHtml(t("review.title"))}</span>
+          <h3>${escapeHtml(t("user.visionReviews"))}</h3>
+        </div>
+      </div>
+      ${state.reviewStatus?.message ? `<div class="answer-status ${escapeHtml(state.reviewStatus.type || "")}">${escapeHtml(state.reviewStatus.message)}</div>` : ""}
+      ${tasks.map((task) => {
+        const batch = batchForReviewTask(task);
+        const draft = state.reviewDrafts[task.user_task_id] || {};
+        const choices = task.review_choices || ["keep_as_is", "revise", "reject", "ask_orquesta_for_alternatives"];
+        return `
+          <article class="vision-review-card ${statusClass(task.status)}">
+            <div class="review-card-head">
+              <div>
+                <span class="eyebrow">${escapeHtml(task.user_task_id || "review")}</span>
+                <h3>${escapeHtml(task.title || t("review.title"))}</h3>
+              </div>
+              <div class="meta">
+                ${pill(task.status || "ready")}
+                ${batch ? pill(`${t("review.batch")}: ${batch.batch_id}`, batch.status || "queued") : ""}
+              </div>
+            </div>
+            ${task.prompt ? `<div class="text-row"><b>${escapeHtml(t("review.prompt"))}</b><span>${escapeHtml(task.prompt)}</span></div>` : ""}
+            ${batch ? `
+              ${renderReviewList(t("review.seeds"), batch.discussion_seeds || [])}
+              ${renderReviewList(t("review.signals"), batch.strong_signals || [])}
+              ${renderReviewList(t("review.questions"), batch.needs_user_review || [])}
+            ` : `<div class="answer-status error">${escapeHtml(t("vision.noAnswers"))}</div>`}
+            <div class="review-choice-grid" role="radiogroup" aria-label="${escapeHtml(t("review.title"))}">
+              ${choices.map((choice) => `
+                <button type="button" class="${draft.decision === choice ? "selected" : ""}" data-review-choice="${escapeHtml(choice)}" data-review-task-id="${escapeHtml(task.user_task_id)}">
+                  ${escapeHtml(reviewChoiceLabel(choice))}
+                </button>
+              `).join("")}
+            </div>
+            <label class="answer-field review-note-field">
+              <span>${escapeHtml(t("review.note"))}</span>
+              <textarea data-review-note-task-id="${escapeHtml(task.user_task_id)}" placeholder="${escapeHtml(t("review.notePlaceholder"))}">${escapeHtml(draft.note || "")}</textarea>
+            </label>
+            <div class="answer-toolbar review-actions">
+              <span>${escapeHtml(canSave ? t("review.title") : t("review.localOnly"))}</span>
+              <button type="button" data-action="save-vision-review" data-review-task-id="${escapeHtml(task.user_task_id)}" ${canSave && draft.decision ? "" : "disabled"}>
+                ${escapeHtml(state.reviewStatus?.type === "saving" ? t("vision.saving") : t("review.save"))}
+              </button>
+            </div>
+          </article>
+        `;
+      }).join("")}
+    </section>
+  `;
+}
+
+function reportReviewChoiceLabel(choice) {
+  return t(`report.${choice}`) || valueLabel(choice);
+}
+
+function renderSpecialistReportReviews(reviews) {
+  const canSave = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  if (!reviews.length) return "";
+
+  return `
+    <section class="vision-review-board report-review-board">
+      <div class="section-title compact-title">
+        <div>
+          <span class="eyebrow">${escapeHtml(t("report.title"))}</span>
+          <h3>${escapeHtml(t("user.reportReviews"))}</h3>
+        </div>
+      </div>
+      ${state.reportReviewStatus?.message ? `<div class="answer-status ${escapeHtml(state.reportReviewStatus.type || "")}">${escapeHtml(state.reportReviewStatus.message)}</div>` : ""}
+      ${reviews.map((review) => {
+        const draft = state.reportReviewDrafts[review.task_id] || {};
+        const choices = ["accept", "request_changes", "hold"];
+        return `
+          <article class="vision-review-card report-review-card ${statusClass(review.state)}">
+            <div class="review-card-head">
+              <div>
+                <span class="eyebrow">${escapeHtml(review.task_id || "report")}</span>
+                <h3>${escapeHtml(review.title || t("report.title"))}</h3>
+              </div>
+              <div class="meta">
+                ${pill(review.state || "needs_review")}
+                ${review.owner_display_name ? pill(review.owner_display_name) : ""}
+              </div>
+            </div>
+            <div class="text-row"><b>${escapeHtml(t("report.agent"))}</b><span>${escapeHtml(review.owner_display_name || review.owner_agent_id || t("task.none"))}</span></div>
+            <div class="text-row"><b>${escapeHtml(t("report.file"))}</b><span>${escapeHtml(review.report_path || t("task.none"))}</span></div>
+            ${review.result_summary ? `<div class="text-row"><b>${escapeHtml(t("report.result"))}</b><span>${escapeHtml(review.result_summary)}</span></div>` : ""}
+            <div class="review-list-block report-excerpt">
+              <b>${escapeHtml(t("report.excerpt"))}</b>
+              <pre>${escapeHtml(review.report_excerpt || (review.report_exists ? t("task.none") : t("empty.records")))}</pre>
+            </div>
+            <div class="review-choice-grid" role="radiogroup" aria-label="${escapeHtml(t("report.title"))}">
+              ${choices.map((choice) => `
+                <button type="button" class="${draft.decision === choice ? "selected" : ""}" data-report-choice="${escapeHtml(choice)}" data-report-task-id="${escapeHtml(review.task_id)}">
+                  ${escapeHtml(reportReviewChoiceLabel(choice))}
+                </button>
+              `).join("")}
+            </div>
+            <label class="answer-field review-note-field">
+              <span>${escapeHtml(t("report.note"))}</span>
+              <textarea data-report-note-task-id="${escapeHtml(review.task_id)}" placeholder="${escapeHtml(t("report.notePlaceholder"))}">${escapeHtml(draft.note || "")}</textarea>
+            </label>
+            <div class="answer-toolbar review-actions">
+              <span>${escapeHtml(canSave ? t("report.title") : t("review.localOnly"))}</span>
+              <button type="button" data-action="save-report-review" data-report-task-id="${escapeHtml(review.task_id)}" ${canSave && draft.decision ? "" : "disabled"}>
+                ${escapeHtml(state.reportReviewStatus?.type === "saving" ? t("vision.saving") : t("report.save"))}
+              </button>
+            </div>
+          </article>
+        `;
+      }).join("")}
+    </section>
+  `;
+}
+
+function renderHandoffDrafts(drafts) {
+  if (!drafts.length) return "";
+
+  return `
+    <section class="vision-review-board handoff-draft-board">
+      <div class="section-title compact-title">
+        <div>
+          <span class="eyebrow">${escapeHtml(t("handoff.title"))}</span>
+          <h3>${escapeHtml(t("user.handoffDrafts"))}</h3>
+        </div>
+      </div>
+      ${state.handoffStatus?.message ? `<div class="answer-status ${escapeHtml(state.handoffStatus.type || "")}">${escapeHtml(state.handoffStatus.message)}</div>` : ""}
+      ${drafts.map((draft) => `
+        <article class="vision-review-card handoff-draft-card ${statusClass(draft.task_state)}">
+          <div class="review-card-head">
+            <div>
+              <span class="eyebrow">${escapeHtml(draft.handoff_id || draft.task_id || "handoff")}</span>
+              <h3>${escapeHtml(draft.title || t("handoff.title"))}</h3>
+            </div>
+            <div class="meta">
+              ${pill(draft.mode || "initial", draft.mode || "active")}
+              ${pill(draft.task_state || "queued")}
+            </div>
+          </div>
+          <div class="text-row"><b>${escapeHtml(t("handoff.agent"))}</b><span>${escapeHtml(draft.agent_display_name || draft.agent_id || t("task.none"))}</span></div>
+          <div class="text-row"><b>${escapeHtml(t("handoff.thread"))}</b><span>${escapeHtml(draft.thread_id || t("task.none"))}</span></div>
+          <div class="review-list-block report-excerpt">
+            <b>${escapeHtml(t("handoff.prompt"))}</b>
+            <pre>${escapeHtml(draft.prompt_preview || draft.prompt || "")}</pre>
+          </div>
+          <div class="answer-toolbar review-actions">
+            <span>${escapeHtml(t("handoff.title"))}</span>
+            <button type="button" data-action="copy-handoff" data-handoff-id="${escapeHtml(draft.handoff_id)}">
+              ${escapeHtml(t("handoff.copy"))}
+            </button>
+          </div>
+        </article>
+      `).join("")}
+    </section>
+  `;
+}
+
 function renderUserTaskSummary() {
   const stats = getUserTaskStats();
   $("userTaskCount").textContent = formatCount("total", stats.total);
   const cards = [
     [t("user.readyQuestions"), stats.readyQuestions.length, t("user.questionsDetail"), "active"],
+    [t("user.handoffDrafts"), stats.handoffDrafts.length, t("user.handoffDraftDetail"), stats.handoffDrafts.length ? "active" : "standby"],
+    [t("user.visionReviews"), stats.visionReviewTasks.length, t("user.visionReviewDetail"), stats.visionReviewTasks.length ? "active" : "standby"],
+    [t("user.reportReviews"), stats.reportReviews.length, t("user.reportReviewDetail"), stats.reportReviews.length ? "blocked" : "standby"],
     [t("user.reviewDirectives"), stats.reviewDirectives.length, t("user.reviewDetail"), stats.reviewDirectives.length ? "blocked" : "standby"],
     [t("user.blockedTasks"), stats.blockedTasks.length, t("user.blockedDetail"), stats.blockedTasks.length ? "blocked" : "standby"],
     [t("user.repairCards"), stats.repairCards.length, t("user.repairsDetail"), stats.repairCards.length ? "blocked" : "standby"],
@@ -788,7 +1370,10 @@ function renderUserTaskSummary() {
         <b>${escapeHtml(t("user.noTasks"))}</b>
         <p>${escapeHtml(t("user.noTasksDetail"))}</p>
       </article>
-    `;
+  `;
+  $("userTaskSummary").insertAdjacentHTML("beforeend", renderHandoffDrafts(stats.handoffDrafts));
+  $("userTaskSummary").insertAdjacentHTML("beforeend", renderVisionReviewTasks(stats.visionReviewTasks));
+  $("userTaskSummary").insertAdjacentHTML("beforeend", renderSpecialistReportReviews(stats.reportReviews));
 }
 
 function renderRepairCards() {
@@ -907,18 +1492,37 @@ function renderVisionPanel() {
   `;
 }
 
+function orderedInteractiveQuestions() {
+  return (state.vision?.questions || [])
+    .filter((question) => question.status !== "adopted" && question.status !== "retired")
+    .slice()
+    .sort((a, b) => {
+      const setupDelta = Number(Boolean(b.required_for_setup)) - Number(Boolean(a.required_for_setup));
+      if (setupDelta) return setupDelta;
+      const readyDelta = Number(b.status === "ready") - Number(a.status === "ready");
+      if (readyDelta) return readyDelta;
+      const priorityRank = { high: 3, medium: 2, low: 1 };
+      const priorityDelta = (priorityRank[b.priority] || 0) - (priorityRank[a.priority] || 0);
+      if (priorityDelta) return priorityDelta;
+      return String(a.question_id || "").localeCompare(String(b.question_id || ""), undefined, { numeric: true });
+    });
+}
+
 function renderVisionPanelV2() {
   const vision = state.vision || {};
-  const questions = vision.questions || [];
   const answerBatches = vision.answerBatches || [];
   const policy = vision.curationPolicy || {};
   const stats = getVisionStats();
   const curator = policy.curator_agent_id || "vision-curator";
   const canSaveAnswers = ["localhost", "127.0.0.1"].includes(window.location.hostname);
   const draftCount = Object.values(state.answerDrafts).filter((value) => String(value || "").trim()).length;
-  const interactiveQuestions = questions.filter((question) => question.status !== "adopted" && question.status !== "retired");
+  const interactiveQuestions = orderedInteractiveQuestions();
 
-  if (!interactiveQuestions.some((question) => question.question_id === state.selectedQuestionId)) {
+  const selectedCandidate = interactiveQuestions.find((question) => question.question_id === state.selectedQuestionId);
+  const firstRequiredReady = interactiveQuestions.find((question) => question.required_for_setup && question.status === "ready");
+  if (firstRequiredReady && (!selectedCandidate || !selectedCandidate.required_for_setup || selectedCandidate.status !== "ready")) {
+    state.selectedQuestionId = firstRequiredReady.question_id;
+  } else if (!selectedCandidate) {
     state.selectedQuestionId = interactiveQuestions[0]?.question_id || null;
   }
 
@@ -1045,6 +1649,20 @@ function getTaskCounts() {
   return { total, accepted, active, blocked, queued, review };
 }
 
+function completionMapCounts() {
+  const phases = state.completionMap?.phases || [];
+  const items = phases.flatMap((phase) => phase.items || []);
+  const total = items.length || phases.length;
+  const done = items.length
+    ? items.filter((item) => item.status === "done" || item.status === "accepted").length
+    : phases.filter((phase) => phase.status === "done" || phase.status === "accepted").length;
+  const active = phases.filter((phase) => ["active", "in_progress", "review"].includes(phase.status)).length
+    + items.filter((item) => ["active", "in_progress", "review"].includes(item.status)).length;
+  const blocked = phases.filter((phase) => phase.status === "blocked").length
+    + items.filter((item) => item.status === "blocked").length;
+  return { phases, items, total, done, active, blocked, percent: pct(done, total) };
+}
+
 function pct(value, total) {
   if (!total) return 0;
   return Math.round((value / total) * 100);
@@ -1052,6 +1670,13 @@ function pct(value, total) {
 
 function agentById(agentId) {
   return state.agents.find((agent) => agent.agent_id === agentId);
+}
+
+function agentDisplayName(agentOrId) {
+  const agent = typeof agentOrId === "string" ? agentById(agentOrId) : agentOrId;
+  if (!agent) return String(agentOrId || "");
+  if (currentLang === "en") return agent.display_name_en || agent.display_name || agent.agent_id;
+  return agent.display_name || agent.display_name_ja || agent.agent_id;
 }
 
 function taskById(taskId) {
@@ -1253,7 +1878,7 @@ function renderAgentNode(agent, variant = "") {
       style="--role-color: ${roleTone(agent.role)}">
       ${renderPixelWorker(agent, active)}
       <span class="node-copy">
-        <b>${escapeHtml(agent.agent_id)}</b>
+        <b>${escapeHtml(agentDisplayName(agent))}</b>
         <small>${escapeHtml(valueLabel(agent.role))}</small>
       </span>
       <span class="node-status">
@@ -1516,7 +2141,7 @@ function renderAgentInspector() {
       ${renderPixelWorker(agent, hasLiveWork(agent))}
       <div>
         <span class="eyebrow">${escapeHtml(valueLabel(agent.role))}</span>
-        <h3>${escapeHtml(agent.agent_id)}</h3>
+        <h3>${escapeHtml(agentDisplayName(agent))}</h3>
         <div class="meta">${pill(agent.status || "unknown")}${agent.thread_id ? pill("thread", "active") : ""}</div>
       </div>
     </div>
@@ -1545,7 +2170,7 @@ function renderAgentInspector() {
       </div>
       <div>
         <b>${escapeHtml(t("team.collaboratesWith"))}</b>
-        <p>${collaborators.length ? collaborators.join(", ") : escapeHtml(t("team.noCollaborators"))}</p>
+        <p>${collaborators.length ? collaborators.map(agentDisplayName).join(", ") : escapeHtml(t("team.noCollaborators"))}</p>
       </div>
     </div>
   `;
@@ -1563,6 +2188,429 @@ function applyMapTransform() {
 
 function clampMapScale(value) {
   return Math.min(1.7, Math.max(0.45, value));
+}
+
+function renderCompletionMap() {
+  const map = state.completionMap || {};
+  const { phases, total, done, active, percent } = completionMapCounts();
+  const node = $("completionMap");
+  if (!node) return;
+  $("completionCount").textContent = phases.length
+    ? `${percent}% · ${t("completion.remaining", { count: Math.max(0, total - done) })}`
+    : t("completion.noMap");
+
+  if (!phases.length) {
+    node.innerHTML = `
+      <div class="completion-empty">
+        <b>${escapeHtml(t("completion.noMap"))}</b>
+        <p>${escapeHtml(t("completion.noMapDetail"))}</p>
+      </div>
+    `;
+    return;
+  }
+
+  const currentPhase = phases.find((phase) => ["active", "in_progress", "review"].includes(phase.status)) || phases.find((phase) => phase.status !== "done") || phases[0];
+  const triggers = map.revision_policy?.review_triggers || [];
+  node.innerHTML = `
+    <div class="completion-hero">
+      <div class="completion-radial" style="--progress:${percent * 3.6}deg">
+        <strong>${percent}%</strong>
+        <span>${escapeHtml(valueLabel(map.status || "draft"))}</span>
+      </div>
+      <div class="completion-brief">
+        <span class="eyebrow">${escapeHtml(map.project_title || t("section.completionMap"))}</span>
+        <h3>${escapeHtml(t("completion.definition"))}</h3>
+        <p>${escapeHtml(map.definition_of_done || t("completion.noMapDetail"))}</p>
+        <div class="completion-brief-meta">
+          ${pill(t("completion.done", { count: done }), "accepted")}
+          ${active ? pill(t("completion.current"), "active") : ""}
+          ${pill(t("completion.remaining", { count: Math.max(0, total - done) }), "queued")}
+        </div>
+      </div>
+      <div class="completion-current">
+        <span>${escapeHtml(t("completion.current"))}</span>
+        <b>${escapeHtml(currentPhase?.title || t("task.none"))}</b>
+        <small>${escapeHtml(currentPhase?.summary || "")}</small>
+      </div>
+    </div>
+    <div class="completion-phase-track">
+      ${phases.map((phase, index) => renderCompletionPhase(phase, index)).join("")}
+    </div>
+    <div class="completion-footer">
+      <b>${escapeHtml(t("completion.revision"))}</b>
+      <span>${escapeHtml(triggers.length ? triggers.map(completionTriggerLabel).join(" · ") : t("task.none"))}</span>
+    </div>
+  `;
+}
+
+function renderCompletionPhase(phase, index) {
+  const items = phase.items || [];
+  const doneItems = items.filter((item) => item.status === "done" || item.status === "accepted").length;
+  const itemPct = pct(doneItems, items.length);
+  return `
+    <article class="completion-phase ${statusClass(phase.status)}">
+      <div class="completion-phase-index">${String(index + 1).padStart(2, "0")}</div>
+      <div class="completion-phase-body">
+        <div class="completion-phase-head">
+          <div>
+            <span>${escapeHtml(phase.phase_id || "")}</span>
+            <h3>${escapeHtml(phase.title || "")}</h3>
+          </div>
+          ${pill(phase.status || "unknown")}
+        </div>
+        <p>${escapeHtml(phase.summary || "")}</p>
+        <div class="completion-phase-meta">
+          ${phase.owner_agent_id ? `<span>${escapeHtml(t("completion.owner"))}: ${escapeHtml(agentDisplayName(phase.owner_agent_id))}</span>` : ""}
+          <span>${escapeHtml(t("completion.done", { count: doneItems }))} / ${items.length || 0}</span>
+        </div>
+        <div class="completion-mini-track"><i style="--fill:${itemPct}%"></i></div>
+        <div class="completion-items">
+          ${items.length ? items.map((item) => `
+            <div class="completion-item ${statusClass(item.status)}">
+              <span></span>
+              <b>${escapeHtml(item.title || item.item_id || "")}</b>
+              <em>${escapeHtml(valueLabel(item.status || "unknown"))}</em>
+            </div>
+          `).join("") : `<div class="empty">${escapeHtml(t("completion.noItems"))}</div>`}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function setupStepTone(status) {
+  const normalized = String(status || "queued").toLowerCase().replaceAll("_", "-");
+  if (normalized === "done" || normalized === "accepted") return "done";
+  if (normalized === "active" || normalized === "in-progress") return "active";
+  if (normalized === "blocked") return "blocked";
+  return "queued";
+}
+
+function getSetupStats() {
+  const steps = state.setup?.wizard?.steps || [];
+  const done = steps.filter((step) => setupStepTone(step.status) === "done").length;
+  const active = steps.find((step) => setupStepTone(step.status) === "active") || steps.find((step) => setupStepTone(step.status) !== "done");
+  return { steps, done, active, total: steps.length };
+}
+
+function getSetupQuestionStats() {
+  const questions = (state.vision?.questions || []).filter((question) => question.required_for_setup);
+  const unresolved = questions.filter((question) => !["answered", "adopted", "retired"].includes(String(question.status || "")));
+  return {
+    total: questions.length,
+    answered: questions.length - unresolved.length,
+    unresolved: unresolved.length,
+    ready: unresolved.filter((question) => question.status === "ready").length
+  };
+}
+
+function specialistDecisionLabel(decision) {
+  const labels = {
+    approve_now: t("setup.approveNow"),
+    later: t("setup.later"),
+    reject: t("setup.reject"),
+    revise: t("setup.revise")
+  };
+  return labels[decision] || valueLabel(decision);
+}
+
+function renderSpecialistPlan(plan, canSave, gates) {
+  const candidates = plan?.candidates || [];
+  const deferred = plan?.deferred_topics || [];
+  const canGenerate = canSave && gates.completion_map_approved;
+  const hasDrafts = Object.values(state.specialistPlanDrafts || {}).some((draft) => draft?.decision);
+
+  return `
+    <section class="specialist-plan-card">
+      <div class="specialist-plan-head">
+        <div>
+          <span class="eyebrow">${escapeHtml(t("setup.specialistPlan"))}</span>
+          <h3>${escapeHtml(t("setup.specialistPlan"))}</h3>
+          <p>${escapeHtml(t("setup.specialistPlanDetail"))}</p>
+        </div>
+        <div class="meta">
+          ${pill(plan?.status || "not_generated")}
+          ${candidates.length ? pill(t("team.podAgents", { count: candidates.length }), "active") : ""}
+        </div>
+      </div>
+      <div class="answer-toolbar specialist-plan-toolbar">
+        <span>${escapeHtml(candidates.length ? t("setup.specialistPlanDetail") : t("setup.specialistPlanEmpty"))}</span>
+        <button type="button" data-action="generate-specialist-plan" ${canGenerate ? "" : "disabled"}>${escapeHtml(t("setup.generateSpecialists"))}</button>
+        <button type="button" data-action="save-specialist-plan" ${canSave && hasDrafts ? "" : "disabled"}>${escapeHtml(t("setup.saveSpecialistPlan"))}</button>
+      </div>
+      ${candidates.length ? `
+        <div class="specialist-candidate-list">
+          ${candidates.map((candidate) => {
+            const draft = state.specialistPlanDrafts[candidate.candidate_id] || {};
+            const selectedDecision = draft.decision || candidate.user_decision || "";
+            return `
+              <article class="specialist-candidate ${statusClass(candidate.status)}">
+                <div class="specialist-candidate-head">
+                  <div>
+                    <span class="eyebrow">${escapeHtml(candidate.candidate_id || candidate.agent_id || "")}</span>
+                    <h4>${escapeHtml(candidate.display_name || candidate.agent_id || "")}</h4>
+                  </div>
+                  <div class="meta">
+                    ${pill(candidate.priority || "medium", candidate.priority)}
+                    ${pill(candidate.reuse_existing_agent ? t("setup.reuse") : t("setup.newAgent"), candidate.reuse_existing_agent ? "accepted" : "queued")}
+                    ${candidate.user_decision ? pill(specialistDecisionLabel(candidate.user_decision), "accepted") : ""}
+                  </div>
+                </div>
+                <p>${escapeHtml(candidate.reason || "")}</p>
+                <div class="text-row"><b>${escapeHtml(t("setup.scope"))}</b><span>${escapeHtml(candidate.proposed_scope || "")}</span></div>
+                <div class="text-row"><b>${escapeHtml(t("completion.current"))}</b><span>${escapeHtml((candidate.completion_items || []).join(" · ") || t("task.none"))}</span></div>
+                <div class="text-row"><b>${escapeHtml(t("setup.reading"))}</b><span>${escapeHtml((candidate.required_reading || []).join(" · ") || t("task.none"))}</span></div>
+                <div class="specialist-choice-grid">
+                  ${["approve_now", "later", "reject", "revise"].map((decision) => `
+                    <button type="button" class="${selectedDecision === decision ? "selected" : ""}" data-specialist-choice="${escapeHtml(decision)}" data-specialist-candidate-id="${escapeHtml(candidate.candidate_id)}">
+                      ${escapeHtml(specialistDecisionLabel(decision))}
+                    </button>
+                  `).join("")}
+                </div>
+                <label class="answer-field specialist-note-field">
+                  <span>${escapeHtml(t("review.note"))}</span>
+                  <textarea data-specialist-note-id="${escapeHtml(candidate.candidate_id)}" placeholder="${escapeHtml(t("review.notePlaceholder"))}">${escapeHtml(draft.note ?? candidate.user_note ?? "")}</textarea>
+                </label>
+              </article>
+            `;
+          }).join("")}
+        </div>
+      ` : `<div class="empty">${escapeHtml(t("setup.specialistPlanEmpty"))}</div>`}
+      ${deferred.length ? `
+        <div class="specialist-deferred">
+          <b>${escapeHtml(t("setup.deferred"))}</b>
+          ${deferred.map((topic) => `<span>${escapeHtml(topic.title || topic.topic_id || "")}</span>`).join("")}
+        </div>
+      ` : ""}
+    </section>
+  `;
+}
+
+function approvedSpecialistCandidates(plan) {
+  return (plan?.candidates || []).filter((candidate) => candidate.user_decision === "approve_now");
+}
+
+function productionPreparedByCandidate(productionStart) {
+  return new Map((productionStart?.activation_requests || []).map((request) => [request.candidate_id, request]));
+}
+
+function productionRequestStage(request) {
+  if (!request) return "queued";
+  if (request.status === "accepted" || request.accepted_at) return "accepted";
+  if (request.status === "active" || request.status === "handoff_sent" || request.sent_at) return "sent";
+  return "prepared";
+}
+
+function productionStageLabel(stage) {
+  if (stage === "accepted") return t("setup.handoffAccepted");
+  if (stage === "sent") return t("setup.handoffSent");
+  if (stage === "prepared") return t("setup.handoffPrepared");
+  if (stage === "selected") return t("setup.selectForHandoff");
+  return t("setup.noThreadMessage");
+}
+
+function productionStageTone(stage) {
+  if (stage === "accepted") return "accepted";
+  if (stage === "sent") return "sent";
+  if (stage === "prepared") return "prepared";
+  if (stage === "selected") return "active";
+  return "queued";
+}
+
+function productionSummaryStage(productionStart) {
+  const requests = productionStart?.activation_requests || [];
+  if (!requests.length) return "";
+  const stages = requests.map(productionRequestStage);
+  if (stages.every((stage) => stage === "accepted")) return "accepted";
+  if (stages.some((stage) => stage === "sent" || stage === "accepted")) return "sent";
+  return "prepared";
+}
+
+function isProductionCandidateSelected(candidate, index, productionStart) {
+  const draft = state.productionStartDrafts?.[candidate.candidate_id];
+  if (typeof draft?.selected === "boolean") return draft.selected;
+  const prepared = productionPreparedByCandidate(productionStart);
+  if (prepared.has(candidate.candidate_id)) return true;
+  const hasExistingRequests = (productionStart?.activation_requests || []).length > 0;
+  return !hasExistingRequests && candidate.priority === "high" && index < 2;
+}
+
+function selectedProductionCandidateIds(plan, productionStart) {
+  return approvedSpecialistCandidates(plan)
+    .filter((candidate, index) => isProductionCandidateSelected(candidate, index, productionStart))
+    .map((candidate) => candidate.candidate_id);
+}
+
+function renderProductionStart(plan, productionStart, canSave, gates) {
+  const approved = approvedSpecialistCandidates(plan);
+  const prepared = productionPreparedByCandidate(productionStart);
+  const selectedIds = selectedProductionCandidateIds(plan, productionStart);
+  const hasPreparedRequests = prepared.size > 0;
+  const canPrepare = canSave && gates.specialist_plan_approved && approved.length && selectedIds.length && !hasPreparedRequests;
+  const summaryStage = productionSummaryStage(productionStart);
+  const prepareButtonLabel = hasPreparedRequests ? t("setup.productionLocked") : t("setup.prepareProduction");
+
+  return `
+    <section class="production-start-card">
+      <div class="specialist-plan-head">
+        <div>
+          <span class="eyebrow">${escapeHtml(t("setup.productionStart"))}</span>
+          <h3>${escapeHtml(t("setup.productionStart"))}</h3>
+          <p>${escapeHtml(t("setup.productionStartDetail"))}</p>
+        </div>
+        <div class="meta">
+          ${pill(productionStart?.status || "not_started")}
+          ${summaryStage ? pill(productionStageLabel(summaryStage), productionStageTone(summaryStage)) : ""}
+          ${hasPreparedRequests ? pill(t("setup.noSessionsCreated"), "queued") : ""}
+        </div>
+      </div>
+      <div class="answer-toolbar specialist-plan-toolbar">
+        <span>${escapeHtml(approved.length ? t("setup.productionStartDetail") : t("setup.productionStartEmpty"))}</span>
+        <button type="button" data-action="start-production" ${canPrepare ? "" : "disabled"}>${escapeHtml(prepareButtonLabel)}</button>
+      </div>
+      ${approved.length ? `
+        <div class="production-legend" aria-label="${escapeHtml(t("setup.productionLegend"))}">
+          <b>${escapeHtml(t("setup.productionLegend"))}</b>
+          <span><i class="legend-dot active"></i>${escapeHtml(t("setup.legendSelected"))}</span>
+          <span><i class="legend-dot prepared"></i>${escapeHtml(t("setup.legendPrepared"))}</span>
+          <span><i class="legend-dot sent"></i>${escapeHtml(t("setup.legendSent"))}</span>
+          <span><i class="legend-dot accepted"></i>${escapeHtml(t("setup.legendAccepted"))}</span>
+        </div>
+        <div class="production-candidate-list">
+          ${approved.map((candidate, index) => {
+            const selected = isProductionCandidateSelected(candidate, index, productionStart);
+            const request = prepared.get(candidate.candidate_id);
+            const stage = request ? productionRequestStage(request) : selected ? "selected" : "queued";
+            const stageTone = productionStageTone(stage);
+            const stageLabel = productionStageLabel(stage);
+            return `
+              <article class="production-candidate ${stageTone}">
+                <div class="specialist-candidate-head">
+                  <div>
+                    <span class="eyebrow">${escapeHtml(candidate.candidate_id || "")}</span>
+                    <h4>${escapeHtml(candidate.display_name || candidate.agent_id || "")}</h4>
+                  </div>
+                  <div class="meta">
+                    ${pill(candidate.priority || "medium", candidate.priority)}
+                    ${request ? pill(`${stageLabel} · ${request.task_id || ""}`, stageTone) : pill(stageLabel, stageTone)}
+                    ${request ? pill(t("setup.noSessionsCreated"), "queued") : ""}
+                  </div>
+                </div>
+                <p>${escapeHtml(candidate.proposed_scope || candidate.reason || "")}</p>
+                <div class="text-row"><b>${escapeHtml(t("setup.scope"))}</b><span>${escapeHtml((candidate.completion_items || []).join(" · ") || t("task.none"))}</span></div>
+                <div class="production-choice-row">
+                  <button type="button" class="${selected ? "selected" : ""}" data-production-toggle="${escapeHtml(candidate.candidate_id)}" ${hasPreparedRequests ? "disabled" : ""}>
+                    ${escapeHtml(request ? stageLabel : selected ? t("setup.selectForHandoff") : t("setup.waitForLater"))}
+                  </button>
+                  <span>${escapeHtml(request ? stageLabel : t("setup.noThreadMessage"))}</span>
+                </div>
+              </article>
+            `;
+          }).join("")}
+        </div>
+      ` : `<div class="empty">${escapeHtml(t("setup.productionStartEmpty"))}</div>`}
+    </section>
+  `;
+}
+
+function renderSetupWizard() {
+  const node = $("setupWizard");
+  if (!node) return;
+  const setup = state.setup || {};
+  const wizard = setup.wizard || {};
+  const intake = setup.projectIntake || {};
+  const options = setup.options || {};
+  const specialistPlan = setup.specialistPlan || {};
+  const productionStart = setup.productionStart || {};
+  const gates = wizard.gates || {};
+  const { steps, done, active, total } = getSetupStats();
+  const setupQuestions = getSetupQuestionStats();
+  const canSave = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const projectTitle = state.setupDraft.project_title ?? intake.project_title ?? state.completionMap?.project_title ?? "";
+  const projectDescription = state.setupDraft.project_description ?? intake.project_description ?? "";
+  const enabledPacks = (options.available_packs || []).filter((pack) => pack.status === "enabled" || (options.enabled_packs || []).includes(pack.pack_id));
+  const availablePacks = (options.available_packs || []).filter((pack) => pack.status !== "enabled" && !(options.enabled_packs || []).includes(pack.pack_id));
+  const gateItems = [
+    [t("setup.project"), intake.status === "submitted" ? "done" : "active"],
+    [t("vision.questions"), setupQuestions.unresolved ? "active" : setupQuestions.total ? "done" : "queued"],
+    [t("section.completionMap"), gates.completion_map_approved ? "done" : setupQuestions.unresolved ? "blocked" : "active"],
+    [t("setup.specialistPlan"), gates.completion_map_approved ? (gates.specialist_plan_reviewed ? "done" : "active") : "queued"],
+    [t("setup.productionStart"), gates.specialist_plan_approved ? (gates.production_tasks_prepared ? "done" : "active") : "queued"]
+  ];
+  const canApproveMap = canSave && !gates.completion_map_approved && setupQuestions.unresolved === 0;
+
+  $("setupCount").textContent = total ? `${done}/${total}` : t("setup.noSteps");
+
+  node.innerHTML = `
+    <div class="setup-stage">
+      <aside class="setup-steps">
+        ${steps.length ? steps.map((step, index) => `
+          <button class="setup-step ${setupStepTone(step.status)}" type="button">
+            <span>${String(index + 1).padStart(2, "0")}</span>
+            <b>${escapeHtml(step.title || step.step_id)}</b>
+            <small>${escapeHtml(step.summary || "")}</small>
+          </button>
+        `).join("") : `<div class="empty">${escapeHtml(t("setup.noSteps"))}</div>`}
+      </aside>
+
+      <section class="setup-main">
+        <div class="setup-hero-card">
+          <span class="eyebrow">${escapeHtml(t("setup.current"))}</span>
+          <h3>${escapeHtml(active?.title || t("section.setupWizard"))}</h3>
+          <p>${escapeHtml(active?.summary || t("setup.readyForSpecialists"))}</p>
+          <div class="completion-brief-meta">
+            ${pill(wizard.status || "draft")}
+            ${pill(t("completion.done", { count: done }), "accepted")}
+            ${setupQuestions.total ? pill(t("setup.questionsAnswered", { answered: setupQuestions.answered, total: setupQuestions.total }), setupQuestions.unresolved ? "active" : "accepted") : ""}
+            ${gates.completion_map_approved ? pill(t("setup.approvedMap"), "accepted") : pill(t("section.completionMap"), "active")}
+          </div>
+        </div>
+
+        <div class="setup-form-card">
+          <label>
+            <span>${escapeHtml(t("setup.projectTitle"))}</span>
+            <input data-setup-field="project_title" value="${escapeHtml(projectTitle)}" placeholder="${escapeHtml(t("setup.projectTitle"))}">
+          </label>
+          <label>
+            <span>${escapeHtml(t("setup.projectDescription"))}</span>
+            <textarea data-setup-field="project_description" placeholder="${escapeHtml(t("setup.projectPlaceholder"))}">${escapeHtml(projectDescription)}</textarea>
+          </label>
+          <div class="answer-toolbar">
+            <button type="button" data-action="save-setup-intake" ${canSave ? "" : "disabled"}>${escapeHtml(t("setup.saveProject"))}</button>
+            <button type="button" data-action="generate-setup-questions" ${canSave && intake.status === "submitted" ? "" : "disabled"}>${escapeHtml(t("setup.generateQuestions"))}</button>
+            <button type="button" data-action="approve-completion-map" ${canApproveMap ? "" : "disabled"}>${escapeHtml(gates.completion_map_approved ? t("setup.approvedMap") : t("setup.approveMap"))}</button>
+          </div>
+          ${state.setupStatus ? `<div class="answer-status ${escapeHtml(state.setupStatus.type || "")}">${escapeHtml(state.setupStatus.message || "")}</div>` : ""}
+          ${setupQuestions.unresolved ? `<div class="answer-status error">${escapeHtml(t("setup.mapBlockedByQuestions"))}</div>` : ""}
+          ${canSave ? "" : `<div class="answer-status error">${escapeHtml(t("setup.localOnly"))}</div>`}
+        </div>
+
+        ${renderSpecialistPlan(specialistPlan, canSave, gates)}
+        ${renderProductionStart(specialistPlan, productionStart, canSave, gates)}
+      </section>
+
+      <aside class="setup-side">
+        <div class="setup-side-card">
+          <h3>${escapeHtml(t("setup.gates"))}</h3>
+          <div class="setup-gates">
+            ${gateItems.map(([label, tone]) => `<span class="${tone}">${escapeHtml(label)}</span>`).join("")}
+          </div>
+        </div>
+        <div class="setup-side-card">
+          <h3>${escapeHtml(t("setup.enabledPacks"))}</h3>
+          <div class="setup-pack-list">
+            ${enabledPacks.length ? enabledPacks.map((pack) => `<span>${escapeHtml(pack.label || pack.pack_id)}</span>`).join("") : `<div class="empty">${escapeHtml(t("task.none"))}</div>`}
+          </div>
+        </div>
+        <div class="setup-side-card">
+          <h3>${escapeHtml(t("setup.availablePacks"))}</h3>
+          <div class="setup-pack-list muted">
+            ${availablePacks.length ? availablePacks.slice(0, 5).map((pack) => `<span>${escapeHtml(pack.label || pack.pack_id)}</span>`).join("") : `<div class="empty">${escapeHtml(t("task.none"))}</div>`}
+          </div>
+        </div>
+      </aside>
+    </div>
+  `;
 }
 
 function renderProgressPanel() {
@@ -1608,6 +2656,8 @@ function render() {
   renderAttention();
   renderMetrics();
   renderTeamVisualizer();
+  renderCompletionMap();
+  renderSetupWizard();
   renderProgressPanel();
   renderVisionPanelV2();
   renderUserTaskSummary();
@@ -1679,6 +2729,12 @@ function mergeState(fileName, data) {
     state.userTasks.tasks = data.tasks || [];
     state.userTasks.policy = data.policy || state.userTasks.policy || {};
   }
+  if (fileName === "options.json") state.setup.options = data || state.setup.options;
+  if (fileName === "wizard.json") state.setup.wizard = data || state.setup.wizard;
+  if (fileName === "project_intake.json") state.setup.projectIntake = data || state.setup.projectIntake;
+  if (fileName === "specialist_plan.json") state.setup.specialistPlan = data || state.setup.specialistPlan;
+  if (fileName === "production_start.json") state.setup.productionStart = data || state.setup.productionStart;
+  if (fileName === "completion_map.json") state.completionMap = data || state.completionMap;
   state.agents = applySessionOverlay(state.agents, state.sessions);
 }
 
@@ -1702,6 +2758,19 @@ function mergeLiveState(data) {
     tasks: data.userTasks?.tasks || [],
     policy: data.userTasks?.policy || {}
   };
+  state.setup = {
+    options: data.setup?.options || state.setup.options || {},
+    wizard: data.setup?.wizard || state.setup.wizard || {},
+    projectIntake: data.setup?.projectIntake || state.setup.projectIntake || {},
+    specialistPlan: data.setup?.specialistPlan || state.setup.specialistPlan || {},
+    productionStart: data.setup?.productionStart || state.setup.productionStart || {}
+  };
+  state.health = {
+    encodingWarnings: data.health?.encodingWarnings || []
+  };
+  state.reportReviews = data.reportReviews || [];
+  state.handoffDrafts = data.handoffDrafts || [];
+  state.completionMap = data.completionMap || state.completionMap;
   state.loadedFiles = data.loadedFiles || ["agents.json", "sessions.json", "tasks.json", "directives.json", "events.jsonl"];
   state.loadedAt = new Date(data.loadedAt || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   state.isLive = true;
@@ -1716,7 +2785,7 @@ async function refreshServerState() {
   const response = await fetch("/api/state", { cache: "no-store" });
   if (!response.ok) throw new Error(`state refresh failed: ${response.status}`);
   mergeLiveState(await response.json());
-  if (document.activeElement?.matches?.("[data-answer-question-id]")) {
+  if (document.activeElement?.matches?.("[data-answer-question-id], [data-setup-field], [data-review-note-task-id], [data-report-note-task-id], [data-specialist-note-id]")) {
     state.pendingLiveRender = true;
     return;
   }
@@ -1764,6 +2833,241 @@ async function saveVisionAnswers() {
   }
 }
 
+async function saveVisionReview(taskId) {
+  const task = (state.userTasks?.tasks || []).find((item) => item.user_task_id === taskId);
+  const draft = state.reviewDrafts[taskId] || {};
+  const batchId = (task?.source_ids || [])[0];
+
+  if (!task || !batchId || !draft.decision) {
+    state.reviewStatus = { type: "error", message: t("review.choose") };
+    renderUserTaskSummary();
+    return;
+  }
+
+  state.reviewStatus = { type: "saving", message: t("vision.saving") };
+  renderUserTaskSummary();
+
+  try {
+    const response = await fetch("/api/vision-review", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        user_task_id: taskId,
+        batch_id: batchId,
+        decision: draft.decision,
+        note: String(draft.note || "").trim()
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "save failed");
+    delete state.reviewDrafts[taskId];
+    state.reviewStatus = { type: "success", message: t("review.saved") };
+    await refreshServerState();
+  } catch (error) {
+    state.reviewStatus = {
+      type: "error",
+      message: `${t("review.saveError")}: ${error.message || error}`
+    };
+    renderUserTaskSummary();
+  }
+}
+
+async function saveSpecialistReportReview(taskId) {
+  const review = (state.reportReviews || []).find((item) => item.task_id === taskId);
+  const draft = state.reportReviewDrafts[taskId] || {};
+
+  if (!review || !draft.decision) {
+    state.reportReviewStatus = { type: "error", message: t("report.choose") };
+    renderUserTaskSummary();
+    return;
+  }
+
+  state.reportReviewStatus = { type: "saving", message: t("vision.saving") };
+  renderUserTaskSummary();
+
+  try {
+    const response = await fetch("/api/reports/review", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        task_id: taskId,
+        decision: draft.decision,
+        note: String(draft.note || "").trim()
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "save failed");
+    delete state.reportReviewDrafts[taskId];
+    state.reportReviewStatus = { type: "success", message: t("report.saved") };
+    await refreshServerState();
+  } catch (error) {
+    state.reportReviewStatus = {
+      type: "error",
+      message: `${t("report.saveError")}: ${error.message || error}`
+    };
+    renderUserTaskSummary();
+  }
+}
+
+async function saveSetupIntake() {
+  const projectTitle = String(state.setupDraft.project_title ?? state.setup?.projectIntake?.project_title ?? "").trim();
+  const projectDescription = String(state.setupDraft.project_description ?? state.setup?.projectIntake?.project_description ?? "").trim();
+
+  if (!projectDescription) {
+    state.setupStatus = { type: "error", message: t("setup.noDescription") };
+    renderSetupWizard();
+    return;
+  }
+
+  state.setupStatus = { type: "saving", message: t("vision.saving") };
+  renderSetupWizard();
+
+  try {
+    const response = await fetch("/api/setup/project-intake", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        project_title: projectTitle,
+        project_description: projectDescription
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "save failed");
+    state.setupDraft = {};
+    state.setupStatus = { type: "success", message: t("setup.saved") };
+    state.isSetupEditing = false;
+    state.pendingLiveRender = false;
+    await refreshServerState();
+  } catch (error) {
+    state.setupStatus = { type: "error", message: `${t("setup.saveError")}: ${error.message || error}` };
+    renderSetupWizard();
+  }
+}
+
+async function generateSetupQuestions() {
+  state.setupStatus = { type: "saving", message: t("vision.saving") };
+  renderSetupWizard();
+
+  try {
+    const response = await fetch("/api/setup/generate-questions", { method: "POST" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "generate failed");
+    const count = result.generated || result.reused || 0;
+    state.setupStatus = { type: "success", message: t("setup.questionsGenerated", { count }) };
+    state.pendingLiveRender = false;
+    await refreshServerState();
+    state.currentView = "user";
+    render();
+  } catch (error) {
+    state.setupStatus = { type: "error", message: `${t("setup.generateError")}: ${error.message || error}` };
+    renderSetupWizard();
+  }
+}
+
+async function approveSetupCompletionMap() {
+  state.setupStatus = { type: "saving", message: t("vision.saving") };
+  renderSetupWizard();
+
+  try {
+    const response = await fetch("/api/setup/approve-completion-map", { method: "POST" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "approve failed");
+    state.setupStatus = { type: "success", message: t("setup.readyForSpecialists") };
+    state.pendingLiveRender = false;
+    await refreshServerState();
+  } catch (error) {
+    state.setupStatus = { type: "error", message: `${t("setup.approveError")}: ${error.message || error}` };
+    renderSetupWizard();
+  }
+}
+
+async function generateSpecialistPlan() {
+  state.setupStatus = { type: "saving", message: t("vision.saving") };
+  renderSetupWizard();
+
+  try {
+    const response = await fetch("/api/setup/generate-specialist-plan", { method: "POST" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "generate failed");
+    const count = result.candidates || result.reused || 0;
+    state.setupStatus = { type: "success", message: t("setup.specialistGenerated", { count }) };
+    state.pendingLiveRender = false;
+    await refreshServerState();
+  } catch (error) {
+    state.setupStatus = { type: "error", message: `${t("setup.specialistError")}: ${error.message || error}` };
+    renderSetupWizard();
+  }
+}
+
+async function saveSpecialistPlan() {
+  const decisions = Object.entries(state.specialistPlanDrafts || {})
+    .map(([candidate_id, draft]) => ({
+      candidate_id,
+      decision: draft?.decision,
+      note: String(draft?.note || "").trim()
+    }))
+    .filter((draft) => draft.decision);
+
+  if (!decisions.length) {
+    state.setupStatus = { type: "error", message: t("review.choose") };
+    renderSetupWizard();
+    return;
+  }
+
+  state.setupStatus = { type: "saving", message: t("vision.saving") };
+  renderSetupWizard();
+
+  try {
+    const response = await fetch("/api/setup/review-specialist-plan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decisions })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "save failed");
+    state.specialistPlanDrafts = {};
+    state.setupStatus = { type: "success", message: t("setup.specialistReviewed", { count: result.reviewed || decisions.length }) };
+    state.pendingLiveRender = false;
+    await refreshServerState();
+  } catch (error) {
+    state.setupStatus = { type: "error", message: `${t("setup.specialistError")}: ${error.message || error}` };
+    renderSetupWizard();
+  }
+}
+
+async function startProduction() {
+  const candidateIds = selectedProductionCandidateIds(state.setup?.specialistPlan || {}, state.setup?.productionStart || {});
+
+  if (!candidateIds.length) {
+    state.setupStatus = { type: "error", message: t("review.choose") };
+    renderSetupWizard();
+    return;
+  }
+
+  state.setupStatus = { type: "saving", message: t("vision.saving") };
+  renderSetupWizard();
+
+  try {
+    const response = await fetch("/api/setup/start-production", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        candidate_ids: candidateIds,
+        note: "Prepared from the production start dashboard gate."
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "start failed");
+    state.productionStartDrafts = {};
+    state.setupStatus = { type: "success", message: t("setup.productionPrepared", { count: result.prepared || candidateIds.length }) };
+    state.pendingLiveRender = false;
+    await refreshServerState();
+  } catch (error) {
+    state.setupStatus = { type: "error", message: `${t("setup.productionError")}: ${error.message || error}` };
+    renderSetupWizard();
+  }
+}
+
 function startServerPolling() {
   if (!["localhost", "127.0.0.1"].includes(window.location.hostname)) return;
   refreshServerState().catch((error) => console.warn(error));
@@ -1804,6 +3108,91 @@ $("events").addEventListener("click", (event) => {
   if (!button) return;
   state.showMoreEvents = !state.showMoreEvents;
   render();
+});
+
+$("userTaskSummary").addEventListener("input", (event) => {
+  const reportNote = event.target.closest("[data-report-note-task-id]");
+  if (reportNote) {
+    const taskId = reportNote.dataset.reportNoteTaskId;
+    state.reportReviewDrafts[taskId] = {
+      ...(state.reportReviewDrafts[taskId] || {}),
+      note: reportNote.value
+    };
+    return;
+  }
+
+  const note = event.target.closest("[data-review-note-task-id]");
+  if (!note) return;
+  const taskId = note.dataset.reviewNoteTaskId;
+  state.reviewDrafts[taskId] = {
+    ...(state.reviewDrafts[taskId] || {}),
+    note: note.value
+  };
+});
+
+$("userTaskSummary").addEventListener("click", (event) => {
+  const copyHandoffButton = event.target.closest("[data-action='copy-handoff']");
+  if (copyHandoffButton) {
+    const draft = (state.handoffDrafts || []).find((item) => item.handoff_id === copyHandoffButton.dataset.handoffId);
+    if (!draft?.prompt || !navigator.clipboard?.writeText) {
+      state.handoffStatus = { type: "error", message: t("handoff.copyError") };
+      renderUserTaskSummary();
+      return;
+    }
+    navigator.clipboard.writeText(draft.prompt)
+      .then(() => {
+        state.handoffStatus = { type: "success", message: t("handoff.copied") };
+        renderUserTaskSummary();
+      })
+      .catch((error) => {
+        state.handoffStatus = { type: "error", message: `${t("handoff.copyError")}: ${error.message || error}` };
+        renderUserTaskSummary();
+      });
+    return;
+  }
+
+  const reportChoice = event.target.closest("[data-report-choice]");
+  if (reportChoice) {
+    const taskId = reportChoice.dataset.reportTaskId;
+    state.reportReviewDrafts[taskId] = {
+      ...(state.reportReviewDrafts[taskId] || {}),
+      decision: reportChoice.dataset.reportChoice
+    };
+    renderUserTaskSummary();
+    return;
+  }
+
+  const reportSaveButton = event.target.closest("[data-action='save-report-review']");
+  if (reportSaveButton) {
+    saveSpecialistReportReview(reportSaveButton.dataset.reportTaskId);
+    return;
+  }
+
+  const choice = event.target.closest("[data-review-choice]");
+  if (choice) {
+    const taskId = choice.dataset.reviewTaskId;
+    state.reviewDrafts[taskId] = {
+      ...(state.reviewDrafts[taskId] || {}),
+      decision: choice.dataset.reviewChoice
+    };
+    renderUserTaskSummary();
+    return;
+  }
+
+  const saveButton = event.target.closest("[data-action='save-vision-review']");
+  if (!saveButton) return;
+  saveVisionReview(saveButton.dataset.reviewTaskId);
+});
+
+$("userTaskSummary").addEventListener("focusout", (event) => {
+  if (!event.target.closest("[data-review-note-task-id], [data-report-note-task-id]")) return;
+  window.setTimeout(() => {
+    if (document.activeElement?.matches?.("[data-review-note-task-id], [data-report-note-task-id]")) return;
+    if (state.pendingLiveRender) {
+      state.pendingLiveRender = false;
+      render();
+    }
+  }, 0);
 });
 
 $("visionPanel").addEventListener("input", (event) => {
@@ -1860,7 +3249,7 @@ $("visionPanel").addEventListener("click", (event) => {
   const previous = event.target.closest("[data-action='previous-question']");
   const next = event.target.closest("[data-action='next-question']");
   if (previous || next) {
-    const questions = (state.vision?.questions || []).filter((question) => question.status !== "adopted" && question.status !== "retired");
+    const questions = orderedInteractiveQuestions();
     const currentIndex = Math.max(0, questions.findIndex((question) => question.question_id === state.selectedQuestionId));
     const nextIndex = previous ? Math.max(0, currentIndex - 1) : Math.min(questions.length - 1, currentIndex + 1);
     state.selectedQuestionId = questions[nextIndex]?.question_id || state.selectedQuestionId;
@@ -1871,6 +3260,100 @@ $("visionPanel").addEventListener("click", (event) => {
   const button = event.target.closest("[data-action='save-vision-answers']");
   if (!button) return;
   saveVisionAnswers();
+});
+
+$("setupWizard").addEventListener("input", (event) => {
+  const note = event.target.closest("[data-specialist-note-id]");
+  if (note) {
+    const candidateId = note.dataset.specialistNoteId;
+    state.specialistPlanDrafts[candidateId] = {
+      ...(state.specialistPlanDrafts[candidateId] || {}),
+      note: note.value
+    };
+    return;
+  }
+
+  const field = event.target.closest("[data-setup-field]");
+  if (!field) return;
+  state.setupDraft[field.dataset.setupField] = field.value;
+});
+
+$("setupWizard").addEventListener("focusin", (event) => {
+  if (!event.target.closest("[data-setup-field], [data-specialist-note-id]")) return;
+  state.isSetupEditing = true;
+});
+
+$("setupWizard").addEventListener("focusout", (event) => {
+  if (!event.target.closest("[data-setup-field], [data-specialist-note-id]")) return;
+  window.setTimeout(() => {
+    if (document.activeElement?.matches?.("[data-setup-field], [data-specialist-note-id]")) return;
+    state.isSetupEditing = false;
+    if (state.pendingLiveRender) {
+      state.pendingLiveRender = false;
+      render();
+    }
+  }, 0);
+});
+
+$("setupWizard").addEventListener("click", (event) => {
+  const productionToggle = event.target.closest("[data-production-toggle]");
+  if (productionToggle) {
+    const candidateId = productionToggle.dataset.productionToggle;
+    const current = state.productionStartDrafts[candidateId];
+    const productionStart = state.setup?.productionStart || {};
+    const candidate = approvedSpecialistCandidates(state.setup?.specialistPlan || {})
+      .find((item) => item.candidate_id === candidateId);
+    const index = approvedSpecialistCandidates(state.setup?.specialistPlan || {})
+      .findIndex((item) => item.candidate_id === candidateId);
+    const selected = candidate ? isProductionCandidateSelected(candidate, index, productionStart) : false;
+    state.productionStartDrafts[candidateId] = {
+      ...(current || {}),
+      selected: !selected
+    };
+    renderSetupWizard();
+    return;
+  }
+
+  const specialistChoice = event.target.closest("[data-specialist-choice]");
+  if (specialistChoice) {
+    const candidateId = specialistChoice.dataset.specialistCandidateId;
+    state.specialistPlanDrafts[candidateId] = {
+      ...(state.specialistPlanDrafts[candidateId] || {}),
+      decision: specialistChoice.dataset.specialistChoice
+    };
+    renderSetupWizard();
+    return;
+  }
+
+  const saveButton = event.target.closest("[data-action='save-setup-intake']");
+  if (saveButton) {
+    saveSetupIntake();
+    return;
+  }
+  const generateButton = event.target.closest("[data-action='generate-setup-questions']");
+  if (generateButton) {
+    generateSetupQuestions();
+    return;
+  }
+  const approveButton = event.target.closest("[data-action='approve-completion-map']");
+  if (approveButton) {
+    approveSetupCompletionMap();
+    return;
+  }
+  const generateSpecialistsButton = event.target.closest("[data-action='generate-specialist-plan']");
+  if (generateSpecialistsButton) {
+    generateSpecialistPlan();
+    return;
+  }
+  const saveSpecialistsButton = event.target.closest("[data-action='save-specialist-plan']");
+  if (saveSpecialistsButton) {
+    saveSpecialistPlan();
+    return;
+  }
+  const startProductionButton = event.target.closest("[data-action='start-production']");
+  if (startProductionButton) {
+    startProduction();
+  }
 });
 
 $("langToggle").addEventListener("click", () => {

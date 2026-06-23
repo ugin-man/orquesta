@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Orquesta Dashboard</title>
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
@@ -19,11 +20,12 @@
         <div class="toolbar">
           <div class="view-switch" role="tablist" aria-label="Dashboard view">
             <button class="view-tab active" type="button" data-view-target="operations" data-i18n="view.operations">Operations</button>
+            <button class="view-tab" type="button" data-view-target="setup" data-i18n="view.setup">Setup</button>
             <button class="view-tab" type="button" data-view-target="user" data-i18n="view.userTasks">User Tasks</button>
           </div>
           <div class="sync-chip" id="syncChip">Sample state</div>
           <button class="lang-toggle" id="langToggle" type="button" aria-label="Switch language">日本語</button>
-          <label class="file-button" data-i18n-title="load.title" title="Load agents.json, tasks.json, directives.json, events.jsonl, questions.json, and answers.json">
+          <label class="file-button" data-i18n-title="load.title" title="Load Orquesta state files">
             <span data-i18n="load.button">Load state</span>
             <input id="stateFiles" type="file" multiple accept=".json,.jsonl">
           </label>
@@ -55,6 +57,17 @@
             <div id="teamTree" class="team-tree" aria-live="polite"></div>
             <aside id="agentInspector" class="agent-inspector"></aside>
           </div>
+        </section>
+
+        <section class="completion-map-panel panel">
+          <div class="section-title">
+            <div>
+              <span class="eyebrow" data-i18n="eyebrow.completion">completion</span>
+              <h2 data-i18n="section.completionMap">Completion Map</h2>
+            </div>
+            <span id="completionCount"></span>
+          </div>
+          <div id="completionMap" class="completion-map"></div>
         </section>
 
         <section class="operations-grid compact">
@@ -92,6 +105,19 @@
             </div>
             <div id="events" class="timeline"></div>
           </article>
+        </section>
+      </section>
+
+      <section class="dashboard-view" data-view-panel="setup">
+        <section class="setup-wizard-panel panel">
+          <div class="section-title">
+            <div>
+              <span class="eyebrow" data-i18n="eyebrow.setup">setup</span>
+              <h2 data-i18n="section.setupWizard">First Setup Wizard</h2>
+            </div>
+            <span id="setupCount"></span>
+          </div>
+          <div id="setupWizard" class="setup-wizard"></div>
         </section>
       </section>
 

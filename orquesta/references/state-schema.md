@@ -86,6 +86,28 @@ Refresh this file from the Codex thread list when the user asks to reflect actua
 }
 ```
 
+Specialist report review uses task state rather than a separate task store. When a specialist has finished a task but the orchestrator has not accepted it yet, set the task to `completed`, `report_submitted`, `needs_review`, or `needs_orchestrator_review` and include a `.orquesta/reports/*.md` artifact. The dashboard turns those tasks into report review cards.
+
+Report review decisions:
+
+- `accept`: set the task to `accepted`, record `accepted_at`, return the owner agent to `standby`, and synchronize any Production Start activation request to `accepted`.
+- `request_changes`: set the task to `needs_revision`, keep or return the owner agent to `active`, and synchronize any Production Start activation request to `changes_requested`.
+- `hold`: keep the task at `needs_orchestrator_review` while preserving the report and orchestrator note.
+
+The dashboard endpoint `POST /api/reports/review` performs this file-backed synchronization. It does not message specialist threads by itself; the orchestrator still owns any follow-up handoff.
+
+## Handoff Drafts
+
+The dashboard may expose `handoffDrafts` through `/api/state`. These are generated, copy-ready prompts for the orchestrator to send to long-lived specialist Codex threads.
+
+Handoff drafts are not proof that a message was sent. They are derived from current state:
+
+- queued Production Start tasks become initial handoff drafts
+- `needs_revision` or `changes_requested` tasks become revision handoff drafts
+- agent contracts and specialist candidate fields provide required reading, excluded context, allowed files, forbidden actions, and acceptance checks
+
+The browser may copy the prompt text, but only the orchestrator thread should perform the actual Codex thread handoff and then update state with `handoff_sent_at`, task `active`, and related agent status.
+
 ## directives.json
 
 ```json
@@ -129,6 +151,8 @@ One JSON object per line:
       "scope": "visual",
       "priority": "medium",
       "status": "draft",
+      "setup_gate": false,
+      "required_for_setup": false,
       "question": "Should the UI feel more like a precise instrument or a lived-in workspace?",
       "why_it_matters": "This changes density, surface treatment, and animation restraint.",
       "answer_format": "choice_with_optional_note",
@@ -153,6 +177,8 @@ One JSON object per line:
 }
 ```
 
+Questions generated from first-run project intake should use `setup_gate: true` and `required_for_setup: true`. The dashboard should prioritize these before ordinary vision questions, and Completion Map approval must stay blocked until they are answered.
+
 ## vision/answers.json
 
 ```json
@@ -164,6 +190,7 @@ One JSON object per line:
       "question_ids": ["Q001"],
       "source": "user_batch_answer",
       "status": "needs_curation",
+      "interpretation_mode": "discussion_seed_not_command",
       "answers": [
         {
           "question_id": "Q001",
@@ -172,11 +199,29 @@ One JSON object per line:
         }
       ],
       "curator_report": null,
+      "discussion_seeds": [],
+      "strong_signals": [],
+      "candidate_rules": [],
+      "counterproposals": [],
+      "do_not_adopt_yet": [],
+      "needs_user_review": [],
+      "proposed_updates": [],
       "adopted_updates": []
     }
   ]
 }
 ```
+
+Answer batch statuses:
+
+- `needs_curation`: raw answers were saved and still need `vision-curator`.
+- `curated`: the curator interpreted the batch, but it is not adopted direction.
+- `needs_user_review`: the interpretation contains candidates that should be discussed with the user before adoption.
+- `approved_for_adoption`: the user or an explicit setup policy approved the candidate direction.
+- `adopted`: approved candidates were reflected into adopted vision documents.
+- `retired`: stale, duplicate, or no longer useful.
+
+Use `interpretation_mode: "discussion_seed_not_command"` by default. User answers are thinking seeds unless the user explicitly marks them as hard requirements. Curator reports should preserve useful uncertainty and include counterproposals when a direct answer seems underdeveloped, too broad, or likely to become a weak implementation rule.
 
 ## vision/*.md
 
@@ -269,6 +314,187 @@ One JSON object per line:
     "default_status": "ready",
     "user_visible": true
   }
+}
+```
+
+## project/completion_map.json
+
+The Completion Map records the large pieces required to finish the project. It is not a task log. It is the current completion contract that the dashboard shows and the orchestrator uses to decide which specialists are needed.
+
+```json
+{
+  "version": 1,
+  "project_title": "Example browser game",
+  "status": "in_progress",
+  "definition_of_done": "The game is playable from start to finish with the agreed core screens and loop.",
+  "revision_policy": {
+    "owner_agent_id": "orchestrator",
+    "review_triggers": [
+      "major_direction_change",
+      "user_changes_project_goal",
+      "repeated_failure",
+      "completion_item_no_longer_matches_project",
+      "new_required_surface_discovered"
+    ],
+    "rule": "Completion Map items may change after user approval when the project direction changes."
+  },
+  "phases": [
+    {
+      "phase_id": "CM001",
+      "title": "Core game loop",
+      "summary": "The player can start, act, receive feedback, and continue.",
+      "status": "in_progress",
+      "owner_agent_id": "implementation-001",
+      "items": [
+        {
+          "item_id": "CM001.1",
+          "title": "Title screen",
+          "status": "done"
+        },
+        {
+          "item_id": "CM001.2",
+          "title": "Combat screen",
+          "status": "queued"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The map should be created after project intake and required vision questions are answered. Production specialists should be created from the approved map, not from vague impulse.
+
+## setup/wizard.json
+
+The setup wizard records where the first-run guided setup currently is. It is dashboard state, not a production task list.
+
+```json
+{
+  "version": 1,
+  "status": "in_progress",
+  "current_step": "completion_map_review",
+  "updated_at": "2026-06-23T00:00:00+09:00",
+  "steps": [
+    {
+      "step_id": "welcome",
+      "title": "ようこそOrquestaへ",
+      "summary": "Orquestaが何をするか、どの順番で進むかをユーザーに説明する。",
+      "status": "done"
+    },
+    {
+      "step_id": "project_intake",
+      "title": "プロジェクト説明",
+      "summary": "ユーザーが作りたいもの、重視する体験、避けたい方向性を説明する。",
+      "status": "active"
+    },
+    {
+      "step_id": "completion_map_review",
+      "title": "完成マップ確認",
+      "summary": "プロジェクト完成までの大項目を確認し、必要なら修正してから承認する。",
+      "status": "queued"
+    }
+  ],
+  "gates": {
+    "project_intake_required": true,
+    "required_questions_must_be_answered": true,
+    "completion_map_requires_user_approval": true,
+    "completion_map_approved": false,
+    "specialist_plan_reviewed": false,
+    "specialist_plan_approved": false,
+    "approved_specialist_candidate_ids": []
+  }
+}
+```
+
+## setup/project_intake.json
+
+Project intake stores the user's initial explanation before Orquesta generates questions and the Completion Map.
+
+```json
+{
+  "version": 1,
+  "status": "submitted",
+  "updated_at": "2026-06-23T00:00:00+09:00",
+  "project_title": "Example browser game",
+  "project_description": "A short description of what the user wants to make, what matters, and what should be avoided.",
+  "source": "dashboard_setup_wizard",
+  "notes": []
+}
+```
+
+## setup/specialist_plan.json
+
+Specialist Plan stores proposed production specialists after the Completion Map is approved. It is an approval buffer, not a thread-creation command. The dashboard may let the user mark each candidate as `approve_now`, `later`, `reject`, or `revise`, but sessions must not be created from this file until the orchestrator explicitly runs the next appointment step.
+
+```json
+{
+  "version": 1,
+  "status": "proposal_ready",
+  "updated_at": "2026-06-23T00:00:00+09:00",
+  "source": "completion_map",
+  "source_completion_map_updated_at": "2026-06-23T00:00:00+09:00",
+  "policy": {
+    "create_sessions_on_review": false,
+    "require_user_approval_before_thread_creation": true,
+    "default_capability_docs_policy": "deferred_research"
+  },
+  "candidates": [
+    {
+      "candidate_id": "SP001",
+      "agent_id": "implementation-001",
+      "display_name": "実装係",
+      "role": "implementation",
+      "priority": "high",
+      "reuse_existing_agent": true,
+      "status": "proposed",
+      "reason": "Dashboard/API/state implementation is needed for the approved Completion Map.",
+      "proposed_scope": "Implement dashboard, setup, state, and local server changes.",
+      "completion_items": ["CM002.1"],
+      "required_reading": ["orquesta/references/state-schema.md"],
+      "excluded_context": ["Unrelated project lore or visual direction"],
+      "user_decision": null,
+      "user_note": null
+    }
+  ],
+  "deferred_topics": [
+    {
+      "topic_id": "SP-D001",
+      "title": "Whether default capability documents are needed for every specialist",
+      "status": "deferred_research"
+    }
+  ]
+}
+```
+
+## setup/production_start.json
+
+Production Start stores the first handoff requests prepared from approved specialist candidates. It is still not a thread automation layer. Preparing production start may create queued handoff tasks, but it must not create sessions, message specialist threads, or mark specialists active unless the orchestrator actually performs those handoffs.
+
+```json
+{
+  "version": 1,
+  "status": "handoff_ready",
+  "updated_at": "2026-06-23T00:00:00+09:00",
+  "selected_candidate_ids": ["SP001", "SP002"],
+  "activation_requests": [
+    {
+      "candidate_id": "SP001",
+      "agent_id": "implementation-001",
+      "display_name": "実装係",
+      "task_id": "PS001",
+      "status": "handoff_ready",
+      "requested_at": "2026-06-23T00:00:00+09:00",
+      "note": "Prepared from the production start dashboard gate.",
+      "thread_id": "019eed9a-7d5a-7652-9038-fa855dbac9d6"
+    }
+  ],
+  "policy": {
+    "create_sessions_on_start": false,
+    "requires_thread_handoff": true
+  },
+  "notes": [
+    "The dashboard prepared handoff tasks only. It did not create sessions or send messages to specialist threads."
+  ]
 }
 ```
 
