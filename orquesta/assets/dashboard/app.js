@@ -47,6 +47,8 @@ const state = {
   loadedAt: null,
   isLive: false,
   liveSource: "sample",
+  liveEtag: null,
+  pollTimer: null,
   selectedAgentId: "orchestrator",
   previewAgentId: null,
   showMoreTasks: false,
@@ -164,15 +166,15 @@ const sample = {
     questions: [
       {
         question_id: "Q001",
-        source_agent_id: "visual-art-001",
-        task_id: "T013",
-        scope: "visual",
+        source_agent_id: "vision-curator",
+        task_id: "SAMPLE",
+        scope: "setup",
         priority: "medium",
         status: "draft",
-        question: "Should the first game prototype feel more like a precise instrument or a lived-in creative workspace?",
-        why_it_matters: "This changes UI density, surface treatment, and animation restraint.",
-        answer_format: "choice_with_optional_note",
-        options: ["precise instrument", "lived-in workspace", "hybrid"]
+        question: "プロジェクト説明を保存すると、このプロジェクト専用の質問がここに表示されます。",
+        why_it_matters: "質問はプロジェクト説明の後に生成されることを示すため。",
+        answer_format: "free_text",
+        options: []
       }
     ],
     answerBatches: [],
@@ -207,17 +209,21 @@ const sample = {
       ]
     },
     wizard: {
-      status: "in_progress",
-      current_step: "completion_map_review",
+      status: "ready_for_operation",
+      current_step: "operation_ready",
       steps: [
         { step_id: "welcome", title: "ようこそOrquestaへ", summary: "進め方を説明する。", status: "done" },
         { step_id: "project_intake", title: "プロジェクト説明", summary: "作りたいものを説明する。", status: "done" },
         { step_id: "question_gate", title: "必須質問への回答", summary: "質問に答えて方向性を固める。", status: "done" },
-        { step_id: "completion_map_review", title: "完成マップ確認", summary: "完成までの大項目を承認する。", status: "active" },
-        { step_id: "specialist_planning", title: "専門AI編成", summary: "必要な専門AI候補を決める。", status: "queued" }
+        { step_id: "auto_finalize", title: "初期セットアップ自動完了", summary: "初期完成マップと専門AI体制を用意する。", status: "done" },
+        { step_id: "operation_ready", title: "運用開始", summary: "必要に応じて後から調整する。", status: "active" }
       ],
       gates: {
-        completion_map_approved: false
+        completion_map_requires_user_approval: false,
+        completion_map_approved: true,
+        setup_autopilot_finalized: true,
+        specialist_plan_reviewed: true,
+        specialist_plan_approved: true
       }
     },
     projectIntake: {
@@ -314,6 +320,7 @@ const dictionary = {
     "user.visionReviews": "Vision reviews",
     "user.reportReviews": "Specialist reports",
     "user.handoffDrafts": "Handoff drafts",
+    "user.approvalWaits": "Approval waits",
     "user.noTasks": "Nothing needs you right now",
     "user.noTasksDetail": "The AI team has no user-side action queued.",
     "user.questionsDetail": "Ready Vision Alignment questions waiting for your answers.",
@@ -324,6 +331,19 @@ const dictionary = {
     "user.visionReviewDetail": "Answer interpretations waiting for your adoption decision.",
     "user.reportReviewDetail": "Specialist completion reports waiting for orchestrator acceptance.",
     "user.handoffDraftDetail": "Copy-ready prompts for sending work or revisions to specialist threads.",
+    "user.approvalWaitDetail": "Specialists waiting for your Codex approval or permission decision.",
+    "approval.title": "Approval wait",
+    "approval.type": "Approval",
+    "approval.agent": "Waiting agent",
+    "approval.task": "Blocked task",
+    "approval.reason": "Reason",
+    "approval.requestedAction": "Requested action",
+    "approval.resume": "Resume after approval",
+    "approval.codex_safety_approval": "Codex approval",
+    "approval.scope_expansion_approval": "Scope approval",
+    "approval.destructive_action_approval": "Destructive action approval",
+    "approval.environment_permission_approval": "Environment permission",
+    "approval.user_direction_approval": "User direction",
     "handoff.title": "Thread handoff draft",
     "handoff.empty": "No handoff drafts waiting",
     "handoff.emptyDetail": "Prepared production tasks and requested revisions will appear here as copy-ready prompts.",
@@ -430,6 +450,23 @@ const dictionary = {
     "completion.owner": "Owner",
     "setup.welcome": "Welcome",
     "setup.current": "Current step",
+    "setup.autopilot": "Autopilot setup",
+    "setup.operationReady": "Ready",
+    "setup.autopilotDetail": "Describe the project, answer generated questions, then Orquesta prepares the initial map and team automatically.",
+    "setup.readyForOperation": "Ready for operation",
+    "setup.readyForOperationDetail": "Initial setup is complete. Adjust the map, team, or priorities during normal operations.",
+    "setup.autopilotDone": "Autopilot done",
+    "setup.autopilotWaiting": "Waiting",
+    "setup.answerQuestions": "Answer questions",
+    "setup.finalizeAutopilot": "Finalize initial setup",
+    "setup.finalized": "Initial setup finalized",
+    "setup.finalizeError": "Could not finalize setup",
+    "setup.finishedTitle": "Orquesta is ready",
+    "setup.finishedDetail": "The initial Completion Map and specialist team are prepared. You can now steer changes from normal operations.",
+    "setup.generateAfterIntake": "Project description is saved. Generate project-specific questions next.",
+    "setup.answerQuestionsFirst": "Answer the generated setup questions. After that, Orquesta finalizes setup automatically.",
+    "setup.readyToFinalize": "Questions are answered. Orquesta can finalize the initial map and team automatically.",
+    "setup.intakeBeforeQuestions": "Describe the project first. Orquesta will generate project-specific questions after that.",
     "setup.project": "Project intake",
     "setup.projectTitle": "Project title",
     "setup.projectDescription": "Project description",
@@ -786,6 +823,7 @@ Object.assign(dictionary.ja, {
   "user.visionReviews": "回答レビュー",
   "user.reportReviews": "専門AI報告",
   "user.handoffDrafts": "ハンドオフ文面",
+  "user.approvalWaits": "承認待ち",
   "user.noTasks": "今あなた待ちの作業はありません",
   "user.noTasksDetail": "AIチーム側に、ユーザーが今すぐ対応する項目はありません。",
   "user.questionsDetail": "回答できる Vision Alignment 質問です。",
@@ -796,6 +834,19 @@ Object.assign(dictionary.ja, {
   "user.visionReviewDetail": "回答の解釈を採用前に見直す項目です。",
   "user.reportReviewDetail": "専門AIの完了報告を、統括者が受理するか差し戻すか確認します。",
   "user.handoffDraftDetail": "専門AIスレッドへ送る作業依頼や差し戻し依頼の文面です。",
+  "user.approvalWaitDetail": "専門AIが Codex の承認や権限判断を待っている項目です。",
+  "approval.title": "承認待ち",
+  "approval.type": "承認種別",
+  "approval.agent": "待機中のAI",
+  "approval.task": "停止中タスク",
+  "approval.reason": "理由",
+  "approval.requestedAction": "ユーザー側でやること",
+  "approval.resume": "承認後の再開指示",
+  "approval.codex_safety_approval": "Codex承認",
+  "approval.scope_expansion_approval": "範囲拡張の承認",
+  "approval.destructive_action_approval": "破壊的操作の承認",
+  "approval.environment_permission_approval": "環境・権限の承認",
+  "approval.user_direction_approval": "方針判断",
   "handoff.title": "スレッド用ハンドオフ文面",
   "handoff.empty": "送信待ちのハンドオフ文面はありません",
   "handoff.emptyDetail": "準備済み制作タスクや差し戻しが発生すると、コピー可能な文面として表示されます。",
@@ -848,9 +899,26 @@ Object.assign(dictionary.ja, {
   "list.showMore": "すべて表示 {count}件",
   "list.showLess": "折りたたむ",
   "list.showing": "{total}件中 {shown}件を表示",
-  "setup.welcome": "ようこそ",
-  "setup.current": "現在の段階",
-  "setup.project": "プロジェクト説明",
+    "setup.welcome": "ようこそ",
+    "setup.current": "現在の段階",
+    "setup.autopilot": "自動初期化",
+    "setup.operationReady": "運用開始",
+    "setup.autopilotDetail": "プロジェクト説明と質問回答が終わると、Orquestaが初期完成マップと専門AI体制を自動で用意します。",
+    "setup.readyForOperation": "運用準備完了",
+    "setup.readyForOperationDetail": "初期セットアップは完了しています。体制、完成マップ、優先順位は運用中に調整できます。",
+    "setup.autopilotDone": "自動完了済み",
+    "setup.autopilotWaiting": "待機中",
+    "setup.answerQuestions": "質問に答える",
+    "setup.finalizeAutopilot": "初期セットアップを完了",
+    "setup.finalized": "初期セットアップを完了しました",
+    "setup.finalizeError": "初期セットアップを完了できませんでした",
+    "setup.finishedTitle": "Orquestaは運用できます",
+    "setup.finishedDetail": "初期完成マップと専門AI体制は用意済みです。ここから先は通常運用として調整できます。",
+    "setup.generateAfterIntake": "プロジェクト説明は保存済みです。次に、このプロジェクト専用の質問を生成します。",
+    "setup.answerQuestionsFirst": "生成された質問に答えてください。回答後、Orquestaが初期セットアップを自動完了します。",
+    "setup.readyToFinalize": "質問回答は完了しています。Orquestaが初期完成マップと専門AI体制を自動で用意できます。",
+    "setup.intakeBeforeQuestions": "まずプロジェクトを説明してください。その後、このプロジェクト専用の質問を生成します。",
+    "setup.project": "プロジェクト説明",
   "setup.projectTitle": "プロジェクト名",
   "setup.projectDescription": "プロジェクト説明",
   "setup.projectPlaceholder": "作りたいもの、重視したい体験、避けたい方向性を書く",
@@ -1122,8 +1190,9 @@ function getUserTaskStats() {
   const blockedTasks = state.tasks.filter((task) => (task.blocked_by || []).some((blocker) => String(blocker).toLowerCase().includes("user")));
   const repairCards = (state.failures?.userActions || []).filter((action) => !["resolved", "skipped", "retired"].includes(String(action.status || "").toLowerCase()));
   const openUserTasks = (state.userTasks?.tasks || []).filter((task) => !["resolved", "skipped", "retired"].includes(String(task.status || "").toLowerCase()));
+  const approvalWaits = openUserTasks.filter((task) => task.source === "approval_wait");
   const visionReviewTasks = openUserTasks.filter((task) => task.source === "vision_answer_review");
-  const liaisonTasks = openUserTasks.filter((task) => task.source !== "vision_answer_review");
+  const liaisonTasks = openUserTasks.filter((task) => !["approval_wait", "vision_answer_review"].includes(task.source));
   const reportReviews = state.reportReviews || [];
   const handoffDrafts = state.handoffDrafts || [];
   return {
@@ -1131,11 +1200,12 @@ function getUserTaskStats() {
     reviewDirectives,
     blockedTasks,
     repairCards,
+    approvalWaits,
     visionReviewTasks,
     liaisonTasks,
     reportReviews,
     handoffDrafts,
-    total: readyQuestions.length + reviewDirectives.length + blockedTasks.length + repairCards.length + visionReviewTasks.length + liaisonTasks.length + reportReviews.length + handoffDrafts.length
+    total: readyQuestions.length + reviewDirectives.length + blockedTasks.length + repairCards.length + approvalWaits.length + visionReviewTasks.length + liaisonTasks.length + reportReviews.length + handoffDrafts.length
   };
 }
 
@@ -1148,6 +1218,8 @@ function getFailureStats() {
 }
 
 function renderViewSwitch() {
+  const availableViews = new Set([...document.querySelectorAll("[data-view-target]")].map((button) => button.dataset.viewTarget));
+  if (!availableViews.has(state.currentView)) state.currentView = "operations";
   document.querySelectorAll("[data-view-target]").forEach((button) => {
     const active = button.dataset.viewTarget === state.currentView;
     button.classList.toggle("active", active);
@@ -1342,11 +1414,56 @@ function renderHandoffDrafts(drafts) {
   `;
 }
 
+function approvalTypeLabel(type) {
+  return t(`approval.${type}`) || valueLabel(type);
+}
+
+function renderApprovalWaits(tasks) {
+  if (!tasks.length) return "";
+
+  return `
+    <section class="vision-review-board approval-wait-board">
+      <div class="section-title compact-title">
+        <div>
+          <span class="eyebrow">${escapeHtml(t("approval.title"))}</span>
+          <h3>${escapeHtml(t("user.approvalWaits"))}</h3>
+        </div>
+      </div>
+      ${tasks.map((task) => {
+        const sourceIds = (task.source_ids || task.source_task_ids || [task.source_task_id]).filter(Boolean);
+        const agent = task.source_agent_id || task.support_agent_id || task.assigned_by || t("task.none");
+        return `
+          <article class="vision-review-card approval-wait-card ${statusClass(task.status)}">
+            <div class="review-card-head">
+              <div>
+                <span class="eyebrow">${escapeHtml(task.user_task_id || "approval")}</span>
+                <h3>${escapeHtml(task.title || t("approval.title"))}</h3>
+              </div>
+              <div class="meta">
+                ${pill(task.status || "ready", "blocked")}
+                ${task.priority ? pill(task.priority, task.priority) : ""}
+                ${task.approval_type ? pill(approvalTypeLabel(task.approval_type), "blocked") : ""}
+              </div>
+            </div>
+            <div class="text-row"><b>${escapeHtml(t("approval.agent"))}</b><span>${escapeHtml(agent)}</span></div>
+            ${sourceIds.length ? `<div class="text-row"><b>${escapeHtml(t("approval.task"))}</b><span>${escapeHtml(sourceIds.join(", "))}</span></div>` : ""}
+            ${task.prompt ? `<div class="text-row"><b>${escapeHtml(t("review.prompt"))}</b><span>${escapeHtml(task.prompt)}</span></div>` : ""}
+            ${task.reason ? `<div class="text-row"><b>${escapeHtml(t("approval.reason"))}</b><span>${escapeHtml(task.reason)}</span></div>` : ""}
+            ${task.requested_action ? `<div class="text-row"><b>${escapeHtml(t("approval.requestedAction"))}</b><span>${escapeHtml(task.requested_action)}</span></div>` : ""}
+            ${task.resume_instruction ? `<div class="text-row"><b>${escapeHtml(t("approval.resume"))}</b><span>${escapeHtml(task.resume_instruction)}</span></div>` : ""}
+          </article>
+        `;
+      }).join("")}
+    </section>
+  `;
+}
+
 function renderUserTaskSummary() {
   const stats = getUserTaskStats();
   $("userTaskCount").textContent = formatCount("total", stats.total);
   const cards = [
     [t("user.readyQuestions"), stats.readyQuestions.length, t("user.questionsDetail"), "active"],
+    [t("user.approvalWaits"), stats.approvalWaits.length, t("user.approvalWaitDetail"), stats.approvalWaits.length ? "blocked" : "standby"],
     [t("user.handoffDrafts"), stats.handoffDrafts.length, t("user.handoffDraftDetail"), stats.handoffDrafts.length ? "active" : "standby"],
     [t("user.visionReviews"), stats.visionReviewTasks.length, t("user.visionReviewDetail"), stats.visionReviewTasks.length ? "active" : "standby"],
     [t("user.reportReviews"), stats.reportReviews.length, t("user.reportReviewDetail"), stats.reportReviews.length ? "blocked" : "standby"],
@@ -1372,6 +1489,7 @@ function renderUserTaskSummary() {
       </article>
   `;
   $("userTaskSummary").insertAdjacentHTML("beforeend", renderHandoffDrafts(stats.handoffDrafts));
+  $("userTaskSummary").insertAdjacentHTML("beforeend", renderApprovalWaits(stats.approvalWaits));
   $("userTaskSummary").insertAdjacentHTML("beforeend", renderVisionReviewTasks(stats.visionReviewTasks));
   $("userTaskSummary").insertAdjacentHTML("beforeend", renderSpecialistReportReviews(stats.reportReviews));
 }
@@ -1517,6 +1635,26 @@ function renderVisionPanelV2() {
   const canSaveAnswers = ["localhost", "127.0.0.1"].includes(window.location.hostname);
   const draftCount = Object.values(state.answerDrafts).filter((value) => String(value || "").trim()).length;
   const interactiveQuestions = orderedInteractiveQuestions();
+  const intakeSubmitted = state.setup?.projectIntake?.status === "submitted";
+
+  $("visionCount").textContent = `${stats.totalQuestions} ${t("vision.questions")} · ${stats.answerBatches} ${t("vision.answers")}`;
+
+  if (!intakeSubmitted) {
+    $("visionPanel").innerHTML = `
+      <div class="vision-summary">
+        <div class="vision-curator-card">
+          <span class="eyebrow">${escapeHtml(t("vision.curator"))}</span>
+          <h3>${escapeHtml(curator)}</h3>
+          <div class="meta">${pill(t("setup.project"), "active")}</div>
+        </div>
+        <div class="setup-form-card">
+          <b>${escapeHtml(t("setup.project"))}</b>
+          <p>${escapeHtml(t("setup.intakeBeforeQuestions"))}</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
 
   const selectedCandidate = interactiveQuestions.find((question) => question.question_id === state.selectedQuestionId);
   const firstRequiredReady = interactiveQuestions.find((question) => question.required_for_setup && question.status === "ready");
@@ -1531,8 +1669,6 @@ function renderVisionPanelV2() {
   const visibleQuestions = state.showAllQuestions ? interactiveQuestions : interactiveQuestions.slice(0, 12);
   const hiddenQuestionCount = Math.max(0, interactiveQuestions.length - visibleQuestions.length);
   const triggerItems = (policy.wake_triggers || []).slice(0, 6);
-  $("visionCount").textContent = `${stats.totalQuestions} ${t("vision.questions")} · ${stats.answerBatches} ${t("vision.answers")}`;
-
   const questionButtons = visibleQuestions.length ? visibleQuestions.map((question) => {
     const answered = question.status === "answered" || Boolean(state.answerDrafts[question.question_id]?.trim()) || Boolean(question.answer_id);
     const selected = question.question_id === state.selectedQuestionId;
@@ -1914,7 +2050,7 @@ function podPosition(index, total) {
 }
 
 function renderPod(pod, index, total) {
-  const visible = pod.agents.slice(0, 3);
+  const visible = pod.agents.slice(0, 6);
   const hiddenCount = Math.max(0, pod.agents.length - visible.length);
   const activeCount = pod.agents.filter(hasLiveWork).length;
   const pos = podPosition(index, total);
@@ -2519,96 +2655,81 @@ function renderSetupWizard() {
   const setup = state.setup || {};
   const wizard = setup.wizard || {};
   const intake = setup.projectIntake || {};
-  const options = setup.options || {};
-  const specialistPlan = setup.specialistPlan || {};
-  const productionStart = setup.productionStart || {};
   const gates = wizard.gates || {};
   const { steps, done, active, total } = getSetupStats();
   const setupQuestions = getSetupQuestionStats();
   const canSave = ["localhost", "127.0.0.1"].includes(window.location.hostname);
   const projectTitle = state.setupDraft.project_title ?? intake.project_title ?? state.completionMap?.project_title ?? "";
   const projectDescription = state.setupDraft.project_description ?? intake.project_description ?? "";
-  const enabledPacks = (options.available_packs || []).filter((pack) => pack.status === "enabled" || (options.enabled_packs || []).includes(pack.pack_id));
-  const availablePacks = (options.available_packs || []).filter((pack) => pack.status !== "enabled" && !(options.enabled_packs || []).includes(pack.pack_id));
-  const gateItems = [
-    [t("setup.project"), intake.status === "submitted" ? "done" : "active"],
-    [t("vision.questions"), setupQuestions.unresolved ? "active" : setupQuestions.total ? "done" : "queued"],
-    [t("section.completionMap"), gates.completion_map_approved ? "done" : setupQuestions.unresolved ? "blocked" : "active"],
-    [t("setup.specialistPlan"), gates.completion_map_approved ? (gates.specialist_plan_reviewed ? "done" : "active") : "queued"],
-    [t("setup.productionStart"), gates.specialist_plan_approved ? (gates.production_tasks_prepared ? "done" : "active") : "queued"]
+  const projectSubmitted = intake.status === "submitted";
+  const questionsReady = setupQuestions.total > 0;
+  const questionsAnswered = questionsReady && setupQuestions.unresolved === 0;
+  const finalized = Boolean(gates.setup_autopilot_finalized || wizard.status === "ready_for_operation");
+  const canGenerateQuestions = canSave && projectSubmitted && !questionsReady;
+  const canFinalize = canSave && projectSubmitted && questionsAnswered && !finalized;
+  const compactSteps = [
+    [t("setup.project"), projectSubmitted ? "done" : "active"],
+    [t("vision.questions"), !projectSubmitted ? "queued" : questionsAnswered ? "done" : questionsReady ? "active" : "queued"],
+    [t("setup.autopilot"), finalized ? "done" : questionsAnswered ? "active" : "queued"],
+    [t("setup.operationReady"), finalized ? "active" : "queued"]
   ];
-  const canApproveMap = canSave && !gates.completion_map_approved && setupQuestions.unresolved === 0;
+  const compactDone = compactSteps.filter(([, tone]) => tone === "done" || tone === "active" && finalized).length;
 
-  $("setupCount").textContent = total ? `${done}/${total}` : t("setup.noSteps");
+  $("setupCount").textContent = `${compactDone}/${compactSteps.length}`;
 
   node.innerHTML = `
-    <div class="setup-stage">
-      <aside class="setup-steps">
-        ${steps.length ? steps.map((step, index) => `
-          <button class="setup-step ${setupStepTone(step.status)}" type="button">
+    <div class="setup-compact">
+      <aside class="setup-steps compact">
+        ${compactSteps.map(([label, tone], index) => `
+          <button class="setup-step ${tone}" type="button">
             <span>${String(index + 1).padStart(2, "0")}</span>
-            <b>${escapeHtml(step.title || step.step_id)}</b>
-            <small>${escapeHtml(step.summary || "")}</small>
+            <b>${escapeHtml(label)}</b>
           </button>
-        `).join("") : `<div class="empty">${escapeHtml(t("setup.noSteps"))}</div>`}
+        `).join("")}
       </aside>
 
-      <section class="setup-main">
+      <section class="setup-main compact">
         <div class="setup-hero-card">
           <span class="eyebrow">${escapeHtml(t("setup.current"))}</span>
-          <h3>${escapeHtml(active?.title || t("section.setupWizard"))}</h3>
-          <p>${escapeHtml(active?.summary || t("setup.readyForSpecialists"))}</p>
+          <h3>${escapeHtml(finalized ? t("setup.readyForOperation") : active?.title || t("section.setupWizard"))}</h3>
+          <p>${escapeHtml(finalized ? t("setup.readyForOperationDetail") : t("setup.autopilotDetail"))}</p>
           <div class="completion-brief-meta">
             ${pill(wizard.status || "draft")}
             ${pill(t("completion.done", { count: done }), "accepted")}
             ${setupQuestions.total ? pill(t("setup.questionsAnswered", { answered: setupQuestions.answered, total: setupQuestions.total }), setupQuestions.unresolved ? "active" : "accepted") : ""}
-            ${gates.completion_map_approved ? pill(t("setup.approvedMap"), "accepted") : pill(t("section.completionMap"), "active")}
+            ${finalized ? pill(t("setup.autopilotDone"), "accepted") : pill(t("setup.autopilotWaiting"), "active")}
           </div>
         </div>
 
-        <div class="setup-form-card">
-          <label>
-            <span>${escapeHtml(t("setup.projectTitle"))}</span>
-            <input data-setup-field="project_title" value="${escapeHtml(projectTitle)}" placeholder="${escapeHtml(t("setup.projectTitle"))}">
-          </label>
-          <label>
-            <span>${escapeHtml(t("setup.projectDescription"))}</span>
-            <textarea data-setup-field="project_description" placeholder="${escapeHtml(t("setup.projectPlaceholder"))}">${escapeHtml(projectDescription)}</textarea>
-          </label>
-          <div class="answer-toolbar">
-            <button type="button" data-action="save-setup-intake" ${canSave ? "" : "disabled"}>${escapeHtml(t("setup.saveProject"))}</button>
-            <button type="button" data-action="generate-setup-questions" ${canSave && intake.status === "submitted" ? "" : "disabled"}>${escapeHtml(t("setup.generateQuestions"))}</button>
-            <button type="button" data-action="approve-completion-map" ${canApproveMap ? "" : "disabled"}>${escapeHtml(gates.completion_map_approved ? t("setup.approvedMap") : t("setup.approveMap"))}</button>
+        ${finalized ? `
+          <div class="setup-form-card setup-finished-card">
+            <b>${escapeHtml(t("setup.finishedTitle"))}</b>
+            <p>${escapeHtml(t("setup.finishedDetail"))}</p>
           </div>
-          ${state.setupStatus ? `<div class="answer-status ${escapeHtml(state.setupStatus.type || "")}">${escapeHtml(state.setupStatus.message || "")}</div>` : ""}
-          ${setupQuestions.unresolved ? `<div class="answer-status error">${escapeHtml(t("setup.mapBlockedByQuestions"))}</div>` : ""}
-          ${canSave ? "" : `<div class="answer-status error">${escapeHtml(t("setup.localOnly"))}</div>`}
-        </div>
-
-        ${renderSpecialistPlan(specialistPlan, canSave, gates)}
-        ${renderProductionStart(specialistPlan, productionStart, canSave, gates)}
+        ` : `
+          <div class="setup-form-card">
+            <label>
+              <span>${escapeHtml(t("setup.projectTitle"))}</span>
+              <input data-setup-field="project_title" value="${escapeHtml(projectTitle)}" placeholder="${escapeHtml(t("setup.projectTitle"))}">
+            </label>
+            <label>
+              <span>${escapeHtml(t("setup.projectDescription"))}</span>
+              <textarea data-setup-field="project_description" placeholder="${escapeHtml(t("setup.projectPlaceholder"))}">${escapeHtml(projectDescription)}</textarea>
+            </label>
+            <div class="answer-toolbar">
+              <button type="button" data-action="save-setup-intake" ${canSave ? "" : "disabled"}>${escapeHtml(t("setup.saveProject"))}</button>
+              <button type="button" data-action="generate-setup-questions" ${canGenerateQuestions ? "" : "disabled"}>${escapeHtml(t("setup.generateQuestions"))}</button>
+              <button type="button" data-action="show-user-tasks" ${questionsReady ? "" : "disabled"}>${escapeHtml(t("setup.answerQuestions"))}</button>
+              <button type="button" data-action="auto-finalize-setup" ${canFinalize ? "" : "disabled"}>${escapeHtml(t("setup.finalizeAutopilot"))}</button>
+            </div>
+            ${state.setupStatus ? `<div class="answer-status ${escapeHtml(state.setupStatus.type || "")}">${escapeHtml(state.setupStatus.message || "")}</div>` : ""}
+            ${projectSubmitted && !questionsReady ? `<div class="answer-status success">${escapeHtml(t("setup.generateAfterIntake"))}</div>` : ""}
+            ${setupQuestions.unresolved ? `<div class="answer-status error">${escapeHtml(t("setup.answerQuestionsFirst"))}</div>` : ""}
+            ${questionsAnswered && !finalized ? `<div class="answer-status success">${escapeHtml(t("setup.readyToFinalize"))}</div>` : ""}
+            ${canSave ? "" : `<div class="answer-status error">${escapeHtml(t("setup.localOnly"))}</div>`}
+          </div>
+        `}
       </section>
-
-      <aside class="setup-side">
-        <div class="setup-side-card">
-          <h3>${escapeHtml(t("setup.gates"))}</h3>
-          <div class="setup-gates">
-            ${gateItems.map(([label, tone]) => `<span class="${tone}">${escapeHtml(label)}</span>`).join("")}
-          </div>
-        </div>
-        <div class="setup-side-card">
-          <h3>${escapeHtml(t("setup.enabledPacks"))}</h3>
-          <div class="setup-pack-list">
-            ${enabledPacks.length ? enabledPacks.map((pack) => `<span>${escapeHtml(pack.label || pack.pack_id)}</span>`).join("") : `<div class="empty">${escapeHtml(t("task.none"))}</div>`}
-          </div>
-        </div>
-        <div class="setup-side-card">
-          <h3>${escapeHtml(t("setup.availablePacks"))}</h3>
-          <div class="setup-pack-list muted">
-            ${availablePacks.length ? availablePacks.slice(0, 5).map((pack) => `<span>${escapeHtml(pack.label || pack.pack_id)}</span>`).join("") : `<div class="empty">${escapeHtml(t("task.none"))}</div>`}
-          </div>
-        </div>
-      </aside>
     </div>
   `;
 }
@@ -2780,10 +2901,20 @@ function mergeLiveState(data) {
   }
 }
 
-async function refreshServerState() {
+async function refreshServerState(options = {}) {
   if (!["localhost", "127.0.0.1"].includes(window.location.hostname)) return;
-  const response = await fetch("/api/state", { cache: "no-store" });
+  const headers = {};
+  if (state.liveEtag && !options.force) {
+    headers["if-none-match"] = state.liveEtag;
+  }
+  const response = await fetch("/api/state", { cache: "no-store", headers });
+  if (response.status === 304) {
+    state.loadedAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    renderSync();
+    return;
+  }
   if (!response.ok) throw new Error(`state refresh failed: ${response.status}`);
+  state.liveEtag = response.headers.get("etag") || null;
   mergeLiveState(await response.json());
   if (document.activeElement?.matches?.("[data-answer-question-id], [data-setup-field], [data-review-note-task-id], [data-report-note-task-id], [data-specialist-note-id]")) {
     state.pendingLiveRender = true;
@@ -2819,7 +2950,9 @@ async function saveVisionAnswers() {
     }
     state.answerStatus = {
       type: "success",
-      message: t("vision.saved", { count: result.saved, batch: result.batch_id })
+      message: result.setup_autopilot?.finalized
+        ? `${t("vision.saved", { count: result.saved, batch: result.batch_id })} · ${t("setup.finalized")}`
+        : t("vision.saved", { count: result.saved, batch: result.batch_id })
     };
     state.isAnswerEditing = false;
     state.pendingLiveRender = false;
@@ -2964,6 +3097,23 @@ async function generateSetupQuestions() {
   }
 }
 
+async function autoFinalizeSetup() {
+  state.setupStatus = { type: "saving", message: t("vision.saving") };
+  renderSetupWizard();
+
+  try {
+    const response = await fetch("/api/setup/auto-finalize", { method: "POST" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "finalize failed");
+    state.setupStatus = { type: "success", message: t("setup.finalized") };
+    state.pendingLiveRender = false;
+    await refreshServerState();
+  } catch (error) {
+    state.setupStatus = { type: "error", message: `${t("setup.finalizeError")}: ${error.message || error}` };
+    renderSetupWizard();
+  }
+}
+
 async function approveSetupCompletionMap() {
   state.setupStatus = { type: "saving", message: t("vision.saving") };
   renderSetupWizard();
@@ -3070,10 +3220,22 @@ async function startProduction() {
 
 function startServerPolling() {
   if (!["localhost", "127.0.0.1"].includes(window.location.hostname)) return;
-  refreshServerState().catch((error) => console.warn(error));
-  window.setInterval(() => {
-    refreshServerState().catch((error) => console.warn(error));
-  }, 5000);
+  const poll = async () => {
+    try {
+      await refreshServerState();
+    } catch (error) {
+      console.warn(error);
+    } finally {
+      const delay = document.hidden ? 30000 : 5000;
+      state.pollTimer = window.setTimeout(poll, delay);
+    }
+  };
+  poll();
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      refreshServerState({ force: true }).catch((error) => console.warn(error));
+    }
+  });
 }
 
 $("stateFiles").addEventListener("change", async (event) => {
@@ -3333,6 +3495,17 @@ $("setupWizard").addEventListener("click", (event) => {
   const generateButton = event.target.closest("[data-action='generate-setup-questions']");
   if (generateButton) {
     generateSetupQuestions();
+    return;
+  }
+  const showUserTasksButton = event.target.closest("[data-action='show-user-tasks']");
+  if (showUserTasksButton) {
+    state.currentView = "user";
+    render();
+    return;
+  }
+  const autoFinalizeButton = event.target.closest("[data-action='auto-finalize-setup']");
+  if (autoFinalizeButton) {
+    autoFinalizeSetup();
     return;
   }
   const approveButton = event.target.closest("[data-action='approve-completion-map']");

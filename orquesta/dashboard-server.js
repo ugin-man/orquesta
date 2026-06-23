@@ -2,6 +2,13 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { validateEncoding } = require("./scripts/validate-state-encoding");
+const {
+  DEFAULT_DASHBOARD_HOST,
+  DEFAULT_DASHBOARD_PORT,
+  findAvailableDashboardPort,
+  normalizePort
+} = require("./scripts/dashboard-port-selection");
+const { buildDashboardStateEtag } = require("./scripts/dashboard-state-cache");
 
 const root = path.resolve(__dirname, "..");
 const dashboardRoot = path.join(__dirname, "assets", "dashboard");
@@ -12,7 +19,6 @@ const userTasksRoot = path.join(root, ".orquesta", "user_tasks");
 const setupRoot = path.join(root, ".orquesta", "setup");
 const projectRoot = path.join(root, ".orquesta", "project");
 const reportsRoot = path.join(root, ".orquesta", "reports");
-const port = Number(process.env.PORT || process.argv[2] || 4177);
 let latestEncodingWarnings = [];
 
 const mimeTypes = {
@@ -39,6 +45,75 @@ function writeJsonTo(basePath, fileName, data) {
   fs.writeFileSync(path.join(basePath, fileName), `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+function readSetupOptions() {
+  return readJsonFrom(setupRoot, "options.json", {});
+}
+
+function parsePortFromUrl(value) {
+  if (!value) return null;
+  try {
+    return normalizePort(new URL(String(value)).port);
+  } catch {
+    return null;
+  }
+}
+
+function previousDashboardPortFromOptions(options) {
+  return normalizePort(options?.dashboard_port)
+    ?? parsePortFromUrl(options?.dashboard_url)
+    ?? parsePortFromUrl(options?.local_paths?.dashboard_url);
+}
+
+function dashboardUrlFor(portInfo) {
+  return `http://${portInfo.host}:${portInfo.port}/`;
+}
+
+function updateCurrentOrchestraDashboardUrl(dashboardUrl) {
+  const currentPath = path.join(root, ".orquesta", "CURRENT_ORCHESTRA.md");
+  if (!fs.existsSync(currentPath)) return false;
+
+  const line = `- Dashboard URL: ${dashboardUrl}`;
+  let text = fs.readFileSync(currentPath, "utf8");
+  if (/^- Dashboard URL: .*$/m.test(text)) {
+    text = text.replace(/^- Dashboard URL: .*$/m, line);
+  } else {
+    text = `${text.trimEnd()}\n\n## Local Dashboard Paths\n${line}\n`;
+  }
+  fs.writeFileSync(currentPath, text, "utf8");
+  return true;
+}
+
+function writeDashboardRuntimeOptions(portInfo) {
+  const options = readSetupOptions() || {};
+  const dashboardUrl = dashboardUrlFor(portInfo);
+  const now = new Date().toISOString();
+  const nextOptions = {
+    ...options,
+    dashboard_url: dashboardUrl,
+    dashboard_host: portInfo.host,
+    dashboard_port: portInfo.port,
+    dashboard_port_strategy: {
+      source: portInfo.source,
+      selected_at: now,
+      checked_ports: portInfo.checkedPorts,
+      conflicts: portInfo.conflicts
+    },
+    local_paths: {
+      ...(options.local_paths || {}),
+      project_root: root,
+      dashboard_url: dashboardUrl,
+      dashboard_html: path.join(dashboardRoot, "index.html"),
+      dashboard_assets_dir: dashboardRoot,
+      state_dir: stateRoot,
+      orquesta_dir: path.join(root, ".orquesta")
+    }
+  };
+
+  writeJsonTo(setupRoot, "options.json", nextOptions);
+  const updatedCurrent = updateCurrentOrchestraDashboardUrl(dashboardUrl);
+  return { dashboardUrl, updatedCurrent };
+}
+
 function readJsonl(fileName) {
   const filePath = path.join(stateRoot, fileName);
   if (!fs.existsSync(filePath)) return [];
@@ -58,6 +133,23 @@ function send(res, status, body, contentType = "text/plain; charset=utf-8") {
 
 function sendJson(res, status, data) {
   send(res, status, JSON.stringify(data), "application/json; charset=utf-8");
+}
+
+function sendJsonWithHeaders(res, status, data, headers = {}) {
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    ...headers
+  });
+  res.end(JSON.stringify(data));
+}
+
+function sendNotModified(res, etag) {
+  res.writeHead(304, {
+    "cache-control": "no-store",
+    etag
+  });
+  res.end();
 }
 
 function refreshEncodingWarnings() {
@@ -295,15 +387,15 @@ function defaultSetupWizard() {
       { step_id: "welcome", title: "ようこそOrquestaへ", summary: "Orquestaが何をするか、どの順番で進むかをユーザーに説明する。", status: "active" },
       { step_id: "project_intake", title: "プロジェクト説明", summary: "ユーザーが作りたいものを説明する。", status: "queued" },
       { step_id: "question_gate", title: "必須質問への回答", summary: "必要質問に答えて方向性を固める。", status: "queued" },
-      { step_id: "completion_map_review", title: "完成マップ確認", summary: "完成までの大項目を確認して承認する。", status: "queued" },
-      { step_id: "specialist_planning", title: "専門AI編成", summary: "完成マップから必要な専門AIを決める。", status: "queued" },
-      { step_id: "production_start", title: "制作開始", summary: "最初の作業を割り振る。", status: "queued" }
+      { step_id: "auto_finalize", title: "初期セットアップ自動完了", summary: "Orquestaが初期完成マップ、専門AI候補、開発ステップを自動で用意する。", status: "queued" },
+      { step_id: "operation_ready", title: "運用開始", summary: "ユーザーは必要に応じて体制や進め方を後から調整できる。", status: "queued" }
     ],
     gates: {
       project_intake_required: true,
       required_questions_must_be_answered: true,
-      completion_map_requires_user_approval: true,
-      completion_map_approved: false
+      completion_map_requires_user_approval: false,
+      completion_map_approved: false,
+      setup_autopilot_enabled: true
     }
   };
 }
@@ -372,12 +464,13 @@ function syncWizardQuestionGate(questionsState) {
     wizard = updateSetupStep(wizard, "welcome", "done");
     wizard = updateSetupStep(wizard, "project_intake", "done");
     wizard = updateSetupStep(wizard, "question_gate", "active");
-    wizard = updateSetupStep(wizard, "completion_map_review", "queued");
+    wizard = updateSetupStep(wizard, "auto_finalize", "queued");
     wizard.gates.completion_map_approved = false;
   } else {
-    wizard.current_step = wizard.gates.completion_map_approved ? "specialist_planning" : "completion_map_review";
+    wizard.current_step = wizard.gates.setup_autopilot_finalized ? "operation_ready" : "auto_finalize";
     wizard = updateSetupStep(wizard, "question_gate", "done");
-    wizard = updateSetupStep(wizard, "completion_map_review", wizard.gates.completion_map_approved ? "done" : "active");
+    wizard = updateSetupStep(wizard, "auto_finalize", wizard.gates.setup_autopilot_finalized ? "done" : "active");
+    wizard = updateSetupStep(wizard, "operation_ready", wizard.gates.setup_autopilot_finalized ? "active" : "queued");
   }
 
   writeJsonTo(setupRoot, "wizard.json", wizard);
@@ -529,6 +622,118 @@ function buildSpecialistCandidates(agents) {
   ];
 }
 
+function buildAutopilotCompletionMap(intake, now) {
+  const projectTitle = String(intake.project_title || "Orquesta project").trim() || "Orquesta project";
+  return {
+    version: 1,
+    project_title: projectTitle,
+    status: "in_progress",
+    updated_at: now,
+    source: "setup_autopilot",
+    definition_of_done: "The project reaches the initial outcome described by the user, with Orquesta able to coordinate specialist work through dashboard-visible state, reports, and user-adjustable development steps.",
+    revision_policy: {
+      owner_agent_id: "orchestrator",
+      review_triggers: [
+        "major_direction_change",
+        "user_changes_project_goal",
+        "repeated_failure",
+        "completion_item_no_longer_matches_project",
+        "new_required_surface_discovered"
+      ],
+      rule: "This map is an initial operating contract. It may be revised after setup when the user clarifies priorities or Orquesta discovers a better production shape."
+    },
+    phases: [
+      {
+        phase_id: "CM001",
+        title: "初期理解",
+        summary: "ユーザーのプロジェクト説明と必須質問への回答をもとに、Orquestaの初期方針を作る。",
+        status: "done",
+        owner_agent_id: "vision-curator",
+        items: [
+          { item_id: "CM001.1", title: "プロジェクト説明を保存する", status: "done" },
+          { item_id: "CM001.2", title: "必須質問への回答を保存する", status: "done" }
+        ]
+      },
+      {
+        phase_id: "CM002",
+        title: "初期制作体制",
+        summary: "完成までの大きな作業段階と、必要な専門AI候補をOrquestaが自動で用意する。",
+        status: "in_progress",
+        owner_agent_id: "orchestrator",
+        items: [
+          { item_id: "CM002.1", title: "初期完成マップを用意する", status: "done" },
+          { item_id: "CM002.2", title: "初期専門AI候補を用意する", status: "done" },
+          { item_id: "CM002.3", title: "最初の開発ステップを見える状態にする", status: "in_progress" }
+        ]
+      },
+      {
+        phase_id: "CM003",
+        title: "運用と調整",
+        summary: "セットアップ後、ユーザーの追加希望や実作業の結果に合わせて体制と完成マップを調整する。",
+        status: "queued",
+        owner_agent_id: "orchestrator",
+        items: [
+          { item_id: "CM003.1", title: "ユーザーの調整希望を受け付ける", status: "queued" },
+          { item_id: "CM003.2", title: "専門AIへの作業依頼と完了報告を回す", status: "queued" }
+        ]
+      }
+    ]
+  };
+}
+
+function ensureAutopilotCompletionMap(intake, now) {
+  const current = readJsonFrom(projectRoot, "completion_map.json", { phases: [] });
+  if ((current.phases || []).length) {
+    const refreshed = {
+      ...current,
+      status: current.status || "in_progress",
+      updated_at: current.updated_at || now,
+      source: current.source || "setup_autopilot_existing_map"
+    };
+    writeJsonTo(projectRoot, "completion_map.json", refreshed);
+    return { map: refreshed, created: false };
+  }
+  const map = buildAutopilotCompletionMap(intake, now);
+  writeJsonTo(projectRoot, "completion_map.json", map);
+  appendEvent({
+    timestamp: now,
+    type: "setup_autopilot_completion_map_created",
+    actor: "orchestrator",
+    summary: "Created an initial Completion Map from setup autopilot after project intake and required question answers."
+  });
+  return { map, created: true };
+}
+
+function applyAutopilotSpecialistDecisions(plan, now) {
+  const candidates = plan.candidates || [];
+  const approvedIds = [];
+  for (const candidate of candidates) {
+    const shouldApprove = candidate.priority === "high";
+    candidate.status = shouldApprove ? "approved" : "later";
+    candidate.user_decision = shouldApprove ? "approve_now" : "later";
+    candidate.user_note = shouldApprove
+      ? "Setup autopilot selected this high-priority specialist for the initial operating team."
+      : "Setup autopilot kept this specialist available for later adjustment.";
+    candidate.decided_at = candidate.decided_at || now;
+    if (shouldApprove) approvedIds.push(candidate.candidate_id);
+  }
+  plan.status = approvedIds.length ? "initial_team_ready" : "proposal_ready";
+  plan.updated_at = now;
+  plan.reviewed_at = now;
+  plan.approved_candidate_ids = approvedIds;
+  plan.policy = {
+    ...(plan.policy || {}),
+    require_user_approval_before_thread_creation: false,
+    setup_autopilot_selected_initial_team: true
+  };
+  plan.notes = Array.from(new Set([
+    ...((plan.notes || [])),
+    "Setup autopilot selected the initial team after project intake and required questions. The user can revise this later during operations.",
+    "No sessions are created and no specialist thread is messaged by this automatic setup step."
+  ]));
+  return plan;
+}
+
 function saveVisionAnswers(payload) {
   const submitted = Array.isArray(payload.answers) ? payload.answers : [];
   const answers = submitted
@@ -599,6 +804,15 @@ function saveVisionAnswers(payload) {
   writeJsonTo(visionRoot, "answers.json", answersState);
   writeJsonTo(visionRoot, "questions.json", questionsState);
   const wizard = syncWizardQuestionGate(questionsState);
+  let setupAutopilot = null;
+  const setupStats = setupQuestionStats(questionsState);
+  if (setupStats.total && setupStats.unresolved === 0) {
+    try {
+      setupAutopilot = finalizeSetupAutopilot();
+    } catch (error) {
+      setupAutopilot = { finalized: false, error: String(error.message || error) };
+    }
+  }
   appendEvent({
     ts: now,
     type: "vision_answers_submitted",
@@ -606,7 +820,7 @@ function saveVisionAnswers(payload) {
     summary: `User submitted ${answers.length} vision answers through the dashboard.`
   });
 
-  return { batch_id: batchId, saved: answers.length, wizard };
+  return { batch_id: batchId, saved: answers.length, wizard, setup_autopilot: setupAutopilot };
 }
 
 function statusForReviewDecision(decision) {
@@ -971,8 +1185,8 @@ function approveCompletionMap() {
 function generateSpecialistPlan() {
   const now = new Date().toISOString();
   const wizard = readJsonFrom(setupRoot, "wizard.json", defaultSetupWizard());
-  if (!wizard.gates?.completion_map_approved) {
-    const error = new Error("Completion Map approval is required before specialist planning");
+  if (!wizard.gates?.completion_map_approved && !wizard.gates?.setup_autopilot_finalized) {
+    const error = new Error("Completion Map approval or setup autopilot finalization is required before specialist planning");
     error.statusCode = 409;
     throw error;
   }
@@ -1020,6 +1234,100 @@ function generateSpecialistPlan() {
   });
 
   return { generated: plan.candidates.length, plan };
+}
+
+function finalizeSetupAutopilot() {
+  const now = new Date().toISOString();
+  const intake = readJsonFrom(setupRoot, "project_intake.json", { status: "empty" });
+  if (intake.status !== "submitted" || !String(intake.project_description || "").trim()) {
+    const error = new Error("Project intake is required before setup autopilot can finalize");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const questionsState = readJsonFrom(visionRoot, "questions.json", { version: 1, questions: [], curation_policy: {} });
+  const stats = setupQuestionStats(questionsState);
+  if (!stats.total) {
+    const error = new Error("Required setup questions must be generated from project intake before setup autopilot can finalize");
+    error.statusCode = 409;
+    throw error;
+  }
+  if (stats.unresolved) {
+    const error = new Error(`Required setup questions are still unanswered: ${stats.unresolved}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const { map, created: completionMapCreated } = ensureAutopilotCompletionMap(intake, now);
+  let wizard = readJsonFrom(setupRoot, "wizard.json", defaultSetupWizard());
+  wizard.status = "ready_for_operation";
+  wizard.current_step = "operation_ready";
+  wizard.updated_at = now;
+  wizard = updateSetupStep(wizard, "welcome", "done");
+  wizard = updateSetupStep(wizard, "project_intake", "done");
+  wizard = updateSetupStep(wizard, "question_gate", "done");
+  wizard = updateSetupStep(wizard, "auto_finalize", "done");
+  wizard = updateSetupStep(wizard, "operation_ready", "active");
+  wizard.gates = {
+    ...(wizard.gates || {}),
+    required_questions_must_be_answered: true,
+    required_questions_total: stats.total,
+    required_questions_answered: stats.answered,
+    required_questions_unresolved: stats.unresolved,
+    completion_map_requires_user_approval: false,
+    completion_map_approved: true,
+    completion_map_approved_at: wizard.gates?.completion_map_approved_at || now,
+    setup_autopilot_enabled: true,
+    setup_autopilot_finalized: true,
+    setup_autopilot_finalized_at: now
+  };
+  writeJsonTo(setupRoot, "wizard.json", wizard);
+
+  let specialistResult;
+  try {
+    specialistResult = generateSpecialistPlan();
+  } catch (error) {
+    if (error.statusCode !== 409) throw error;
+    specialistResult = { reused: true, plan: readJsonFrom(setupRoot, "specialist_plan.json", defaultSpecialistPlan()) };
+  }
+
+  const plan = applyAutopilotSpecialistDecisions(
+    specialistResult.plan || readJsonFrom(setupRoot, "specialist_plan.json", defaultSpecialistPlan()),
+    now
+  );
+  writeJsonTo(setupRoot, "specialist_plan.json", plan);
+
+  wizard = readJsonFrom(setupRoot, "wizard.json", wizard);
+  wizard.status = "ready_for_operation";
+  wizard.current_step = "operation_ready";
+  wizard.updated_at = now;
+  wizard = updateSetupStep(wizard, "auto_finalize", "done");
+  wizard = updateSetupStep(wizard, "operation_ready", "active");
+  wizard.gates = {
+    ...(wizard.gates || {}),
+    specialist_plan_reviewed: true,
+    specialist_plan_approved: (plan.approved_candidate_ids || []).length > 0,
+    approved_specialist_candidate_ids: plan.approved_candidate_ids || [],
+    production_tasks_prepared: false
+  };
+  writeJsonTo(setupRoot, "wizard.json", wizard);
+
+  appendEvent({
+    timestamp: now,
+    type: "setup_autopilot_finalized",
+    actor: "orchestrator",
+    summary: `Setup autopilot finalized initial map and ${plan.approved_candidate_ids?.length || 0} high-priority specialist candidates after required questions were answered.`
+  });
+
+  return {
+    finalized: true,
+    completion_map_created: completionMapCreated,
+    completion_map_title: map.project_title || null,
+    specialist_candidates: (plan.candidates || []).length,
+    approved_specialist_candidate_ids: plan.approved_candidate_ids || [],
+    wizard,
+    plan
+  };
 }
 
 function reviewSpecialistPlan(payload) {
@@ -1266,12 +1574,17 @@ function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   if (req.url.startsWith("/api/state")) {
     try {
+      const etag = buildDashboardStateEtag(root);
+      if (req.headers["if-none-match"] === etag) {
+        sendNotModified(res, etag);
+        return;
+      }
       const encodingWarnings = refreshEncodingWarnings();
       const agents = readJson("agents.json").agents || [];
       const tasks = readJson("tasks.json").tasks || [];
       const specialistPlan = readJsonFrom(setupRoot, "specialist_plan.json", defaultSpecialistPlan());
       const productionStart = readJsonFrom(setupRoot, "production_start.json", defaultProductionStart());
-      sendJson(res, 200, {
+      sendJsonWithHeaders(res, 200, {
         agents,
         sessions: readJson("sessions.json").sessions || [],
         tasks,
@@ -1307,7 +1620,7 @@ const server = http.createServer(async (req, res) => {
         loadedFiles: ["agents.json", "sessions.json", "tasks.json", "directives.json", "events.jsonl", "questions.json", "answers.json", "incidents.json", "user_actions.json", "queue.json", "options.json", "wizard.json", "project_intake.json", "specialist_plan.json", "production_start.json", "completion_map.json"],
         loadedAt: new Date().toISOString(),
         source: "server"
-      });
+      }, { etag });
     } catch (error) {
       sendJson(res, 500, { error: String(error.message || error) });
     }
@@ -1363,6 +1676,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.url.startsWith("/api/setup/auto-finalize") && req.method === "POST") {
+    try {
+      sendJson(res, 200, finalizeSetupAutopilot());
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, { error: String(error.message || error) });
+    }
+    return;
+  }
+
   if (req.url.startsWith("/api/setup/approve-completion-map") && req.method === "POST") {
     try {
       sendJson(res, 200, approveCompletionMap());
@@ -1404,13 +1726,85 @@ const server = http.createServer(async (req, res) => {
   serveStatic(req, res);
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`Orquesta dashboard: http://127.0.0.1:${port}/`);
-  const warnings = refreshEncodingWarnings();
-  if (warnings.length) {
-    console.warn(`Orquesta encoding warnings: ${warnings.length}`);
-    for (const warning of warnings.slice(0, 10)) {
-      console.warn(`- ${warning.kind}: ${path.relative(root, warning.file)} ${warning.detail}`);
+function listenOnPort(portInfo) {
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(portInfo.port, portInfo.host);
+  });
+}
+
+function requestedDashboardPort() {
+  return normalizePort(process.env.PORT || process.argv[2]);
+}
+
+async function selectDashboardPort() {
+  const options = readSetupOptions();
+  const requestedPort = requestedDashboardPort();
+  const strictPort = process.env.ORQUESTA_DASHBOARD_STRICT_PORT === "1";
+  const preferredPort = requestedPort ?? DEFAULT_DASHBOARD_PORT;
+  const previousPort = requestedPort ? null : previousDashboardPortFromOptions(options);
+  const scanStart = preferredPort;
+  const scanEnd = strictPort ? preferredPort : Math.min(preferredPort + 100, 65535);
+
+  return findAvailableDashboardPort({
+    host: DEFAULT_DASHBOARD_HOST,
+    previousPort,
+    preferredPort,
+    scanStart,
+    scanEnd,
+    allowEphemeral: !strictPort
+  });
+}
+
+async function startDashboardServer() {
+  let portInfo = await selectDashboardPort();
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await listenOnPort(portInfo);
+      const { dashboardUrl, updatedCurrent } = writeDashboardRuntimeOptions(portInfo);
+      console.log(`Orquesta dashboard: ${dashboardUrl}`);
+      if (portInfo.conflicts.length) {
+        console.warn(`Orquesta dashboard skipped occupied ports: ${portInfo.conflicts.join(", ")}`);
+      }
+      if (!updatedCurrent) {
+        console.warn("Orquesta dashboard URL was not written to CURRENT_ORCHESTRA.md because the file does not exist yet.");
+      }
+      const warnings = refreshEncodingWarnings();
+      if (warnings.length) {
+        console.warn(`Orquesta encoding warnings: ${warnings.length}`);
+        for (const warning of warnings.slice(0, 10)) {
+          console.warn(`- ${warning.kind}: ${path.relative(root, warning.file)} ${warning.detail}`);
+        }
+      }
+      return;
+    } catch (error) {
+      if (error.code !== "EADDRINUSE" || process.env.ORQUESTA_DASHBOARD_STRICT_PORT === "1") {
+        throw error;
+      }
+      portInfo = await findAvailableDashboardPort({
+        host: DEFAULT_DASHBOARD_HOST,
+        preferredPort: Math.min(portInfo.port + 1, 65535),
+        scanStart: Math.min(portInfo.port + 1, 65535),
+        scanEnd: Math.min(portInfo.port + 101, 65535),
+        allowEphemeral: true
+      });
     }
   }
+
+  throw new Error("Could not start Orquesta dashboard after repeated port selection races.");
+}
+
+startDashboardServer().catch((error) => {
+  console.error(`Orquesta dashboard failed to start: ${error.stack || error.message || error}`);
+  process.exit(1);
 });

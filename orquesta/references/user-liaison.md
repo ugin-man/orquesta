@@ -21,6 +21,7 @@ It coordinates:
 - collect accepted user-side asks into `.orquesta/user_tasks/queue.json`
 - sequence tasks so the user can answer in batches
 - rewrite accepted asks into clearer, shorter user-facing wording
+- expose Codex approval waits as `source: "approval_wait"` tasks with resume instructions
 - route vision-related work to `vision-curator`
 - route failure-related work to `error-concierge`
 - tell the orchestrator what user tasks are ready, answered, skipped, or blocked
@@ -65,11 +66,35 @@ Store user-facing tasks in `.orquesta/user_tasks/queue.json`.
 }
 ```
 
+Approval waits are urgent user tasks, not ordinary reports. If a specialist cannot continue because Codex or the local environment needs user approval, add a task shaped like this:
+
+```json
+{
+  "user_task_id": "UT-APPROVAL-001",
+  "source": "approval_wait",
+  "source_ids": ["T100"],
+  "source_agent_id": "implementation-001",
+  "assigned_by": "user-liaison",
+  "status": "ready",
+  "priority": "high",
+  "title": "Approve local server restart",
+  "prompt": "implementation-001 needs your approval before restarting the local server.",
+  "approval_type": "codex_safety_approval",
+  "requested_action": "Approve or deny the restart request in Codex.",
+  "resume_instruction": "After approval, tell implementation-001 to retry T100.",
+  "created_at": "2026-06-23T00:00:00+09:00",
+  "resolved_at": null
+}
+```
+
+Use `approval_type` values such as `codex_safety_approval`, `scope_expansion_approval`, `destructive_action_approval`, `environment_permission_approval`, and `user_direction_approval`. The linked Orquesta task should also carry a user-approval blocker such as `blocked_by: ["user_approval_required"]` until the approval is resolved.
+
 ## Wake Triggers
 
 Wake `user-liaison` when one of these is true:
 
 - the orchestrator needs to ask the user for approval, choice, priority, or action
+- a specialist is waiting on a Codex approval or user permission decision
 - `vision-curator` has accepted questions or interpreted answer follow-ups that need user-facing presentation
 - `error-concierge` has accepted repair cards that need user action
 - user-side work has accumulated enough that batching would reduce friction

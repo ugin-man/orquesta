@@ -78,6 +78,14 @@ Refresh this file from the Codex thread list when the user asks to reflect actua
       "parallel_eligible": true,
       "effort": "focused",
       "blocked_by": [],
+      "routing_class": "specialist_required",
+      "routing_gate_status": "passed",
+      "handoff_required": true,
+      "handoff_sent_at": "2026-06-23T00:00:00.000Z",
+      "specialist_report_required": true,
+      "specialist_report_path": ".orquesta/reports/T001-visual-art-001.md",
+      "direct_exception_reason": null,
+      "bypass_review_owner": null,
       "acceptance_checks": ["Dashboard loads sample state"],
       "artifacts": [],
       "result_summary": null
@@ -85,6 +93,19 @@ Refresh this file from the Codex thread list when the user asks to reflect actua
   ]
 }
 ```
+
+Delegation gate fields:
+
+- `routing_class`: `orchestration_only`, `specialist_required`, `direct_exception`, or `blocked`.
+- `routing_gate_status`: `pending`, `passed`, `blocked`, or `bypassed_with_reason`.
+- `handoff_required`: `true` when an appointed specialist should receive the task before implementation.
+- `handoff_sent_at`: ISO timestamp for the actual specialist handoff. Handoff drafts do not count.
+- `specialist_report_required`: `true` when acceptance must wait for a specialist report or artifact.
+- `specialist_report_path`: `.orquesta/reports/*.md` path for the specialist report. The legacy `report` field may be used by older tasks, but new tasks should prefer `specialist_report_path`.
+- `direct_exception_reason`: required when `routing_class` is `direct_exception`; keep it short and specific.
+- `bypass_review_owner`: optional specialist `agent_id` that should later review a direct exception.
+
+For specialist-domain implementation, use task state rather than chat memory. A task with `routing_class: "specialist_required"` should not be accepted until it has `handoff_sent_at` and either `specialist_report_path`, `report`, or a specialist report artifact. A task with `routing_class: "direct_exception"` should not be accepted without `direct_exception_reason`.
 
 Specialist report review uses task state rather than a separate task store. When a specialist has finished a task but the orchestrator has not accepted it yet, set the task to `completed`, `report_submitted`, `needs_review`, or `needs_orchestrator_review` and include a `.orquesta/reports/*.md` artifact. The dashboard turns those tasks into report review cards.
 
@@ -138,6 +159,15 @@ One JSON object per line:
 {"ts":"2026-06-21T00:00:00+09:00","type":"task_created","task_id":"T001","summary":"Created dashboard prototype task."}
 ```
 
+Useful delegation event types:
+
+- `routing_gate_passed`: the task was classified and has the required routing fields.
+- `routing_gate_blocked`: the task could not safely proceed through routing.
+- `handoff_sent`: the orchestrator sent a real specialist handoff.
+- `direct_exception_used`: the orchestrator used a documented direct-work exception.
+- `specialist_report_received`: a specialist report path or artifact was recorded.
+- `orchestrator_acceptance_decision`: the orchestrator accepted, held, rejected, or requested changes after review.
+
 ## vision/questions.json
 
 ```json
@@ -177,7 +207,7 @@ One JSON object per line:
 }
 ```
 
-Questions generated from first-run project intake should use `setup_gate: true` and `required_for_setup: true`. The dashboard should prioritize these before ordinary vision questions, and Completion Map approval must stay blocked until they are answered.
+Questions generated from first-run project intake should use `setup_gate: true` and `required_for_setup: true`. The dashboard should prioritize these before ordinary vision questions. Project intake must exist before these setup questions are generated or shown. First-run setup completion stays blocked until they are answered, then setup autopilot may prepare the initial Completion Map and specialist plan without separate user approval gates.
 
 ## vision/answers.json
 
@@ -317,6 +347,29 @@ Use `interpretation_mode: "discussion_seed_not_command"` by default. User answer
 }
 ```
 
+Approval waits are first-class user tasks. When a specialist or the orchestrator is blocked by a Codex approval, permission prompt, scope decision, destructive-action confirmation, or user-direction choice, add an open task with `source: "approval_wait"` instead of leaving the blocker only in chat.
+
+```json
+{
+  "user_task_id": "UT-APPROVAL-001",
+  "source": "approval_wait",
+  "source_ids": ["T100"],
+  "source_agent_id": "implementation-001",
+  "assigned_by": "user-liaison",
+  "status": "ready",
+  "priority": "high",
+  "title": "Approve local server restart",
+  "prompt": "implementation-001 needs your approval before restarting the local server.",
+  "approval_type": "codex_safety_approval",
+  "requested_action": "Approve or deny the restart request in Codex.",
+  "resume_instruction": "After approval, tell implementation-001 to retry T100.",
+  "created_at": "2026-06-23T00:00:00+09:00",
+  "resolved_at": null
+}
+```
+
+Valid `approval_type` values include `codex_safety_approval`, `scope_expansion_approval`, `destructive_action_approval`, `environment_permission_approval`, and `user_direction_approval`. If the blocked Orquesta task uses `blocked_by: ["user_approval_required"]` or another approval blocker, an open `approval_wait` user task should reference that task id through `source_ids` or `source_task_id`.
+
 ## project/completion_map.json
 
 The Completion Map records the large pieces required to finish the project. It is not a task log. It is the current completion contract that the dashboard shows and the orchestrator uses to decide which specialists are needed.
@@ -362,17 +415,17 @@ The Completion Map records the large pieces required to finish the project. It i
 }
 ```
 
-The map should be created after project intake and required vision questions are answered. Production specialists should be created from the approved map, not from vague impulse.
+The map should be created after project intake and required setup questions are answered. In first-run setup, Orquesta may create the initial map automatically and mark it as the current operating contract. The user can revise this map during normal operations; first-run setup should not require a separate map approval conversation.
 
 ## setup/wizard.json
 
-The setup wizard records where the first-run guided setup currently is. It is dashboard state, not a production task list.
+The setup wizard records where the first-run guided setup currently is. It is dashboard state, not a production task list. Current first-run setup uses setup autopilot: after project intake and required answers, Orquesta automatically prepares the initial map and team, then moves to normal operation.
 
 ```json
 {
   "version": 1,
-  "status": "in_progress",
-  "current_step": "completion_map_review",
+  "status": "ready_for_operation",
+  "current_step": "operation_ready",
   "updated_at": "2026-06-23T00:00:00+09:00",
   "steps": [
     {
@@ -388,19 +441,33 @@ The setup wizard records where the first-run guided setup currently is. It is da
       "status": "active"
     },
     {
-      "step_id": "completion_map_review",
-      "title": "完成マップ確認",
-      "summary": "プロジェクト完成までの大項目を確認し、必要なら修正してから承認する。",
-      "status": "queued"
+      "step_id": "question_gate",
+      "title": "必須質問への回答",
+      "summary": "必要質問に答えて方向性を固める。",
+      "status": "done"
+    },
+    {
+      "step_id": "auto_finalize",
+      "title": "初期セットアップ自動完了",
+      "summary": "Orquestaが初期完成マップ、専門AI候補、開発ステップを自動で用意する。",
+      "status": "done"
+    },
+    {
+      "step_id": "operation_ready",
+      "title": "運用開始",
+      "summary": "ユーザーは必要に応じて体制や進め方を後から調整できる。",
+      "status": "active"
     }
   ],
   "gates": {
     "project_intake_required": true,
     "required_questions_must_be_answered": true,
-    "completion_map_requires_user_approval": true,
-    "completion_map_approved": false,
-    "specialist_plan_reviewed": false,
-    "specialist_plan_approved": false,
+    "completion_map_requires_user_approval": false,
+    "completion_map_approved": true,
+    "setup_autopilot_enabled": true,
+    "setup_autopilot_finalized": true,
+    "specialist_plan_reviewed": true,
+    "specialist_plan_approved": true,
     "approved_specialist_candidate_ids": []
   }
 }
@@ -424,7 +491,7 @@ Project intake stores the user's initial explanation before Orquesta generates q
 
 ## setup/specialist_plan.json
 
-Specialist Plan stores proposed production specialists after the Completion Map is approved. It is an approval buffer, not a thread-creation command. The dashboard may let the user mark each candidate as `approve_now`, `later`, `reject`, or `revise`, but sessions must not be created from this file until the orchestrator explicitly runs the next appointment step.
+Specialist Plan stores proposed production specialists after the Completion Map exists. During first-run setup, setup autopilot may mark high-priority candidates as `approve_now` automatically so Orquesta can begin operating without another approval round. It is still not a thread-creation command: sessions must not be created, specialist threads must not be messaged, and specialists must not be marked active until the orchestrator explicitly runs the next appointment or handoff step.
 
 ```json
 {

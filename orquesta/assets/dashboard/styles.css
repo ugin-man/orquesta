@@ -340,6 +340,17 @@ main {
   padding: 16px;
 }
 
+.compact-setup {
+  margin-bottom: 18px;
+}
+
+.setup-compact {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.82fr) minmax(0, 1.18fr);
+  gap: 14px;
+  min-width: 0;
+}
+
 .setup-stage {
   display: grid;
   grid-template-columns: minmax(220px, 0.72fr) minmax(340px, 1.35fr) minmax(240px, 0.8fr);
@@ -353,6 +364,14 @@ main {
   display: grid;
   gap: 10px;
   min-width: 0;
+}
+
+.setup-steps.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.setup-main.compact {
+  grid-template-columns: minmax(220px, 0.72fr) minmax(280px, 1.28fr);
 }
 
 .setup-step {
@@ -369,6 +388,11 @@ main {
   color: var(--ink);
   text-align: left;
   box-shadow: 0 8px 20px rgba(40, 51, 75, 0.06);
+}
+
+.setup-steps.compact .setup-step {
+  min-height: 48px;
+  padding: 9px;
 }
 
 .setup-step span {
@@ -476,10 +500,26 @@ main {
 }
 
 .setup-form-card textarea {
-  min-height: 150px;
+  min-height: 118px;
   padding: 12px;
   line-height: 1.55;
   resize: vertical;
+}
+
+.setup-finished-card {
+  align-content: center;
+}
+
+.setup-finished-card b {
+  font-size: 16px;
+  font-weight: 840;
+}
+
+.setup-finished-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .setup-form-card input:focus,
@@ -1209,6 +1249,26 @@ main {
   background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 16px 36px rgba(36, 120, 255, 0.08);
   padding: 16px;
+}
+
+.approval-wait-board {
+  padding: 12px;
+  border: 1px solid rgba(213, 138, 0, 0.18);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 248, 232, 0.66), rgba(255, 255, 255, 0.74));
+}
+
+.approval-wait-card {
+  border-color: rgba(213, 138, 0, 0.28);
+  box-shadow: 0 16px 36px rgba(213, 138, 0, 0.1);
+}
+
+.approval-wait-card::before {
+  content: "";
+  width: 46px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(213, 138, 0, 0.9), rgba(255, 204, 92, 0.35));
 }
 
 .review-card-head {
@@ -2908,6 +2968,8 @@ main {
 @media (max-width: 980px) {
   .hero-grid,
   .completion-hero,
+  .setup-compact,
+  .setup-main.compact,
   .setup-stage,
   .operations-grid,
   .operations-grid.compact,
@@ -2919,6 +2981,10 @@ main {
   .board-grid,
   .board-grid.lower,
   .agent-list {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-steps.compact {
     grid-template-columns: 1fr;
   }
 }

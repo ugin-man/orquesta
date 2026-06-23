@@ -1,14 +1,20 @@
-# Orquesta
+# Orquesta beta.2
 
 Orquesta is a Codex skill for coordinating long-lived specialist Codex threads as a project team.
 
 It is designed for human-in-the-loop game development and other creative software work where one disposable subagent is not enough. The orchestrator keeps state, specialists keep scoped context, and the dashboard shows what the team is doing.
 
+Orquesta is not just one Codex thread with a team-themed dashboard. Real operation requires evidence: a task is routed to a non-orchestrator specialist when the work belongs to that lane, the handoff is recorded, the specialist returns a report or artifact, and the orchestrator accepts, holds, or requests changes in state. Direct orchestrator work is reserved for orchestration bookkeeping, tiny state/report updates, emergency unblockers, or explicit user instruction.
+
 ## Beta Status
+
+Current beta version: `0.1.0-beta.2`.
 
 This repository is beta-quality. The core workflow is usable, but the bootstrap flow should still be tested in a clean project after installing from GitHub.
 
 The first GitHub-install bootstrap smoke test passed on 2026-06-22. The skill installed from this repository, initialized a separate project, created the foundation roles, and served the dashboard from a fallback port after detecting a local `4177` port conflict.
+
+Bootstrap smoke and delegation-loop smoke are separate checks. Bootstrap smoke proves setup, project-owned `/api/state`, foundation agents, dashboard rendering, and encoding health. Delegation-loop smoke proves the operating model: a real specialist receives a task, reports back, and the orchestrator records an acceptance decision. Do not treat the dashboard alone as proof of multi-agent operation.
 
 ## Looking For Collaborators
 
@@ -90,10 +96,12 @@ npm run dashboard
 Open:
 
 ```text
-http://127.0.0.1:4177/
+the URL printed by `npm run dashboard`
 ```
 
-The dashboard reads `.orquesta/` state from the current project and refreshes about every five seconds.
+The dashboard starts on `http://127.0.0.1:4177/` when that port is free. If another local dashboard or process already owns the port, Orquesta scans for a free nearby port before starting, then writes the verified URL to `.orquesta/setup/options.json`.
+
+The dashboard reads `.orquesta/` state from the current project. While visible, it checks for changes about every five seconds, but unchanged state returns `304 Not Modified` and does not trigger a full re-render. Hidden tabs slow down their polling.
 
 When verifying a dashboard after setup, check `/api/state` for the current project. A plain HTTP 200 on the dashboard port is not enough, because another local Orquesta dashboard may already be using that port.
 
@@ -102,6 +110,7 @@ When verifying a dashboard after setup, check `/api/state` for the current proje
 ```powershell
 node --check orquesta/dashboard-server.js
 node --check orquesta/assets/dashboard/app.js
+npm run test:ports
 ```
 
 For dashboard UI changes, also run a browser DOM smoke check against a running dashboard:

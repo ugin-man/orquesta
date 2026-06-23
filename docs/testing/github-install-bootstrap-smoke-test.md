@@ -77,7 +77,7 @@ Operational issues observed during the smoke test:
 ## Follow-Up Candidates
 
 - Add a first-class bootstrap script that creates `.orquesta` state skeletons.
-- Add a deterministic dashboard port selection helper.
+- Keep the deterministic dashboard port selection helper covered by `npm run test:ports`.
 - Make dashboard verification check `/api/state` and current project identity.
 - Add a report freshness rule: JSON state is current truth; reports are snapshots.
 - Run a browser DOM smoke check after dashboard UI changes: verify `[data-agent-id]` nodes render and browser console has no `ReferenceError`, `TypeError`, or `SyntaxError`.
@@ -110,12 +110,16 @@ GitHubインストール版のクリーンスモークテストなので、ダ�
 - `.orquesta/state/agents.json`, `sessions.json`, `tasks.json`, `directives.json`, and `events.jsonl` exist and parse.
 - `.orquesta/setup/options.json`, `wizard.json`, and `project_intake.json` exist or the setup report explains why a later step creates them.
 - `.orquesta/vision/questions.json` exists and does not contain repeated literal question marks in Japanese question text.
-- `.orquesta/failures/incidents.json` exists. If port `4177` is occupied, the incident should name `EADDRINUSE` and the selected fallback port.
+- `.orquesta/failures/incidents.json` exists. If port `4177` is occupied but Orquesta cleanly chooses another free port, the selected port should be recorded in `.orquesta/setup/options.json`; an incident is only required when startup still blocks or asks the user for repair.
 - The dashboard URL opens in an external browser.
 - `GET /api/state` returns state from the disposable project, not from this Orquesta development checkout or another project.
 - The Team Visualizer shows more than only the user node after the first live state load.
 - The dashboard does not pass only because `http://127.0.0.1:4177/` returns HTTP 200. The check must confirm `/api/state` and the project path.
 - If the dashboard runs on a fallback port, the final setup report and `.orquesta/setup/options.json` must agree on that same URL.
+- The dashboard has Operations and User Tasks views. Setup appears as a compact card at the top of Operations, not as a separate required tab.
+- Before project intake is submitted, Vision Questions must not show generic setup questions as if they were project-specific.
+- After project intake, required setup questions can be generated from that project description.
+- After required setup questions are answered, setup autopilot can prepare the initial Completion Map and initial specialist team without separate Completion Map, specialist-by-specialist, or first-task approval prompts.
 
 ### Result To Report Back
 
@@ -154,7 +158,7 @@ Local repair:
 - Synced the same repaired dashboard bundle into `New project`.
 - Restarted the verified dashboard on `4179`.
 
-Post-repair checks:
+Post-repair checks at that time:
 
 - `/api/state` returns `source=server`, five agents, five sessions, `New project` cwd, zero encoding warnings, and zero vision questions.
 - HTML now includes Operations, Setup, and User Tasks tabs.

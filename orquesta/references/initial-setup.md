@@ -104,13 +104,13 @@ When `.orquesta/CURRENT_ORCHESTRA.md` is missing:
 12. Record selected options, title policy, pin policy, dashboard open status, and bootstrap status in `.orquesta/setup/options.json`.
 13. Create or update `.orquesta/setup/wizard.json` so the dashboard can show the user's current setup step.
 14. Ask the user to describe the project they want to make, and store the submitted description in `.orquesta/setup/project_intake.json`.
-15. Generate required project questions from that description and block production until the required questions are answered. The dashboard setup wizard can trigger this generation and should surface the required questions first.
-16. Have `vision-curator` interpret the answers as provisional thinking seeds, not user commands.
-17. Convert the interpretation into discussion seeds, strong signals, candidate rules, AI counterproposals, and `do_not_adopt_yet` items.
-18. Ask the user to review the important adoption candidates unless the candidate is a low-risk operating rule.
-19. Create or revise `.orquesta/project/completion_map.json`: the large pieces required to finish the project. Treat this map as a proposal until the user approves it.
-20. Ask for user approval of the Completion Map before creating production specialists. The dashboard setup wizard may record this approval in `.orquesta/setup/wizard.json`, but must reject approval while required setup questions remain unanswered.
-21. Only then classify the approved map and propose production roles such as `implementation-001`, `visual-art-001`, `world-lore-001`, `playtest-qa-001`, or project-specific teams.
+15. Generate required project questions from that description. Do not show or accept setup questions before project intake exists.
+16. Block first-run setup completion until the required setup questions are answered.
+17. After project intake and required answers exist, automatically finalize first-run setup. This should create or refresh `.orquesta/project/completion_map.json`, prepare an initial specialist plan, and mark high-priority specialist candidates as the initial operating team.
+18. Do not ask the user for separate Completion Map approval, specialist-by-specialist approval, or first-task approval during first-run setup. Those are normal operations adjustments after Orquesta is already running.
+19. Have `vision-curator` interpret answers as provisional thinking seeds, not user commands. Important creative or product direction may still become later review items, but it must not slow the initial setup path.
+20. Report the initial map, initial specialist team, and broad development steps to the user. Make clear that the user can revise them after setup.
+21. Production handoffs may be prepared later by the orchestrator, but first-run setup must not create sessions, message specialist threads, or mark specialists active by itself.
 
 If the dashboard server cannot start, record a failure incident and ask whether to wake `error-concierge` after it exists.
 
@@ -128,7 +128,9 @@ Verify dashboard ownership by requesting `/api/state` from the candidate port an
 - `project_cwd` or equivalent session/project paths match the current project when available
 - expected foundation agent IDs are present
 
-If the default port is occupied by another process, record an incident such as `local_server_startup` and start the dashboard on a fallback port. Update `.orquesta/setup/options.json`, `.orquesta/CURRENT_ORCHESTRA.md`, and the final user report with the actual verified dashboard URL.
+The dashboard server should choose the port before startup instead of repeatedly launching and failing. Prefer the last port recorded in `.orquesta/setup/options.json` for this project, then `4177`, then scan nearby ports. If the selected port still races and becomes occupied at listen time, rescan and retry.
+
+If the default port is occupied by another process, record the selected fallback in `.orquesta/setup/options.json`, `.orquesta/CURRENT_ORCHESTRA.md`, and the final user report with the actual verified dashboard URL. Treat expected port occupation as dashboard routing state; only create a failure incident when startup still blocks or needs user-side action.
 
 ## Dashboard Browser Handoff
 
@@ -179,6 +181,12 @@ I can help with:
 - keeping task/state/report files synchronized
 - showing the active team and user-side tasks on the dashboard
 - separating creative vision, user tasks, and failure repair workflows
+
+First setup is short:
+1. Describe the project.
+2. Answer the generated questions.
+3. Orquesta automatically prepares the initial map and team.
+4. You can adjust the map, team, and priorities during normal operations.
 
 Optional packs:
 - Game Production Core
@@ -245,7 +253,8 @@ The user may talk to either:
 - visible step list
 - project intake gate state
 - required-question gate state
-- Completion Map approval state
+- setup autopilot finalization state
+- initial team preparation state
 
 `.orquesta/setup/project_intake.json` should track:
 

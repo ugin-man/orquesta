@@ -6,7 +6,11 @@ async function loadPlaywright() {
   try {
     return await import("playwright");
   } catch (error) {
-    throw new Error("Playwright is required for dashboard DOM smoke checks. Install it or run this from a Codex environment that provides Playwright.");
+    try {
+      return require("playwright");
+    } catch {
+      throw new Error("Playwright is required for dashboard DOM smoke checks. Install it or run this from a Codex environment that provides Playwright.");
+    }
   }
 }
 
@@ -37,6 +41,7 @@ async function main() {
 
   const result = await page.evaluate(async () => {
     const nodes = [...document.querySelectorAll("[data-agent-id]")].map((node) => node.getAttribute("data-agent-id"));
+    const viewTargets = [...document.querySelectorAll("[data-view-target]")].map((node) => node.getAttribute("data-view-target"));
     let api = null;
     try {
       const response = await fetch("/api/state", { cache: "no-store" });
@@ -49,6 +54,10 @@ async function main() {
       title: document.title,
       agentNodeCount: nodes.length,
       agentIds: nodes,
+      viewTargets,
+      hasSetupTab: viewTargets.includes("setup"),
+      hasSetupCard: Boolean(document.querySelector("#setupWizard")),
+      hasSetupPanel: Boolean(document.querySelector("[data-view-panel='setup']")),
       apiAgentCount: agentCount,
       hasUserOnlyMap: nodes.length === 0 && document.body.innerText.includes("User")
     };
@@ -65,6 +74,9 @@ async function main() {
   if (result.apiAgentCount !== null && result.agentNodeCount === 0 && result.apiAgentCount > 0) {
     failures.push(`API returned ${result.apiAgentCount} agents but DOM rendered none`);
   }
+  if (result.hasSetupTab) failures.push("deprecated Setup tab is still rendered");
+  if (result.hasSetupPanel) failures.push("deprecated setup-only view panel is still rendered");
+  if (!result.hasSetupCard) failures.push("compact setup card #setupWizard was not rendered in Operations");
 
   const summary = {
     url: targetUrl,

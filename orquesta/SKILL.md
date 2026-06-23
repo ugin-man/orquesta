@@ -16,6 +16,17 @@ Always preserve this split:
 - Specialist thread: domain work, required reading, direct user refinement, report back.
 - User: intent, taste, approval, final priority.
 
+## Delegation Gate
+
+Specialist-domain work must pass a file-backed delegation gate before implementation or acceptance. If a task touches an appointed specialist lane such as implementation, dashboard UX, docs, protocol, bootstrap QA, vision interpretation, failure triage, or user liaison work, the orchestrator must do one of two things:
+
+1. Send a handoff to the appropriate specialist, record the task in `.orquesta/state/tasks.json` with `routing_class: "specialist_required"`, `handoff_required: true`, `handoff_sent_at`, `specialist_report_required: true`, and wait for `specialist_report_path` or an equivalent report artifact before acceptance.
+2. Record an explicit direct-work exception in `.orquesta/state/tasks.json` with `routing_class: "direct_exception"`, `direct_exception_reason`, `routing_gate_status: "bypassed_with_reason"`, and `bypass_review_owner`.
+
+Direct-work exceptions are narrow: orchestration bookkeeping, tiny state or report updates, emergency unblockers, or explicit user instruction. They are not a way for the orchestrator to absorb specialist implementation quietly.
+
+This rule survives context compaction by relying on `.orquesta/state/tasks.json`, not chat memory. If the state lacks a handoff, report, or direct exception for specialist-domain work, the work is not ready for acceptance.
+
 ## Startup
 
 When Orquesta is invoked in a repository:
@@ -121,6 +132,8 @@ Orquesta treats user-side work as a first-class queue. Use `user-liaison` when t
 - `error-concierge` owns failure clustering and repair-card proposal.
 - `user-liaison` owns making accepted user-side work visible, sequenced, humane, and actionable.
 
+When a specialist is blocked by a Codex approval prompt, permission request, scope confirmation, destructive-action confirmation, or user-direction decision, create or update a `.orquesta/user_tasks/queue.json` task with `source: "approval_wait"`, an `approval_type`, the waiting `source_agent_id`, the blocked task id in `source_ids`, the requested user action, and the resume instruction. Also mark the blocked Orquesta task with a user approval blocker such as `blocked_by: ["user_approval_required"]`. Do not let approval waits live only inside a specialist chat.
+
 Store this layer under `.orquesta/user_tasks/`. Keep user tasks short, statused, and dashboard-visible.
 
 ## Appointment Rule
@@ -156,6 +169,8 @@ The source of truth is not chat history. The source of truth is:
 - `.orquesta/CURRENT_ORCHESTRA.md`
 - `.orquesta/reports/*.md`
 
+For specialist-domain tasks, `.orquesta/state/tasks.json` must preserve delegation evidence: `routing_class`, `routing_gate_status`, `handoff_required`, `handoff_sent_at`, `specialist_report_required`, `specialist_report_path`, `direct_exception_reason`, and `bypass_review_owner`. A specialist-required task should not become `accepted` until the specialist report path or artifact is recorded, unless a direct-work exception is recorded with a review owner.
+
 Keep reports short. Link artifacts instead of copying large outputs into the orchestrator conversation.
 
 When writing user-visible non-English text into `.orquesta` state, protect encoding explicitly. Prefer `apply_patch`, UTF-8-aware script files, or Unicode-escaped JavaScript literals over shell here-strings. Run `npm run check:encoding` when available after state writes. Repeated literal question marks such as `???` in `.orquesta` JSON are a failure, not a harmless display issue.
@@ -179,7 +194,7 @@ For live browser monitoring, run the repository dashboard server from the worksp
 npm run dashboard
 ```
 
-Then open `http://127.0.0.1:4177/`. When served this way, the dashboard polls `.orquesta/state` every five seconds through `/api/state`. Opening `index.html` directly with `file://` still works, but requires manual state-file loading because browsers cannot automatically read local project files from a static page.
+Then open the dashboard URL printed by the server. When served this way, the dashboard checks `.orquesta/state` through `/api/state`; unchanged state returns `304 Not Modified` and does not trigger a full re-render. Opening `index.html` directly with `file://` still works, but requires manual state-file loading because browsers cannot automatically read local project files from a static page.
 
 ## References
 

@@ -20,6 +20,35 @@ Coordinate long-lived specialist Codex threads without making the orchestrator a
    - Classify work as `bootstrap`, `persistent_role`, `bounded_task`, `review`, `standby`, or `direct_specialist_refinement`.
    - Reuse existing agents before creating new ones.
 
+## Delegation Gate
+
+Run this gate after Classification and before Appointment or implementation. The gate is mandatory for specialist-domain work and must be recorded in `.orquesta/state/tasks.json` so it survives context compaction.
+
+Use `routing_class`:
+
+- `orchestration_only`: routing, state bookkeeping, contract writing, report acceptance, or other coordination work that belongs to the orchestrator.
+- `specialist_required`: work that touches an appointed specialist lane such as implementation, dashboard UX, docs, protocol, bootstrap QA, vision interpretation, failure triage, or user liaison coordination.
+- `direct_exception`: specialist-domain work the orchestrator is doing directly for a narrow approved reason.
+- `blocked`: work that cannot be routed safely yet.
+
+For `specialist_required` tasks:
+
+1. Set `handoff_required: true`.
+2. Set `specialist_report_required: true` unless the task is explicitly report-free and low risk.
+3. Send the specialist handoff before implementation starts.
+4. Record `handoff_sent_at` and the specialist `owner_agent_id`.
+5. Do not accept the task until `specialist_report_path`, `report`, or a specialist report artifact is present and reviewed.
+6. Set `routing_gate_status: "passed"` only after the handoff evidence exists.
+
+For `direct_exception` tasks:
+
+1. Record `direct_exception_reason`.
+2. Set `routing_gate_status: "bypassed_with_reason"`.
+3. Record `bypass_review_owner` when a later specialist review is useful.
+4. Keep the scope to orchestration bookkeeping, tiny state or report updates, emergency unblockers, or explicit user instruction.
+
+If a specialist exists and the task touches that lane, the short rule is: no handoff, no implementation; no report, no acceptance. Direct exceptions must be visible in task state rather than remembered from chat.
+
 ## Bootstrap Loop
 
 Use this before the normal operating loop when Orquesta is invoked in a project without current Orquesta state:
@@ -59,6 +88,7 @@ Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open
 6. Synchronization
    - Update `agents.json` heartbeat and status.
    - Update `tasks.json` state and artifacts.
+   - Update task delegation fields: `routing_class`, `routing_gate_status`, `handoff_required`, `handoff_sent_at`, `specialist_report_required`, `specialist_report_path`, `direct_exception_reason`, and `bypass_review_owner`.
    - Update `directives.json` for user-to-specialist decisions or nuance.
    - Add unresolved creative questions to `.orquesta/vision/questions.json` when specialist work reveals ambiguity.
    - Add repeated or user-actionable command failures to `.orquesta/failures/incidents.json`.
@@ -67,6 +97,8 @@ Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open
 
 7. Acceptance
    - Orchestrator checks the report against acceptance checks.
+   - For `specialist_required` tasks, verify `handoff_sent_at` and a specialist report path or report artifact before acceptance.
+   - For `direct_exception` tasks, verify `direct_exception_reason` and any `bypass_review_owner` before acceptance.
    - Use `accepted`, `needs_review`, `blocked`, or `rejected_scope_drift`.
    - Do not mark project-level completion while unsynced specialist work exists.
    - If the report contains creative ambiguity, decide whether to queue questions, wake `vision-curator`, or update adopted vision documents.
@@ -166,6 +198,9 @@ Stop and report instead of continuing when:
 - approval state is unclear
 - two agents are about to edit the same ownership boundary
 - the task requires a forbidden action
+- a `specialist_required` task has no `handoff_sent_at`
+- a `specialist_required` task is being accepted without `specialist_report_path`, `report`, or a report artifact
+- a `direct_exception` task has no `direct_exception_reason`
 - acceptance checks cannot be run or described
 - the specialist's scope has drifted
 - a direct user directive conflicts with project canon or implementation constraints

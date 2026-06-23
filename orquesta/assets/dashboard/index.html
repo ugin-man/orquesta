@@ -20,7 +20,6 @@
         <div class="toolbar">
           <div class="view-switch" role="tablist" aria-label="Dashboard view">
             <button class="view-tab active" type="button" data-view-target="operations" data-i18n="view.operations">Operations</button>
-            <button class="view-tab" type="button" data-view-target="setup" data-i18n="view.setup">Setup</button>
             <button class="view-tab" type="button" data-view-target="user" data-i18n="view.userTasks">User Tasks</button>
           </div>
           <div class="sync-chip" id="syncChip">Sample state</div>
@@ -45,6 +44,17 @@
 
     <main>
       <section class="dashboard-view active" data-view-panel="operations">
+        <section class="setup-wizard-panel panel compact-setup">
+          <div class="section-title">
+            <div>
+              <span class="eyebrow" data-i18n="eyebrow.setup">setup</span>
+              <h2 data-i18n="section.setupWizard">First Setup</h2>
+            </div>
+            <span id="setupCount"></span>
+          </div>
+          <div id="setupWizard" class="setup-wizard"></div>
+        </section>
+
         <section class="team-visualizer panel">
           <div class="section-title">
             <div>
@@ -105,19 +115,6 @@
             </div>
             <div id="events" class="timeline"></div>
           </article>
-        </section>
-      </section>
-
-      <section class="dashboard-view" data-view-panel="setup">
-        <section class="setup-wizard-panel panel">
-          <div class="section-title">
-            <div>
-              <span class="eyebrow" data-i18n="eyebrow.setup">setup</span>
-              <h2 data-i18n="section.setupWizard">First Setup Wizard</h2>
-            </div>
-            <span id="setupCount"></span>
-          </div>
-          <div id="setupWizard" class="setup-wizard"></div>
         </section>
       </section>
 
