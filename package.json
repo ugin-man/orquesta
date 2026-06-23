@@ -3,6 +3,18 @@
   "version": "0.1.0-beta.2",
   "private": false,
   "description": "Orquesta beta.2 Codex skill for coordinating long-lived specialist threads with a local dashboard.",
+  "keywords": [
+    "codex",
+    "codex-skill",
+    "ai-agents",
+    "multi-agent",
+    "developer-tools",
+    "human-in-the-loop",
+    "game-development",
+    "agent-workflows",
+    "local-dashboard",
+    "openai"
+  ],
   "scripts": {
     "dashboard": "node orquesta/dashboard-server.js",
     "check": "node --check orquesta/dashboard-server.js && node --check orquesta/assets/dashboard/app.js && node --check orquesta/scripts/dashboard-dom-smoke.js && node --check orquesta/scripts/validate-state-encoding.js && node --check orquesta/scripts/dashboard-port-selection.js && node --check orquesta/scripts/dashboard-port-selection.test.js && node --check orquesta/scripts/dashboard-state-cache.js && node --check orquesta/scripts/dashboard-state-cache.test.js && node --check orquesta/scripts/delegation-gate-check.js && node --check orquesta/scripts/delegation-gate-check.test.js && node --check orquesta/scripts/approval-wait-check.js && node --check orquesta/scripts/approval-wait-check.test.js && npm run test:ports && npm run test:cache && npm run test:delegation && npm run test:approval && npm run check:encoding",

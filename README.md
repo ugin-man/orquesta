@@ -1,8 +1,10 @@
 # Orquesta beta.2
 
-Orquesta is a Codex skill for coordinating long-lived specialist Codex threads as a project team.
+Orquesta turns Codex into a long-lived specialist team with a local dashboard, instead of a single disposable coding agent.
 
-It is designed for human-in-the-loop game development and other creative software work where one disposable subagent is not enough. The orchestrator keeps state, specialists keep scoped context, and the dashboard shows what the team is doing.
+It is a Codex skill for human-in-the-loop game development and other creative software work where one thread with one giant context is not enough. The orchestrator keeps state, specialists keep scoped context, and the dashboard shows what the team is doing.
+
+New here? Start with [START_HERE.md](START_HERE.md).
 
 Orquesta is not just one Codex thread with a team-themed dashboard. Real operation requires evidence: a task is routed to a non-orchestrator specialist when the work belongs to that lane, the handoff is recorded, the specialist returns a report or artifact, and the orchestrator accepts, holds, or requests changes in state. Direct orchestrator work is reserved for orchestration bookkeeping, tiny state/report updates, emergency unblockers, or explicit user instruction.
 
@@ -40,6 +42,7 @@ If you are interested in multi-agent workflows, Codex skills, game-development t
 ## Repository Layout
 
 ```text
+START_HERE.md                  First-reader guide for trying Orquesta
 orquesta/
   SKILL.md                     Codex skill entrypoint
   references/                  Operating protocols and state schemas
@@ -47,7 +50,9 @@ orquesta/
   dashboard-server.js          Local dashboard API/server
   agents/openai.yaml           Skill metadata
 docs/
+  articles/                    Draft articles for Zenn, Qiita, and launch notes
   design/                      Design notes
+  release/                     Public release and discovery notes
   research/                    Multi-agent research notes
 package.json                   Dashboard start script
 ```
