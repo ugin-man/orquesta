@@ -1,10 +1,13 @@
 ---
-title: "Codexを長期専門AIチームとして使うために Orquesta を作っています"
+title: "Codexで動くマルチエージェントっぽい仕組みを作っています"
 emoji: "🎼"
 type: "tech"
-topics: ["codex", "aiagent", "multiagent", "developer"]
+topics: ["codex", "aiagent", "multiagent", "個人開発", "開発環境"]
 published: false
 ---
+
+ここでいうCodexは、昔のOpenAI Codexモデルではなく、今のCodex環境で動く開発エージェントのことです。
+ローカルファイルを読み書きしたり、ブラウザやGitHubやスキルを使ったりしながら開発を進める相手、くらいの意味で読んでください。
 
 ## ひとつのCodexスレッドが大きくなりすぎる
 

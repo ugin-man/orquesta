@@ -59,6 +59,7 @@ https://github.com/ugin-man/orquesta
 ## Pre-Posting Checks
 
 - Confirm the article contains no mojibake or repeated literal question marks.
+- Confirm the Zenn editor receives the raw Markdown source, including `##` and `###` heading markers.
 - Confirm the article links to GitHub and `START_HERE.md`.
 - Confirm wording says beta, not stable release or production-ready.
 - Confirm the article does not claim the dashboard alone proves multi-agent operation.
