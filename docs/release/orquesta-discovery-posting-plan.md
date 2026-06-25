@@ -67,20 +67,11 @@ https://github.com/ugin-man/orquesta
 
 ## Zenn Paste Workflow
 
-Do not copy from a rendered preview, a browser article view, or an AI review result panel. Those views may already have converted headings into styled text, so the `##` and `###` markers are no longer available to paste.
+Do not copy from the Codex preview, a rendered article view, or an AI review result panel. Those views may already have converted headings into styled text, so the `##` and `###` markers are no longer available to paste.
 
 Preferred path:
 
-```powershell
-Get-Content -Raw -Encoding UTF8 "docs/articles/zenn-orquesta-introduction.md" | Set-Clipboard
-```
-
-Then paste into the Zenn article editor. Because the clipboard content comes from the raw Markdown file, heading markers, frontmatter, links, and code fences should remain as text.
-
-If Zenn still treats the paste as formatted content, use the browser's plain-text paste shortcut, usually `Ctrl+Shift+V` on Windows, into the editor.
-
-More robust alternative:
-
-- Manage the article with Zenn CLI / GitHub integration instead of the Web editor paste flow.
-- Put the Markdown file under the Zenn `articles/` directory.
-- Preview locally with Zenn CLI before publishing.
+- Open `docs/articles/zenn-orquesta-introduction.md` directly as a file.
+- Copy the raw file contents, not the rendered preview.
+- Paste that text into the Zenn article editor.
+- Confirm `##` / `###`, frontmatter, links, and code fences remain visible in the editor before previewing.
