@@ -315,6 +315,45 @@ async function main() {
     };
   });
 
+  await page.click("[data-view-target='setup']");
+  await page.waitForTimeout(250);
+  result.setupLayout = await page.evaluate(() => {
+    const rectFor = (node) => {
+      if (!node) return null;
+      const rect = node.getBoundingClientRect();
+      return { top: rect.top, left: rect.left, width: rect.width, height: rect.height, right: rect.right, bottom: rect.bottom };
+    };
+    const viewportWidth = window.innerWidth;
+    const setupPanel = document.querySelector("[data-view-panel='setup'] .setup-wizard-panel");
+    const foundationPanel = document.querySelector("[data-view-panel='setup'] .foundation-audit-panel");
+    const titleInput = document.querySelector("[data-setup-field='project_title']");
+    const descriptionInput = document.querySelector("[data-setup-field='project_description']");
+    const setupActions = [...document.querySelectorAll("#setupWizard .answer-toolbar button")];
+    const visibleWithinViewport = (rect) => Boolean(rect
+      && rect.width > 40
+      && rect.height > 20
+      && rect.left >= -1
+      && rect.right <= viewportWidth + 1);
+    return {
+      setupPanel: rectFor(setupPanel),
+      foundationPanel: rectFor(foundationPanel),
+      titleInput: rectFor(titleInput),
+      descriptionInput: rectFor(descriptionInput),
+      actionButtons: setupActions.map(rectFor),
+      hasProjectIntakeForm: Boolean(titleInput || descriptionInput || setupActions.length),
+      setupPanelWide: setupPanel ? setupPanel.getBoundingClientRect().width >= Math.min(860, viewportWidth - 64) : false,
+      foundationBelowSetup: Boolean(setupPanel && foundationPanel
+        && foundationPanel.getBoundingClientRect().top >= setupPanel.getBoundingClientRect().bottom - 1),
+      titleVisible: titleInput ? visibleWithinViewport(rectFor(titleInput)) : true,
+      descriptionVisible: descriptionInput ? visibleWithinViewport(rectFor(descriptionInput)) : true,
+      actionsVisible: setupActions.length > 0 ? setupActions.every((button) => visibleWithinViewport(rectFor(button))) : true,
+      horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 2
+    };
+  });
+
+  await page.click("[data-view-target='home']");
+  await page.waitForTimeout(150);
+
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
   result.mobileLayout = await page.evaluate(() => {
@@ -351,6 +390,12 @@ async function main() {
   if (!result.hasActionsView) failures.push("User Actions focused view or navigation is missing");
   if (!result.hasDelegationView) failures.push("Delegation focused view or navigation is missing");
   if (!result.hasSetupCard) failures.push("setup card #setupWizard was not rendered in focused views");
+  if (!result.setupLayout?.setupPanelWide) failures.push("setup panel is not wide enough for first-run project intake");
+  if (!result.setupLayout?.foundationBelowSetup) failures.push("foundation audit panel is not below the setup panel");
+  if (!result.setupLayout?.titleVisible) failures.push("setup project title input is not fully visible");
+  if (!result.setupLayout?.descriptionVisible) failures.push("setup project description textarea is not fully visible");
+  if (!result.setupLayout?.actionsVisible) failures.push("setup action buttons are not fully visible");
+  if (result.setupLayout?.horizontalOverflow) failures.push("setup view has horizontal overflow");
   if (result.hasRejectedShellLabel) failures.push("rejected Executive Glass Tree shell label is still visible");
   if (result.inertNav.length) failures.push(`decorative or unwired nav labels are visible: ${result.inertNav.join(", ")}`);
   if (!result.hasHomeAwareness) failures.push("Home operational awareness strip is missing");

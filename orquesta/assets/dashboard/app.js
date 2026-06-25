@@ -4088,6 +4088,15 @@ function renderSetupWizard() {
             ${finalized ? pill(t("setup.autopilotDone"), "accepted") : pill(t("setup.autopilotWaiting"), "active")}
           </div>
         </div>
+        <div class="setup-guidance-card" aria-label="${escapeHtml(t("section.setupWizard"))}">
+          <b>${escapeHtml(t("setup.next"))}</b>
+          <ol>
+            <li>${escapeHtml(t("setup.intakeBeforeQuestions"))}</li>
+            <li>${escapeHtml(t("setup.answerQuestionsFirst"))}</li>
+            <li>${escapeHtml(t("setup.readyToFinalize"))}</li>
+            <li>${escapeHtml(t("setup.productionStartDetail"))}</li>
+          </ol>
+        </div>
 
         ${finalized ? `
           <div class="setup-form-card setup-finished-card">

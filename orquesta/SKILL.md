@@ -80,6 +80,8 @@ The first setup response should include:
 - the dashboard URL
 - enabled and available option packs
 - the next setup choice the user can make
+- a short first-run sequence: describe the project, answer generated questions, then let Orquesta prepare the initial map and team
+- a clear instruction that the dashboard's first setup panel is where the project title and project description are entered
 
 ## Direct User Conversations
 
