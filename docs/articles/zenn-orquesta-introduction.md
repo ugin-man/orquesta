@@ -1,8 +1,8 @@
 ---
-title: "Codexで動くマルチエージェントっぽい仕組みを作っています"
+title: "Codexを長期専門AIチームとして使うために Orquesta を作っています"
 emoji: "🎼"
 type: "tech"
-topics: ["codex", "aiagent", "multiagent", "個人開発", "開発環境"]
+topics: ["codex", "aiagent", "multiagent", "developer"]
 published: false
 ---
 
