@@ -17,11 +17,14 @@
   ],
   "scripts": {
     "dashboard": "node orquesta/dashboard-server.js",
-    "check": "node --check orquesta/dashboard-server.js && node --check orquesta/assets/dashboard/app.js && node --check orquesta/scripts/dashboard-dom-smoke.js && node --check orquesta/scripts/validate-state-encoding.js && node --check orquesta/scripts/dashboard-port-selection.js && node --check orquesta/scripts/dashboard-port-selection.test.js && node --check orquesta/scripts/dashboard-state-cache.js && node --check orquesta/scripts/dashboard-state-cache.test.js && node --check orquesta/scripts/delegation-gate-check.js && node --check orquesta/scripts/delegation-gate-check.test.js && node --check orquesta/scripts/approval-wait-check.js && node --check orquesta/scripts/approval-wait-check.test.js && npm run test:ports && npm run test:cache && npm run test:delegation && npm run test:approval && npm run check:encoding",
+    "check": "node --check orquesta/dashboard-server.js && node --check orquesta/assets/dashboard/app.js && node --check orquesta/scripts/dashboard-dom-smoke.js && node --check orquesta/scripts/validate-state-encoding.js && node --check orquesta/scripts/dashboard-port-selection.js && node --check orquesta/scripts/dashboard-port-selection.test.js && node --check orquesta/scripts/dashboard-state-cache.js && node --check orquesta/scripts/dashboard-state-cache.test.js && node --check orquesta/scripts/foundation-trigger-audit.js && node --check orquesta/scripts/foundation-trigger-audit.test.js && node --check orquesta/scripts/delegation-gate-check.js && node --check orquesta/scripts/delegation-gate-check.test.js && node --check orquesta/scripts/approval-wait-check.js && node --check orquesta/scripts/approval-wait-check.test.js && node --check orquesta/scripts/report-question-candidates-check.js && node --check orquesta/scripts/report-question-candidates-check.test.js && npm run test:ports && npm run test:cache && npm run test:triggers && npm run test:delegation && npm run test:approval && npm run test:question-candidates && npm run check:encoding",
+    "audit:triggers": "node orquesta/scripts/foundation-trigger-audit.js",
     "check:encoding": "node orquesta/scripts/validate-state-encoding.js",
     "test:approval": "node orquesta/scripts/approval-wait-check.test.js && node orquesta/scripts/approval-wait-check.js",
     "test:cache": "node orquesta/scripts/dashboard-state-cache.test.js",
     "test:delegation": "node orquesta/scripts/delegation-gate-check.test.js",
+    "test:question-candidates": "node orquesta/scripts/report-question-candidates-check.test.js && node orquesta/scripts/report-question-candidates-check.js --inbox .orquesta/vision/question_candidates.json",
+    "test:triggers": "node orquesta/scripts/foundation-trigger-audit.test.js",
     "test:ports": "node orquesta/scripts/dashboard-port-selection.test.js",
     "smoke:dashboard": "node orquesta/scripts/dashboard-dom-smoke.js"
   }

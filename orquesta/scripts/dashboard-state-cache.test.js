@@ -19,12 +19,14 @@ function main() {
   try {
     writeJson(path.join(root, ".orquesta", "state", "agents.json"), { agents: [] });
     writeJson(path.join(root, ".orquesta", "state", "tasks.json"), { tasks: [] });
+    writeJson(path.join(root, ".orquesta", "vision", "question_candidates.json"), { version: 1, candidates: [] });
 
     const firstEntries = collectDashboardStateEntries(root);
     const firstEtag = buildDashboardStateEtag(root);
     const secondEtag = buildDashboardStateEtag(root);
 
     assert(firstEntries.some((entry) => entry.endsWith("/.orquesta/state/agents.json")));
+    assert(firstEntries.some((entry) => entry.endsWith("/.orquesta/vision/question_candidates.json")));
     assert.strictEqual(firstEtag, secondEtag);
 
     writeJson(path.join(root, ".orquesta", "state", "tasks.json"), { tasks: [{ task_id: "T001" }] });

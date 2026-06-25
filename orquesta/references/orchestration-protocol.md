@@ -89,8 +89,9 @@ Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open
    - Update `agents.json` heartbeat and status.
    - Update `tasks.json` state and artifacts.
    - Update task delegation fields: `routing_class`, `routing_gate_status`, `handoff_required`, `handoff_sent_at`, `specialist_report_required`, `specialist_report_path`, `direct_exception_reason`, and `bypass_review_owner`.
+   - Extract required specialist report `question_candidates` metadata. Store submitted candidates in `.orquesta/vision/question_candidates.json`; accept a `status: "none"` block only when it includes a valid `none_reason` and plausible rationale.
    - Update `directives.json` for user-to-specialist decisions or nuance.
-   - Add unresolved creative questions to `.orquesta/vision/questions.json` when specialist work reveals ambiguity.
+   - Add unresolved creative question candidates to `.orquesta/vision/question_candidates.json` first. Only `vision-curator` should promote useful candidates into `.orquesta/vision/questions.json`.
    - Add repeated or user-actionable command failures to `.orquesta/failures/incidents.json`.
    - Append a short event to `events.jsonl`.
    - Treat reports as snapshots. If state changes after a specialist report is written, update JSON state first and ask the affected specialist to re-read before relying on that report.
@@ -98,6 +99,9 @@ Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open
 7. Acceptance
    - Orchestrator checks the report against acceptance checks.
    - For `specialist_required` tasks, verify `handoff_sent_at` and a specialist report path or report artifact before acceptance.
+   - For specialist-owned reports, verify the report includes structured `question_candidates`. If the field is missing, set the task to `needs_revision`, `needs_report_metadata`, or equivalent instead of accepting it.
+   - Accept `question_candidates.status: "none"` only when it includes a valid `none_reason` and a plausible one-sentence rationale. If the task clearly exposed user choice, product direction, quality risk, or future planning and the `none` rationale is weak, request revision.
+   - If candidates are submitted, record them in `.orquesta/vision/question_candidates.json` for later `vision-curator` review. Do not push raw candidates directly to the user.
    - For `direct_exception` tasks, verify `direct_exception_reason` and any `bypass_review_owner` before acceptance.
    - Use `accepted`, `needs_review`, `blocked`, or `rejected_scope_drift`.
    - Do not mark project-level completion while unsynced specialist work exists.
@@ -146,15 +150,19 @@ Specialists may add question candidates, but they must not treat raw user answer
 
 Use this flow:
 
-1. Specialist proposes 0-3 domain questions when a task exposes important ambiguity.
-2. Orchestrator records them in `.orquesta/vision/questions.json` with `status: "draft"`.
-3. Wake `vision-curator` only when a trigger in `references/vision-alignment.md` is met.
-4. Curator rewrites question batches or interprets answer batches into a report.
-5. Curator separates answers into discussion seeds, strong signals, candidate rules, counterproposals, and `do_not_adopt_yet` items.
-6. Orchestrator accepts the report as curation, but does not automatically adopt the content as product direction.
-7. Creative, product, UX, story, visual, and completion-map changes usually become `needs_user_review` before adoption.
-8. Only user-confirmed or explicitly low-risk operating-rule candidates are reflected into `.orquesta/vision/profile.md`, `anti_vision.md`, `decisions.md`, or `specialists/*.md`.
-9. Specialist threads read adopted vision files relevant to their role before future work.
+1. Every specialist report includes a structured `question_candidates` block.
+2. Specialist proposes 0-3 domain question candidates when a task exposes important ambiguity, future planning, quality risk, design direction, or user-intent uncertainty.
+3. If no useful candidate exists, specialist records `question_candidates.status: "none"` with a valid `none_reason` and rationale.
+4. Orchestrator checks the field before report acceptance.
+5. Orchestrator records submitted candidates in `.orquesta/vision/question_candidates.json` with `status: "pending_curator_review"`.
+6. Wake `vision-curator` only when a trigger in `references/vision-alignment.md` is met.
+7. Curator deduplicates, filters, prioritizes, and promotes useful candidates into `.orquesta/vision/questions.json`; rejected or duplicate raw candidates must not reach the user.
+8. Curator rewrites question batches or interprets answer batches into a report.
+9. Curator separates answers into discussion seeds, strong signals, candidate rules, counterproposals, and `do_not_adopt_yet` items.
+10. Orchestrator accepts the report as curation, but does not automatically adopt the content as product direction.
+11. Creative, product, UX, story, visual, and completion-map changes usually become `needs_user_review` before adoption.
+12. Only user-confirmed or explicitly low-risk operating-rule candidates are reflected into `.orquesta/vision/profile.md`, `anti_vision.md`, `decisions.md`, or `specialists/*.md`.
+13. Specialist threads read adopted vision files relevant to their role before future work.
 
 ## Failure Concierge Sync
 
@@ -200,6 +208,7 @@ Stop and report instead of continuing when:
 - the task requires a forbidden action
 - a `specialist_required` task has no `handoff_sent_at`
 - a `specialist_required` task is being accepted without `specialist_report_path`, `report`, or a report artifact
+- a specialist-owned report is being accepted without structured `question_candidates`
 - a `direct_exception` task has no `direct_exception_reason`
 - acceptance checks cannot be run or described
 - the specialist's scope has drifted

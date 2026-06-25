@@ -9,6 +9,10 @@ const {
   normalizePort
 } = require("./scripts/dashboard-port-selection");
 const { buildDashboardStateEtag } = require("./scripts/dashboard-state-cache");
+const {
+  appendSubmittedQuestionCandidates,
+  inspectReportQuestionCandidates
+} = require("./scripts/report-question-candidates-check");
 
 const root = path.resolve(__dirname, "..");
 const dashboardRoot = path.join(__dirname, "assets", "dashboard");
@@ -188,6 +192,7 @@ function normalizeState(value) {
 
 function reportPathForTask(task) {
   const candidates = [
+    task?.specialist_report_path,
     task?.report,
     task?.review_report,
     ...(Array.isArray(task?.artifacts) ? task.artifacts : [])
@@ -221,6 +226,9 @@ function buildReportReviews(tasks, agents) {
     .map((task) => {
       const report_path = reportPathForTask(task);
       const report = readReportExcerpt(report_path);
+      const questionCandidates = report.exists
+        ? inspectReportQuestionCandidates(safeReportAbsolutePath(report_path))
+        : { present: false, status: "missing", itemCount: 0, errors: ["report file missing"], warnings: [] };
       const agent = agentById.get(task.owner_agent_id);
       return {
         task_id: task.task_id,
@@ -234,7 +242,14 @@ function buildReportReviews(tasks, agents) {
         result_summary: task.result_summary || "",
         completed_at: task.completed_at || null,
         source: task.source || null,
-        source_candidate_id: task.source_candidate_id || null
+        source_candidate_id: task.source_candidate_id || null,
+        question_candidates: {
+          present: questionCandidates.present,
+          status: questionCandidates.status,
+          item_count: questionCandidates.itemCount,
+          errors: questionCandidates.errors,
+          warnings: questionCandidates.warnings
+        }
       };
     });
 }
@@ -294,6 +309,12 @@ function buildHandoffPrompt({ task, agent, candidate, productionStart, mode }) {
     `## Acceptance Checks`,
     ...(acceptanceChecks.length ? acceptanceChecks.map((item) => `- ${item}`) : ["- Write a short report before claiming completion."]),
     ``,
+    `## Question Candidate Requirement`,
+    `At the end of your report, include a structured \`question_candidates\` JSON block.`,
+    `Submit 0-3 useful candidates that would clarify user intent, future plans, quality risk, design direction, or task scope.`,
+    `If there are no useful candidates, set \`status: "none"\`, include a valid \`none_reason\`, and add a one-sentence \`none_rationale\`.`,
+    `Do not ask the user directly; vision-curator will curate raw candidates before any user-facing question is created.`,
+    ``,
     `## Current Artifacts`,
     ...(artifacts.length ? artifacts.map((item) => `- ${item}`) : ["- None yet."]),
     ``,
@@ -312,6 +333,7 @@ function buildHandoffPrompt({ task, agent, candidate, productionStart, mode }) {
     `- blockers`,
     `- artifacts`,
     `- needs orchestrator review`,
+    `- structured question_candidates block`,
     ``,
     `Stop after the report unless the task explicitly asks for more.`
   ];
@@ -938,6 +960,19 @@ function reviewSpecialistReport(payload) {
   }
 
   const previousState = task.state || "unknown";
+  const reportAbsolutePath = safeReportAbsolutePath(reportPath);
+  const questionCandidateCheck = inspectReportQuestionCandidates(reportAbsolutePath || reportPath);
+  if (decision === "accept" && questionCandidateCheck.errors.length) {
+    const error = new Error(`Report is missing valid question_candidates metadata: ${questionCandidateCheck.errors.join("; ")}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  let recordedQuestionCandidates = { recorded: 0, skipped: 0, candidates: [] };
+  if (decision === "accept" && questionCandidateCheck.status === "submitted") {
+    recordedQuestionCandidates = appendSubmittedQuestionCandidates(root, questionCandidateCheck.metadata, now);
+  }
+
   const agent = agentsState.agents.find((item) => item.agent_id === task.owner_agent_id);
   const reviewRecord = {
     decision,
@@ -945,7 +980,16 @@ function reviewSpecialistReport(payload) {
     reviewed_at: now,
     reviewed_by: "orchestrator",
     report: reportPath,
-    previous_state: previousState
+    previous_state: previousState,
+    question_candidates: {
+      present: questionCandidateCheck.present,
+      status: questionCandidateCheck.status,
+      item_count: questionCandidateCheck.itemCount,
+      recorded_count: recordedQuestionCandidates.recorded,
+      skipped_duplicate_count: recordedQuestionCandidates.skipped,
+      errors: questionCandidateCheck.errors,
+      warnings: questionCandidateCheck.warnings
+    }
   };
 
   task.report_review = reviewRecord;
@@ -1031,12 +1075,25 @@ function reviewSpecialistReport(payload) {
         : `Held specialist report ${taskId} for further orchestrator review.`
   });
 
+  if (decision === "accept" && questionCandidateCheck.status === "submitted") {
+    appendEvent({
+      timestamp: now,
+      type: "question_candidates_recorded",
+      actor: "orchestrator",
+      task_id: taskId,
+      agent_id: task.owner_agent_id || null,
+      report: reportPath,
+      summary: `Recorded ${recordedQuestionCandidates.recorded} question candidates from ${taskId}; skipped ${recordedQuestionCandidates.skipped} duplicates.`
+    });
+  }
+
   return {
     saved: true,
     task_id: taskId,
     decision,
     state: task.state,
     report: reportPath,
+    question_candidates: reviewRecord.question_candidates,
     task,
     productionStart,
     specialistPlan
@@ -1588,11 +1645,13 @@ const server = http.createServer(async (req, res) => {
         agents,
         sessions: readJson("sessions.json").sessions || [],
         tasks,
+        triggerAudit: readJson("trigger_audit.json"),
         directives: readJson("directives.json").directives || [],
         events: readJsonl("events.jsonl"),
         reportReviews: buildReportReviews(tasks, agents),
         handoffDrafts: buildHandoffDrafts(tasks, agents, specialistPlan, productionStart),
         vision: {
+          questionCandidates: readJsonFrom(visionRoot, "question_candidates.json", { version: 1, candidates: [], policy: {} }),
           questions: readJsonFrom(visionRoot, "questions.json", { questions: [], curation_policy: {} }),
           answers: readJsonFrom(visionRoot, "answers.json", { answer_batches: [] })
         },
@@ -1617,7 +1676,7 @@ const server = http.createServer(async (req, res) => {
             sample: warning.sample
           }))
         },
-        loadedFiles: ["agents.json", "sessions.json", "tasks.json", "directives.json", "events.jsonl", "questions.json", "answers.json", "incidents.json", "user_actions.json", "queue.json", "options.json", "wizard.json", "project_intake.json", "specialist_plan.json", "production_start.json", "completion_map.json"],
+        loadedFiles: ["agents.json", "sessions.json", "tasks.json", "trigger_audit.json", "directives.json", "events.jsonl", "question_candidates.json", "questions.json", "answers.json", "incidents.json", "user_actions.json", "queue.json", "options.json", "wizard.json", "project_intake.json", "specialist_plan.json", "production_start.json", "completion_map.json"],
         loadedAt: new Date().toISOString(),
         source: "server"
       }, { etag });

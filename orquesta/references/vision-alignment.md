@@ -13,6 +13,8 @@ Questions may come from any specialist, but curation is event-driven. Do not kee
 
 The orchestrator must not independently turn raw answers into project direction. If an answer is ambiguous, playful, contradictory, or taste-heavy, the orchestrator routes it to `vision-curator` and waits for a curator report. This keeps the user's nuance with the question specialist instead of letting the manager become an accidental taste interpreter.
 
+Specialist question candidates are also raw material, not user-facing questions. Every specialist report must include structured `question_candidates`: either 0-3 useful candidates or `status: "none"` with a valid `none_reason`. The orchestrator stores submitted candidates in `.orquesta/vision/question_candidates.json`; `vision-curator` decides which candidates become curated questions in `.orquesta/vision/questions.json`.
+
 User answers are seeds for thought, not commands. A question exists to help the user notice, compare, and refine ideas, including ideas they had never consciously considered. Unless the user explicitly says a point is a hard requirement, Orquesta must treat the answer as provisional material for dialogue.
 
 Do not convert an answer directly into implementation work just because it sounds sensible. First turn it into a conversation object: what seems good, what may be weak, what alternative the AI suggests, what needs user confirmation, and what should not be adopted yet.
@@ -24,9 +26,40 @@ Wake `vision-curator` when one of these is true:
 - project kickoff needs initial vision capture
 - uncurated questions reach 10 or more
 - any question has `priority: "high"`
+- any pending question candidate has `priority: "high"`
+- pending question candidates reach 5 or more
+- the oldest pending question candidate is older than 24 hours during active development
+- a pending question candidate has `suggested_timing: "before_acceptance"`
 - a task is accepted and produced new creative ambiguity
 - the user says they want to answer, review, or consolidate questions
 - a major direction change conflicts with previous decisions
+
+## Question Candidate Lifecycle
+
+Specialist reports produce candidates, not final questions. Store raw candidates in `.orquesta/vision/question_candidates.json`.
+
+Use these statuses:
+
+- `pending_curator_review`: submitted by a specialist and waiting for curator triage
+- `curator_accepted`: curator decided the candidate is useful
+- `curator_rejected`: curator rejected it as low-value, unclear, or not user-actionable
+- `merged_duplicate`: curator merged it into another candidate or existing question
+- `promoted_to_question`: curator created or updated a `questions.json` entry from it
+- `retired`: stale or no longer useful
+
+Candidate items should include:
+
+- `priority`: `low`, `medium`, or `high`
+- `category`: `scope`, `design`, `workflow`, `quality`, `risk`, `roadmap`, `user_preference`, `technical_direction`, `release`, or `other`
+- `question`
+- `why_now`
+- `user_impact`
+- `suggested_timing`: `now`, `before_next_task`, `before_acceptance`, `batch_later`, or `roadmap_review`
+- `source_task_id`
+- `source_agent_id`
+- `source_report_path`
+
+`vision-curator` should batch low and medium candidates unless timing makes them acceptance-critical. Raw candidates should not appear directly as user-facing questions.
 
 ## Question Lifecycle
 
@@ -61,6 +94,7 @@ Every answer batch should pass through this cushion before it changes production
 
 ```text
 .orquesta/vision/
+  question_candidates.json
   questions.json
   answers.json
   profile.md

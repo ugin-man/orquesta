@@ -166,7 +166,77 @@ Useful delegation event types:
 - `handoff_sent`: the orchestrator sent a real specialist handoff.
 - `direct_exception_used`: the orchestrator used a documented direct-work exception.
 - `specialist_report_received`: a specialist report path or artifact was recorded.
+- `question_candidates_recorded`: specialist report question candidates were extracted into `.orquesta/vision/question_candidates.json`.
+- `question_candidates_missing`: a specialist report was held because required `question_candidates` metadata was missing.
 - `orchestrator_acceptance_decision`: the orchestrator accepted, held, rejected, or requested changes after review.
+
+## vision/question_candidates.json
+
+`question_candidates.json` is the raw inbox for specialist-proposed question candidates. It is not user-facing. The orchestrator writes submitted candidates here after report review; `vision-curator` filters, deduplicates, rewrites, and promotes useful entries into `questions.json`.
+
+```json
+{
+  "version": 1,
+  "candidates": [
+    {
+      "candidate_id": "QC-T124-001",
+      "status": "pending_curator_review",
+      "priority": "medium",
+      "category": "workflow",
+      "question": "Should specialist reports be blocked when they omit question-candidate metadata?",
+      "why_now": "A protocol review found recent specialist reports could be accepted without proving whether useful questions existed.",
+      "user_impact": "This determines whether Orquesta keeps a durable question discovery loop without flooding the user.",
+      "suggested_timing": "before_next_task",
+      "source_task_id": "T124",
+      "source_agent_id": "protocol-architect-001",
+      "source_report_path": ".orquesta/reports/T124-protocol-question-candidate-loop.md",
+      "created_at": "2026-06-25T00:00:00Z",
+      "curated_by": null,
+      "curated_at": null,
+      "curator_decision": null,
+      "question_id": null,
+      "notes": []
+    }
+  ],
+  "policy": {
+    "curator_agent_id": "vision-curator",
+    "wake_triggers": [
+      "pending_high_priority_candidate",
+      "pending_candidates_gte_5",
+      "pending_candidates_age_hours_gte_24",
+      "candidate_blocks_acceptance",
+      "user_requests_question_review"
+    ],
+    "default_batch_size": 8
+  }
+}
+```
+
+Candidate statuses:
+
+- `pending_curator_review`: submitted by a specialist and waiting for curator triage.
+- `curator_accepted`: curator decided the candidate is useful.
+- `curator_rejected`: curator rejected it as low-value, unclear, or not user-actionable.
+- `merged_duplicate`: curator merged it into another candidate or existing question.
+- `promoted_to_question`: curator created or updated a `questions.json` entry from it.
+- `retired`: stale or no longer useful.
+
+Required candidate fields:
+
+- `candidate_id`
+- `status`
+- `priority`: `low`, `medium`, or `high`
+- `category`: `scope`, `design`, `workflow`, `quality`, `risk`, `roadmap`, `user_preference`, `technical_direction`, `release`, or `other`
+- `question`
+- `why_now`
+- `user_impact`
+- `suggested_timing`: `now`, `before_next_task`, `before_acceptance`, `batch_later`, or `roadmap_review`
+- `source_task_id`
+- `source_agent_id`
+- `source_report_path`
+- `created_at`
+
+`question_candidates` is required report metadata for specialist-owned tasks. A report may use `status: "none"` instead of items, but must include a valid `none_reason`.
 
 ## vision/questions.json
 
@@ -208,6 +278,8 @@ Useful delegation event types:
 ```
 
 Questions generated from first-run project intake should use `setup_gate: true` and `required_for_setup: true`. The dashboard should prioritize these before ordinary vision questions. Project intake must exist before these setup questions are generated or shown. First-run setup completion stays blocked until they are answered, then setup autopilot may prepare the initial Completion Map and specialist plan without separate user approval gates.
+
+`questions.json` should contain curated questions only. Do not write raw specialist candidates here directly; use `question_candidates.json` until `vision-curator` promotes them.
 
 ## vision/answers.json
 

@@ -42,7 +42,21 @@ You may speak directly with the user about this role's domain. Preserve nuance. 
 
 ## Vision Question Policy
 
-If the task exposes user-taste ambiguity, propose 0-3 questions. Do not ask everything immediately. Mark whether each question is `low`, `medium`, or `high` priority and why it matters.
+Every specialist report must include structured `question_candidates` metadata. Submit 0-3 useful candidates that would clarify user intent, future plans, quality risk, design direction, or task scope. Do not ask the user directly unless the handoff explicitly says to; `vision-curator` curates raw candidates into useful user-facing batches.
+
+If there are no useful candidates, set `status: "none"` and provide a valid `none_reason` plus a one-sentence rationale. This prevents forced garbage questions while proving the specialist considered whether the task exposed useful ambiguity.
+
+Valid `none_reason` values:
+
+- `purely_mechanical_change`
+- `no_new_user_choice`
+- `already_covered_by_existing_question`
+- `duplicate_or_low_value`
+- `report_only_readiness_no_new_ambiguity`
+- `blocked_before_domain_insight`
+- `emergency_or_recovery_no_question_yet`
+
+Candidate items must include `priority`, `category`, `question`, `why_now`, `user_impact`, `suggested_timing`, and the source task.
 
 ## Done Signal
 
@@ -148,7 +162,40 @@ status: completed | blocked | needs_review | rejected_scope
 
 ## Question Candidates
 
-- 
+Include exactly one structured block:
+
+```json
+{
+  "question_candidates": {
+    "status": "submitted",
+    "items": [
+      {
+        "priority": "low | medium | high",
+        "category": "scope | design | workflow | quality | risk | roadmap | user_preference | technical_direction | release | other",
+        "question": "Short user-facing question candidate.",
+        "why_now": "Why this arose from the current task.",
+        "user_impact": "What user decision, risk, or future work this could improve.",
+        "suggested_timing": "now | before_next_task | before_acceptance | batch_later | roadmap_review",
+        "source_task_id": "<task-id>",
+        "source_agent_id": "<agent-id>",
+        "source_report_path": ".orquesta/reports/<task-id>-<agent-id>.md"
+      }
+    ]
+  }
+}
+```
+
+If no useful candidate exists, use:
+
+```json
+{
+  "question_candidates": {
+    "status": "none",
+    "none_reason": "purely_mechanical_change",
+    "none_rationale": "This task introduced no new user choice, ambiguity, risk, or future planning question."
+  }
+}
+```
 
 ## Handoff
 

@@ -7,9 +7,22 @@
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="./styles.css">
   </head>
-  <body>
-    <header class="hero">
-      <nav class="nav">
+  <body class="glass-chassis-bands refero-fusion refero-comfort-glass refero-one-light">
+    <svg class="liquid-glass-defs" aria-hidden="true" focusable="false" width="0" height="0">
+      <defs>
+        <filter id="orquestaGlassChassisEdge" x="-14%" y="-14%" width="128%" height="128%" color-interpolation-filters="sRGB">
+          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.03" numOctaves="1" seed="23" result="chassisNoise"></feTurbulence>
+          <feDisplacementMap in="SourceGraphic" in2="chassisNoise" scale="3" xChannelSelector="R" yChannelSelector="G" result="bentEdge"></feDisplacementMap>
+          <feColorMatrix in="bentEdge" type="matrix" values="1.03 0 0 0 0  0 1.02 0 0 0  0 0 1.06 0 0  0 0 0 1 0" result="coolEdge"></feColorMatrix>
+          <feMerge>
+            <feMergeNode in="coolEdge"></feMergeNode>
+            <feMergeNode in="SourceGraphic"></feMergeNode>
+          </feMerge>
+        </filter>
+      </defs>
+    </svg>
+    <header class="hero recovery-hero home-hero">
+      <nav class="nav recovery-nav">
         <div class="brand">
           <span class="brand-mark">O</span>
           <div>
@@ -17,70 +30,187 @@
             <p data-i18n="brand.subtitle">Production command board for long-lived Codex teammates</p>
           </div>
         </div>
+
+        <div class="home-view-switch" role="tablist" aria-label="Dashboard views">
+          <button class="view-tab active" type="button" data-view-target="home" data-i18n="view.home">Home</button>
+          <button class="view-tab" type="button" data-view-target="actions" data-i18n="view.actions">User Actions</button>
+          <button class="view-tab" type="button" data-view-target="delegation" data-i18n="view.delegation">Delegation</button>
+          <button class="view-tab" type="button" data-view-target="progress" data-i18n="view.progress">Progress</button>
+          <button class="view-tab" type="button" data-view-target="setup" data-i18n="view.setup">Setup</button>
+        </div>
+
         <div class="toolbar">
-          <div class="view-switch" role="tablist" aria-label="Dashboard view">
-            <button class="view-tab active" type="button" data-view-target="operations" data-i18n="view.operations">Operations</button>
-            <button class="view-tab" type="button" data-view-target="user" data-i18n="view.userTasks">User Tasks</button>
-          </div>
           <div class="sync-chip" id="syncChip">Sample state</div>
-          <button class="lang-toggle" id="langToggle" type="button" aria-label="Switch language">日本語</button>
+          <button class="lang-toggle" id="langToggle" type="button" aria-label="Switch language">日本語 / EN</button>
           <label class="file-button" data-i18n-title="load.title" title="Load Orquesta state files">
             <span data-i18n="load.button">Load state</span>
             <input id="stateFiles" type="file" multiple accept=".json,.jsonl">
           </label>
         </div>
       </nav>
-
-      <section class="hero-grid">
-        <div class="attention-panel">
-          <span class="eyebrow" data-i18n="eyebrow.attention">attention</span>
-          <h2 id="attentionTitle">Ready for orchestration</h2>
-          <p id="attentionText">Load live state files to inspect active agents, accepted work, review items, and fresh specialist reports.</p>
-          <div class="attention-actions" id="attentionActions"></div>
-        </div>
-        <div class="metrics" id="metrics"></div>
-      </section>
     </header>
 
     <main>
-      <section class="dashboard-view active" data-view-panel="operations">
-        <section class="setup-wizard-panel panel compact-setup">
-          <div class="section-title">
+      <section class="dashboard-view active" data-view-panel="home">
+        <section class="home-awareness panel">
+          <div class="home-status-line">
             <div>
-              <span class="eyebrow" data-i18n="eyebrow.setup">setup</span>
-              <h2 data-i18n="section.setupWizard">First Setup</h2>
+              <span class="eyebrow" data-i18n="home.now">now</span>
+              <h2 id="attentionTitle">Ready for orchestration</h2>
+              <p id="attentionText">Load live state files to inspect active agents, accepted work, review items, and fresh specialist reports.</p>
             </div>
-            <span id="setupCount"></span>
+            <div class="attention-actions" id="attentionActions"></div>
           </div>
-          <div id="setupWizard" class="setup-wizard"></div>
+
+          <div class="home-awareness-grid">
+            <section>
+              <div class="section-title compact-title">
+                <div>
+                  <span class="eyebrow" data-i18n="home.current">current work</span>
+                  <h3 data-i18n="home.currentTitle">What Orquesta Is Doing</h3>
+                </div>
+              </div>
+              <div id="currentWorkSummary" class="current-work-summary"></div>
+            </section>
+
+            <section>
+              <div class="section-title compact-title">
+                <div>
+                  <span class="eyebrow" data-i18n="home.userNeed">your move</span>
+                  <h3 data-i18n="home.userNeedTitle">What Needs You</h3>
+                </div>
+              </div>
+              <div id="userNeedSummary" class="user-need-summary"></div>
+            </section>
+          </div>
+
+          <section class="home-notifications">
+            <div class="section-title compact-title">
+              <div>
+                <span class="eyebrow" data-i18n="home.notifications">notifications</span>
+                <h3 data-i18n="home.notificationsTitle">Attention Queue</h3>
+              </div>
+            </div>
+            <div id="notificationQueue" class="notification-queue"></div>
+          </section>
         </section>
 
-        <section class="team-visualizer panel">
-          <div class="section-title">
-            <div>
-              <span class="eyebrow" data-i18n="eyebrow.teamMap">team map</span>
-              <h2 data-i18n="section.teamVisualizer">Team Visualizer</h2>
+        <section class="home-command-layout">
+          <section class="team-visualizer panel command-board-panel">
+            <div class="section-title command-board-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.teamMap">command board</span>
+                <h2 data-i18n="recovery.commandBoard">Command Board</h2>
+                <p data-i18n="home.commandDetail">Organization graph and active specialist structure</p>
+              </div>
+              <span id="teamCount"></span>
             </div>
-            <span id="teamCount"></span>
-          </div>
-          <div class="visualizer-shell">
-            <div id="teamTree" class="team-tree" aria-live="polite"></div>
+            <div class="visualizer-shell">
+              <div id="teamTree" class="team-tree" aria-live="polite"></div>
+            </div>
+          </section>
+
+          <aside class="panel contextual-inspector">
+            <div class="section-title inspector-title">
+              <div>
+                <span class="eyebrow" data-i18n="home.context">context</span>
+                <h2 data-i18n="home.inspector">Agent Inspector</h2>
+              </div>
+            </div>
             <aside id="agentInspector" class="agent-inspector"></aside>
+          </aside>
+        </section>
+      </section>
+
+      <section class="dashboard-view focused-view" data-view-panel="actions">
+        <section class="focused-head panel">
+          <button class="view-back" type="button" data-view-target="home" data-i18n="home.back">Back to Home</button>
+          <div>
+            <span class="eyebrow" data-i18n="view.actions">User Actions</span>
+            <h2 data-i18n="actions.title">Focused Action Workspace</h2>
+            <p id="actionFocusLabel" data-i18n="actions.detail">Open notifications here to answer questions, review approvals, inspect blockers, or handle reports.</p>
           </div>
         </section>
-
-        <section class="completion-map-panel panel">
-          <div class="section-title">
-            <div>
-              <span class="eyebrow" data-i18n="eyebrow.completion">completion</span>
-              <h2 data-i18n="section.completionMap">Completion Map</h2>
+        <section class="focused-grid">
+          <article class="panel">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.userTasks">your desk</span>
+                <h2 data-i18n="section.userTasks">User Tasks</h2>
+              </div>
+              <span id="userTaskCount"></span>
             </div>
-            <span id="completionCount"></span>
-          </div>
-          <div id="completionMap" class="completion-map"></div>
+            <div id="userTaskSummary" class="user-task-summary"></div>
+          </article>
+          <article class="panel vision-panel">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.vision">vision</span>
+                <h2 data-i18n="section.vision">Vision Questions</h2>
+              </div>
+              <span id="visionCount"></span>
+            </div>
+            <div id="visionPanel" class="vision-body"></div>
+          </article>
+          <article class="panel repair-panel">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.repairs">repairs</span>
+                <h2 data-i18n="section.repairs">Repair Cards</h2>
+              </div>
+              <span id="repairCount"></span>
+            </div>
+            <div id="repairCards" class="repair-cards"></div>
+          </article>
         </section>
+      </section>
 
-        <section class="operations-grid compact">
+      <section class="dashboard-view focused-view" data-view-panel="delegation">
+        <section class="focused-head panel">
+          <button class="view-back" type="button" data-view-target="home" data-i18n="home.back">Back to Home</button>
+          <div>
+            <span class="eyebrow" data-i18n="delegation.eyebrow">delegation truth</span>
+            <h2 data-i18n="delegation.title">Delegation Truth</h2>
+            <p data-i18n="delegation.focusDetail">Handoff, report, and direct-exception evidence from task state.</p>
+          </div>
+        </section>
+        <section class="focused-grid one-column">
+          <article class="panel">
+            <div id="delegationTruthSummary" class="delegation-truth"></div>
+          </article>
+          <article class="panel">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="delegation.ledger">Delegation Ledger</span>
+                <h2 data-i18n="delegation.ledger">Delegation Ledger</h2>
+              </div>
+            </div>
+            <div id="delegationLedger" class="delegation-ledger"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="dashboard-view focused-view" data-view-panel="progress">
+        <section class="focused-head panel">
+          <button class="view-back" type="button" data-view-target="home" data-i18n="home.back">Back to Home</button>
+          <div>
+            <span class="eyebrow" data-i18n="view.progress">Progress</span>
+            <h2 data-i18n="recovery.projectRoute">Project Route</h2>
+            <p data-i18n="progress.focusDetail">Completion map, current phase, and task flow live here instead of Home.</p>
+          </div>
+        </section>
+        <section class="focused-grid one-column">
+          <article class="panel command-route-panel">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.completion">project route</span>
+                <h2 data-i18n="recovery.projectRoute">Project Route</h2>
+              </div>
+              <span id="completionCount"></span>
+            </div>
+            <div id="completionMap" class="completion-map"></div>
+            <div id="completionMapDetail" class="completion-map completion-map-detail"></div>
+          </article>
           <article class="panel progress-panel">
             <div class="section-title">
               <div>
@@ -91,7 +221,6 @@
             </div>
             <div id="progressPanel" class="progress-body"></div>
           </article>
-
           <article class="panel">
             <div class="section-title">
               <div>
@@ -103,8 +232,48 @@
             <div id="tasks" class="list"></div>
           </article>
         </section>
+      </section>
 
-        <section class="board-grid lower single">
+      <section class="dashboard-view focused-view" data-view-panel="setup">
+        <section class="focused-head panel">
+          <button class="view-back" type="button" data-view-target="home" data-i18n="home.back">Back to Home</button>
+          <div>
+            <span class="eyebrow" data-i18n="view.setup">Setup</span>
+            <h2 data-i18n="section.setupWizard">First Setup Wizard</h2>
+            <p data-i18n="setup.focusDetail">Setup, directives, and history are kept out of Home.</p>
+          </div>
+        </section>
+        <section class="focused-grid">
+          <article class="panel setup-wizard-panel compact-setup command-setup-panel">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.setup">setup</span>
+                <h2 data-i18n="section.setupWizard">First Setup</h2>
+              </div>
+              <span id="setupCount"></span>
+            </div>
+            <div id="setupWizard" class="setup-wizard"></div>
+          </article>
+          <article class="panel foundation-audit-panel">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="foundation.status">Audit status</span>
+                <h2 data-i18n="section.foundationAudit">Foundation Audit</h2>
+                <p data-i18n="foundation.detail">Event-driven foundation trigger checks and stale-state visibility.</p>
+              </div>
+            </div>
+            <div id="foundationAudit" class="foundation-audit"></div>
+          </article>
+          <article class="panel panel-wide">
+            <div class="section-title">
+              <div>
+                <span class="eyebrow" data-i18n="eyebrow.intent">intent</span>
+                <h2 data-i18n="section.directives">Directives</h2>
+              </div>
+              <span id="directiveCount"></span>
+            </div>
+            <div id="directives" class="list"></div>
+          </article>
           <article class="panel panel-wide">
             <div class="section-title">
               <div>
@@ -117,60 +286,12 @@
           </article>
         </section>
       </section>
-
-      <section class="dashboard-view" data-view-panel="user">
-        <section class="user-task-hero panel">
-          <div class="section-title">
-            <div>
-              <span class="eyebrow" data-i18n="eyebrow.userTasks">your desk</span>
-              <h2 data-i18n="section.userTasks">User Tasks</h2>
-            </div>
-            <span id="userTaskCount"></span>
-          </div>
-          <div id="userTaskSummary" class="user-task-summary"></div>
-        </section>
-
-        <section class="repair-panel panel">
-          <div class="section-title">
-            <div>
-              <span class="eyebrow" data-i18n="eyebrow.repairs">repairs</span>
-              <h2 data-i18n="section.repairs">Repair Cards</h2>
-            </div>
-            <span id="repairCount"></span>
-          </div>
-          <div id="repairCards" class="repair-cards"></div>
-        </section>
-
-        <section class="vision-panel panel">
-          <div class="section-title">
-            <div>
-              <span class="eyebrow" data-i18n="eyebrow.vision">vision</span>
-              <h2 data-i18n="section.vision">Vision Questions</h2>
-            </div>
-            <span id="visionCount"></span>
-          </div>
-          <div id="visionPanel" class="vision-body"></div>
-        </section>
-
-        <section class="board-grid lower single">
-          <article class="panel panel-wide">
-            <div class="section-title">
-              <div>
-                <span class="eyebrow" data-i18n="eyebrow.intent">intent</span>
-                <h2 data-i18n="section.directives">Directives</h2>
-              </div>
-              <span id="directiveCount"></span>
-            </div>
-            <div id="directives" class="list"></div>
-          </article>
-        </section>
-      </section>
     </main>
 
     <template id="emptyTemplate">
       <div class="empty" data-i18n="empty.records">No records yet</div>
     </template>
-
+    <script src="./vendor/dagre.min.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

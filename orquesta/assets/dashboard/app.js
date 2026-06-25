@@ -1,8 +1,19 @@
+﻿// ---- extracted inline script block 1 from orquesta_cursor_attached_reflection_v6_no_white_awareness_fix(2).html ----
+const COMMAND_BOARD_LAYOUT_VERSION = "command-board-lane-grid-v1";
+const COMMAND_BOARD_OVERRIDE_KEY = "orquesta.commandBoard.layoutOverrides.v1";
+const COMMAND_BOARD_DRAG_THRESHOLD = 4;
+
 const state = {
   agents: [],
   sessions: [],
   tasks: [],
   directives: [],
+  triggerAudit: {
+    status: "not_run",
+    summary: {},
+    sessions: {},
+    foundation_agents: []
+  },
   vision: {
     questions: [],
     answerBatches: [],
@@ -53,7 +64,7 @@ const state = {
   previewAgentId: null,
   showMoreTasks: false,
   showMoreEvents: false,
-  currentView: "operations",
+  currentView: "home",
   answerDrafts: {},
   answerStatus: null,
   reviewDrafts: {},
@@ -68,12 +79,23 @@ const state = {
   isSetupEditing: false,
   selectedQuestionId: null,
   showAllQuestions: false,
+  showAllDelegationTruth: false,
+  showAllDelegationLedger: false,
+  actionFocusCategory: null,
+  actionFocusId: null,
+  showAllActionHandoffs: false,
+  showAllActionReports: false,
   isAnswerEditing: false,
   pendingLiveRender: false,
+  commandBoardGraph: null,
+  commandBoardLayout: null,
+  commandBoardOverrides: loadCommandBoardLayoutOverrides(),
+  commandBoardDrag: null,
+  suppressTeamClick: false,
   map: {
-    x: 0,
+    x: -24,
     y: 0,
-    scale: 0.82
+    scale: 0.92
   }
 };
 
@@ -162,6 +184,15 @@ const sample = {
       summary: "Direct specialist conversations should preserve user nuance and sync back."
     }
   ],
+  triggerAudit: {
+    status: "sample",
+    summary: { clear: 2, trigger_ready: 0, standby_stale: 2, wake_needed: 0, wake_required: 0 },
+    sessions: { status: "fresh", synced_at: null, age_minutes: 0 },
+    foundation_agents: [
+      { agent_id: "vision-curator", trigger_status: "standby_stale", reasons: ["No active trigger; event-driven standby is expected."] },
+      { agent_id: "error-concierge", trigger_status: "clear", reasons: ["No open repeated incidents."] }
+    ]
+  },
   vision: {
     questions: [
       {
@@ -544,6 +575,10 @@ const dictionary = {
     "team.moreAgents": "+{count} more",
     "team.podAgents": "{count} agents",
     "team.podActive": "{count} running",
+    "team.manualLayout": "manual",
+    "team.dragNode": "Drag node",
+    "team.resetSelectedLayout": "Reset selected",
+    "team.resetAllLayout": "Reset all",
     "team.panHint": "Drag to pan · wheel to zoom",
     "team.sessionLinked": "session linked",
     "map.commander": "commander",
@@ -714,6 +749,10 @@ const dictionary = {
     "team.moreAgents": "+{count}体",
     "team.podAgents": "{count}体",
     "team.podActive": "稼働 {count}体",
+    "team.manualLayout": "手動",
+    "team.dragNode": "ノードを移動",
+    "team.resetSelectedLayout": "選択を戻す",
+    "team.resetAllLayout": "全て戻す",
     "team.panHint": "ドラッグで移動 · ホイールでズーム",
     "team.sessionLinked": "実セッション",
     "map.commander": "命令元",
@@ -998,6 +1037,463 @@ Object.assign(dictionary.ja, {
   "completion.trigger.new-required-surface-discovered": "新しく必要な画面や機能が見つかった"
 });
 
+Object.assign(dictionary.en, {
+  "actions.summary": "Action filters",
+  "actions.inbox": "Priority Action Inbox",
+  "actions.inboxDetail": "P0/P1 work that needs user attention now.",
+  "actions.inboxEmpty": "No urgent user action is waiting.",
+  "actions.workShelves": "Work shelves",
+  "actions.openSource": "Open",
+  "actions.priority": "Priority",
+  "actions.priority.p0": "P0",
+  "actions.priority.p1": "P1",
+  "actions.priority.p2": "P2",
+  "actions.priority.p3": "P3",
+  "actions.filtered": "Focused: {label}",
+  "actions.all": "All actions",
+  "actions.noneInCategory": "No current items in this category."
+});
+
+Object.assign(dictionary.ja, {
+  "actions.summary": "対応フィルター",
+  "actions.inbox": "優先対応インボックス",
+  "actions.inboxDetail": "今すぐ見える場所に置くP0/P1のユーザー対応です。",
+  "actions.inboxEmpty": "今すぐ必要なユーザー対応はありません。",
+  "actions.workShelves": "作業棚",
+  "actions.openSource": "開く",
+  "actions.priority": "優先度",
+  "actions.priority.p0": "P0",
+  "actions.priority.p1": "P1",
+  "actions.priority.p2": "P2",
+  "actions.priority.p3": "P3",
+  "actions.filtered": "表示中: {label}",
+  "actions.all": "すべての対応",
+  "actions.noneInCategory": "このカテゴリの現在の項目はありません。"
+});
+
+Object.assign(dictionary.en, {
+  "view.home": "Home",
+  "view.actions": "User Actions",
+  "view.delegation": "Delegation",
+  "view.progress": "Progress",
+  "recovery.health": "Orchestra Health",
+  "recovery.healthReady": "Ready",
+  "recovery.commandBoard": "Command Board",
+  "recovery.commandBoardDetail": "Live specialist map with handoff status",
+  "recovery.selectedAgent": "selected agent",
+  "recovery.inspector": "Inspector",
+  "recovery.projectRoute": "Project Route",
+  "recovery.secondary": "secondary",
+  "recovery.secondaryTitle": "Operations Detail",
+  "recovery.progressAndTasks": "Progress And Task Flow",
+  "recovery.supportQueues": "Repair, Vision, Directives, Events",
+  "recovery.projectRouteDetail": "Project Route Detail",
+  "home.now": "now",
+  "home.running": "running agents",
+  "home.runningTitle": "Running Agents",
+  "home.current": "current work",
+  "home.currentTitle": "What Orquesta Is Doing",
+  "home.userNeed": "your move",
+  "home.userNeedTitle": "What Needs You",
+  "home.notifications": "notifications",
+  "home.notificationsTitle": "Attention Queue",
+  "home.commandDetail": "Organization graph and active specialist structure",
+  "home.context": "context",
+  "home.inspector": "Agent Inspector",
+  "home.back": "Back to Home",
+  "home.noRunning": "No agents are running right now",
+  "home.noNotifications": "No notifications need action",
+  "home.open": "Open",
+  "home.activeTask": "Active task",
+  "actions.title": "Focused Action Workspace",
+  "actions.detail": "Open notifications here to answer questions, review approvals, inspect blockers, or handle reports.",
+  "progress.focusDetail": "Completion map, current phase, and task flow live here instead of Home.",
+  "setup.focusDetail": "Setup, directives, and history are kept out of Home.",
+  "delegation.eyebrow": "delegation truth",
+  "delegation.title": "Delegation Truth",
+  "delegation.ledger": "Delegation Ledger",
+  "delegation.specialist": "Specialist handoffs",
+  "delegation.missing": "Missing reports",
+  "delegation.awaiting": "Awaiting review",
+  "delegation.direct": "Direct exceptions",
+  "delegation.handoff": "Handoff",
+  "delegation.report": "Report",
+  "delegation.owner": "Owner",
+  "delegation.routing": "Routing",
+  "delegation.sent": "sent",
+  "delegation.notSent": "not sent",
+  "delegation.expected": "expected",
+  "delegation.notExpected": "not expected",
+  "delegation.present": "present",
+  "delegation.missingStatus": "missing",
+  "delegation.awaitingStatus": "awaiting review",
+  "delegation.acceptedStatus": "accepted",
+  "delegation.directException": "direct exception",
+  "delegation.reason": "Reason",
+  "delegation.reviewOwner": "Review owner",
+  "delegation.none": "No delegation evidence to show",
+  "delegation.focusDetail": "Handoff, report, and direct-exception evidence from task state.",
+  "delegation.summary": "{count} records",
+  "delegation.truthSummary": "{specialist} handoffs · {missing} missing · {awaiting} awaiting · {direct} direct",
+  "legend.active": "Active",
+  "legend.busy": "Busy",
+  "legend.idle": "Idle",
+  "legend.approval": "Awaiting Approval",
+  "legend.done": "Completed",
+  "legend.offline": "Offline"
+});
+
+Object.assign(dictionary.ja, {
+  "view.home": "ホーム",
+  "view.actions": "ユーザー対応",
+  "view.delegation": "委任状況",
+  "view.progress": "進行",
+  "recovery.health": "オーケストラ状態",
+  "recovery.healthReady": "準備完了",
+  "recovery.commandBoard": "指揮ボード",
+  "recovery.commandBoardDetail": "ハンドオフ状況つきの専門AIマップ",
+  "recovery.selectedAgent": "選択中のAI",
+  "recovery.inspector": "インスペクター",
+  "recovery.projectRoute": "プロジェクト進路",
+  "recovery.secondary": "詳細",
+  "recovery.secondaryTitle": "運用詳細",
+  "recovery.progressAndTasks": "進行とタスクフロー",
+  "recovery.supportQueues": "修理・ビジョン・指示・履歴",
+  "recovery.projectRouteDetail": "プロジェクト進路の詳細",
+  "home.now": "現在",
+  "home.running": "稼働中のAI",
+  "home.runningTitle": "稼働中のAI",
+  "home.current": "現在の作業",
+  "home.currentTitle": "Orquestaが今していること",
+  "home.userNeed": "あなたの対応",
+  "home.userNeedTitle": "あなたに必要な対応",
+  "home.notifications": "通知",
+  "home.notificationsTitle": "対応キュー",
+  "home.commandDetail": "組織図と稼働中の専門AI構成",
+  "home.context": "詳細",
+  "home.inspector": "AIインスペクター",
+  "home.back": "ホームへ戻る",
+  "home.noRunning": "現在稼働中のAIはありません",
+  "home.noNotifications": "今すぐ対応が必要な通知はありません",
+  "home.open": "開く",
+  "home.activeTask": "進行中タスク",
+  "actions.title": "対応ワークスペース",
+  "actions.detail": "通知を開くと、質問への回答、承認確認、ブロッカー確認、報告レビューをここで扱えます。",
+  "progress.focusDetail": "完成マップ、現在フェーズ、タスクフローはホームではなくここで確認します。",
+  "setup.focusDetail": "セットアップ、指示、履歴はホームから分けてここにまとめています。",
+  "delegation.eyebrow": "委任の証跡",
+  "delegation.title": "委任状況",
+  "delegation.ledger": "委任台帳",
+  "delegation.specialist": "専門AIハンドオフ",
+  "delegation.missing": "報告未提出",
+  "delegation.awaiting": "レビュー待ち",
+  "delegation.direct": "直接対応例外",
+  "delegation.handoff": "ハンドオフ",
+  "delegation.report": "報告",
+  "delegation.owner": "担当",
+  "delegation.routing": "ルーティング",
+  "delegation.sent": "送信済み",
+  "delegation.notSent": "未送信",
+  "delegation.expected": "必要",
+  "delegation.notExpected": "不要",
+  "delegation.present": "あり",
+  "delegation.missingStatus": "未提出",
+  "delegation.awaitingStatus": "レビュー待ち",
+  "delegation.acceptedStatus": "受理済み",
+  "delegation.directException": "直接対応例外",
+  "delegation.reason": "理由",
+  "delegation.reviewOwner": "レビュー担当",
+  "delegation.none": "表示できる委任証跡はありません",
+  "delegation.focusDetail": "タスク状態から、ハンドオフ、報告、直接対応例外の証跡を確認します。",
+  "delegation.summary": "{count}件",
+  "delegation.truthSummary": "専門AI {specialist}件 · 未提出 {missing}件 · レビュー待ち {awaiting}件 · 直接例外 {direct}件",
+  "legend.active": "稼働中",
+  "legend.busy": "作業中",
+  "legend.idle": "待機中",
+  "legend.approval": "承認待ち",
+  "legend.done": "完了",
+  "legend.offline": "オフライン"
+});
+
+Object.assign(dictionary.ja, {
+  "brand.subtitle": "長期稼働するCodexチームメイトの制作司令盤",
+  "load.button": "状態を読み込む",
+  "load.title": "agents.json、tasks.json、events.jsonl、completion_map.json などのOrquesta状態ファイルを読み込む",
+  "lang.toggle": "English",
+  "sync.live": "ライブ · {count}ファイル",
+  "sync.server": "自動更新 · {time}",
+  "sync.sample": "サンプル状態",
+  "eyebrow.attention": "注目",
+  "eyebrow.progress": "進行",
+  "eyebrow.now": "現在",
+  "eyebrow.chain": "指揮系統",
+  "eyebrow.team": "チーム",
+  "eyebrow.teamMap": "指揮ボード",
+  "eyebrow.work": "作業",
+  "eyebrow.intent": "指示",
+  "eyebrow.timeline": "履歴",
+  "eyebrow.completion": "プロジェクト進路",
+  "eyebrow.setup": "セットアップ",
+  "eyebrow.vision": "ビジョン",
+  "eyebrow.userTasks": "あなたの対応",
+  "eyebrow.repairs": "修理",
+  "section.progress": "作業進行",
+  "section.running": "稼働中",
+  "section.command": "指揮マップ",
+  "section.roster": "専門AI一覧",
+  "section.teamVisualizer": "チーム可視化",
+  "section.tasks": "タスクフロー",
+  "section.directives": "指示",
+  "section.events": "最近のイベント",
+  "section.completionMap": "完成マップ",
+  "section.setupWizard": "初回セットアップ",
+  "section.vision": "ビジョン質問",
+  "section.userTasks": "ユーザー対応",
+  "section.repairs": "修理カード",
+  "empty.records": "まだ記録がありません",
+  "attention.ready.title": "統括準備完了",
+  "attention.ready.text": "表示中の作業は落ち着いています。ライブ状態を読み込むか、次の専門タスクを割り当てられます。",
+  "attention.blocked.title": "{count}件のブロッカーがあります",
+  "attention.review.title": "{count}件の確認待ち指示があります",
+  "attention.review.text": "ユーザーと専門AIの更新に、統括側の確認が必要です。",
+  "attention.active.title": "{count}件のタスクが進行中です",
+  "attention.stale.title": "{count}体の稼働AIにハートビートがありません",
+  "attention.encoding.title": "状態ファイルに{count}件の文字化け警告があります",
+  "attention.encoding.text": "Orquestaの状態テキストが壊れている可能性があります。npm run check:encoding を実行し、対象ファイルを確認してください。",
+  "metric.agents": "AI",
+  "metric.tasks": "タスク",
+  "metric.blocked": "停止中",
+  "metric.review": "確認",
+  "metric.vision": "ビジョン",
+  "metric.sessions": "セッション",
+  "metric.completion": "マップ",
+  "metric.agents.detail": "稼働 {active} · 待機 {standby}",
+  "metric.tasks.detail": "進行 {active} · 受理済み {accepted}",
+  "metric.blocked.detail": "進行停止",
+  "metric.review.detail": "指示 + stale",
+  "metric.vision.detail": "提示可 {ready} · 下書き {draft}",
+  "metric.sessions.detail": "紐づき {linked} · 未任命 {unassigned}",
+  "metric.completion.detail": "完了 {done} · 進行 {active}",
+  "count.total": "全{count}件",
+  "count.complete": "{count}% 完了",
+  "count.noTasks": "タスクなし",
+  "count.running": "{count}件稼働中",
+  "count.calm": "稼働なし",
+  "progress.acceptedOf": "{total}件中{accepted}件が受理済み",
+  "progress.detail": "進行 {active}、待機 {queued}、停止 {blocked}、レビュー中 {review}",
+  "progress.accepted": "受理済み",
+  "progress.active": "進行中",
+  "progress.blocked": "停止中",
+  "completion.definition": "完了条件",
+  "completion.remaining": "残り {count}件",
+  "completion.done": "完了 {count}件",
+  "completion.current": "現在の焦点",
+  "completion.revision": "見直し条件",
+  "completion.noMap": "完成マップはまだありません",
+  "completion.noMapDetail": "プロジェクト説明後に、Orquestaが完了に必要な大項目を作ります。",
+  "completion.noItems": "項目未記録",
+  "completion.owner": "担当",
+  "team.user": "ユーザー",
+  "team.userRole": "発案と承認",
+  "team.floor": "指揮フロア",
+  "team.currentTask": "現在のタスク",
+  "team.ownedTasks": "担当タスク",
+  "team.dependsOn": "依存",
+  "team.collaboratesWith": "協力",
+  "team.noCurrentTask": "進行中タスクなし",
+  "team.noDependencies": "現在の依存なし",
+  "team.noCollaborators": "他AIとの協力記録なし",
+  "team.moreAgents": "+{count}体",
+  "team.podAgents": "{count}体",
+  "team.podActive": "{count}体稼働",
+  "team.manualLayout": "手動",
+  "team.dragNode": "ノードを移動",
+  "team.resetSelectedLayout": "選択を戻す",
+  "team.resetAllLayout": "全て戻す",
+  "team.panHint": "ドラッグで移動 · ホイールでズーム",
+  "team.sessionLinked": "セッション紐づき",
+  "task.checks": "確認項目",
+  "task.result": "結果",
+  "task.none": "なし",
+  "task.notAccepted": "未受理",
+  "value.active": "稼働中",
+  "value.in-progress": "進行中",
+  "value.accepted": "受理済み",
+  "value.blocked": "停止中",
+  "value.queued": "待機中",
+  "value.standby": "待機中",
+  "value.needs-review": "レビュー待ち",
+  "value.needs-orchestrator-review": "統括レビュー待ち",
+  "value.live-files-loaded": "ライブ状態読み込み済み",
+  "value.sample-preview": "サンプル表示",
+  "value.loaded": "{time} 読み込み",
+  "value.active-work": "進行中作業",
+  "value.stale-heartbeat": "ハートビート未記録",
+  "value.no-task": "タスクなし",
+  "value.unassigned": "未割り当て",
+  "value.unknown": "不明",
+  "value.orchestrator": "統括",
+  "value.visual-art": "ビジュアル",
+  "value.implementation": "実装",
+  "value.world-lore": "世界観",
+  "value.playtest-qa": "プレイテストQA",
+  "user.readyQuestions": "回答待ち質問",
+  "user.reviewDirectives": "確認待ち",
+  "user.blockedTasks": "相談待ち",
+  "user.repairCards": "修理カード",
+  "user.liaisonTasks": "窓口タスク",
+  "user.visionReviews": "回答レビュー",
+  "user.reportReviews": "専門AI報告",
+  "user.handoffDrafts": "ハンドオフ文面",
+  "user.approvalWaits": "承認待ち",
+  "user.noTasks": "今あなた待ちの作業はありません",
+  "user.noTasksDetail": "AIチーム側に、ユーザーが今すぐ対応する項目はありません。",
+  "user.questionsDetail": "回答できるビジョン調整質問です。",
+  "user.reviewDetail": "判断や確認が必要な指示・専門AI更新です。",
+  "user.blockedDetail": "ユーザー入力がないと進めにくいタスクです。",
+  "user.repairsDetail": "Failure Concierge が提案した、環境・権限まわりのユーザー側対応です。",
+  "user.liaisonDetail": "User Liaison が整理した、ユーザー側で対応する作業です。",
+  "user.visionReviewDetail": "回答の解釈を採用前に見直す項目です。",
+  "user.reportReviewDetail": "専門AIの完了報告を、統括者が受理するか差し戻すか確認します。",
+  "user.handoffDraftDetail": "専門AIスレッドへ送る作業依頼や差し戻し依頼の文面です。",
+  "user.approvalWaitDetail": "専門AIが Codex の承認や権限判断を待っている項目です。",
+  "handoff.title": "スレッド用ハンドオフ文面",
+  "handoff.empty": "送信待ちのハンドオフ文面はありません",
+  "handoff.agent": "AI",
+  "handoff.thread": "スレッド",
+  "handoff.mode": "種別",
+  "handoff.prompt": "文面",
+  "handoff.copy": "文面をコピー",
+  "handoff.copied": "ハンドオフ文面をコピーしました",
+  "handoff.copyError": "ハンドオフ文面をコピーできませんでした",
+  "report.title": "専門AI報告レビュー",
+  "report.empty": "確認待ちの専門AI報告はありません",
+  "report.agent": "AI",
+  "report.file": "報告書",
+  "report.excerpt": "抜粋",
+  "report.result": "結果",
+  "report.note": "統括メモ",
+  "report.accept": "報告を受理",
+  "report.request_changes": "差し戻す",
+  "report.hold": "保留する",
+  "report.save": "報告レビューを保存",
+  "report.saved": "報告レビューを保存しました",
+  "report.saveError": "報告レビューを保存できませんでした",
+  "report.choose": "報告レビューの判断を選んでください。",
+  "review.title": "採用前レビュー",
+  "review.batch": "回答バッチ",
+  "review.prompt": "確認内容",
+  "review.seeds": "議論の種",
+  "review.signals": "強いシグナル",
+  "review.questions": "確認したいこと",
+  "review.note": "メモ",
+  "review.save": "レビューを保存",
+  "review.saved": "レビューを保存しました",
+  "review.saveError": "レビューを保存できませんでした",
+  "review.keep_as_is": "このまま採用",
+  "review.revise": "書き換えて採用",
+  "review.reject": "採用しない",
+  "review.ask_orquesta_for_alternatives": "Orquestaに代案を出させる",
+  "repair.noCards": "待機中の修理カードはありません",
+  "repair.noCardsDetail": "環境、権限、品質低下回避に関わるユーザー対応が必要になったらここに表示されます。",
+  "repair.why": "理由",
+  "repair.userSteps": "ユーザー側でやること",
+  "repair.codexCanDo": "Codex側でできること",
+  "repair.risk": "リスク",
+  "setup.welcome": "ようこそ",
+  "setup.current": "現在の段階",
+  "setup.autopilot": "自動セットアップ",
+  "setup.operationReady": "準備完了",
+  "setup.autopilotDetail": "プロジェクト説明と質問回答が終わると、Orquestaが初期マップと専門AI体制を準備します。",
+  "setup.readyForOperation": "運用準備完了",
+  "setup.readyForOperationDetail": "初期セットアップは完了しています。マップ、チーム、優先順位は運用中に調整できます。",
+  "setup.autopilotDone": "自動セットアップ完了",
+  "setup.autopilotWaiting": "待機中",
+  "setup.answerQuestions": "質問に答える",
+  "setup.finalizeAutopilot": "初期セットアップを完了",
+  "setup.finishedTitle": "Orquestaは運用できます",
+  "setup.finishedDetail": "初期完成マップと専門AI体制は準備済みです。ここから通常運用として調整できます。",
+  "setup.project": "プロジェクト説明",
+  "setup.projectTitle": "プロジェクト名",
+  "setup.projectDescription": "プロジェクト説明",
+  "setup.saveProject": "プロジェクト説明を保存",
+  "setup.generateQuestions": "必要質問を生成",
+  "setup.approveMap": "完成マップを承認",
+  "setup.generateSpecialists": "専門AI候補を生成",
+  "setup.saveSpecialistPlan": "専門AI判断を保存",
+  "setup.specialistPlan": "専門AI候補",
+  "setup.productionStart": "制作開始",
+  "setup.prepareProduction": "ハンドオフタスクを準備",
+  "setup.productionLegend": "状態の見方",
+  "setup.noSessionsCreated": "セッション作成なし",
+  "setup.localOnly": "保存はlocalhostのダッシュボードで使えます。"
+});
+
+Object.assign(dictionary.ja, {
+  "value.done": "完了",
+  "value.completed": "完了",
+  "value.review": "レビュー中",
+  "value.awaiting-review": "レビュー待ち",
+  "value.ready-for-operation": "運用準備完了",
+  "value.specialist-required": "専門AI必須",
+  "value.direct-exception": "直接対応例外",
+  "value.missing": "未提出",
+  "value.present": "あり",
+  "value.sent": "送信済み",
+  "value.not-sent": "未送信",
+  "value.expected": "必要",
+  "value.not-expected": "不要",
+  "value.busy": "作業中",
+  "value.idle": "待機中",
+  "value.offline": "オフライン",
+  "value.thread": "スレッド",
+  "value.dashboard-ux": "ダッシュボード設計",
+  "value.bootstrap-qa": "初期設定検証",
+  "value.docs-release": "文書公開",
+  "value.protocol-architect": "設計規約",
+  "value.user": "ユーザー"
+});
+
+Object.assign(dictionary.en, {
+  "section.foundationAudit": "Foundation Audit",
+  "foundation.detail": "Event-driven foundation trigger checks and stale-state visibility.",
+  "foundation.status": "Audit status",
+  "foundation.sessions": "Session snapshot",
+  "foundation.generated": "Generated",
+  "foundation.wakeRequired": "Wake required",
+  "foundation.triggerReady": "Trigger ready",
+  "foundation.standbyStale": "Standby stale",
+  "foundation.noAudit": "No trigger audit has been generated yet.",
+  "foundation.noReason": "No active trigger; event-driven standby is expected.",
+  "value.wake-needed": "wake needed",
+  "value.wake-required": "wake required",
+  "value.trigger-ready": "trigger ready",
+  "value.standby-stale": "standby stale",
+  "value.not-run": "not run",
+  "value.fresh": "fresh",
+  "value.stale": "stale"
+});
+
+Object.assign(dictionary.ja, {
+  "section.foundationAudit": "基盤AI監査",
+  "foundation.detail": "イベント駆動の基盤AIを起こす条件と古い状態を確認します。",
+  "foundation.status": "監査状態",
+  "foundation.sessions": "セッション同期",
+  "foundation.generated": "生成時刻",
+  "foundation.wakeRequired": "起動必要",
+  "foundation.triggerReady": "起動条件あり",
+  "foundation.standbyStale": "待機が古い",
+  "foundation.noAudit": "基盤AI監査はまだ生成されていません。",
+  "foundation.noReason": "起動条件はありません。イベント駆動の待機状態です。",
+  "value.wake-needed": "起動必要",
+  "value.wake-required": "起動必須",
+  "value.trigger-ready": "起動条件あり",
+  "value.standby-stale": "待機が古い",
+  "value.not-run": "未実行",
+  "value.fresh": "新しい",
+  "value.stale": "古い"
+});
+
 function t(key, vars = {}, fallback = key) {
   const template = dictionary[currentLang]?.[key] ?? dictionary.en[key] ?? fallback;
   return template.replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? "");
@@ -1071,6 +1567,19 @@ function renderCollapsibleList(id, records, renderer, options) {
   node.innerHTML = `${listHtml}${controlHtml}`;
 }
 
+function renderProgressiveRevealControl(records, visibleRecords, expanded, toggleAction) {
+  if (records.length <= visibleRecords.length && !expanded) return "";
+  const hiddenCount = Math.max(0, records.length - visibleRecords.length);
+  return `
+    <div class="list-collapse-control delegation-reveal-control">
+      <span>${escapeHtml(t("list.showing", { shown: visibleRecords.length, total: records.length }))}</span>
+      <button type="button" data-action="${escapeHtml(toggleAction)}">
+        ${escapeHtml(expanded ? t("list.showLess") : t("list.showMore", { count: hiddenCount }))}
+      </button>
+    </div>
+  `;
+}
+
 function statusClass(status) {
   return normalizeClass(status || "unknown");
 }
@@ -1133,6 +1642,8 @@ function renderAttention() {
 }
 
 function renderMetrics() {
+  const metricsNode = $("metrics");
+  if (!metricsNode) return;
   const { blockedTasks, activeTasks, reviewDirectives, activeAgents, staleAgents } = getSignals();
   const accepted = state.tasks.filter((task) => task.state === "accepted").length;
   const standby = state.agents.filter((agent) => agent.status === "standby").length;
@@ -1140,7 +1651,7 @@ function renderMetrics() {
   const linkedSessions = state.agents.filter((agent) => agent.codex_session).length;
   const unassignedSessions = state.agents.filter((agent) => agent.role === "session").length;
   const completion = completionMapCounts();
-  $("metrics").innerHTML = [
+  metricsNode.innerHTML = [
     [t("metric.agents"), state.agents.length, t("metric.agents.detail", { active: activeAgents.length, standby })],
     [t("metric.sessions"), state.sessions.length, t("metric.sessions.detail", { linked: linkedSessions, unassigned: unassignedSessions })],
     [t("metric.tasks"), state.tasks.length, t("metric.tasks.detail", { active: activeTasks.length, accepted })],
@@ -1209,6 +1720,198 @@ function getUserTaskStats() {
   };
 }
 
+function userActionCategoryLabel(category) {
+  const labels = {
+    "ready-questions": t("user.readyQuestions"),
+    "approval-waits": t("user.approvalWaits"),
+    "handoff-drafts": t("user.handoffDrafts"),
+    "vision-reviews": t("user.visionReviews"),
+    "report-reviews": t("user.reportReviews"),
+    "review-directives": t("user.reviewDirectives"),
+    "blocked-tasks": t("user.blockedTasks"),
+    "repair-cards": t("user.repairCards"),
+    "liaison-tasks": t("user.liaisonTasks")
+  };
+  return labels[category] || t("actions.all");
+}
+
+function userActionPriorityRank(priority) {
+  return { p0: 0, p1: 1, p2: 2, p3: 3 }[String(priority || "p3").toLowerCase()] ?? 3;
+}
+
+function actionTargetId(category, id) {
+  return `${category}:${id || "all"}`;
+}
+
+function isFocusedActionTarget(category, id) {
+  if (!state.actionFocusCategory) return false;
+  if (state.actionFocusCategory !== category) return false;
+  return !state.actionFocusId || state.actionFocusId === actionTargetId(category, id);
+}
+
+function actionTargetAttrs(category, id) {
+  const targetId = actionTargetId(category, id);
+  return `data-action-category="${escapeHtml(category)}" data-action-target-id="${escapeHtml(targetId)}"`;
+}
+
+function actionTargetClass(category, id) {
+  return isFocusedActionTarget(category, id) ? " is-deeplink-target" : "";
+}
+
+function buildUserActionModel() {
+  const stats = getUserTaskStats();
+  const items = [];
+  const add = (item) => {
+    items.push({
+      status: "ready",
+      source: "dashboard",
+      detail: "",
+      ...item
+    });
+  };
+
+  stats.approvalWaits.forEach((task) => add({
+    id: actionTargetId("approval-waits", task.user_task_id),
+    category: "approval-waits",
+    priority: "p0",
+    status: task.status || "ready",
+    source: task.source || "approval_wait",
+    title: task.title || t("user.approvalWaits"),
+    detail: task.prompt || task.requested_action || t("user.approvalWaitDetail"),
+    sourceId: task.user_task_id
+  }));
+
+  stats.repairCards.forEach((card) => add({
+    id: actionTargetId("repair-cards", card.action_id || card.title),
+    category: "repair-cards",
+    priority: "p0",
+    status: card.status || "ready",
+    source: "repair_card",
+    title: card.title || card.summary || t("user.repairCards"),
+    detail: card.why_this_helps || t("user.repairsDetail"),
+    sourceId: card.action_id || card.title
+  }));
+
+  stats.blockedTasks.forEach((task) => add({
+    id: actionTargetId("blocked-tasks", task.task_id),
+    category: "blocked-tasks",
+    priority: "p0",
+    status: task.state || "blocked",
+    source: "task",
+    title: task.title || task.task_id || t("user.blockedTasks"),
+    detail: (task.blocked_by || []).join(", ") || t("user.blockedDetail"),
+    sourceId: task.task_id
+  }));
+
+  stats.reviewDirectives.forEach((directive, index) => add({
+    id: actionTargetId("review-directives", directive.directive_id || directive.id || index),
+    category: "review-directives",
+    priority: "p0",
+    status: directive.status || "review",
+    source: "directive",
+    title: directive.title || directive.summary || t("user.reviewDirectives"),
+    detail: directive.detail || directive.note || t("user.reviewDetail"),
+    sourceId: directive.directive_id || directive.id || index
+  }));
+
+  stats.readyQuestions.forEach((question) => add({
+    id: actionTargetId("ready-questions", question.question_id),
+    category: "ready-questions",
+    priority: question.priority === "high" ? "p0" : "p1",
+    status: question.status || "ready",
+    source: "vision_question",
+    title: question.question_id ? `${question.question_id} ${question.question || ""}` : question.question || t("user.readyQuestions"),
+    detail: question.why_it_matters || t("user.questionsDetail"),
+    sourceId: question.question_id
+  }));
+
+  stats.visionReviewTasks.forEach((task) => add({
+    id: actionTargetId("vision-reviews", task.user_task_id),
+    category: "vision-reviews",
+    priority: "p1",
+    status: task.status || "ready",
+    source: task.source || "vision_answer_review",
+    title: task.title || t("user.visionReviews"),
+    detail: task.prompt || t("user.visionReviewDetail"),
+    sourceId: task.user_task_id
+  }));
+
+  stats.liaisonTasks.forEach((task) => add({
+    id: actionTargetId("liaison-tasks", task.user_task_id),
+    category: "liaison-tasks",
+    priority: "p1",
+    status: task.status || "ready",
+    source: task.source || "user_task",
+    title: task.title || t("user.liaisonTasks"),
+    detail: task.prompt || t("user.liaisonDetail"),
+    sourceId: task.user_task_id
+  }));
+
+  stats.handoffDrafts.forEach((draft) => add({
+    id: actionTargetId("handoff-drafts", draft.handoff_id || draft.task_id),
+    category: "handoff-drafts",
+    priority: "p2",
+    status: draft.task_state || "queued",
+    source: "handoff_draft",
+    title: draft.title || t("user.handoffDrafts"),
+    detail: draft.agent_display_name || draft.agent_id || t("user.handoffDraftDetail"),
+    sourceId: draft.handoff_id || draft.task_id
+  }));
+
+  stats.reportReviews.forEach((review) => add({
+    id: actionTargetId("report-reviews", review.task_id),
+    category: "report-reviews",
+    priority: "p2",
+    status: review.state || "needs_review",
+    source: "report_review",
+    title: review.title || t("user.reportReviews"),
+    detail: review.owner_display_name || review.owner_agent_id || t("user.reportReviewDetail"),
+    sourceId: review.task_id
+  }));
+
+  items.sort((a, b) => userActionPriorityRank(a.priority) - userActionPriorityRank(b.priority)
+    || String(a.category).localeCompare(String(b.category))
+    || String(a.id).localeCompare(String(b.id)));
+
+  return { stats, items };
+}
+
+function applyActionFocus(category, targetId) {
+  state.actionFocusCategory = category || null;
+  state.actionFocusId = targetId || null;
+  if (category === "ready-questions" && targetId) {
+    const questionId = String(targetId).replace(/^ready-questions:/, "");
+    if (questionId && questionId !== "all") state.selectedQuestionId = questionId;
+  }
+  if (category === "handoff-drafts" && targetId) state.showAllActionHandoffs = true;
+  if (category === "report-reviews" && targetId) state.showAllActionReports = true;
+}
+
+function actionFocusSelector() {
+  if (!state.actionFocusCategory) return null;
+  if (state.actionFocusId) return `[data-action-target-id="${CSS.escape(state.actionFocusId)}"]:not(.action-inbox-item)`;
+  return `[data-action-section="${CSS.escape(state.actionFocusCategory)}"]`;
+}
+
+function scheduleActionFocus() {
+  if (state.currentView !== "actions" || !state.actionFocusCategory) return;
+  window.setTimeout(() => {
+    const selector = actionFocusSelector();
+    let target = selector ? document.querySelector(selector) : null;
+    if (!target && state.actionFocusCategory) {
+      target = document.querySelector(`[data-action-category="${CSS.escape(state.actionFocusCategory)}"][data-action-target-id]`);
+    }
+    if (!target) return;
+    target.classList.add("is-deeplink-target");
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    const focusable = target.matches("button, textarea, input, select, a, [tabindex]")
+      ? target
+      : target.querySelector("button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex]");
+    (focusable || target).focus?.({ preventScroll: true });
+    window.setTimeout(() => target.classList.remove("is-deeplink-target"), 1700);
+  }, 40);
+}
+
 function getFailureStats() {
   const incidents = state.failures?.incidents || [];
   const repairCards = state.failures?.userActions || [];
@@ -1217,9 +1920,139 @@ function getFailureStats() {
   return { incidents, repairCards, openIncidents, readyCards };
 }
 
+function activeTaskForHome() {
+  return state.tasks.find((task) => task.state === "active")
+    || state.tasks.find((task) => String(task.state || "").includes("review"))
+    || state.tasks.find((task) => task.state === "blocked")
+    || null;
+}
+
+function renderFoundationAudit() {
+  const node = $("foundationAudit");
+  if (!node) return;
+  const audit = state.triggerAudit || {};
+  const agents = audit.foundation_agents || [];
+  if (!audit.status || (!agents.length && audit.status === "not_run")) {
+    node.innerHTML = `<div class="empty compact-empty">${escapeHtml(t("foundation.noAudit"))}</div>`;
+    return;
+  }
+  const summary = audit.summary || {};
+  const sessions = audit.sessions || {};
+  const generated = audit.generated_at || audit.updated_at || "n/a";
+  const sessionDetail = sessions.status
+    ? `${valueLabel(sessions.status)}${Number.isFinite(sessions.age_minutes) ? ` · ${Math.round(sessions.age_minutes)}m` : ""}`
+    : "n/a";
+  node.innerHTML = `
+    <div class="foundation-audit-summary">
+      <div><span>${escapeHtml(t("foundation.status"))}</span><strong>${escapeHtml(valueLabel(audit.status || "not_run"))}</strong></div>
+      <div><span>${escapeHtml(t("foundation.sessions"))}</span><strong>${escapeHtml(sessionDetail)}</strong></div>
+      <div><span>${escapeHtml(t("foundation.generated"))}</span><strong>${escapeHtml(generated)}</strong></div>
+    </div>
+    <div class="foundation-audit-counts">
+      ${pill(`${t("foundation.wakeRequired")}: ${summary.wake_required || 0}`, summary.wake_required ? "blocked" : "accepted")}
+      ${pill(`${t("foundation.triggerReady")}: ${summary.trigger_ready || 0}`, summary.trigger_ready ? "active" : "accepted")}
+      ${pill(`${t("foundation.standbyStale")}: ${summary.standby_stale || 0}`, summary.standby_stale ? "queued" : "accepted")}
+    </div>
+    <div class="foundation-audit-list">
+      ${agents.length ? agents.map((agent) => `
+        <article class="foundation-audit-row ${statusClass(agent.trigger_status || "clear")}">
+          <div>
+            <b>${escapeHtml(agent.agent_id || agent.role || "foundation")}</b>
+            <span>${escapeHtml(agent.reasons?.[0] || t("foundation.noReason"))}</span>
+          </div>
+          <em>${escapeHtml(valueLabel(agent.trigger_status || "clear"))}</em>
+        </article>
+      `).join("") : `<div class="empty compact-empty">${escapeHtml(t("foundation.noReason"))}</div>`}
+    </div>
+  `;
+}
+
+function renderHomeOverview() {
+  const currentNode = $("currentWorkSummary");
+  const needNode = $("userNeedSummary");
+  const queueNode = $("notificationQueue");
+  if (!currentNode || !needNode || !queueNode) return;
+
+  const task = activeTaskForHome();
+  currentNode.innerHTML = task ? `
+    <article class="current-work-card ${statusClass(task.state)}">
+      <div>
+        <span class="eyebrow">${escapeHtml(task.task_id || t("home.activeTask"))}</span>
+        <h3>${escapeHtml(task.title || t("home.activeTask"))}</h3>
+        <p>${escapeHtml(task.owner_agent_id || t("value.unassigned"))} · ${escapeHtml(delegationStatusLabel(task))}</p>
+      </div>
+      <button type="button" data-action="open-view" data-view-target="delegation">${escapeHtml(t("home.open"))}</button>
+    </article>
+  ` : `<div class="empty compact-empty">${escapeHtml(t("team.noCurrentTask"))}</div>`;
+
+  const stats = getUserTaskStats();
+  const blocked = stats.blockedTasks.length + stats.approvalWaits.length + stats.repairCards.length;
+  needNode.innerHTML = `
+    <div class="user-need-grid">
+      <button type="button" data-action="open-view" data-view-target="actions" data-focus-label="${escapeHtml(t("user.approvalWaits"))}" data-action-category="approval-waits" data-action-id="${escapeHtml(stats.approvalWaits[0] ? actionTargetId("approval-waits", stats.approvalWaits[0].user_task_id) : "")}">
+        <strong>${stats.approvalWaits.length}</strong><span>${escapeHtml(t("user.approvalWaits"))}</span>
+      </button>
+      <button type="button" data-action="open-view" data-view-target="actions" data-focus-label="${escapeHtml(t("user.readyQuestions"))}" data-action-category="ready-questions" data-action-id="${escapeHtml(stats.readyQuestions[0] ? actionTargetId("ready-questions", stats.readyQuestions[0].question_id) : "")}">
+        <strong>${stats.readyQuestions.length}</strong><span>${escapeHtml(t("user.readyQuestions"))}</span>
+      </button>
+      <button type="button" data-action="open-view" data-view-target="actions" data-focus-label="${escapeHtml(t("user.reportReviews"))}" data-action-category="report-reviews" data-action-id="${escapeHtml(stats.reportReviews[0] ? actionTargetId("report-reviews", stats.reportReviews[0].task_id) : "")}">
+        <strong>${stats.reportReviews.length}</strong><span>${escapeHtml(t("user.reportReviews"))}</span>
+      </button>
+      <button type="button" data-action="open-view" data-view-target="actions" data-focus-label="${escapeHtml(t("user.blockedTasks"))}" data-action-category="blocked-tasks" data-action-id="${escapeHtml(stats.blockedTasks[0] ? actionTargetId("blocked-tasks", stats.blockedTasks[0].task_id) : "")}">
+        <strong>${blocked}</strong><span>${escapeHtml(t("user.blockedTasks"))}</span>
+      </button>
+    </div>
+  `;
+
+  const notifications = compactHomeNotifications(buildHomeNotifications(stats));
+  queueNode.innerHTML = notifications.length
+    ? notifications.map(renderHomeNotification).join("")
+    : `<div class="empty compact-empty">${escapeHtml(t("home.noNotifications"))}</div>`;
+}
+
+function compactHomeNotifications(notices) {
+  const selected = [];
+  ["actions", "delegation", "progress"].forEach((view) => {
+    const notice = notices.find((item) => item.view === view && !selected.includes(item));
+    if (notice) selected.push(notice);
+  });
+  notices.forEach((notice) => {
+    if (selected.length < 3 && !selected.includes(notice)) selected.push(notice);
+  });
+  return selected.slice(0, 3);
+}
+
+function buildHomeNotifications(stats) {
+  const truth = delegationTruth();
+  const notices = [];
+  if (stats.approvalWaits.length) notices.push({ title: t("user.approvalWaits"), count: stats.approvalWaits.length, detail: t("user.approvalWaitDetail"), view: "actions", tone: "blocked", category: "approval-waits", actionId: actionTargetId("approval-waits", stats.approvalWaits[0].user_task_id) });
+  if (stats.readyQuestions.length) notices.push({ title: t("user.readyQuestions"), count: stats.readyQuestions.length, detail: t("user.questionsDetail"), view: "actions", tone: "active", category: "ready-questions", actionId: actionTargetId("ready-questions", stats.readyQuestions[0].question_id) });
+  if (stats.reportReviews.length) notices.push({ title: t("user.reportReviews"), count: stats.reportReviews.length, detail: t("user.reportReviewDetail"), view: "actions", tone: "blocked", category: "report-reviews", actionId: actionTargetId("report-reviews", stats.reportReviews[0].task_id) });
+  if (stats.repairCards.length) notices.push({ title: t("user.repairCards"), count: stats.repairCards.length, detail: t("user.repairsDetail"), view: "actions", tone: "blocked", category: "repair-cards", actionId: actionTargetId("repair-cards", stats.repairCards[0].action_id || stats.repairCards[0].title) });
+  if (stats.handoffDrafts.length) notices.push({ title: t("user.handoffDrafts"), count: stats.handoffDrafts.length, detail: t("user.handoffDraftDetail"), view: "actions", tone: "active", category: "handoff-drafts", actionId: actionTargetId("handoff-drafts", stats.handoffDrafts[0].handoff_id || stats.handoffDrafts[0].task_id) });
+  if (truth.missing.length) notices.push({ title: t("delegation.missing"), count: truth.missing.length, detail: t("delegation.focusDetail"), view: "delegation", tone: "blocked" });
+  if (truth.direct.length) notices.push({ title: t("delegation.direct"), count: truth.direct.length, detail: t("delegation.focusDetail"), view: "delegation", tone: "direct-exception" });
+  const blockedTasks = state.tasks.filter((task) => task.state === "blocked" || (task.blocked_by || []).length);
+  if (blockedTasks.length) notices.push({ title: t("metric.blocked"), count: blockedTasks.length, detail: blockedTasks[0]?.title || t("task.none"), view: "progress", tone: "blocked" });
+  return notices;
+}
+
+function renderHomeNotification(item) {
+  return `
+    <button type="button" class="notification-card ${item.tone || "active"}" data-action="open-view" data-view-target="${escapeHtml(item.view)}" data-focus-label="${escapeHtml(item.title)}" ${item.category ? `data-action-category="${escapeHtml(item.category)}"` : ""} ${item.actionId ? `data-action-id="${escapeHtml(item.actionId)}"` : ""}>
+      <strong>${escapeHtml(item.count)}</strong>
+      <span>
+        <b>${escapeHtml(item.title)}</b>
+        <small>${escapeHtml(item.detail || "")}</small>
+      </span>
+      <em>${escapeHtml(t("home.open"))}</em>
+    </button>
+  `;
+}
+
 function renderViewSwitch() {
   const availableViews = new Set([...document.querySelectorAll("[data-view-target]")].map((button) => button.dataset.viewTarget));
-  if (!availableViews.has(state.currentView)) state.currentView = "operations";
+  if (!availableViews.has(state.currentView)) state.currentView = "home";
   document.querySelectorAll("[data-view-target]").forEach((button) => {
     const active = button.dataset.viewTarget === state.currentView;
     button.classList.toggle("active", active);
@@ -1255,7 +2088,7 @@ function renderVisionReviewTasks(tasks) {
   if (!tasks.length) return "";
 
   return `
-    <section class="vision-review-board">
+    <section class="vision-review-board action-source-board" data-action-section="vision-reviews">
       <div class="section-title compact-title">
         <div>
           <span class="eyebrow">${escapeHtml(t("review.title"))}</span>
@@ -1268,7 +2101,7 @@ function renderVisionReviewTasks(tasks) {
         const draft = state.reviewDrafts[task.user_task_id] || {};
         const choices = task.review_choices || ["keep_as_is", "revise", "reject", "ask_orquesta_for_alternatives"];
         return `
-          <article class="vision-review-card ${statusClass(task.status)}">
+          <article class="vision-review-card ${statusClass(task.status)}${actionTargetClass("vision-reviews", task.user_task_id)}" ${actionTargetAttrs("vision-reviews", task.user_task_id)} tabindex="-1">
             <div class="review-card-head">
               <div>
                 <span class="eyebrow">${escapeHtml(task.user_task_id || "review")}</span>
@@ -1313,12 +2146,15 @@ function reportReviewChoiceLabel(choice) {
   return t(`report.${choice}`) || valueLabel(choice);
 }
 
-function renderSpecialistReportReviews(reviews) {
+function renderSpecialistReportReviews(reviews, options = {}) {
   const canSave = ["localhost", "127.0.0.1"].includes(window.location.hostname);
   if (!reviews.length) return "";
+  const limit = options.limit || 2;
+  const expanded = Boolean(options.expanded);
+  const visibleReviews = expanded ? reviews : reviews.slice(0, limit);
 
   return `
-    <section class="vision-review-board report-review-board">
+    <section class="vision-review-board report-review-board action-shelf" data-action-section="report-reviews">
       <div class="section-title compact-title">
         <div>
           <span class="eyebrow">${escapeHtml(t("report.title"))}</span>
@@ -1326,11 +2162,11 @@ function renderSpecialistReportReviews(reviews) {
         </div>
       </div>
       ${state.reportReviewStatus?.message ? `<div class="answer-status ${escapeHtml(state.reportReviewStatus.type || "")}">${escapeHtml(state.reportReviewStatus.message)}</div>` : ""}
-      ${reviews.map((review) => {
+      ${visibleReviews.map((review) => {
         const draft = state.reportReviewDrafts[review.task_id] || {};
         const choices = ["accept", "request_changes", "hold"];
         return `
-          <article class="vision-review-card report-review-card ${statusClass(review.state)}">
+          <article class="vision-review-card report-review-card ${statusClass(review.state)}${actionTargetClass("report-reviews", review.task_id)}" ${actionTargetAttrs("report-reviews", review.task_id)} tabindex="-1">
             <div class="review-card-head">
               <div>
                 <span class="eyebrow">${escapeHtml(review.task_id || "report")}</span>
@@ -1368,15 +2204,19 @@ function renderSpecialistReportReviews(reviews) {
           </article>
         `;
       }).join("")}
+      ${reviews.length > limit ? renderProgressiveRevealControl(reviews, visibleReviews, expanded, "toggle-action-reports") : ""}
     </section>
   `;
 }
 
-function renderHandoffDrafts(drafts) {
+function renderHandoffDrafts(drafts, options = {}) {
   if (!drafts.length) return "";
+  const limit = options.limit || 2;
+  const expanded = Boolean(options.expanded);
+  const visibleDrafts = expanded ? drafts : drafts.slice(0, limit);
 
   return `
-    <section class="vision-review-board handoff-draft-board">
+    <section class="vision-review-board handoff-draft-board action-shelf" data-action-section="handoff-drafts">
       <div class="section-title compact-title">
         <div>
           <span class="eyebrow">${escapeHtml(t("handoff.title"))}</span>
@@ -1384,8 +2224,8 @@ function renderHandoffDrafts(drafts) {
         </div>
       </div>
       ${state.handoffStatus?.message ? `<div class="answer-status ${escapeHtml(state.handoffStatus.type || "")}">${escapeHtml(state.handoffStatus.message)}</div>` : ""}
-      ${drafts.map((draft) => `
-        <article class="vision-review-card handoff-draft-card ${statusClass(draft.task_state)}">
+      ${visibleDrafts.map((draft) => `
+        <article class="vision-review-card handoff-draft-card ${statusClass(draft.task_state)}${actionTargetClass("handoff-drafts", draft.handoff_id || draft.task_id)}" ${actionTargetAttrs("handoff-drafts", draft.handoff_id || draft.task_id)} tabindex="-1">
           <div class="review-card-head">
             <div>
               <span class="eyebrow">${escapeHtml(draft.handoff_id || draft.task_id || "handoff")}</span>
@@ -1410,6 +2250,7 @@ function renderHandoffDrafts(drafts) {
           </div>
         </article>
       `).join("")}
+      ${drafts.length > limit ? renderProgressiveRevealControl(drafts, visibleDrafts, expanded, "toggle-action-handoffs") : ""}
     </section>
   `;
 }
@@ -1422,7 +2263,7 @@ function renderApprovalWaits(tasks) {
   if (!tasks.length) return "";
 
   return `
-    <section class="vision-review-board approval-wait-board">
+    <section class="vision-review-board approval-wait-board action-source-board" data-action-section="approval-waits">
       <div class="section-title compact-title">
         <div>
           <span class="eyebrow">${escapeHtml(t("approval.title"))}</span>
@@ -1433,7 +2274,7 @@ function renderApprovalWaits(tasks) {
         const sourceIds = (task.source_ids || task.source_task_ids || [task.source_task_id]).filter(Boolean);
         const agent = task.source_agent_id || task.support_agent_id || task.assigned_by || t("task.none");
         return `
-          <article class="vision-review-card approval-wait-card ${statusClass(task.status)}">
+          <article class="vision-review-card approval-wait-card ${statusClass(task.status)}${actionTargetClass("approval-waits", task.user_task_id)}" ${actionTargetAttrs("approval-waits", task.user_task_id)} tabindex="-1">
             <div class="review-card-head">
               <div>
                 <span class="eyebrow">${escapeHtml(task.user_task_id || "approval")}</span>
@@ -1458,48 +2299,246 @@ function renderApprovalWaits(tasks) {
   `;
 }
 
-function renderUserTaskSummary() {
-  const stats = getUserTaskStats();
-  $("userTaskCount").textContent = formatCount("total", stats.total);
+function isDelegationTaskOpen(task) {
+  return ["active", "blocked", "needs_review", "needs-review", "accepted"].includes(String(task.state || "").toLowerCase());
+}
+
+function reportStateForTask(task) {
+  if (!task.specialist_report_required) return "not_expected";
+  if (!task.specialist_report_path) return "missing";
+  if (String(task.state || "").toLowerCase() === "accepted") return "accepted";
+  if (String(task.state || "").toLowerCase().includes("review")) return "awaiting";
+  if (task.completed_at || task.result_summary) return "present";
+  return "missing";
+}
+
+function delegationTruth() {
+  const visibleTasks = state.tasks.filter(isDelegationTaskOpen);
+  const specialist = visibleTasks.filter((task) => task.routing_class === "specialist_required");
+  const direct = visibleTasks.filter((task) => task.routing_class === "direct_exception");
+  const missing = specialist.filter((task) => reportStateForTask(task) === "missing");
+  const awaiting = specialist.filter((task) => ["awaiting", "present"].includes(reportStateForTask(task)));
+  return { specialist, direct, missing, awaiting };
+}
+
+function delegationStatusLabel(task) {
+  const reportState = reportStateForTask(task);
+  if (task.routing_class === "direct_exception") return t("delegation.directException");
+  if (reportState === "accepted") return t("delegation.acceptedStatus");
+  if (reportState === "awaiting" || reportState === "present") return t("delegation.awaitingStatus");
+  if (reportState === "missing") return t("delegation.missingStatus");
+  return valueLabel(task.routing_class || task.state || "unknown");
+}
+
+function delegationTone(task) {
+  if (task.routing_class === "direct_exception") return "direct-exception";
+  const reportState = reportStateForTask(task);
+  if (reportState === "missing") return "missing-report";
+  if (reportState === "accepted") return "accepted";
+  if (reportState === "awaiting" || reportState === "present") return "awaiting-report";
+  return "standby";
+}
+
+function tasksForAgentDelegation(agentId) {
+  return state.tasks
+    .filter((task) => isDelegationTaskOpen(task) && task.owner_agent_id === agentId)
+    .filter((task) => task.routing_class === "specialist_required" || task.routing_class === "direct_exception");
+}
+
+function renderDelegationTruth() {
+  const node = $("delegationTruthSummary") || $("delegationTruth");
+  if (!node) return;
+  const truth = delegationTruth();
   const cards = [
-    [t("user.readyQuestions"), stats.readyQuestions.length, t("user.questionsDetail"), "active"],
-    [t("user.approvalWaits"), stats.approvalWaits.length, t("user.approvalWaitDetail"), stats.approvalWaits.length ? "blocked" : "standby"],
-    [t("user.handoffDrafts"), stats.handoffDrafts.length, t("user.handoffDraftDetail"), stats.handoffDrafts.length ? "active" : "standby"],
-    [t("user.visionReviews"), stats.visionReviewTasks.length, t("user.visionReviewDetail"), stats.visionReviewTasks.length ? "active" : "standby"],
-    [t("user.reportReviews"), stats.reportReviews.length, t("user.reportReviewDetail"), stats.reportReviews.length ? "blocked" : "standby"],
-    [t("user.reviewDirectives"), stats.reviewDirectives.length, t("user.reviewDetail"), stats.reviewDirectives.length ? "blocked" : "standby"],
-    [t("user.blockedTasks"), stats.blockedTasks.length, t("user.blockedDetail"), stats.blockedTasks.length ? "blocked" : "standby"],
-    [t("user.repairCards"), stats.repairCards.length, t("user.repairsDetail"), stats.repairCards.length ? "blocked" : "standby"],
-    [t("user.liaisonTasks"), stats.liaisonTasks.length, t("user.liaisonDetail"), stats.liaisonTasks.length ? "active" : "standby"]
+    [t("delegation.specialist"), truth.specialist.length, "active"],
+    [t("delegation.missing"), truth.missing.length, truth.missing.length ? "blocked" : "standby"],
+    [t("delegation.awaiting"), truth.awaiting.length, truth.awaiting.length ? "active" : "standby"],
+    [t("delegation.direct"), truth.direct.length, truth.direct.length ? "direct-exception" : "standby"]
   ];
-  $("userTaskSummary").innerHTML = stats.total
-    ? cards.map(([label, value, detail, tone]) => `
-      <article class="user-task-card ${tone}">
-        <strong>${value}</strong>
-        <div>
-          <b>${escapeHtml(label)}</b>
-          <p>${escapeHtml(detail)}</p>
+  const focus = [...truth.missing, ...truth.awaiting, ...truth.direct];
+  const limit = 5;
+  const visibleFocus = state.showAllDelegationTruth ? focus : focus.slice(0, limit);
+  node.classList.toggle("is-collapsed", !state.showAllDelegationTruth && focus.length > limit);
+  node.innerHTML = `
+    <div class="delegation-stat-grid">
+      ${cards.map(([label, count, tone]) => `
+        <div class="delegation-stat ${tone}">
+          <strong>${count}</strong>
+          <span>${escapeHtml(label)}</span>
         </div>
-      </article>
-    `).join("")
-    : `
+      `).join("")}
+    </div>
+    <div class="delegation-focus-list" data-delegation-reveal="truth">
+      ${visibleFocus.length ? visibleFocus.map((task) => renderDelegationMiniTask(task)).join("") : `<div class="empty">${escapeHtml(t("delegation.none"))}</div>`}
+    </div>
+    ${focus.length > limit ? renderProgressiveRevealControl(focus, visibleFocus, state.showAllDelegationTruth, "toggle-delegation-truth") : ""}
+  `;
+}
+
+function renderDelegationMiniTask(task) {
+  return `
+    <article class="delegation-mini ${delegationTone(task)}" data-delegation-task-id="${escapeHtml(task.task_id)}">
+      <div>
+        <b>${escapeHtml(task.task_id || "task")}</b>
+        <span>${escapeHtml(task.owner_agent_id || t("value.unassigned"))}</span>
+      </div>
+      <em>${escapeHtml(delegationStatusLabel(task))}</em>
+    </article>
+  `;
+}
+
+function renderDelegationLedger() {
+  const node = $("delegationLedger");
+  if (!node) return;
+  const truth = delegationTruth();
+  const rows = [...truth.specialist, ...truth.direct]
+    .sort((a, b) => String(b.handoff_sent_at || b.started_at || b.created_at || "").localeCompare(String(a.handoff_sent_at || a.started_at || a.created_at || "")));
+  const limit = 6;
+  const visibleRows = state.showAllDelegationLedger ? rows : rows.slice(0, limit);
+  node.classList.toggle("is-collapsed", !state.showAllDelegationLedger && rows.length > limit);
+  node.innerHTML = `
+    ${visibleRows.length
+      ? visibleRows.map((task) => renderDelegationLedgerRow(task)).join("")
+      : `<div class="empty">${escapeHtml(t("delegation.none"))}</div>`}
+    ${rows.length > limit ? renderProgressiveRevealControl(rows, visibleRows, state.showAllDelegationLedger, "toggle-delegation-ledger") : ""}
+  `;
+}
+
+function renderDelegationLedgerRow(task) {
+  const reportState = reportStateForTask(task);
+  return `
+    <article class="delegation-row ${delegationTone(task)}" data-delegation-row-id="${escapeHtml(task.task_id)}">
+      <div class="delegation-row-head">
+        <div>
+          <span class="eyebrow">${escapeHtml(task.task_id || "task")}</span>
+          <h3>${escapeHtml(task.title || "")}</h3>
+        </div>
+        <div class="meta">
+          ${pill(task.routing_class || "unknown", task.routing_class || "unknown")}
+          ${pill(delegationStatusLabel(task), delegationTone(task))}
+        </div>
+      </div>
+      <div class="delegation-fields">
+        <div><b>${escapeHtml(t("delegation.owner"))}</b><span>${escapeHtml(task.owner_agent_id || t("value.unassigned"))}</span></div>
+        <div><b>${escapeHtml(t("delegation.handoff"))}</b><span>${escapeHtml(task.handoff_sent_at ? `${t("delegation.sent")} ${shortTime(task.handoff_sent_at)}` : t("delegation.notSent"))}</span></div>
+        <div><b>${escapeHtml(t("delegation.report"))}</b><span>${escapeHtml(task.specialist_report_required ? `${t("delegation.expected")} / ${valueLabel(reportState)}` : t("delegation.notExpected"))}</span></div>
+        <div><b>${escapeHtml(t("report.file"))}</b><span>${escapeHtml(task.specialist_report_path || t("task.none"))}</span></div>
+        ${task.direct_exception_reason ? `<div><b>${escapeHtml(t("delegation.reason"))}</b><span>${escapeHtml(task.direct_exception_reason)}</span></div>` : ""}
+        ${task.bypass_review_owner ? `<div><b>${escapeHtml(t("delegation.reviewOwner"))}</b><span>${escapeHtml(task.bypass_review_owner)}</span></div>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderActionSummaryFilters(model) {
+  const categories = [
+    ["approval-waits", t("user.approvalWaits"), model.stats.approvalWaits.length, t("user.approvalWaitDetail"), "blocked"],
+    ["ready-questions", t("user.readyQuestions"), model.stats.readyQuestions.length, t("user.questionsDetail"), "active"],
+    ["repair-cards", t("user.repairCards"), model.stats.repairCards.length, t("user.repairsDetail"), "blocked"],
+    ["blocked-tasks", t("user.blockedTasks"), model.stats.blockedTasks.length + model.stats.reviewDirectives.length, t("user.blockedDetail"), "blocked"],
+    ["vision-reviews", t("user.visionReviews"), model.stats.visionReviewTasks.length, t("user.visionReviewDetail"), "active"],
+    ["handoff-drafts", t("user.handoffDrafts"), model.stats.handoffDrafts.length, t("user.handoffDraftDetail"), "active"],
+    ["report-reviews", t("user.reportReviews"), model.stats.reportReviews.length, t("user.reportReviewDetail"), "blocked"],
+    ["liaison-tasks", t("user.liaisonTasks"), model.stats.liaisonTasks.length, t("user.liaisonDetail"), "active"]
+  ];
+  return `
+    <section class="action-summary-row" data-action-section="summary">
+      <div class="section-title compact-title">
+        <div>
+          <span class="eyebrow">${escapeHtml(t("actions.summary"))}</span>
+          <h3>${escapeHtml(state.actionFocusCategory ? t("actions.filtered", { label: userActionCategoryLabel(state.actionFocusCategory) }) : t("actions.all"))}</h3>
+        </div>
+      </div>
+      <div class="action-summary-grid">
+        ${categories.map(([category, label, value, detail, tone]) => `
+          <button type="button" class="user-task-card action-summary-filter ${tone} ${state.actionFocusCategory === category ? "selected" : ""}" data-action="filter-user-actions" data-action-category="${escapeHtml(category)}" data-action-id="">
+            <strong>${value}</strong>
+            <div>
+              <b>${escapeHtml(label)}</b>
+              <p>${escapeHtml(detail)}</p>
+            </div>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPriorityInbox(model) {
+  const priorityItems = model.items.filter((item) => userActionPriorityRank(item.priority) <= 1);
+  const visibleItems = state.actionFocusCategory
+    ? priorityItems.filter((item) => item.category === state.actionFocusCategory)
+    : priorityItems;
+  return `
+    <section class="action-priority-inbox" data-action-section="priority-inbox">
+      <div class="section-title compact-title">
+        <div>
+          <span class="eyebrow">${escapeHtml(t("actions.priority"))}</span>
+          <h3>${escapeHtml(t("actions.inbox"))}</h3>
+          <p>${escapeHtml(t("actions.inboxDetail"))}</p>
+        </div>
+        <span>${escapeHtml(formatCount("total", visibleItems.length))}</span>
+      </div>
+      <div class="action-inbox-list">
+        ${visibleItems.length ? visibleItems.map(renderPriorityInboxItem).join("") : `
+          <article class="user-task-empty action-inbox-empty">
+            <b>${escapeHtml(t("actions.inboxEmpty"))}</b>
+            <p>${escapeHtml(state.actionFocusCategory ? t("actions.noneInCategory") : t("user.noTasksDetail"))}</p>
+          </article>
+        `}
+      </div>
+    </section>
+  `;
+}
+
+function renderPriorityInboxItem(item) {
+  return `
+    <article class="action-inbox-item ${item.priority} ${statusClass(item.status)}${state.actionFocusId === item.id ? " is-deeplink-target" : ""}" data-action-priority="${escapeHtml(item.priority)}" data-action-category="${escapeHtml(item.category)}" data-action-target-id="${escapeHtml(item.id)}" tabindex="-1">
+      <div>
+        <span class="eyebrow">${escapeHtml(t(`actions.priority.${item.priority}`))} / ${escapeHtml(userActionCategoryLabel(item.category))}</span>
+        <h3>${escapeHtml(item.title || userActionCategoryLabel(item.category))}</h3>
+        <p>${escapeHtml(item.detail || "")}</p>
+      </div>
+      <button type="button" data-action="focus-user-action" data-action-category="${escapeHtml(item.category)}" data-action-id="${escapeHtml(item.id)}">
+        ${escapeHtml(t("actions.openSource"))}
+      </button>
+    </article>
+  `;
+}
+
+function renderUserTaskSummary() {
+  const model = buildUserActionModel();
+  const stats = model.stats;
+  $("userTaskCount").textContent = formatCount("total", stats.total);
+  const focusLabel = $("actionFocusLabel");
+  if (focusLabel) {
+    focusLabel.textContent = state.actionFocusCategory
+      ? t("actions.filtered", { label: userActionCategoryLabel(state.actionFocusCategory) })
+      : t("actions.detail");
+  }
+  $("userTaskSummary").innerHTML = `
+    ${renderActionSummaryFilters(model)}
+    ${renderPriorityInbox(model)}
+    ${renderApprovalWaits(stats.approvalWaits)}
+    ${renderVisionReviewTasks(stats.visionReviewTasks)}
+    ${renderHandoffDrafts(stats.handoffDrafts, { limit: 2, expanded: state.showAllActionHandoffs })}
+    ${renderSpecialistReportReviews(stats.reportReviews, { limit: 2, expanded: state.showAllActionReports })}
+    ${stats.total ? "" : `
       <article class="user-task-empty">
         <b>${escapeHtml(t("user.noTasks"))}</b>
         <p>${escapeHtml(t("user.noTasksDetail"))}</p>
       </article>
+    `}
   `;
-  $("userTaskSummary").insertAdjacentHTML("beforeend", renderHandoffDrafts(stats.handoffDrafts));
-  $("userTaskSummary").insertAdjacentHTML("beforeend", renderApprovalWaits(stats.approvalWaits));
-  $("userTaskSummary").insertAdjacentHTML("beforeend", renderVisionReviewTasks(stats.visionReviewTasks));
-  $("userTaskSummary").insertAdjacentHTML("beforeend", renderSpecialistReportReviews(stats.reportReviews));
 }
 
 function renderRepairCards() {
   const stats = getFailureStats();
   $("repairCount").textContent = formatCount("total", stats.readyCards.length);
+  $("repairCards").setAttribute("data-action-section", "repair-cards");
   $("repairCards").innerHTML = stats.readyCards.length
     ? stats.readyCards.map((card) => `
-      <article class="repair-card ${statusClass(card.status)}">
+      <article class="repair-card ${statusClass(card.status)}${actionTargetClass("repair-cards", card.action_id || card.title)}" ${actionTargetAttrs("repair-cards", card.action_id || card.title)} tabindex="-1">
         <div class="repair-card-head">
           <div>
             <span class="eyebrow">${escapeHtml(card.action_id || "repair")}</span>
@@ -1533,6 +2572,7 @@ function renderVisionPanel() {
   const canSaveAnswers = ["localhost", "127.0.0.1"].includes(window.location.hostname);
   const draftCount = Object.values(state.answerDrafts).filter((value) => String(value || "").trim()).length;
   $("visionCount").textContent = `${stats.totalQuestions} ${t("vision.questions")} · ${stats.answerBatches} ${t("vision.answers")}`;
+  $("visionPanel").setAttribute("data-action-section", "ready-questions");
 
   const latestQuestions = questions.filter((question) => question.status !== "adopted" && question.status !== "retired").slice(-8).reverse();
   const triggerItems = (policy.wake_triggers || []).slice(0, 6);
@@ -1673,7 +2713,7 @@ function renderVisionPanelV2() {
     const answered = question.status === "answered" || Boolean(state.answerDrafts[question.question_id]?.trim()) || Boolean(question.answer_id);
     const selected = question.question_id === state.selectedQuestionId;
     return `
-      <button class="question-nav-item ${selected ? "selected" : ""} ${answered ? "answered" : "unanswered"}" type="button" data-question-id="${escapeHtml(question.question_id)}">
+      <button class="question-nav-item ${selected ? "selected" : ""} ${answered ? "answered" : "unanswered"}${actionTargetClass("ready-questions", question.question_id)}" type="button" data-question-id="${escapeHtml(question.question_id)}" ${actionTargetAttrs("ready-questions", question.question_id)}>
         <span class="question-nav-id">${escapeHtml(question.question_id || "Q?")}</span>
         <span class="question-nav-text">${escapeHtml(question.question || "")}</span>
         <span class="question-nav-state">${escapeHtml(answered ? t("vision.answeredMark") : t("vision.unansweredMark"))}</span>
@@ -1808,6 +2848,10 @@ function agentById(agentId) {
   return state.agents.find((agent) => agent.agent_id === agentId);
 }
 
+function nodeEntityId(node) {
+  return node?.dataset?.agentId || node?.dataset?.sessionId || "";
+}
+
 function agentDisplayName(agentOrId) {
   const agent = typeof agentOrId === "string" ? agentById(agentOrId) : agentOrId;
   if (!agent) return String(agentOrId || "");
@@ -1937,22 +2981,28 @@ function applySessionOverlay(agents, sessions) {
 }
 
 function rolePod(role) {
+  const normalized = String(role || "").toLowerCase();
+  if (normalized === "dashboard-ux" || normalized.includes("dashboard") || normalized.includes("design")) return "visual";
   if (role === "visual-art") return "visual";
   if (role === "implementation") return "build";
   if (role === "world-lore") return "world";
-  if (role === "playtest-qa") return "qa";
-  return "support";
+  if (normalized.includes("qa") || normalized.includes("review")) return "qa";
+  if (normalized.includes("docs") || normalized.includes("release")) return "docs";
+  if (normalized.includes("protocol")) return "protocol";
+  return "other";
 }
 
 function podMeta(podId) {
   const meta = {
-    visual: { label: currentLang === "ja" ? "Visual" : "Visual", tone: "#7c5cff" },
-    build: { label: currentLang === "ja" ? "Build" : "Build", tone: "#2478ff" },
-    world: { label: currentLang === "ja" ? "World" : "World", tone: "#21a67a" },
+    visual: { label: currentLang === "ja" ? "ビジュアル" : "Visual", tone: "#7c5cff" },
+    build: { label: currentLang === "ja" ? "実装" : "Build", tone: "#2478ff" },
+    world: { label: currentLang === "ja" ? "世界観" : "World", tone: "#21a67a" },
     qa: { label: currentLang === "ja" ? "QA" : "QA", tone: "#d58a00" },
-    support: { label: currentLang === "ja" ? "Support" : "Support", tone: "#69717d" }
+    docs: { label: currentLang === "ja" ? "文書" : "Docs", tone: "#9a6bff" },
+    protocol: { label: currentLang === "ja" ? "規約" : "Protocol", tone: "#69717d" },
+    other: { label: currentLang === "ja" ? "その他" : "Other", tone: "#69717d" }
   };
-  return meta[podId] || meta.support;
+  return meta[podId] || meta.other;
 }
 
 function taskForAgent(agent) {
@@ -2007,10 +3057,22 @@ function renderAgentNode(agent, variant = "") {
   const preview = state.previewAgentId === agent.agent_id;
   const owned = ownedTasksForAgent(agent);
   const linkedSession = Boolean(agent.codex_session);
+  const delegationTasks = tasksForAgentDelegation(agent.agent_id);
+  const delegationTask = delegationTasks[0];
+  const idAttr = agent.role === "session"
+    ? `data-session-id="${escapeHtml(agent.agent_id)}"`
+    : `data-agent-id="${escapeHtml(agent.agent_id)}"`;
+  const layoutNodeId = commandBoardNodeId("agent", agent.agent_id);
+  const layoutNode = state.commandBoardLayout?.nodes?.get(layoutNodeId);
+  const layoutAttr = layoutNode ? `data-layout-node-id="${escapeHtml(layoutNodeId)}" data-map-node="agent"` : "";
+  const supportDragHandle = layoutNode?.draggable && variant.includes("user-support-node")
+    ? `<span class="layout-drag-handle support-drag-handle" data-layout-drag-handle aria-label="${escapeHtml(t("team.dragNode"))}" title="${escapeHtml(t("team.dragNode"))}"><span aria-hidden="true">⋮⋮</span></span>`
+    : "";
   return `
-    <button class="agent-node ${variant} ${statusClass(agent.status)} ${active ? "has-work" : ""} ${linkedSession ? "session-linked" : ""} ${selected ? "selected" : ""} ${preview ? "preview" : ""}"
+    <button class="agent-node ${variant} ${statusClass(agent.status)} ${active ? "has-work" : ""} ${linkedSession ? "session-linked" : ""} ${selected ? "selected" : ""} ${preview ? "preview" : ""} ${layoutNode?.manual ? "manual-layout" : ""}"
       type="button"
-      data-agent-id="${escapeHtml(agent.agent_id)}"
+      ${idAttr}
+      ${layoutAttr}
       style="--role-color: ${roleTone(agent.role)}">
       ${renderPixelWorker(agent, active)}
       <span class="node-copy">
@@ -2021,14 +3083,16 @@ function renderAgentNode(agent, variant = "") {
         ${escapeHtml(valueLabel(agent.status || "unknown"))}
         <em>${task ? escapeHtml(task.task_id) : escapeHtml(t("team.noCurrentTask"))}</em>
       </span>
+      ${delegationTask ? `<span class="node-delegation ${delegationTone(delegationTask)}">${escapeHtml(delegationStatusLabel(delegationTask))}</span>` : ""}
       ${linkedSession ? `<span class="node-session-chip">${escapeHtml(t("team.sessionLinked"))}</span>` : ""}
       <span class="node-count">${owned.length}</span>
+      ${supportDragHandle}
     </button>
   `;
 }
 
 function buildPods(specialists) {
-  const order = ["visual", "build", "world", "qa", "support"];
+  const order = ["build", "visual", "qa", "docs", "protocol", "world", "other"];
   const groups = new Map(order.map((podId) => [podId, []]));
   for (const agent of specialists) {
     groups.get(rolePod(agent.role)).push(agent);
@@ -2038,30 +3102,396 @@ function buildPods(specialists) {
     .filter((pod) => pod.agents.length);
 }
 
-function podPosition(index, total) {
-  const row = index;
-  const side = row % 2 === 0 ? -1 : 1;
-  if (total === 1) return { x: 310, y: 430, side: 0 };
+function commandBoardNodeId(kind, id) {
+  return `${kind}:${id}`;
+}
+
+function cssVarNameForLayoutNode(nodeId) {
+  return nodeId.replace(/[^a-zA-Z0-9_-]/g, "-");
+}
+
+function loadCommandBoardLayoutOverrides() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(COMMAND_BOARD_OVERRIDE_KEY) || "null");
+    if (!parsed || parsed.layout_version !== COMMAND_BOARD_LAYOUT_VERSION || typeof parsed.offsets !== "object") {
+      return { layout_version: COMMAND_BOARD_LAYOUT_VERSION, base_signature: "", offsets: {} };
+    }
+    return parsed;
+  } catch {
+    return { layout_version: COMMAND_BOARD_LAYOUT_VERSION, base_signature: "", offsets: {} };
+  }
+}
+
+function saveCommandBoardLayoutOverrides() {
+  try {
+    localStorage.setItem(COMMAND_BOARD_OVERRIDE_KEY, JSON.stringify(state.commandBoardOverrides));
+  } catch {
+    // Local storage is best-effort; auto layout remains usable without persistence.
+  }
+}
+
+function commandBoardRolePriority(agent) {
+  const role = String(agent?.role || "").toLowerCase();
+  if (role.includes("orchestrator")) return 0;
+  if (role.includes("admin")) return 1;
+  if (role.includes("liaison")) return 2;
+  if (role.includes("implementation") || role.includes("build")) return 10;
+  if (role.includes("dashboard") || role.includes("visual")) return 20;
+  if (role.includes("qa") || role.includes("review")) return 30;
+  if (role.includes("world") || role.includes("vision")) return 40;
+  if (role.includes("error") || role.includes("support") || role.includes("concierge")) return 50;
+  return 90;
+}
+
+function stableCommandBoardSort(a, b) {
+  const priority = commandBoardRolePriority(a) - commandBoardRolePriority(b);
+  if (priority) return priority;
+  const active = Number(hasLiveWork(b)) - Number(hasLiveWork(a));
+  if (active) return active;
+  return String(a?.agent_id || "").localeCompare(String(b?.agent_id || ""), "en");
+}
+
+function commandBoardBaseSignature(nodes, edges) {
+  const nodeIds = nodes.map((node) => node.id).sort().join("|");
+  const edgeIds = edges.map((edge) => `${edge.from}>${edge.to}`).sort().join("|");
+  return `${nodeIds}::${edgeIds}`;
+}
+
+function commandBoardRect(id, kind, lane, x, y, width, height, extra = {}) {
+  const rect = { id, kind, lane, x, y, autoX: x, autoY: y, width, height, ...extra };
+  return updateCommandBoardPorts(rect);
+}
+
+function updateCommandBoardPorts(rect) {
+  rect.ports = {
+    top: { x: rect.x + rect.width / 2, y: rect.y },
+    bottom: { x: rect.x + rect.width / 2, y: rect.y + rect.height },
+    left: { x: rect.x, y: rect.y + rect.height / 2 },
+    right: { x: rect.x + rect.width, y: rect.y + rect.height / 2 }
+  };
+  return rect;
+}
+
+function buildCommandBoardGraph({ agents, orchestrator, orquestaAdmin, userLiaison, supportAgents, pods }) {
+  const nodes = [
+    { id: commandBoardNodeId("virtual", "user") },
+    orchestrator ? { id: commandBoardNodeId("agent", orchestrator.agent_id) } : null,
+    orquestaAdmin ? { id: commandBoardNodeId("agent", orquestaAdmin.agent_id) } : null,
+    userLiaison ? { id: commandBoardNodeId("agent", userLiaison.agent_id) } : null,
+    supportAgents.length ? { id: commandBoardNodeId("lane", "support") } : null,
+    ...supportAgents.map((agent) => ({ id: commandBoardNodeId("agent", agent.agent_id) })),
+    ...pods.map((pod) => ({ id: commandBoardNodeId("pod", pod.podId) }))
+  ].filter(Boolean);
+  const edges = [
+    orchestrator ? { from: commandBoardNodeId("virtual", "user"), to: commandBoardNodeId("agent", orchestrator.agent_id), type: "spine" } : null,
+    orquestaAdmin ? { from: commandBoardNodeId("virtual", "user"), to: commandBoardNodeId("agent", orquestaAdmin.agent_id), type: "admin" } : null,
+    userLiaison ? { from: commandBoardNodeId("virtual", "user"), to: commandBoardNodeId("agent", userLiaison.agent_id), type: "support" } : null,
+    ...supportAgents.map((agent) => userLiaison ? { from: commandBoardNodeId("agent", userLiaison.agent_id), to: commandBoardNodeId("agent", agent.agent_id), type: "support-child" } : null),
+    ...pods.map((pod) => orchestrator ? { from: commandBoardNodeId("agent", orchestrator.agent_id), to: commandBoardNodeId("pod", pod.podId), type: "production" } : null)
+  ].filter(Boolean);
   return {
-    x: 380 + side * 170,
-    y: 430 + row * 155,
-    side
+    version: "orquesta-lane-grid-v1",
+    engine: "orquesta-lane-grid-v1",
+    agents,
+    orchestrator,
+    orquestaAdmin,
+    userLiaison,
+    supportAgents: supportAgents.slice().sort(stableCommandBoardSort),
+    pods,
+    nodes,
+    edges,
+    signature: commandBoardBaseSignature(nodes, edges)
+  };
+}
+
+function productionGroupHeight(agentCount, maxVisibleRows) {
+  const visibleRows = Math.min(agentCount, maxVisibleRows);
+  return 56 + visibleRows * 44 + 24;
+}
+
+function computeCommandBoardLayout(model) {
+  const padding = { top: 48, right: 56, bottom: 64, left: 56 };
+  const nodes = new Map();
+  const groups = new Map();
+  const lanes = new Map();
+  const warnings = [];
+  const centerX = 520;
+  const supportLaneX = centerX + 165;
+  const userWidth = 210;
+  const userHeight = 72;
+  const user = commandBoardRect(commandBoardNodeId("virtual", "user"), "source", "root", centerX - userWidth / 2, padding.top, userWidth, userHeight, {
+    visible: true,
+    draggable: true
+  });
+  nodes.set(user.id, user);
+
+  if (model.orquestaAdmin) {
+    const admin = commandBoardRect(commandBoardNodeId("agent", model.orquestaAdmin.agent_id), "admin", "admin-satellite", user.x - 28 - 150, user.y + (user.height - 80) / 2, 150, 80, {
+      agent: model.orquestaAdmin,
+      agentId: model.orquestaAdmin.agent_id,
+      visible: true,
+      draggable: true
+    });
+    nodes.set(admin.id, admin);
+  }
+
+  if (model.orchestrator) {
+    const orchestrator = commandBoardRect(commandBoardNodeId("agent", model.orchestrator.agent_id), "orchestrator", "orchestrator-branch", centerX - 125, user.y + user.height + 96, 250, 120, {
+      agent: model.orchestrator,
+      agentId: model.orchestrator.agent_id,
+      visible: true,
+      draggable: true
+    });
+    nodes.set(orchestrator.id, orchestrator);
+  }
+
+  if (model.userLiaison) {
+    const liaison = commandBoardRect(commandBoardNodeId("agent", model.userLiaison.agent_id), "liaison", "user-support", supportLaneX, user.y + 54, 212, 112, {
+      agent: model.userLiaison,
+      agentId: model.userLiaison.agent_id,
+      visible: true,
+      draggable: true
+    });
+    nodes.set(liaison.id, liaison);
+  }
+
+  if (model.supportAgents.length) {
+    const supportTop = model.userLiaison ? user.y + 212 : user.y + user.height + 80;
+    const supportLane = commandBoardRect(commandBoardNodeId("lane", "support"), "support-group", "user-support", supportLaneX, supportTop, 360, 120, {
+      agents: model.supportAgents,
+      visible: true,
+      draggable: false
+    });
+    nodes.set(supportLane.id, supportLane);
+    groups.set(supportLane.id, supportLane);
+    const childWidth = 174;
+    const childGap = 12;
+    model.supportAgents.forEach((agent, index) => {
+      const child = commandBoardRect(commandBoardNodeId("agent", agent.agent_id), "support-child", "user-support", supportLane.x + index * (childWidth + childGap), supportLane.y, childWidth, 118, {
+        agent,
+        agentId: agent.agent_id,
+        visible: true,
+        draggable: true
+      });
+      nodes.set(child.id, child);
+    });
+  }
+
+  const productionCount = model.pods.reduce((count, pod) => count + pod.agents.length, 0);
+  const denseMode = productionCount >= 10;
+  const groupWidth = denseMode ? 280 : 260;
+  const maxVisibleRows = denseMode ? 3 : 4;
+  const groupGap = 72;
+  const rowGap = 88;
+  const maxColumns = 3;
+  const columns = Math.max(1, Math.min(maxColumns, model.pods.length || 1));
+  const productionLaneWidth = columns * groupWidth + Math.max(0, columns - 1) * groupGap;
+  const productionStartX = Math.max(padding.left, centerX - productionLaneWidth / 2);
+  const orchestratorNode = model.orchestrator ? nodes.get(commandBoardNodeId("agent", model.orchestrator.agent_id)) : null;
+  const productionStartY = (orchestratorNode ? orchestratorNode.y + orchestratorNode.height : user.y + user.height) + 112;
+
+  model.pods.forEach((pod, index) => {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+    const rowItems = model.pods.slice(row * columns, row * columns + columns);
+    const rowWidth = rowItems.length * groupWidth + Math.max(0, rowItems.length - 1) * groupGap;
+    const rowStartX = Math.max(padding.left, centerX - rowWidth / 2);
+    const previousRows = [...Array(row).keys()].reduce((sum, rowIndex) => {
+      const rowPods = model.pods.slice(rowIndex * columns, rowIndex * columns + columns);
+      const rowHeight = Math.max(...rowPods.map((item) => productionGroupHeight(item.agents.length, maxVisibleRows)));
+      return sum + rowHeight + rowGap;
+    }, 0);
+    const height = productionGroupHeight(pod.agents.length, maxVisibleRows);
+    const id = commandBoardNodeId("pod", pod.podId);
+    const group = commandBoardRect(id, "production-group", "production", rowStartX + column * (groupWidth + groupGap), productionStartY + previousRows, groupWidth, height, {
+      pod,
+      groupId: id,
+      agentIds: pod.agents.map((agent) => agent.agent_id),
+      visibleRows: Math.min(pod.agents.length, maxVisibleRows),
+      visible: true,
+      draggable: true
+    });
+    nodes.set(id, group);
+    groups.set(id, group);
+  });
+
+  lanes.set("root", { id: "root", x: user.x, y: user.y, width: user.width, height: user.height, role: "source" });
+  lanes.set("production", { id: "production", x: productionStartX - 28, y: productionStartY - 54, width: productionLaneWidth + 56, height: Math.max(220, Math.max(0, ...[...groups.values()].filter((group) => group.lane === "production").map((group) => group.y + group.height)) - productionStartY + 104), role: "production" });
+  const supportRects = [nodes.get(commandBoardNodeId("agent", model.userLiaison?.agent_id || "")), nodes.get(commandBoardNodeId("lane", "support"))].filter(Boolean);
+  if (supportRects.length) {
+    const sx = Math.min(...supportRects.map((rect) => rect.x)) - 28;
+    const sy = Math.min(...supportRects.map((rect) => rect.y)) - 36;
+    const sr = Math.max(...supportRects.map((rect) => rect.x + rect.width)) + 28;
+    const sb = Math.max(...supportRects.map((rect) => rect.y + rect.height)) + 42;
+    lanes.set("user-support", { id: "user-support", x: sx, y: sy, width: sr - sx, height: sb - sy, role: "support" });
+  }
+
+  const layout = {
+    version: "orquesta-lane-grid-v1",
+    engine: "orquesta-lane-grid-v1",
+    bounds: { x: 0, y: 0, width: 1220, height: 720, padding },
+    nodes,
+    groups,
+    lanes,
+    edges: model.edges.map((edge, index) => ({
+      id: `${edge.type}:${index}:${edge.from}->${edge.to}`,
+      from: edge.from,
+      to: edge.to,
+      fromPort: edge.type === "admin" ? "left" : edge.type === "support" ? "right" : "bottom",
+      toPort: edge.type === "admin" ? "right" : edge.type === "support" ? "left" : "top",
+      kind: edge.type,
+      style: edge.type === "admin" ? "secondary" : "primary",
+      path: []
+    })),
+    warnings,
+    signature: model.signature,
+    usedDagre: false,
+    overrides: { baseSignature: model.signature, appliedIds: [], staleIds: [] }
+  };
+  layout.bounds.height = Math.max(720, Math.max(0, ...[...nodes.values()].map((node) => node.y + node.height)) + padding.bottom);
+  applyCommandBoardOverrides(layout);
+  finalizeCommandBoardEdges(layout);
+  detectCommandBoardCollisions(layout);
+  return layout;
+}
+
+function commandBoardRectsOverlap(a, b, threshold = 80) {
+  const x = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const y = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  return x * y > threshold;
+}
+
+function detectCommandBoardCollisions(layout) {
+  const objects = [...layout.nodes.values()].filter((node) => node.visible !== false && !node.id.startsWith("lane:"));
+  for (let i = 0; i < objects.length; i += 1) {
+    for (let j = i + 1; j < objects.length; j += 1) {
+      if (commandBoardRectsOverlap(objects[i], objects[j])) {
+        layout.warnings.push({
+          code: "overlap",
+          severity: "blocking",
+          nodeIds: [objects[i].id, objects[j].id],
+          message: `${objects[i].id} overlaps ${objects[j].id}`
+        });
+      }
+    }
+  }
+}
+
+function applyCommandBoardOverrides(layout) {
+  const overrides = state.commandBoardOverrides || {};
+  const sameSignature = overrides.base_signature === layout.signature;
+  for (const [id, node] of layout.nodes.entries()) {
+    const offset = overrides.offsets?.[id];
+    if (!offset) continue;
+    node.x = Math.round(node.autoX + Number(offset.dx || 0));
+    node.y = Math.round(node.autoY + Number(offset.dy || 0));
+    node.manual = true;
+    node.staleManual = !sameSignature;
+    updateCommandBoardPorts(node);
+    if (layout.groups?.has(id)) {
+      layout.groups.set(id, node);
+    }
+    if (sameSignature) layout.overrides?.appliedIds?.push(id);
+    else layout.overrides?.staleIds?.push(id);
+  }
+  return layout;
+}
+
+function finalizeCommandBoardEdges(layout) {
+  for (const edge of layout.edges) {
+    const source = layout.nodes.get(edge.from) || layout.groups.get(edge.from);
+    const target = layout.nodes.get(edge.to) || layout.groups.get(edge.to);
+    if (!source || !target || !source.ports?.[edge.fromPort] || !target.ports?.[edge.toPort]) {
+      layout.warnings.push({
+        code: "missing-port",
+        severity: "blocking",
+        nodeIds: [edge.from, edge.to],
+        message: `Missing port for ${edge.from} -> ${edge.to}`
+      });
+      edge.path = [];
+      continue;
+    }
+    edge.path = commandBoardEdgePoints(source.ports[edge.fromPort], target.ports[edge.toPort], edge.kind);
+  }
+}
+
+function commandBoardEdgePoints(from, to, kind) {
+  if (kind === "spine" || Math.abs(from.x - to.x) < 2 || Math.abs(from.y - to.y) < 2) {
+    return [from, to];
+  }
+  if (kind === "production") {
+    const busY = Math.round(Math.max(from.y + 64, to.y - 32));
+    return [from, { x: from.x, y: busY }, { x: to.x, y: busY }, to];
+  }
+  if (kind === "support-child") {
+    const busY = Math.round(from.y + Math.max(22, Math.min(40, (to.y - from.y) * 0.55)));
+    return [from, { x: from.x, y: busY }, { x: to.x, y: busY }, to];
+  }
+  const midX = Math.round(from.x + (to.x - from.x) * 0.52);
+  return [from, { x: midX, y: from.y }, { x: midX, y: to.y }, to];
+}
+
+function commandBoardWorldStyle(layout) {
+  if (!layout) return "";
+  const rules = [];
+  for (const [id, node] of layout.nodes.entries()) {
+    const cssId = cssVarNameForLayoutNode(id);
+    rules.push(`--cb-${cssId}-x:${node.x}px`);
+    rules.push(`--cb-${cssId}-y:${node.y}px`);
+  }
+  rules.push(`--cb-layout-engine:${layout.usedDagre ? 1 : 0}`);
+  return rules.join("; ");
+}
+
+function setCommandBoardOverride(nodeId, dx, dy) {
+  if (!state.commandBoardLayout) return;
+  state.commandBoardOverrides.layout_version = COMMAND_BOARD_LAYOUT_VERSION;
+  state.commandBoardOverrides.base_signature = state.commandBoardLayout.signature;
+  state.commandBoardOverrides.offsets = state.commandBoardOverrides.offsets || {};
+  state.commandBoardOverrides.offsets[nodeId] = { dx: Math.round(dx), dy: Math.round(dy), updated_at: new Date().toISOString() };
+}
+
+function clearCommandBoardOverride(nodeId) {
+  if (!state.commandBoardOverrides?.offsets || !nodeId) return;
+  delete state.commandBoardOverrides.offsets[nodeId];
+  saveCommandBoardLayoutOverrides();
+  renderTeamVisualizer();
+}
+
+function clearAllCommandBoardOverrides() {
+  state.commandBoardOverrides = { layout_version: COMMAND_BOARD_LAYOUT_VERSION, base_signature: "", offsets: {} };
+  saveCommandBoardLayoutOverrides();
+  renderTeamVisualizer();
+}
+
+function podPosition(pod, index, total) {
+  const id = commandBoardNodeId("pod", pod.podId);
+  const node = state.commandBoardLayout?.nodes?.get(id);
+  if (node) return { x: node.x, y: node.y, width: node.width, height: node.height, visibleRows: node.visibleRows, side: node.x < 610 ? -1 : 1, manual: node.manual };
+  const side = index % 2 === 0 ? -1 : 1;
+  return {
+    x: 520 + side * 240,
+    y: 460 + Math.floor(index / 2) * 160,
+    side: total === 1 ? 0 : side
   };
 }
 
 function renderPod(pod, index, total) {
-  const visible = pod.agents.slice(0, 6);
+  const pos = podPosition(pod, index, total);
+  const visible = pod.agents.slice(0, pos.visibleRows || 4);
   const hiddenCount = Math.max(0, pod.agents.length - visible.length);
   const activeCount = pod.agents.filter(hasLiveWork).length;
-  const pos = podPosition(index, total);
+  const layoutId = commandBoardNodeId("pod", pod.podId);
   return `
-    <section class="agent-pod ${activeCount ? "pod-active" : ""}" data-pod-id="${escapeHtml(pod.podId)}" data-map-node="pod" style="--pod-color: ${pod.tone}; --map-x: ${pos.x}px; --map-y: ${pos.y}px">
+    <section class="agent-pod production-group-card ${activeCount ? "pod-active" : ""} ${pos.manual ? "manual-layout" : ""}" data-pod-id="${escapeHtml(pod.podId)}" data-layout-node-id="${escapeHtml(layoutId)}" data-map-node="pod" style="--pod-color: ${pod.tone}; --map-x: ${pos.x}px; --map-y: ${pos.y}px; width: ${pos.width || 260}px; min-height: ${pos.height || 124}px">
       <header class="pod-head">
         <div>
           <b>${escapeHtml(pod.label)}</b>
           <span>${escapeHtml(t("team.podAgents", { count: pod.agents.length }))}</span>
         </div>
+        ${pos.manual ? `<span class="manual-layout-badge">${escapeHtml(t("team.manualLayout"))}</span>` : ""}
         <em>${escapeHtml(t("team.podActive", { count: activeCount }))}</em>
+        <button class="layout-drag-handle" type="button" data-layout-drag-handle aria-label="${escapeHtml(t("team.dragNode"))}" title="${escapeHtml(t("team.dragNode"))}"><span aria-hidden="true">⋮⋮</span></button>
       </header>
       <div class="pod-agent-list">
         ${visible.map((agent) => renderAgentNode(agent, "specialist-node compact-node")).join("")}
@@ -2086,22 +3516,40 @@ function renderTeamVisualizer() {
   const coreAgentIds = new Set([orchestrator?.agent_id, orquestaAdmin?.agent_id, userLiaison?.agent_id, visionCurator?.agent_id, errorConcierge?.agent_id].filter(Boolean));
   const specialists = agents.filter((agent) => !coreAgentIds.has(agent.agent_id));
   const pods = buildPods(specialists);
+  state.commandBoardGraph = buildCommandBoardGraph({ agents, orchestrator, orquestaAdmin, userLiaison, supportAgents, pods });
+  state.commandBoardLayout = computeCommandBoardLayout(state.commandBoardGraph);
   const activeCount = agents.filter(hasLiveWork).length;
+  const commandLabel = currentLang === "ja" ? "制作指揮ツリー" : "Production Command";
+  const supportLabel = currentLang === "ja" ? "利用者連携ツリー" : "User Alignment";
   if (!agentById(state.selectedAgentId) && orchestrator) {
     state.selectedAgentId = orchestrator.agent_id;
   }
 
   $("teamCount").textContent = t("count.podsActive", { pods: pods.length, agents: agents.length, active: activeCount });
-  const worldHeight = Math.max(820, 500 + pods.length * 155);
+  const layoutBottom = Math.max(0, ...[...state.commandBoardLayout.nodes.values()].map((node) => node.y + node.height));
+  const worldHeight = Math.max(720, layoutBottom + 120);
+  const worldStyle = commandBoardWorldStyle(state.commandBoardLayout);
   $("teamTree").innerHTML = `
     <div class="map-hud">
       <span>${escapeHtml(t("team.panHint"))}</span>
       <span id="mapZoomReadout">${escapeHtml(t("map.zoom", { zoom: Math.round(state.map.scale * 100) }))}</span>
+      <button class="layout-reset-button" type="button" data-layout-reset="selected">${escapeHtml(t("team.resetSelectedLayout"))}</button>
+      <button class="layout-reset-button" type="button" data-layout-reset="all">${escapeHtml(t("team.resetAllLayout"))}</button>
     </div>
-    <div class="org-map-world" id="orgMapWorld" style="--map-x:${state.map.x}px; --map-y:${state.map.y}px; --map-scale:${state.map.scale}; width: 1000px; height: ${worldHeight}px">
+    <div class="map-status-legend" aria-label="Agent status legend">
+      <span><i class="active"></i>${escapeHtml(t("legend.active"))}</span>
+      <span><i class="busy"></i>${escapeHtml(t("legend.busy"))}</span>
+      <span><i class="idle"></i>${escapeHtml(t("legend.idle"))}</span>
+      <span><i class="approval"></i>${escapeHtml(t("legend.approval"))}</span>
+      <span><i class="done"></i>${escapeHtml(t("legend.done"))}</span>
+      <span><i class="offline"></i>${escapeHtml(t("legend.offline"))}</span>
+    </div>
+    <div class="org-map-world" id="orgMapWorld" data-layout-engine="${escapeHtml(state.commandBoardLayout.engine)}" data-layout-warning-count="${state.commandBoardLayout.warnings.length}" style="--map-x:${state.map.x}px; --map-y:${state.map.y}px; --map-scale:${state.map.scale}; ${worldStyle}; width: ${state.commandBoardLayout.bounds.width}px; height: ${worldHeight}px">
       <svg class="team-link-layer" id="teamLinkLayer" aria-hidden="true"></svg>
+      <div class="mission-plane command-plane" aria-hidden="true"><span>${escapeHtml(commandLabel)}</span></div>
+      <div class="mission-plane support-plane" aria-hidden="true"><span>${escapeHtml(supportLabel)}</span></div>
       <div class="floor-core split-command-core" data-map-node="core">
-        <div class="user-node">
+        <div class="user-node" data-layout-node-id="${escapeHtml(commandBoardNodeId("virtual", "user"))}">
           <span class="user-orb">U</span>
           <div>
             <b>${escapeHtml(t("team.user"))}</b>
@@ -2112,10 +3560,9 @@ function renderTeamVisualizer() {
         ${orchestrator ? renderAgentNode(orchestrator, "orchestrator-node core-peer-node") : ""}
         ${userLiaison ? renderAgentNode(userLiaison, "liaison-node core-peer-node") : ""}
         ${supportAgents.length ? `
-          <div class="user-support-grid">
-            ${visionCurator ? renderAgentNode(visionCurator, "curator-node user-support-node compact-node") : ""}
-            ${errorConcierge ? renderAgentNode(errorConcierge, "error-concierge-node user-support-node compact-node") : ""}
-          </div>
+          <div class="user-support-grid" data-layout-node-id="${escapeHtml(commandBoardNodeId("lane", "support"))}" aria-hidden="true"></div>
+          ${visionCurator ? renderAgentNode(visionCurator, "curator-node user-support-node support-child-node compact-node") : ""}
+          ${errorConcierge ? renderAgentNode(errorConcierge, "error-concierge-node user-support-node support-child-node compact-node") : ""}
         ` : ""}
       </div>
       <div class="pod-ring">
@@ -2138,14 +3585,11 @@ function pointFor(parentRect, childRect, side) {
   return { x, y };
 }
 
-function linkPath(from, to) {
-  const midY = from.y + Math.max(36, (to.y - from.y) * 0.45);
-  return `M ${from.x} ${from.y} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y}`;
-}
-
-function branchPath(spine, to) {
-  const midX = spine.x + (to.x - spine.x) * 0.55;
-  return `M ${spine.x} ${spine.y} C ${midX} ${spine.y}, ${midX} ${to.y}, ${to.x} ${to.y}`;
+function orthogonalPath(points) {
+  return points
+    .filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y))
+    .map((point, index) => `${index ? "L" : "M"} ${Math.round(point.x)} ${Math.round(point.y)}`)
+    .join(" ");
 }
 
 function drawTeamLinks() {
@@ -2158,97 +3602,25 @@ function drawTeamLinks() {
   layer.setAttribute("viewBox", `0 0 ${width} ${height}`);
   layer.innerHTML = "";
 
-  const userNode = stage.querySelector(".user-node");
-  const adminNode = stage.querySelector(".admin-node");
-  const orchestratorNode = stage.querySelector(".orchestrator-node");
-  const liaisonNode = stage.querySelector(".liaison-node");
-  const curatorNode = stage.querySelector(".curator-node");
-  const errorConciergeNode = stage.querySelector(".error-concierge-node");
-  if (!userNode || !orchestratorNode) return;
-
+  const layout = state.commandBoardLayout;
+  if (!layout?.edges?.length) return;
   const links = [];
-  const userPoint = { x: 500, y: 104 };
-  const adminPoint = { x: 288, y: 112 };
-  const orchestratorTop = liaisonNode ? { x: 330, y: 188 } : { x: 500, y: 188 };
-  const orchestratorBottom = liaisonNode ? { x: 330, y: 302 } : { x: 500, y: 302 };
-  const liaisonTop = { x: 650, y: 188 };
-  const liaisonBottom = { x: 650, y: 302 };
-  const curatorTop = { x: errorConciergeNode ? 570 : 650, y: 390 };
-  const errorTop = { x: 750, y: 390 };
-  const userSupportSpine = { x: 650, y: 352 };
-  const spineTop = { x: 380, y: 350 };
-  const trunkBottom = { x: 500, y: Math.max(350, height - 110) };
-  links.push({
-    d: linkPath(userPoint, orchestratorTop),
-    active: hasLiveWork(agentById(orchestratorNode.dataset.agentId) || {}),
-    selected: state.selectedAgentId === orchestratorNode.dataset.agentId,
-    color: roleTone("orchestrator")
-  });
-  if (adminNode) {
+  for (const edge of layout.edges) {
+    if (!edge.path?.length) continue;
+    const target = layout.nodes.get(edge.to) || layout.groups.get(edge.to);
+    const agents = target?.pod?.agents || target?.agents || (target?.agent ? [target.agent] : []);
+    const selected = agents.some((agent) => agent.agent_id === state.selectedAgentId);
+    const active = agents.some(hasLiveWork);
+    const color = target?.pod?.tone || roleTone(agents[0]?.role || (edge.kind === "support" ? "user-liaison" : "orchestrator"));
     links.push({
-      d: `M ${userPoint.x - 118} ${userPoint.y} C ${userPoint.x - 154} ${userPoint.y}, ${adminPoint.x + 48} ${adminPoint.y}, ${adminPoint.x} ${adminPoint.y}`,
-      active: hasLiveWork(agentById(adminNode.dataset.agentId) || {}),
-      selected: state.selectedAgentId === adminNode.dataset.agentId,
-      color: roleTone("orquesta-admin"),
-      admin: true
-    });
-  }
-  if (liaisonNode) {
-    links.push({
-      d: linkPath(userPoint, liaisonTop),
-      active: hasLiveWork(agentById(liaisonNode.dataset.agentId) || {}),
-      selected: state.selectedAgentId === liaisonNode.dataset.agentId,
-      color: roleTone("user-liaison"),
-      peer: true
-    });
-  }
-  if (curatorNode) {
-    links.push({
-      d: `M ${liaisonBottom.x} ${liaisonBottom.y} L ${userSupportSpine.x} ${userSupportSpine.y} C ${userSupportSpine.x} ${curatorTop.y - 22}, ${curatorTop.x} ${curatorTop.y - 22}, ${curatorTop.x} ${curatorTop.y}`,
-      active: hasLiveWork(agentById(curatorNode.dataset.agentId) || {}),
-      selected: state.selectedAgentId === curatorNode.dataset.agentId,
-      color: roleTone("vision-curator"),
-      peer: true
-    });
-  }
-  if (errorConciergeNode) {
-    links.push({
-      d: `M ${liaisonBottom.x} ${liaisonBottom.y} L ${userSupportSpine.x} ${userSupportSpine.y} C ${userSupportSpine.x} ${errorTop.y - 22}, ${errorTop.x} ${errorTop.y - 22}, ${errorTop.x} ${errorTop.y}`,
-      active: hasLiveWork(agentById(errorConciergeNode.dataset.agentId) || {}),
-      selected: state.selectedAgentId === errorConciergeNode.dataset.agentId,
-      color: roleTone("error-concierge"),
-      peer: true
-    });
-  }
-  links.push({
-    d: `M ${orchestratorBottom.x} ${orchestratorBottom.y} C ${orchestratorBottom.x} ${spineTop.y - 28}, ${spineTop.x} ${spineTop.y - 28}, ${spineTop.x} ${spineTop.y} L ${spineTop.x} ${trunkBottom.y}`,
-    active: false,
-    selected: false,
-    color: "#8c96a3",
-    trunk: true
-  });
-
-  for (const pod of stage.querySelectorAll(".agent-pod")) {
-    const podAgents = [...pod.querySelectorAll("[data-agent-id]")]
-      .map((node) => agentById(node.dataset.agentId))
-      .filter(Boolean);
-    const selected = podAgents.some((agent) => agent.agent_id === state.selectedAgentId);
-    const active = podAgents.some(hasLiveWork);
-    const tone = pod.style.getPropertyValue("--pod-color") || "#2478ff";
-    const podRect = {
-      x: parseFloat(pod.style.getPropertyValue("--map-x")) || 500,
-      y: parseFloat(pod.style.getPropertyValue("--map-y")) || 360
-    };
-    const podPoint = {
-      x: podRect.x < spineTop.x ? podRect.x + 112 : podRect.x - 112,
-      y: podRect.y + 60
-    };
-    const spinePoint = { x: spineTop.x, y: podPoint.y };
-    links.push({
-      d: branchPath(spinePoint, podPoint),
+      d: orthogonalPath(edge.path),
       active,
       selected,
-      color: tone,
+      color,
+      trunk: edge.kind === "spine",
+      peer: edge.kind === "support" || edge.kind === "support-child",
+      admin: edge.kind === "admin",
+      kind: edge.kind
     });
   }
 
@@ -2257,6 +3629,7 @@ function drawTeamLinks() {
       d="${link.d}"
       style="--link-color: ${link.color || "#2478ff"}"
       pathLength="1"
+      data-link-kind="${escapeHtml(link.kind)}"
       data-link-index="${index}"></path>
   `).join("");
 }
@@ -2272,6 +3645,7 @@ function renderAgentInspector() {
   const deps = agentDependencies(agent);
   const collaborators = agentCollaborators(agent);
   const session = agent.codex_session || null;
+  const delegationTasks = tasksForAgentDelegation(agent.agent_id).slice(0, 3);
   $("agentInspector").innerHTML = `
     <div class="inspector-head" style="--role-color: ${roleTone(agent.role)}">
       ${renderPixelWorker(agent, hasLiveWork(agent))}
@@ -2288,6 +3662,12 @@ function renderAgentInspector() {
     <div class="inspector-section">
       <b>${escapeHtml(t("agent.mission"))}</b>
       <p>${escapeHtml(agent.mission || "")}</p>
+    </div>
+    <div class="inspector-section">
+      <b>${escapeHtml(t("delegation.title"))}</b>
+      ${delegationTasks.length ? delegationTasks.map((task) => `
+        <p><strong>${escapeHtml(task.task_id)}</strong> ${escapeHtml(delegationStatusLabel(task))} · ${escapeHtml(task.specialist_report_path || task.direct_exception_reason || t("task.none"))}</p>
+      `).join("") : `<p>${escapeHtml(t("delegation.none"))}</p>`}
     </div>
     ${session ? `
       <div class="inspector-section">
@@ -2330,24 +3710,27 @@ function renderCompletionMap() {
   const map = state.completionMap || {};
   const { phases, total, done, active, percent } = completionMapCounts();
   const node = $("completionMap");
+  const detailNode = $("completionMapDetail");
   if (!node) return;
   $("completionCount").textContent = phases.length
     ? `${percent}% · ${t("completion.remaining", { count: Math.max(0, total - done) })}`
     : t("completion.noMap");
 
   if (!phases.length) {
-    node.innerHTML = `
+    const emptyHtml = `
       <div class="completion-empty">
         <b>${escapeHtml(t("completion.noMap"))}</b>
         <p>${escapeHtml(t("completion.noMapDetail"))}</p>
       </div>
     `;
+    node.innerHTML = emptyHtml;
+    if (detailNode) detailNode.innerHTML = emptyHtml;
     return;
   }
 
   const currentPhase = phases.find((phase) => ["active", "in_progress", "review"].includes(phase.status)) || phases.find((phase) => phase.status !== "done") || phases[0];
   const triggers = map.revision_policy?.review_triggers || [];
-  node.innerHTML = `
+  const compactHtml = `
     <div class="completion-hero">
       <div class="completion-radial" style="--progress:${percent * 3.6}deg">
         <strong>${percent}%</strong>
@@ -2369,6 +3752,9 @@ function renderCompletionMap() {
         <small>${escapeHtml(currentPhase?.summary || "")}</small>
       </div>
     </div>
+  `;
+  const detailHtml = `
+    ${compactHtml}
     <div class="completion-phase-track">
       ${phases.map((phase, index) => renderCompletionPhase(phase, index)).join("")}
     </div>
@@ -2377,6 +3763,8 @@ function renderCompletionMap() {
       <span>${escapeHtml(triggers.length ? triggers.map(completionTriggerLabel).join(" · ") : t("task.none"))}</span>
     </div>
   `;
+  node.innerHTML = compactHtml;
+  if (detailNode) detailNode.innerHTML = detailHtml;
 }
 
 function renderCompletionPhase(phase, index) {
@@ -2758,6 +4146,15 @@ function renderProgressPanel() {
   `;
 }
 
+
+function renderLiquidGlassState() {
+  document.documentElement.classList.add("orquesta-liquid-ready");
+  document.body.dataset.currentView = state.currentView || "home";
+  document.body.classList.toggle("is-live-state", Boolean(state.isLive));
+  document.body.classList.toggle("is-sample-state", !state.isLive);
+  queueLiquidMotionRefresh();
+}
+
 function renderSync() {
   const chip = $("syncChip");
   if (state.liveSource === "server") {
@@ -2773,11 +4170,16 @@ function renderSync() {
 function render() {
   applyLanguage();
   renderViewSwitch();
+  renderLiquidGlassState();
   renderSync();
   renderAttention();
   renderMetrics();
+  renderHomeOverview();
   renderTeamVisualizer();
   renderCompletionMap();
+  renderDelegationTruth();
+  renderDelegationLedger();
+  renderFoundationAudit();
   renderSetupWizard();
   renderProgressPanel();
   renderVisionPanelV2();
@@ -2834,6 +4236,7 @@ function mergeState(fileName, data) {
   if (fileName === "agents.json") state.agents = data.agents || [];
   if (fileName === "sessions.json") state.sessions = data.sessions || [];
   if (fileName === "tasks.json") state.tasks = data.tasks || [];
+  if (fileName === "trigger_audit.json") state.triggerAudit = data || state.triggerAudit;
   if (fileName === "directives.json") state.directives = data.directives || [];
   if (fileName === "events.jsonl") state.events = Array.isArray(data) ? data : [];
   if (fileName === "questions.json") {
@@ -2863,6 +4266,7 @@ function mergeLiveState(data) {
   state.sessions = data.sessions || [];
   state.agents = applySessionOverlay(data.agents || [], state.sessions);
   state.tasks = data.tasks || [];
+  state.triggerAudit = data.triggerAudit || state.triggerAudit || {};
   state.directives = data.directives || [];
   state.events = data.events || [];
   state.vision = {
@@ -3089,7 +4493,7 @@ async function generateSetupQuestions() {
     state.setupStatus = { type: "success", message: t("setup.questionsGenerated", { count }) };
     state.pendingLiveRender = false;
     await refreshServerState();
-    state.currentView = "user";
+    state.currentView = "actions";
     render();
   } catch (error) {
     state.setupStatus = { type: "error", message: `${t("setup.generateError")}: ${error.message || error}` };
@@ -3253,9 +4657,44 @@ $("stateFiles").addEventListener("change", async (event) => {
 
 document.querySelectorAll("[data-view-target]").forEach((button) => {
   button.addEventListener("click", () => {
-    state.currentView = button.dataset.viewTarget || "operations";
+    state.currentView = button.dataset.viewTarget || "home";
     render();
   });
+});
+
+document.addEventListener("click", (event) => {
+  const viewButton = event.target.closest("[data-action='open-view']");
+  if (viewButton) {
+    state.currentView = viewButton.dataset.viewTarget || "home";
+    if (state.currentView === "actions") {
+      applyActionFocus(viewButton.dataset.actionCategory || null, viewButton.dataset.actionId || null);
+    }
+    const focusLabel = $("actionFocusLabel");
+    if (focusLabel && viewButton.dataset.focusLabel) {
+      focusLabel.textContent = viewButton.dataset.focusLabel;
+    }
+    render();
+    scheduleActionFocus();
+    return;
+  }
+  const delegationTruthToggle = event.target.closest("[data-action='toggle-delegation-truth']");
+  if (delegationTruthToggle) {
+    state.showAllDelegationTruth = !state.showAllDelegationTruth;
+    renderDelegationTruth();
+    return;
+  }
+  const delegationLedgerToggle = event.target.closest("[data-action='toggle-delegation-ledger']");
+  if (delegationLedgerToggle) {
+    state.showAllDelegationLedger = !state.showAllDelegationLedger;
+    renderDelegationLedger();
+    return;
+  }
+  const inspectButton = event.target.closest("[data-action='inspect-agent']");
+  if (inspectButton) {
+    state.selectedAgentId = inspectButton.dataset.agentIdRef;
+    state.previewAgentId = inspectButton.dataset.agentIdRef;
+    renderTeamVisualizer();
+  }
 });
 
 $("tasks").addEventListener("click", (event) => {
@@ -3293,6 +4732,30 @@ $("userTaskSummary").addEventListener("input", (event) => {
 });
 
 $("userTaskSummary").addEventListener("click", (event) => {
+  const handoffShelfToggle = event.target.closest("[data-action='toggle-action-handoffs']");
+  if (handoffShelfToggle) {
+    state.showAllActionHandoffs = !state.showAllActionHandoffs;
+    renderUserTaskSummary();
+    return;
+  }
+
+  const reportShelfToggle = event.target.closest("[data-action='toggle-action-reports']");
+  if (reportShelfToggle) {
+    state.showAllActionReports = !state.showAllActionReports;
+    renderUserTaskSummary();
+    return;
+  }
+
+  const actionFocusButton = event.target.closest("[data-action='filter-user-actions'], [data-action='focus-user-action']");
+  if (actionFocusButton) {
+    applyActionFocus(actionFocusButton.dataset.actionCategory || null, actionFocusButton.dataset.actionId || null);
+    renderUserTaskSummary();
+    if (state.actionFocusCategory === "ready-questions") renderVisionPanelV2();
+    if (state.actionFocusCategory === "repair-cards") renderRepairCards();
+    scheduleActionFocus();
+    return;
+  }
+
   const copyHandoffButton = event.target.closest("[data-action='copy-handoff']");
   if (copyHandoffButton) {
     const draft = (state.handoffDrafts || []).find((item) => item.handoff_id === copyHandoffButton.dataset.handoffId);
@@ -3499,7 +4962,7 @@ $("setupWizard").addEventListener("click", (event) => {
   }
   const showUserTasksButton = event.target.closest("[data-action='show-user-tasks']");
   if (showUserTasksButton) {
-    state.currentView = "user";
+    state.currentView = "actions";
     render();
     return;
   }
@@ -3536,17 +4999,24 @@ $("langToggle").addEventListener("click", () => {
 });
 
 $("teamTree").addEventListener("click", (event) => {
-  const node = event.target.closest("[data-agent-id]");
+  const resetButton = event.target.closest("[data-layout-reset]");
+  if (resetButton) {
+    if (resetButton.dataset.layoutReset === "all") clearAllCommandBoardOverrides();
+    else resetSelectedCommandBoardLayout();
+    return;
+  }
+  if (state.suppressTeamClick) return;
+  const node = event.target.closest("[data-agent-id], [data-session-id]");
   if (!node) return;
-  state.selectedAgentId = node.dataset.agentId;
-  state.previewAgentId = node.dataset.agentId;
+  state.selectedAgentId = nodeEntityId(node);
+  state.previewAgentId = nodeEntityId(node);
   renderTeamVisualizer();
 });
 
 $("teamTree").addEventListener("pointerover", (event) => {
-  const node = event.target.closest("[data-agent-id]");
+  const node = event.target.closest("[data-agent-id], [data-session-id]");
   if (!node) return;
-  state.previewAgentId = node.dataset.agentId;
+  state.previewAgentId = nodeEntityId(node);
   renderAgentInspector();
 });
 
@@ -3569,9 +5039,110 @@ $("teamTree").addEventListener("wheel", (event) => {
   applyMapTransform();
 }, { passive: false });
 
+function commandBoardNodeIdFromElement(target) {
+  const pod = target.closest(".agent-pod");
+  if (pod?.dataset.podId) return commandBoardNodeId("pod", pod.dataset.podId);
+  const agentNode = target.closest("[data-agent-id], [data-session-id]");
+  if (agentNode) return commandBoardNodeId("agent", nodeEntityId(agentNode));
+  const layoutNode = target.closest("[data-layout-node-id]");
+  return layoutNode?.dataset.layoutNodeId || "";
+}
+
+function beginCommandBoardDrag(event) {
+  const handle = event.target.closest("[data-layout-drag-handle], .agent-node.core-peer-node, .agent-node.config-node, .user-node");
+  if (!handle || event.button !== 0) return false;
+  const nodeId = commandBoardNodeIdFromElement(handle);
+  const node = state.commandBoardLayout?.nodes?.get(nodeId);
+  if (!node) return false;
+  const current = state.commandBoardOverrides.offsets?.[nodeId] || { dx: node.x - node.autoX, dy: node.y - node.autoY };
+  state.commandBoardDrag = {
+    pointerId: event.pointerId,
+    nodeId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originDx: Number(current.dx || 0),
+    originDy: Number(current.dy || 0),
+    active: false
+  };
+  $("teamTree").setPointerCapture(event.pointerId);
+  return true;
+}
+
+function updateCommandBoardDrag(event) {
+  const drag = state.commandBoardDrag;
+  if (!drag || event.pointerId !== drag.pointerId || !state.commandBoardLayout) return false;
+  const dx = (event.clientX - drag.startX) / state.map.scale;
+  const dy = (event.clientY - drag.startY) / state.map.scale;
+  if (!drag.active && Math.hypot(dx, dy) < COMMAND_BOARD_DRAG_THRESHOLD) return true;
+  drag.active = true;
+  $("teamTree").classList.add("is-node-dragging");
+  setCommandBoardOverride(drag.nodeId, drag.originDx + dx, drag.originDy + dy);
+  state.commandBoardLayout = applyCommandBoardOverrides({
+    ...state.commandBoardLayout,
+    nodes: new Map([...state.commandBoardLayout.nodes].map(([id, node]) => [id, { ...node, x: node.autoX, y: node.autoY, manual: false }]))
+  });
+  finalizeCommandBoardEdges(state.commandBoardLayout);
+  applyCommandBoardPositions();
+  requestAnimationFrame(drawTeamLinks);
+  return true;
+}
+
+function finishCommandBoardDrag(event) {
+  const drag = state.commandBoardDrag;
+  if (!drag || event.pointerId !== drag.pointerId) return false;
+  if (drag.active) {
+    saveCommandBoardLayoutOverrides();
+    state.suppressTeamClick = true;
+    setTimeout(() => {
+      state.suppressTeamClick = false;
+    }, 0);
+  }
+  state.commandBoardDrag = null;
+  $("teamTree").classList.remove("is-node-dragging");
+  return true;
+}
+
+function applyCommandBoardPositions() {
+  const world = $("orgMapWorld");
+  if (!world || !state.commandBoardLayout) return;
+  const styleText = commandBoardWorldStyle(state.commandBoardLayout);
+  for (const entry of styleText.split(";").map((part) => part.trim()).filter(Boolean)) {
+    const [name, value] = entry.split(":");
+    if (name && value) world.style.setProperty(name, value);
+  }
+  for (const pod of world.querySelectorAll(".agent-pod[data-pod-id]")) {
+    const node = state.commandBoardLayout.nodes.get(commandBoardNodeId("pod", pod.dataset.podId));
+    if (!node) continue;
+    pod.style.setProperty("--map-x", `${node.x}px`);
+    pod.style.setProperty("--map-y", `${node.y}px`);
+    pod.classList.toggle("manual-layout", Boolean(node.manual));
+  }
+  for (const agentNode of world.querySelectorAll(".agent-node[data-layout-node-id]")) {
+    const node = state.commandBoardLayout.nodes.get(agentNode.dataset.layoutNodeId);
+    if (!node) continue;
+    agentNode.classList.toggle("manual-layout", Boolean(node.manual));
+  }
+}
+
+function resetSelectedCommandBoardLayout() {
+  const selectedId = state.selectedAgentId ? commandBoardNodeId("agent", state.selectedAgentId) : "";
+  if (state.commandBoardLayout?.nodes?.has(selectedId)) {
+    clearCommandBoardOverride(selectedId);
+    return;
+  }
+  for (const [id, node] of state.commandBoardLayout?.nodes || []) {
+    if (id.startsWith("pod:") && node.pod?.agents?.some((agent) => agent.agent_id === state.selectedAgentId)) {
+      clearCommandBoardOverride(id);
+      return;
+    }
+  }
+}
+
 let mapDrag = null;
 $("teamTree").addEventListener("pointerdown", (event) => {
-  if (event.target.closest("[data-agent-id]")) return;
+  if (event.target.closest("[data-layout-reset]")) return;
+  if (beginCommandBoardDrag(event)) return;
+  if (event.target.closest("[data-agent-id], [data-session-id]")) return;
   mapDrag = {
     pointerId: event.pointerId,
     startX: event.clientX,
@@ -3584,26 +5155,496 @@ $("teamTree").addEventListener("pointerdown", (event) => {
 });
 
 $("teamTree").addEventListener("pointermove", (event) => {
+  const rect = $("teamTree").getBoundingClientRect();
+  $("teamTree").style.setProperty("--cursor-x", `${event.clientX - rect.left}px`);
+  $("teamTree").style.setProperty("--cursor-y", `${event.clientY - rect.top}px`);
+  $("teamTree").classList.add("has-cursor-light");
+  if (updateCommandBoardDrag(event)) return;
   if (!mapDrag || event.pointerId !== mapDrag.pointerId) return;
   state.map.x = mapDrag.originX + event.clientX - mapDrag.startX;
   state.map.y = mapDrag.originY + event.clientY - mapDrag.startY;
   applyMapTransform();
 });
 
+$("teamTree").addEventListener("pointerleave", () => {
+  $("teamTree").classList.remove("has-cursor-light");
+});
+
 $("teamTree").addEventListener("pointerup", (event) => {
+  if (finishCommandBoardDrag(event)) return;
   if (!mapDrag || event.pointerId !== mapDrag.pointerId) return;
   mapDrag = null;
   $("teamTree").classList.remove("is-panning");
 });
 
 $("teamTree").addEventListener("pointercancel", () => {
+  state.commandBoardDrag = null;
   mapDrag = null;
   $("teamTree").classList.remove("is-panning");
+  $("teamTree").classList.remove("is-node-dragging");
 });
 
 window.addEventListener("resize", () => {
   requestAnimationFrame(drawTeamLinks);
 });
 
+
+const LIQUID_MOTION_TARGETS = [
+  ".recovery-nav",
+  ".home-awareness",
+  ".command-board-panel",
+  ".contextual-inspector",
+  ".focused-head",
+  ".focused-grid > .panel",
+  ".home-awareness-grid > section",
+  ".home-notifications",
+  ".current-work-card",
+  ".notification-card",
+  ".user-need-grid button",
+  ".agent-node",
+  ".user-node",
+  ".agent-pod",
+  ".record",
+  ".view-tab",
+  ".lang-toggle",
+  ".file-button",
+  ".view-back",
+  ".sync-chip"
+].join(",");
+
+const LIQUID_REVEAL_TARGETS = [
+  ".home-awareness-grid > section",
+  ".home-notifications",
+  ".current-work-card",
+  ".notification-card",
+  ".user-need-grid button",
+  ".home-command-layout .command-board-panel",
+  ".home-command-layout .contextual-inspector",
+  ".focused-head",
+  ".focused-grid > .panel",
+  ".record",
+  ".completion-phase",
+  ".agent-node"
+].join(",");
+
+let liquidMotionRaf = null;
+let liquidSpotlightEl = null;
+
+function prefersReducedLiquidMotion() {
+  return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function queueLiquidMotionRefresh() {
+  if (liquidMotionRaf) return;
+  liquidMotionRaf = requestAnimationFrame(() => {
+    liquidMotionRaf = null;
+    refreshLiquidMotion();
+  });
+}
+
+function refreshLiquidMotion() {
+  const reduce = prefersReducedLiquidMotion();
+  document.documentElement.classList.toggle("orquesta-reduce-motion", reduce);
+  const activeView = document.querySelector(".dashboard-view.active");
+  if (!activeView) return;
+  activeView.querySelectorAll(LIQUID_REVEAL_TARGETS).forEach((element, index) => {
+    element.classList.add("liquid-reveal-item");
+    const revealIndex = Math.min(index, 12);
+    element.style.setProperty("--reveal-index", String(revealIndex));
+    element.style.setProperty("--reveal-delay", `${revealIndex * 34}ms`);
+  });
+}
+
+function setLiquidPointer(element, event) {
+  const rect = element.getBoundingClientRect();
+  element.style.setProperty("--mx", `${Math.max(0, event.clientX - rect.left)}px`);
+  element.style.setProperty("--my", `${Math.max(0, event.clientY - rect.top)}px`);
+}
+
+function addLiquidRipple(element, event) {
+  if (prefersReducedLiquidMotion()) return;
+  const rect = element.getBoundingClientRect();
+  const ripple = document.createElement("span");
+  ripple.className = "liquid-ripple";
+  ripple.style.setProperty("--tap-x", `${event.clientX - rect.left}px`);
+  ripple.style.setProperty("--tap-y", `${event.clientY - rect.top}px`);
+  element.appendChild(ripple);
+  element.classList.add("is-liquid-press");
+  window.setTimeout(() => ripple.remove(), 620);
+  window.setTimeout(() => element.classList.remove("is-liquid-press"), 170);
+}
+
+function installLiquidMotion() {
+  document.documentElement.classList.add("orquesta-motion-ready");
+
+  document.addEventListener("pointermove", (event) => {
+    if (prefersReducedLiquidMotion()) return;
+    const target = event.target.closest(LIQUID_MOTION_TARGETS);
+    if (!target) {
+      if (liquidSpotlightEl) liquidSpotlightEl.classList.remove("is-spotlit");
+      liquidSpotlightEl = null;
+      return;
+    }
+    if (liquidSpotlightEl && liquidSpotlightEl !== target) {
+      liquidSpotlightEl.classList.remove("is-spotlit");
+    }
+    liquidSpotlightEl = target;
+    setLiquidPointer(target, event);
+    target.classList.add("is-spotlit");
+  }, { passive: true });
+
+  document.addEventListener("pointerout", (event) => {
+    if (!liquidSpotlightEl) return;
+    const next = event.relatedTarget;
+    if (next && liquidSpotlightEl.contains(next)) return;
+    liquidSpotlightEl.classList.remove("is-spotlit");
+    liquidSpotlightEl = null;
+  }, { passive: true });
+
+  document.addEventListener("pointerdown", (event) => {
+    const target = event.target.closest([
+      ".view-tab",
+      ".view-back",
+      ".lang-toggle",
+      ".file-button",
+      ".current-work-card",
+      ".notification-card",
+      ".user-need-grid button",
+      ".review-choice-grid button",
+      ".specialist-choice-grid button",
+      ".production-choice-row button",
+      ".agent-node",
+      ".record"
+    ].join(","));
+    if (!target) return;
+    setLiquidPointer(target, event);
+    addLiquidRipple(target, event);
+  }, { passive: true });
+
+  if (window.matchMedia) {
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    motionQuery.addEventListener?.("change", queueLiquidMotionRefresh);
+  }
+
+  queueLiquidMotionRefresh();
+}
+
+installLiquidMotion();
 render();
 startServerPolling();
+
+
+// ---- extracted inline script block 2 (id: refero-cursor-attached-light-script) from orquesta_cursor_attached_reflection_v6_no_white_awareness_fix(2).html ----
+(function () {
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const RADIUS = 85;
+  const MASK_PADDING = RADIUS + 80;
+
+  const hostSelectors = [
+    ".recovery-nav",
+    ".home-awareness",
+    ".command-board-panel",
+    ".contextual-inspector",
+    ".focused-head",
+    ".focused-grid > .panel",
+    ".home-command-layout .visualizer-shell",
+    ".contextual-inspector .agent-inspector",
+    ".team-tree"
+  ].join(",");
+
+  const cardSelectors = [
+    ".home-awareness-grid > section",
+    ".home-notifications",
+    ".current-work-card",
+    ".notification-card",
+    ".user-need-grid button",
+    ".record",
+    ".agent-node",
+    ".user-node",
+    ".agent-pod",
+    ".inspector-section",
+    ".inspector-grid > div",
+    ".user-task-card",
+    ".user-task-empty",
+    ".vision-question",
+    ".answer-batch",
+    ".repair-card",
+    ".repair-empty",
+    ".completion-brief",
+    ".completion-current",
+    ".completion-empty",
+    ".completion-footer",
+    ".completion-phase-body",
+    ".setup-step",
+    ".setup-hero-card",
+    ".setup-form-card",
+    ".setup-side-card",
+    ".specialist-plan-card",
+    ".production-start-card",
+    ".specialist-candidate",
+    ".production-candidate",
+    ".delegation-stat",
+    ".delegation-mini",
+    ".delegation-row",
+    ".answer-toolbar",
+    ".review-list-block",
+    ".trigger-list span",
+    ".completion-item",
+    ".question-nav-item",
+    ".specialist-choice-grid button",
+    ".production-choice-row button",
+    ".review-choice-grid button"
+  ].join(",");
+
+  const allSelectors = [hostSelectors, cardSelectors].join(",");
+  let svg;
+  let maskGroup;
+  let lightCore;
+  let lightEdge;
+  let maskFrame;
+  let activePointer = null;
+  let pointerRaf = 0;
+  let maskRaf = 0;
+
+  document.body.classList.add("refero-one-light");
+
+  function prefersReducedMotion() {
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  function svgEl(name, attrs = {}) {
+    const node = document.createElementNS(SVG_NS, name);
+    Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+    return node;
+  }
+
+  function ensureOverlay() {
+    if (svg) return;
+
+    const gradientId = "orquestaCursorLightGradient";
+    const edgeGradientId = "orquestaCursorLightEdgeGradient";
+    const maskId = "orquestaReflectiveSurfaceMask";
+
+    svg = svgEl("svg", {
+      class: "orquesta-cursor-glass-light",
+      "aria-hidden": "true",
+      focusable: "false"
+    });
+
+    const defs = svgEl("defs");
+    const gradient = svgEl("radialGradient", {
+      id: gradientId,
+      gradientUnits: "userSpaceOnUse",
+      cx: "-1000",
+      cy: "-1000",
+      r: String(RADIUS)
+    });
+    [
+      ["0", "rgba(255,255,255,0.98)"],
+      ["0.12", "rgba(255,255,255,0.58)"],
+      ["0.30", "rgba(196,217,255,0.28)"],
+      ["0.48", "rgba(94,106,210,0.18)"],
+      ["0.64", "rgba(2,184,204,0.10)"],
+      ["1", "rgba(255,255,255,0)"]
+    ].forEach(([offset, color]) => gradient.append(svgEl("stop", { offset, "stop-color": color })));
+
+    const edgeGradient = svgEl("radialGradient", {
+      id: edgeGradientId,
+      gradientUnits: "userSpaceOnUse",
+      cx: "-1000",
+      cy: "-1000",
+      r: String(RADIUS * 1.16)
+    });
+    [
+      ["0", "rgba(255,255,255,0)"],
+      ["0.34", "rgba(255,255,255,0.16)"],
+      ["0.52", "rgba(2,184,204,0.12)"],
+      ["0.74", "rgba(94,106,210,0.08)"],
+      ["1", "rgba(255,255,255,0)"]
+    ].forEach(([offset, color]) => edgeGradient.append(svgEl("stop", { offset, "stop-color": color })));
+
+    const mask = svgEl("mask", { id: maskId, maskUnits: "userSpaceOnUse" });
+    maskFrame = svgEl("rect", { x: "0", y: "0", fill: "black" });
+    maskGroup = svgEl("g", { fill: "white" });
+    mask.append(maskFrame, maskGroup);
+    defs.append(gradient, edgeGradient, mask);
+
+    lightCore = svgEl("rect", {
+      class: "cursor-light-core",
+      x: "0",
+      y: "0",
+      fill: `url(#${gradientId})`,
+      mask: `url(#${maskId})`
+    });
+    lightEdge = svgEl("rect", {
+      class: "cursor-light-edge",
+      x: "0",
+      y: "0",
+      fill: `url(#${edgeGradientId})`,
+      mask: `url(#${maskId})`
+    });
+
+    svg.append(defs, lightCore, lightEdge);
+    document.body.appendChild(svg);
+  }
+
+  function markTargets() {
+    document.querySelectorAll(hostSelectors).forEach((el) => {
+      if (!el.classList.contains("one-light-host")) el.classList.add("one-light-host");
+    });
+    document.querySelectorAll(cardSelectors).forEach((el) => {
+      if (!el.classList.contains("one-light-card")) el.classList.add("one-light-card");
+    });
+  }
+
+  function visibleRadius(value, rect) {
+    if (!value) return 0;
+    const first = String(value).trim().split(/\s+/)[0] || "0";
+    const amount = parseFloat(first);
+    if (!Number.isFinite(amount)) return 0;
+    const radius = first.includes("%") ? Math.min(rect.width, rect.height) * amount / 100 : amount;
+    return Math.max(0, Math.min(radius, rect.width / 2, rect.height / 2));
+  }
+
+  function isVisibleReflector(el, viewportWidth, viewportHeight) {
+    const rect = el.getBoundingClientRect();
+    if (rect.width < 3 || rect.height < 3) return null;
+    if (rect.right < -MASK_PADDING || rect.left > viewportWidth + MASK_PADDING) return null;
+    if (rect.bottom < -MASK_PADDING || rect.top > viewportHeight + MASK_PADDING) return null;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return null;
+    return { rect, style };
+  }
+
+  function refreshMask() {
+    ensureOverlay();
+    const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+    svg.setAttribute("viewBox", `0 0 ${viewportWidth} ${viewportHeight}`);
+    [maskFrame, lightCore, lightEdge].forEach((node) => {
+      node.setAttribute("width", String(viewportWidth));
+      node.setAttribute("height", String(viewportHeight));
+    });
+
+    const fragment = document.createDocumentFragment();
+    const seen = new Set();
+    document.querySelectorAll(allSelectors).forEach((el) => {
+      if (seen.has(el) || el.closest(".orquesta-cursor-glass-light")) return;
+      seen.add(el);
+      const visible = isVisibleReflector(el, viewportWidth, viewportHeight);
+      if (!visible) return;
+      const { rect, style } = visible;
+      const radius = visibleRadius(style.borderTopLeftRadius, rect);
+      const maskRect = svgEl("rect", {
+        x: rect.left.toFixed(2),
+        y: rect.top.toFixed(2),
+        width: rect.width.toFixed(2),
+        height: rect.height.toFixed(2),
+        rx: radius.toFixed(2),
+        ry: radius.toFixed(2)
+      });
+      fragment.appendChild(maskRect);
+    });
+    maskGroup.replaceChildren(fragment);
+  }
+
+  function scheduleMaskRefresh() {
+    if (maskRaf) return;
+    maskRaf = requestAnimationFrame(() => {
+      maskRaf = 0;
+      markTargets();
+      refreshMask();
+    });
+  }
+
+  function setLightPosition(x, y) {
+    const gradients = svg.querySelectorAll("radialGradient");
+    gradients.forEach((gradient) => {
+      gradient.setAttribute("cx", x.toFixed(2));
+      gradient.setAttribute("cy", y.toFixed(2));
+    });
+  }
+
+  function clearLight() {
+    activePointer = null;
+    if (svg) svg.classList.remove("is-active");
+  }
+
+  function isReflectiveTarget(target) {
+    return !!(target && target.closest && target.closest(allSelectors));
+  }
+
+  function applyPointer() {
+    pointerRaf = 0;
+    ensureOverlay();
+    if (!activePointer || prefersReducedMotion()) {
+      clearLight();
+      return;
+    }
+
+    if (!isReflectiveTarget(activePointer.target)) {
+      clearLight();
+      return;
+    }
+
+    setLightPosition(activePointer.x, activePointer.y);
+    svg.classList.add("is-active");
+  }
+
+  function schedulePointer(event) {
+    activePointer = { x: event.clientX, y: event.clientY, target: event.target };
+    if (!pointerRaf) pointerRaf = requestAnimationFrame(applyPointer);
+  }
+
+  ensureOverlay();
+  markTargets();
+  refreshMask();
+
+  const observer = new MutationObserver(scheduleMaskRefresh);
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "style", "hidden", "aria-hidden"]
+  });
+
+  document.addEventListener("pointermove", schedulePointer, { passive: true });
+  document.addEventListener("pointerover", schedulePointer, { passive: true });
+  document.addEventListener("pointerout", (event) => {
+    const next = event.relatedTarget;
+    if (next && isReflectiveTarget(next)) return;
+    clearLight();
+  }, { passive: true });
+  document.addEventListener("pointerleave", clearLight, { passive: true });
+  document.addEventListener("scroll", scheduleMaskRefresh, { passive: true, capture: true });
+  window.addEventListener("resize", scheduleMaskRefresh, { passive: true });
+  window.addEventListener("blur", clearLight, { passive: true });
+
+  if (window.matchMedia) {
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    motionQuery.addEventListener?.("change", () => {
+      if (prefersReducedMotion()) clearLight();
+      scheduleMaskRefresh();
+    });
+  }
+
+  window.OrquestaCursorLight = {
+    refresh: scheduleMaskRefresh,
+    clear: clearLight
+  };
+})();
+
+
+// ---- extracted inline script block 3 (id: orquesta-v4-runtime-radius-fix) from orquesta_cursor_attached_reflection_v6_no_white_awareness_fix(2).html ----
+// v4 runtime guard: if an older cursor overlay already exists, force its gradients smaller too.
+(() => {
+  const shrink = () => {
+    document.querySelectorAll('#orquestaCursorLightGradient, #orquestaCursorLightEdgeGradient').forEach((g) => {
+      g.setAttribute('r', g.id.includes('Edge') ? '98' : '85');
+    });
+  };
+  shrink();
+  window.addEventListener('DOMContentLoaded', shrink, { once: true });
+  window.addEventListener('load', shrink, { once: true });
+})();
+
