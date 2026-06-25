@@ -8,6 +8,8 @@ New here? Start with [START_HERE.md](START_HERE.md).
 
 Orquesta is not just one Codex thread with a team-themed dashboard. Real operation requires evidence: a task is routed to a non-orchestrator specialist when the work belongs to that lane, the handoff is recorded, the specialist returns a report or artifact, and the orchestrator accepts, holds, or requests changes in state. Direct orchestrator work is reserved for orchestration bookkeeping, tiny state/report updates, emergency unblockers, or explicit user instruction.
 
+The current dashboard is a mission-control style workspace for that loop: a glass-like Command Board, specialist map, user-action rail, project route, and state-backed review surfaces. It is meant to make delegation, pending user actions, and trigger-ready foundation work visible; it is not a guarantee that the team is operating correctly unless the underlying state shows real handoffs and accepted specialist reports.
+
 ## Beta Status
 
 Current beta version: `0.1.0-beta.2`.
@@ -37,7 +39,8 @@ If you are interested in multi-agent workflows, Codex skills, game-development t
   - `orquesta-admin`
 - Numbered production specialist roles such as `visual-art-001`, `implementation-001`, `world-lore-001`, and `playtest-qa-001`.
 - File-backed project state under `.orquesta/` in the target project.
-- A local browser dashboard for team visualization, task state, user-side tasks, vision questions, and repair cards.
+- A local browser dashboard for mission-control style team visualization, task state, delegation evidence, user-side actions, vision questions, trigger audit status, and repair cards.
+- Event-driven foundation roles. For example, `vision-curator` is not a watcher; trigger audit can surface pending question-candidate evidence so the orchestrator can deliberately wake or defer the curator.
 
 ## Repository Layout
 
@@ -110,11 +113,26 @@ The dashboard reads `.orquesta/` state from the current project. While visible, 
 
 When verifying a dashboard after setup, check `/api/state` for the current project. A plain HTTP 200 on the dashboard port is not enough, because another local Orquesta dashboard may already be using that port.
 
+The current dashboard direction is a mission-control interface rather than the early simple status page:
+
+- Command Board style layout with glass lighting and dense operational panels.
+- DAG/tree layout support for specialist command maps and project route views.
+- User-action and delegation surfaces that distinguish prepared, sent, reviewed, accepted, and blocked work.
+- Trigger audit visibility for event-driven foundation roles, including pending question-candidate summaries that may require `vision-curator` review.
+
+Trigger audit is visibility, not automation. It can show that curator wake conditions exist, but it must not turn `vision-curator` into a continuous watcher or promote raw question candidates without an explicit Orquesta route.
+
 ## Development Checks
 
 ```powershell
-node --check orquesta/dashboard-server.js
-node --check orquesta/assets/dashboard/app.js
+npm run check
+```
+
+Focused checks are also available when working on specific release risks:
+
+```powershell
+npm run test:triggers
+npm run test:question-candidates
 npm run test:ports
 ```
 
