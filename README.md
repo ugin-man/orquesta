@@ -148,4 +148,4 @@ See [GitHub install bootstrap smoke test](docs/testing/github-install-bootstrap-
 
 ## License
 
-No license has been selected yet.
+MIT License. See [LICENSE](LICENSE).
