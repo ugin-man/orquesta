@@ -25,6 +25,7 @@ It coordinates:
 - route vision-related work to `vision-curator`
 - route failure-related work to `error-concierge`
 - tell the orchestrator what user tasks are ready, answered, skipped, or blocked
+- present accepted user capability reviews when the user's visual judgment, tacit knowledge, credentials, or real-world experience is the stronger evidence source
 
 `user-liaison` must not:
 
@@ -33,6 +34,20 @@ It coordinates:
 - create production implementation tasks without orchestrator acceptance
 - hide user tasks inside long reports
 - run continuously as a watcher
+
+## User Capability Route
+
+Use this route narrowly. It is not a general way to ask the user to perform implementation, QA, or product decisions that Orquesta can safely verify itself.
+
+It is appropriate when:
+
+- visual or interaction review needs a human eye
+- a decision depends on tacit knowledge, metacognition, credentials, or direct lived experience
+- the available automated verification is dangerous, unstable, or cannot produce the required evidence
+
+The owning specialist or `error-concierge` first records the evidence gap. The orchestrator pauses the affected task, then `user-liaison` creates one concrete task with the URL or procedure, named behaviors to check, expected response, and resume instruction. The user response is evidence with a stated scope; it is not proof of unrelated behavior.
+
+Do not create a capability route merely because an AI could ask a vague question. Do not claim an automated pass while waiting for the user. The Codex in-app Browser crash is an external limitation: external-browser UAT is appropriate only when it checks the same named dashboard behaviors and records the result.
 
 ## Queue Shape
 
@@ -88,6 +103,8 @@ Approval waits are urgent user tasks, not ordinary reports. If a specialist cann
 ```
 
 Use `approval_type` values such as `codex_safety_approval`, `scope_expansion_approval`, `destructive_action_approval`, `environment_permission_approval`, and `user_direction_approval`. The linked Orquesta task should also carry a user-approval blocker such as `blocked_by: ["user_approval_required"]` until the approval is resolved.
+
+Use `source: "user_capability_review"` for the route above. Include `capability_type`, `evidence_gap`, `procedure`, `expected_response`, and `resume_instruction`. Keep the task blocked or paused until the result is recorded, the user declines, or a different accepted evidence path exists.
 
 ## Wake Triggers
 

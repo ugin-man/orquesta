@@ -35,6 +35,7 @@
           <button class="view-tab active" type="button" data-view-target="home" data-i18n="view.home">Home</button>
           <button class="view-tab" type="button" data-view-target="actions" data-i18n="view.actions">User Actions</button>
           <button class="view-tab" type="button" data-view-target="delegation" data-i18n="view.delegation">Delegation</button>
+          <button class="view-tab" type="button" data-view-target="control" data-i18n="view.control">Control Plane</button>
           <button class="view-tab" type="button" data-view-target="progress" data-i18n="view.progress">Progress</button>
           <button class="view-tab" type="button" data-view-target="setup" data-i18n="view.setup">Setup</button>
         </div>
@@ -186,6 +187,32 @@
               </div>
             </div>
             <div id="delegationLedger" class="delegation-ledger"></div>
+          </article>
+        </section>
+      </section>
+
+      <section class="dashboard-view focused-view" data-view-panel="control">
+        <section class="focused-head panel">
+          <button class="view-back" type="button" data-view-target="home" data-i18n="home.back">Back to Home</button>
+          <div>
+            <span class="eyebrow" data-i18n="view.control">Control Plane</span>
+            <h2 data-i18n="control.title">Control Plane</h2>
+            <p data-i18n="control.detail">Capacity, evidence, and dispatch records stay separate from Home.</p>
+          </div>
+        </section>
+        <section class="focused-grid one-column control-plane-grid">
+          <article class="panel control-plane-panel" aria-labelledby="controlPlaneTitle">
+            <div class="section-title control-plane-title">
+              <div>
+                <span class="eyebrow" data-i18n="control.eyebrow">control evidence</span>
+                <h2 id="controlPlaneTitle" data-i18n="control.title">Control Plane</h2>
+              </div>
+              <span id="controlPlaneState"></span>
+            </div>
+            <div id="controlPlaneSummary" class="control-plane-summary" aria-live="polite"></div>
+            <div id="controlPlaneTabs" class="control-plane-tabs" role="tablist" aria-label="Control Plane sections"></div>
+            <div id="controlPlaneLedger" class="control-plane-ledger" aria-live="polite"></div>
+            <div id="controlPlaneDetail" class="control-plane-detail" tabindex="-1"></div>
           </article>
         </section>
       </section>

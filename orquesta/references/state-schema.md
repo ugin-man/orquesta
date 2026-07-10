@@ -117,6 +117,57 @@ Report review decisions:
 
 The dashboard endpoint `POST /api/reports/review` performs this file-backed synchronization. It does not message specialist threads by itself; the orchestrator still owns any follow-up handoff.
 
+## Beta V3 Task Controls
+
+Beta V3 adds controls when a task is staged into the progressive gate. Legacy accepted tasks remain valid without backfilled fields unless they are reopened.
+
+```json
+{
+  "control_signals": {
+    "ambiguity": "low | medium | high",
+    "consequence": "low | medium | high",
+    "reversibility": "low | medium | high",
+    "context_breadth": "low | medium | high",
+    "aesthetic_judgment": "low | medium | high",
+    "verifiability": "low | medium | high",
+    "novelty": "low | medium | high",
+    "failure_history": "low | medium | high",
+    "risk_level": "low | medium | high",
+    "reasons": ["short reason"]
+  },
+  "model_route": {
+    "status": "proposed | active | reviewed | deferred | unavailable",
+    "recommended_model": "Luna | Terra | Sol | null",
+    "requested_model": null,
+    "requested_model_evidence": null,
+    "applied_model": null,
+    "applied_model_evidence": null,
+    "actual_model": null,
+    "actual_model_evidence": null,
+    "requires_semantic_review": false,
+    "required_review_model": null,
+    "reason_codes": [],
+    "adapter": "repository_only | codex_product",
+    "adapter_status": "unsupported | requested | applied | failed | null",
+    "updated_at": "2026-07-10T00:00:00.000Z"
+  },
+  "completion_envelope": {
+    "status": "missing | draft | submitted | accepted | needs_revision",
+    "path": null
+  }
+}
+```
+
+`recommended_model` is not `requested_model`; a request is not `applied_model`; and an applied override is not `actual_model` without independent runtime evidence. The repository-only adapter records recommendations and `unsupported` status, but cannot switch a product model.
+
+For staged-in `specialist_required` and medium/high-risk work, a valid report `completion_envelope`, `question_candidates`, delegation evidence, and task-scoped control audit are acceptance gates. Low-risk report-only work and older accepted tasks stay on the progressive warning path unless reopened.
+
+## completion_envelope Report Block
+
+Specialist reports contain a JSON `completion_envelope` block. The checker validates `task_id`, `agent_id`, delegation evidence, changed files, verification, fallback approval, timestamps, and question-candidate status against task state.
+
+The envelope records model evidence under `model_route` and must keep requested, applied, and actual values separate. A report-only task may have an empty command list only when it explicitly says why all changes are `report_only`.
+
 ## Handoff Drafts
 
 The dashboard may expose `handoffDrafts` through `/api/state`. These are generated, copy-ready prompts for the orchestrator to send to long-lived specialist Codex threads.
@@ -170,6 +221,134 @@ Useful delegation event types:
 - `question_candidates_missing`: a specialist report was held because required `question_candidates` metadata was missing.
 - `orchestrator_acceptance_decision`: the orchestrator accepted, held, rejected, or requested changes after review.
 
+## control_audit.json
+
+`control_audit.json` is a deterministic, atomically written snapshot. It reports missing or stale evidence; it does not make semantic acceptance decisions.
+
+```json
+{
+  "version": 1,
+  "generated_at": "2026-07-10T00:00:00.000Z",
+  "generated_by": "orquesta/scripts/control-audit.js",
+  "status": "clear | warnings | blockers",
+  "rollout": {
+    "mode": "progressive",
+    "hard_gate_scope": ["specialist_required", "medium_risk", "high_risk"],
+    "legacy_mode": "warn"
+  },
+  "summary": {
+    "tasks_checked": 0,
+    "blockers": 0,
+    "warnings": 0
+  },
+  "findings": [
+    {
+      "finding_id": "CA-T000-001",
+      "task_id": "T000",
+      "severity": "info | warning | blocker",
+      "category": "delegation | completion_envelope | model_route | fallback | failure_intake | question_observation | session_freshness | capacity",
+      "code": "missing_completion_envelope",
+      "message": "short evidence-backed message",
+      "recommended_action": "request_report_metadata",
+      "created_at": "2026-07-10T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+## capacity.json
+
+Capacity is separate from task state and agent health. The ledger records evidence about whether a new specialist turn can start.
+
+```json
+{
+  "version": 1,
+  "policy": {
+    "same_target_prestart_retry_limit": 2,
+    "available_evidence_ttl_minutes": 15,
+    "suspected_evidence_ttl_minutes": 10,
+    "machine_unavailable_ttl_minutes": 30,
+    "probe_backoff_minutes": [30, 60, 120]
+  },
+  "orchestra": {
+    "mode": "normal | degraded | paused",
+    "reason_codes": [],
+    "affected_task_ids": []
+  },
+  "capacity_records": [
+    {
+      "capacity_id": "CAP-T000-001",
+      "scope": {"agent_id": "implementation-001", "scope_key": "thread:opaque", "thread_id": "opaque"},
+      "state": "unknown | probing | available | suspected_unavailable | unavailable | cooldown",
+      "cause": "none | usage_window_exhausted | product_service_error | thread_unavailable | model_unavailable | unknown",
+      "circuit": {"state": "closed | half_open | open", "generation": 0},
+      "consecutive_prestart_failures": 0,
+      "cooldown_until": null,
+      "last_success_at": null
+    }
+  ],
+  "dispatches": [
+    {
+      "dispatch_id": "DSP-T000-001",
+      "task_id": "T000",
+      "agent_id": "implementation-001",
+      "state": "queued | dispatch_accepted | turn_started | progress_observed | report_produced | prestart_system_error",
+      "queued_at": "2026-07-10T00:00:00.000Z",
+      "dispatch_accepted_at": null,
+      "turn_started_at": null,
+      "progress_observed_at": null,
+      "report_produced_at": null
+    }
+  ]
+}
+```
+
+One ambiguous pre-start error is `suspected_unavailable`, not a quota claim. Two correlated pre-start failures may open an `unknown`-cause circuit. Cooldown expiry moves to `probing`; only correlated turn-start evidence returns capacity to `available`. A report can be late evidence without inventing `turn_started_at`.
+
+## model_policy.json
+
+`model_policy.json` is a file-backed recommendation policy, not a model-switch command. The current policy stores signals, MP001-MP004 rules, scheduling limits, and the repository-only adapter capability.
+
+```json
+{
+  "version": 1,
+  "signals": ["ambiguity", "consequence", "reversibility", "context_breadth", "aesthetic_judgment", "verifiability", "novelty", "failure_history"],
+  "rules": [
+    {"rule_id": "MP001", "match": {"work_modes": ["deterministic_triage"]}, "recommend": "Luna"},
+    {"rule_id": "MP002", "match": {"work_modes": ["semantic_decision", "orchestration"]}, "recommend": "Sol"},
+    {"rule_id": "MP003", "match": {"default": true}, "recommend": "Terra"},
+    {"rule_id": "MP004", "if_any_high": ["ambiguity", "consequence", "reversibility", "context_breadth", "failure_history"], "action": "require_semantic_review", "review_model": "Sol"}
+  ],
+  "budget": {"max_concurrent_specialist_turns": 2, "max_concurrent_turns_per_dependency_chain": 1, "max_escalations_per_task": 1, "max_semantic_review_rounds": 1},
+  "adapters": {"repository_only": {"can_switch_model": false, "records_recommendation": true}}
+}
+```
+
+## dashboard_actions.json
+
+`dashboard_actions.json` is optional and created lazily when a state-backed dashboard decision is recorded. It is not proof of a message dispatch or model change.
+
+```json
+{
+  "version": 1,
+  "actions": [
+    {
+      "action_id": "DA-T000-001",
+      "type": "report_review | wake_defer | model_route_review | fallback_approval | incident_review | control_audit_run",
+      "status": "requested | applied | rejected | unsupported | failed",
+      "source": "dashboard | orchestrator | script",
+      "task_id": "T000",
+      "payload": {},
+      "result": {},
+      "idempotency_key": "DA-T000-001",
+      "created_at": "2026-07-10T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+All control-state writes use `readJsonFile`, `writeJsonAtomic`, `updateJsonAtomic`, `appendJsonlAtomic`, or `recoverJsonFile`. The writer uses UTF-8, same-directory temp files, bounded retry where applicable, and fail-closed recovery. Do not rewrite Japanese text only because a console display looks corrupt.
+
 ## vision/question_candidates.json
 
 `question_candidates.json` is the raw inbox for specialist-proposed question candidates. It is not user-facing. The orchestrator writes submitted candidates here after report review; `vision-curator` filters, deduplicates, rewrites, and promotes useful entries into `questions.json`.
@@ -180,7 +359,7 @@ Useful delegation event types:
   "candidates": [
     {
       "candidate_id": "QC-T124-001",
-      "status": "pending_curator_review",
+      "status": "pending_curator_review | observation | clustered | curator_accepted | curator_rejected | merged_duplicate | promoted_to_question | retired",
       "priority": "medium",
       "category": "workflow",
       "question": "Should specialist reports be blocked when they omit question-candidate metadata?",
@@ -190,6 +369,13 @@ Useful delegation event types:
       "source_task_id": "T124",
       "source_agent_id": "protocol-architect-001",
       "source_report_path": ".orquesta/reports/T124-protocol-question-candidate-loop.md",
+      "observation": {
+        "value_type": "user_emergence | operating_rule | maintenance_note | duplicate | low_value",
+        "user_emergence_value": "low | medium | high",
+        "decision_cluster_id": null,
+        "suggested_action": "ignore | keep_as_note | curator_review | ask_user",
+        "reason": "short reason"
+      },
       "created_at": "2026-06-25T00:00:00Z",
       "curated_by": null,
       "curated_at": null,
@@ -215,6 +401,8 @@ Useful delegation event types:
 Candidate statuses:
 
 - `pending_curator_review`: submitted by a specialist and waiting for curator triage.
+- `observation`: low-risk raw material that remains in the inbox and is not a user question.
+- `clustered`: linked to a curator decision cluster before any user-facing promotion.
 - `curator_accepted`: curator decided the candidate is useful.
 - `curator_rejected`: curator rejected it as low-value, unclear, or not user-actionable.
 - `merged_duplicate`: curator merged it into another candidate or existing question.
@@ -366,6 +554,53 @@ Use `interpretation_mode: "discussion_seed_not_command"` by default. User answer
 }
 ```
 
+## failures/incident_candidates.json and incident_clusters.json
+
+New failure intake is pre-acceptance. A candidate is not yet an accepted incident, repair card, or user task.
+
+```json
+{
+  "version": 1,
+  "candidates": [
+    {
+      "candidate_id": "IC-T000-001",
+      "status": "candidate | promoted | clustered | noise | retired",
+      "event_type": "command_failure | ineffective_repeat | quality_degradation",
+      "task_id": "T000",
+      "source_agent_id": "implementation-001",
+      "failure_class": "environment.browser_runtime",
+      "severity": "low | medium | high | blocker",
+      "summary": "short summary",
+      "evidence": ["short evidence"],
+      "suspected_owner": "codex | user | shared | unknown",
+      "fingerprint": "local fingerprint",
+      "global_fingerprint": "normalized fingerprint",
+      "cluster_id": null,
+      "created_at": "2026-07-10T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+```json
+{
+  "version": 1,
+  "clusters": [
+    {
+      "cluster_id": "FC001",
+      "status": "open | routed_codex | repair_card_ready | user_task_open | waiting | resolved | reopened | wontfix",
+      "primary_class": "environment.browser_runtime",
+      "candidate_ids": ["IC-T000-001"],
+      "occurrence_count": 1,
+      "repair_card_id": null,
+      "resolution_evidence": null
+    }
+  ]
+}
+```
+
+Fingerprinting removes volatile temp paths, timestamps, thread IDs, and ports. Repeated fingerprints or proof-weakening fallbacks can create an open cluster. Same-quality fallback noise does not create a repair card. Only `open` accepted incidents or open candidate/cluster evidence contributes to an active error-concierge wake reason; mitigated and resolved history remains visible but nonblocking.
+
 ## failures/user_actions.json
 
 ```json
@@ -441,6 +676,31 @@ Approval waits are first-class user tasks. When a specialist or the orchestrator
 ```
 
 Valid `approval_type` values include `codex_safety_approval`, `scope_expansion_approval`, `destructive_action_approval`, `environment_permission_approval`, and `user_direction_approval`. If the blocked Orquesta task uses `blocked_by: ["user_approval_required"]` or another approval blocker, an open `approval_wait` user task should reference that task id through `source_ids` or `source_task_id`.
+
+## User Capability Route
+
+When a human is the strongest source of evidence, use a narrow queue item with `source: "user_capability_review"`. This route is for visual review, tacit or metacognitive judgment, credentialed judgment, or direct real-world experience. It is not a generic request to perform Orquesta work.
+
+```json
+{
+  "user_task_id": "UT-CAPABILITY-001",
+  "source": "user_capability_review",
+  "source_ids": ["T162", "IC-T162-001"],
+  "assigned_by": "user-liaison",
+  "status": "ready",
+  "priority": "high",
+  "title": "Verify Control Plane in an external browser",
+  "capability_type": "visual_review | tacit_judgment | credentialed_judgment | lived_experience",
+  "evidence_gap": "The in-app Browser is unstable and cannot safely provide the required visual proof.",
+  "procedure": ["Open the named local URL in an external browser.", "Check the listed behaviors.", "Reply with pass/fail and any observed issue."],
+  "expected_response": "named pass/fail results plus notes",
+  "resume_instruction": "Attach the user result to the task evidence, then resume review or remediation.",
+  "created_at": "2026-07-10T00:00:00.000Z",
+  "resolved_at": null
+}
+```
+
+The blocked task stays paused until this evidence arrives or the user explicitly declines it. Do not record an automated pass, actual model, or visual proof that was not observed. The current Codex in-app Browser crash is an external tool limitation; external-browser UAT is a same-quality fallback when it checks the required named behaviors and the user result is recorded.
 
 ## project/completion_map.json
 

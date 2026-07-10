@@ -26,7 +26,9 @@ Wake `error-concierge` when one of these is true:
 
 ## Incident Capture
 
-Any specialist or the orchestrator may append an incident to `.orquesta/failures/incidents.json`.
+Any specialist or the orchestrator may capture new failure evidence. In Beta V3, new command failures, ineffective repeats, and quality-degrading fallbacks enter `.orquesta/failures/incident_candidates.json` first. Deterministic fingerprinting removes volatile temp paths, timestamps, thread IDs, and ports before repeated evidence is clustered in `.orquesta/failures/incident_clusters.json`.
+
+`incidents.json` remains the accepted incident history. A candidate or cluster is not yet an accepted incident, repair card, or user task. Same-quality fallback noise may be retired without creating a repair card. Only `status: "open"` incident evidence keeps an active concierge wake reason; mitigated and resolved history remains visible but does not keep the role awake.
 
 Record only concise evidence:
 
@@ -92,14 +94,19 @@ If it does, record:
 
 Do not quietly downgrade visual verification, asset generation, browser testing, or runtime integration when a user-side repair might unblock the intended path.
 
+When the only automated proof surface is unsafe or unstable, record the limitation and pause that verification path. Do not call an unobserved fallback a pass. If visual review or direct user experience is the strongest remaining evidence, use the `user_capability_review` route through `user-liaison` with a concrete external procedure and expected response.
+
+The Codex in-app Browser crash is an external tool limitation, not an Orquesta defect by itself. It may be captured as an environment/browser-runtime candidate. External-browser UAT is a same-quality fallback only when the user checks the named behaviors and the result is recorded.
+
 ## Acceptance Flow
 
-1. Incident is recorded.
-2. Orchestrator checks whether a wake trigger is met.
-3. `error-concierge` clusters related incidents and writes a concise report.
-4. Orchestrator accepts or rejects the report.
-5. Accepted user-side work is exposed as repair cards.
-6. Codex retries only after the relevant action is completed or explicitly skipped.
+1. Candidate evidence is atomically recorded.
+2. Deterministic fingerprinting and clustering decide whether repeated or quality-degrading evidence is open.
+3. Orchestrator checks whether a wake trigger is met.
+4. `error-concierge` reviews the open cluster and writes a concise report.
+5. Orchestrator accepts or rejects the report.
+6. Accepted user-side work is exposed as repair cards or a narrow user capability review task.
+7. Codex retries only after the relevant action is completed or explicitly skipped.
 
 ## Stale Failure Reports
 

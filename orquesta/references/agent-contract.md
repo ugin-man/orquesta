@@ -58,6 +58,14 @@ Valid `none_reason` values:
 
 Candidate items must include `priority`, `category`, `question`, `why_now`, `user_impact`, `suggested_timing`, and the source task.
 
+## Control Evidence Policy
+
+For staged-in `specialist_required` and medium/high-risk work, include a valid `completion_envelope` JSON block in the report. It must match the task delegation evidence and list changed files, checks, explicit gaps, fallbacks, and model-route evidence.
+
+Keep `recommended_model`, `requested_model`, `applied_model`, and `actual_model` separate. A requested override is not an applied model, and no actual-model value may be claimed without independent evidence. In repository-only mode, record `adapter: "repository_only"`, `applied_model: null`, and `actual_model: null` unless later evidence proves otherwise.
+
+When a task needs user capability evidence, state the exact evidence gap and stop the affected verification. Ask `user-liaison` for a narrow procedure only when visual review, tacit judgment, credentialed judgment, or direct user experience is the stronger source. Do not use this route as a generic request for the user to do specialist work.
+
 ## Done Signal
 
 Write a report to `.orquesta/reports/<task-id>-<agent-id>.md` using the report template.
@@ -159,6 +167,10 @@ status: completed | blocked | needs_review | rejected_scope
 ## Needs Orchestrator Review
 
 - 
+
+## Completion Envelope
+
+Include one valid `completion_envelope` JSON block. For report-only work with no command checks, state why the changes are all `report_only`. Include any fallback and its approval state. Missing or invalid envelope metadata blocks staged-in acceptance.
 
 ## Question Candidates
 

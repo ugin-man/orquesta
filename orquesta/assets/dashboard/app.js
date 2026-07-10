@@ -14,6 +14,10 @@ const state = {
     sessions: {},
     foundation_agents: []
   },
+  capacity: null,
+  controlAudit: null,
+  modelPolicy: null,
+  dashboardActions: { actions: [] },
   vision: {
     questions: [],
     answerBatches: [],
@@ -85,6 +89,11 @@ const state = {
   actionFocusId: null,
   showAllActionHandoffs: false,
   showAllActionReports: false,
+  controlPlane: {
+    tab: "capacity",
+    selectedCapacityId: null,
+    deepLinkMessage: null
+  },
   isAnswerEditing: false,
   pendingLiveRender: false,
   commandBoardGraph: null,
@@ -1494,6 +1503,148 @@ Object.assign(dictionary.ja, {
   "value.stale": "古い"
 });
 
+Object.assign(dictionary.en, {
+  "view.control": "Control Plane",
+  "control.title": "Control Plane",
+  "control.eyebrow": "control evidence",
+  "control.detail": "Capacity, evidence, and dispatch records stay separate from Home.",
+  "control.capacity": "Capacity",
+  "control.audit": "Audit",
+  "control.evidence": "Evidence",
+  "control.loading": "Loading control state",
+  "control.empty": "No capacity records have been created yet.",
+  "control.legacy": "Capacity state is unavailable. This is not a healthy-capacity claim.",
+  "control.mode": "Orchestra mode",
+  "control.openCircuits": "Open circuits",
+  "control.userReview": "User review",
+  "control.auditTime": "Last audit",
+  "control.scope": "Scope",
+  "control.capacityState": "Capacity",
+  "control.dispatch": "Dispatch",
+  "control.circuit": "Circuit",
+  "control.model": "Fallback / model",
+  "control.next": "Next",
+  "control.noAction": "No action recorded",
+  "control.actualUnknown": "Actual model: unknown",
+  "control.actualVerified": "Actual model",
+  "control.requested": "Requested model",
+  "control.recommended": "Recommended model",
+  "control.applied": "Applied model evidence",
+  "control.none": "No record",
+  "control.select": "Select a capacity record to inspect evidence.",
+  "control.lifecycle": "Dispatch lifecycle",
+  "control.queued": "Queued",
+  "control.dispatchAccepted": "Dispatch accepted; turn start unconfirmed",
+  "control.turnStarted": "Turn start observed",
+  "control.progressObserved": "Progress observed",
+  "control.reportProduced": "Report produced",
+  "control.notObserved": "No evidence",
+  "control.evidenceLevel": "Evidence",
+  "control.classification": "Classification",
+  "control.cooldown": "Cooldown / probe",
+  "control.fallback": "Fallback evidence",
+  "control.completion": "Completion envelope",
+  "control.findings": "Audit findings",
+  "control.noFindings": "No matching audit finding.",
+  "control.noFallback": "No fallback evidence recorded.",
+  "control.noEnvelope": "No completion envelope recorded.",
+  "control.modelPolicy": "Model policy",
+  "control.policyRules": "Route rules",
+  "control.recovered": "Capacity recovery recorded",
+  "control.paused": "Orquesta is paused",
+  "control.approval": "Fallback review needs attention",
+  "control.showEvidence": "View evidence",
+  "value.paused": "paused",
+  "value.available": "available",
+  "value.unavailable": "unavailable",
+  "value.cooldown": "cooldown",
+  "value.probing": "probing",
+  "value.open": "open",
+  "value.closed": "closed",
+  "value.half-open": "half-open",
+  "value.report-produced": "report produced",
+  "value.dispatch-accepted": "dispatch accepted",
+  "value.turn-started": "turn started",
+  "value.progress-observed": "progress observed",
+  "value.normal": "normal",
+  "value.degraded": "degraded",
+  "value.e0": "E0 no evidence",
+  "value.e1": "E1 ambiguous signal",
+  "value.e2": "E2 correlated repeated failure",
+  "value.e3": "E3 confirmed"
+});
+
+Object.assign(dictionary.ja, {
+  "view.control": "Control Plane",
+  "control.title": "Control Plane",
+  "control.eyebrow": "制御証拠",
+  "control.detail": "容量、証拠、dispatch記録はHomeと分けて確認します。",
+  "control.capacity": "容量",
+  "control.audit": "監査",
+  "control.evidence": "証拠",
+  "control.loading": "制御状態を読み込み中",
+  "control.empty": "容量記録はまだありません。",
+  "control.legacy": "容量状態を取得できません。これは利用可能の主張ではありません。",
+  "control.mode": "Orquestaの状態",
+  "control.openCircuits": "開放中の回路",
+  "control.userReview": "ユーザー確認",
+  "control.auditTime": "最終監査",
+  "control.scope": "対象",
+  "control.capacityState": "容量",
+  "control.dispatch": "Dispatch",
+  "control.circuit": "回路",
+  "control.model": "Fallback / モデル",
+  "control.next": "次の対応",
+  "control.noAction": "対応記録なし",
+  "control.actualUnknown": "実モデル: 不明",
+  "control.actualVerified": "実モデル",
+  "control.requested": "要求モデル",
+  "control.recommended": "推奨モデル",
+  "control.applied": "適用モデルの証拠",
+  "control.none": "記録なし",
+  "control.select": "容量記録を選ぶと証拠の詳細を確認できます。",
+  "control.lifecycle": "Dispatchの段階",
+  "control.queued": "キュー記録済み",
+  "control.dispatchAccepted": "送信受理。ターン開始は未確認",
+  "control.turnStarted": "ターン開始確認",
+  "control.progressObserved": "進行確認",
+  "control.reportProduced": "レポート確認",
+  "control.notObserved": "証拠なし",
+  "control.evidenceLevel": "証拠レベル",
+  "control.classification": "判定種別",
+  "control.cooldown": "再試行待ち / probe",
+  "control.fallback": "Fallback証拠",
+  "control.completion": "Completion envelope",
+  "control.findings": "監査finding",
+  "control.noFindings": "対応する監査findingはありません。",
+  "control.noFallback": "Fallback証拠は記録されていません。",
+  "control.noEnvelope": "Completion envelopeは記録されていません。",
+  "control.modelPolicy": "モデル方針",
+  "control.policyRules": "ルール",
+  "control.recovered": "容量の回復記録があります",
+  "control.paused": "Orquestaは停止中です",
+  "control.approval": "Fallback確認が必要です",
+  "control.showEvidence": "証拠を見る",
+  "value.paused": "停止",
+  "value.available": "開始可能を確認",
+  "value.unavailable": "開始不能",
+  "value.cooldown": "再試行待ち",
+  "value.probing": "再開確認中",
+  "value.open": "開放",
+  "value.closed": "閉鎖",
+  "value.half-open": "半開放",
+  "value.report-produced": "レポート確認",
+  "value.dispatch-accepted": "送信受理",
+  "value.turn-started": "ターン開始確認",
+  "value.progress-observed": "進行確認",
+  "value.normal": "通常",
+  "value.degraded": "縮退",
+  "value.e0": "E0 証拠なし",
+  "value.e1": "E1 曖昧な信号",
+  "value.e2": "E2 相関した反復失敗",
+  "value.e3": "E3 確認済み"
+});
+
 function t(key, vars = {}, fallback = key) {
   const template = dictionary[currentLang]?.[key] ?? dictionary.en[key] ?? fallback;
   return template.replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? "");
@@ -2012,7 +2163,7 @@ function renderHomeOverview() {
 
 function compactHomeNotifications(notices) {
   const selected = [];
-  ["actions", "delegation", "progress"].forEach((view) => {
+  ["control", "actions", "delegation", "progress"].forEach((view) => {
     const notice = notices.find((item) => item.view === view && !selected.includes(item));
     if (notice) selected.push(notice);
   });
@@ -2025,6 +2176,18 @@ function compactHomeNotifications(notices) {
 function buildHomeNotifications(stats) {
   const truth = delegationTruth();
   const notices = [];
+  const capacity = state.capacity;
+  const orchestra = capacity?.orchestra || {};
+  if (orchestra.mode === "paused") {
+    const taskId = Array.isArray(orchestra.affected_task_ids) ? orchestra.affected_task_ids[0] : null;
+    const dispatch = controlDispatches().find((item) => item.task_id === taskId);
+    const record = controlCapacityRecords().find((item) => item.scope?.agent_id === dispatch?.agent_id || item.scope?.thread_id === dispatch?.thread_id);
+    notices.push({ title: t("control.paused"), count: Array.isArray(orchestra.affected_task_ids) ? orchestra.affected_task_ids.length : 1, detail: orchestra.reason_codes?.[0] || t("control.detail"), view: "control", tone: "blocked", controlRecordId: record?.capacity_id || "" });
+  }
+  const fallbackFinding = controlFindings().find((finding) => /fallback/i.test(String(finding.category || "") + String(finding.code || "")) && /approval|review/i.test(String(finding.recommended_action || "") + String(finding.message || "")));
+  if (fallbackFinding) notices.push({ title: t("control.approval"), count: 1, detail: fallbackFinding.message || fallbackFinding.code, view: "control", tone: "blocked", controlRecordId: fallbackFinding.capacity_id || "" });
+  const recovered = Array.isArray(capacity?.notifications) ? capacity.notifications.find((item) => item.status === "recovered" && !item.resolved_at) : null;
+  if (recovered) notices.push({ title: t("control.recovered"), count: 1, detail: recovered.summary || recovered.notification_key || t("control.detail"), view: "control", tone: "active", controlRecordId: recovered.capacity_id || "" });
   if (stats.approvalWaits.length) notices.push({ title: t("user.approvalWaits"), count: stats.approvalWaits.length, detail: t("user.approvalWaitDetail"), view: "actions", tone: "blocked", category: "approval-waits", actionId: actionTargetId("approval-waits", stats.approvalWaits[0].user_task_id) });
   if (stats.readyQuestions.length) notices.push({ title: t("user.readyQuestions"), count: stats.readyQuestions.length, detail: t("user.questionsDetail"), view: "actions", tone: "active", category: "ready-questions", actionId: actionTargetId("ready-questions", stats.readyQuestions[0].question_id) });
   if (stats.reportReviews.length) notices.push({ title: t("user.reportReviews"), count: stats.reportReviews.length, detail: t("user.reportReviewDetail"), view: "actions", tone: "blocked", category: "report-reviews", actionId: actionTargetId("report-reviews", stats.reportReviews[0].task_id) });
@@ -2039,7 +2202,7 @@ function buildHomeNotifications(stats) {
 
 function renderHomeNotification(item) {
   return `
-    <button type="button" class="notification-card ${item.tone || "active"}" data-action="open-view" data-view-target="${escapeHtml(item.view)}" data-focus-label="${escapeHtml(item.title)}" ${item.category ? `data-action-category="${escapeHtml(item.category)}"` : ""} ${item.actionId ? `data-action-id="${escapeHtml(item.actionId)}"` : ""}>
+    <button type="button" class="notification-card ${item.tone || "active"}" data-action="open-view" data-view-target="${escapeHtml(item.view)}" data-focus-label="${escapeHtml(item.title)}" ${item.category ? `data-action-category="${escapeHtml(item.category)}"` : ""} ${item.actionId ? `data-action-id="${escapeHtml(item.actionId)}"` : ""} ${item.controlRecordId ? `data-control-record-id="${escapeHtml(item.controlRecordId)}"` : ""}>
       <strong>${escapeHtml(item.count)}</strong>
       <span>
         <b>${escapeHtml(item.title)}</b>
@@ -4155,6 +4318,231 @@ function renderProgressPanel() {
   `;
 }
 
+function controlCapacityRecords() {
+  return Array.isArray(state.capacity?.capacity_records) ? state.capacity.capacity_records : [];
+}
+
+function controlDispatches() {
+  return Array.isArray(state.capacity?.dispatches) ? state.capacity.dispatches : [];
+}
+
+function controlFindings() {
+  return Array.isArray(state.controlAudit?.findings) ? state.controlAudit.findings : [];
+}
+
+function controlTimestamp(value) {
+  if (!value) return t("time.none");
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString(currentLang === "ja" ? "ja-JP" : "en-US", { dateStyle: "short", timeStyle: "short" });
+}
+
+function latestDispatchForCapacity(record) {
+  const scope = record?.scope || {};
+  const matches = controlDispatches().filter((dispatch) => {
+    if (scope.agent_id && dispatch.agent_id === scope.agent_id) return true;
+    return Boolean(scope.thread_id && dispatch.thread_id === scope.thread_id);
+  });
+  return matches.sort((left, right) => Date.parse(right.queued_at || 0) - Date.parse(left.queued_at || 0))[0] || null;
+}
+
+function taskForControlDispatch(dispatch) {
+  return dispatch?.task_id ? state.tasks.find((task) => task.task_id === dispatch.task_id) || null : null;
+}
+
+function controlRecordPriority(record) {
+  const stateRank = { unavailable: 0, suspected_unavailable: 1, cooldown: 2, probing: 3, unknown: 4, available: 5 };
+  const circuitRank = { open: -2, half_open: -1, closed: 0 };
+  return (stateRank[record?.state] ?? 6) * 10 + (circuitRank[record?.circuit?.state] ?? 0);
+}
+
+function controlRecordsSorted() {
+  return controlCapacityRecords().slice().sort((left, right) => controlRecordPriority(left) - controlRecordPriority(right)
+    || Date.parse(right.observed_at || 0) - Date.parse(left.observed_at || 0)
+    || String(left.capacity_id || "").localeCompare(String(right.capacity_id || "")));
+}
+
+function controlLifecycle(dispatch) {
+  const stages = [
+    ["queued", "queued_at", t("control.queued")],
+    ["dispatch_accepted", "dispatch_accepted_at", t("control.dispatchAccepted")],
+    ["turn_started", "turn_started_at", t("control.turnStarted")],
+    ["progress_observed", "progress_observed_at", t("control.progressObserved")],
+    ["report_produced", "report_produced_at", t("control.reportProduced")]
+  ];
+  return `<ol class="control-lifecycle">${stages.map(([name, field, label]) => {
+    const observed = Boolean(dispatch?.[field]);
+    const current = dispatch?.state === name;
+    return `<li class="${observed ? "is-observed" : ""} ${current ? "is-current" : ""}"><b>${escapeHtml(label)}</b><span>${escapeHtml(observed ? controlTimestamp(dispatch[field]) : t("control.notObserved"))}</span></li>`;
+  }).join("")}</ol>`;
+}
+
+function controlModelEvidence(task) {
+  const route = task?.model_route || {};
+  const actual = route.actual_model || task?.completion_envelope?.model_route?.actual_model || null;
+  const requested = route.requested_model || null;
+  const applied = route.applied_model || null;
+  return `
+    <dl class="control-definition-list">
+      <div><dt>${escapeHtml(t("control.recommended"))}</dt><dd>${escapeHtml(route.recommended_model || t("control.none"))}</dd></div>
+      <div><dt>${escapeHtml(t("control.requested"))}</dt><dd>${escapeHtml(requested || t("control.none"))}</dd></div>
+      <div><dt>${escapeHtml(t("control.applied"))}</dt><dd>${escapeHtml(applied || t("control.none"))}</dd></div>
+      <div><dt>${escapeHtml(t("control.actualVerified"))}</dt><dd data-control-actual-model>${escapeHtml(actual || t("control.actualUnknown"))}</dd></div>
+    </dl>
+  `;
+}
+
+function renderControlPlaneSummary() {
+  const summaryNode = $("controlPlaneSummary");
+  const stateNode = $("controlPlaneState");
+  if (!summaryNode || !stateNode) return;
+  const ledger = state.capacity;
+  if (!ledger || !Array.isArray(ledger.capacity_records)) {
+    stateNode.textContent = t("control.loading");
+    summaryNode.innerHTML = `<div class="control-empty" aria-busy="true">${escapeHtml(state.liveSource === "server" ? t("control.legacy") : t("control.loading"))}</div>`;
+    return;
+  }
+  const auditSummary = state.controlAudit?.summary || {};
+  const openCircuits = ledger.capacity_records.filter((record) => record.circuit?.state === "open").length;
+  const reviewCount = Number(auditSummary.fallbacks_requiring_user_approval || 0);
+  stateNode.textContent = valueLabel(ledger.orchestra?.mode || "unknown");
+  summaryNode.innerHTML = `
+    <div class="control-summary-item"><span>${escapeHtml(t("control.mode"))}</span><b>${escapeHtml(valueLabel(ledger.orchestra?.mode || "unknown"))}</b></div>
+    <div class="control-summary-item"><span>${escapeHtml(t("control.openCircuits"))}</span><b>${openCircuits}</b></div>
+    <div class="control-summary-item"><span>${escapeHtml(t("control.userReview"))}</span><b>${reviewCount}</b></div>
+    <div class="control-summary-item"><span>${escapeHtml(t("control.auditTime"))}</span><b>${escapeHtml(controlTimestamp(state.controlAudit?.generated_at || state.controlAudit?.updated_at || ledger.updated_at))}</b></div>
+  `;
+}
+
+function renderControlTabs() {
+  const node = $("controlPlaneTabs");
+  if (!node) return;
+  const tabs = [
+    ["capacity", t("control.capacity")],
+    ["audit", t("control.audit")],
+    ["evidence", t("control.evidence")]
+  ];
+  node.innerHTML = tabs.map(([id, label]) => `<button type="button" role="tab" data-action="control-tab" data-control-tab="${id}" aria-controls="controlPlaneLedger" aria-selected="${String(state.controlPlane.tab === id)}" tabindex="${state.controlPlane.tab === id ? "0" : "-1"}">${escapeHtml(label)}</button>`).join("");
+}
+
+function renderControlCapacityLedger() {
+  const records = controlRecordsSorted();
+  if (!records.length) return `<div class="control-empty">${escapeHtml(t("control.empty"))}</div>`;
+  return `
+    <div class="control-ledger-head" aria-hidden="true"><span>${escapeHtml(t("control.scope"))}</span><span>${escapeHtml(t("control.capacityState"))}</span><span>${escapeHtml(t("control.dispatch"))}</span><span>${escapeHtml(t("control.circuit"))}</span><span>${escapeHtml(t("control.model"))}</span><span>${escapeHtml(t("control.next"))}</span></div>
+    <div class="control-ledger-rows">${records.map((record) => {
+      const dispatch = latestDispatchForCapacity(record);
+      const task = taskForControlDispatch(dispatch);
+      const selected = state.controlPlane.selectedCapacityId === record.capacity_id;
+      const actual = task?.model_route?.actual_model || task?.completion_envelope?.model_route?.actual_model || null;
+      const next = record.circuit?.state === "open" ? valueLabel("cooldown") : t("control.noAction");
+      return `
+        <button type="button" class="control-ledger-row ${selected ? "is-selected" : ""}" data-action="select-control-record" data-capacity-record-id="${escapeHtml(record.capacity_id)}" aria-expanded="${String(selected)}" aria-controls="controlPlaneDetail">
+          <span><b>${escapeHtml(record.scope?.agent_id || record.scope?.scope_key || record.capacity_id)}</b><small>${escapeHtml(record.scope?.scope_type || "unknown")} · ${escapeHtml(record.scope?.scope_confidence || "unknown")}</small></span>
+          <span><b>${escapeHtml(valueLabel(record.state || "unknown"))}</b><small>${escapeHtml(record.cause || "unknown")} · ${escapeHtml(valueLabel(record.evidence_level || "E0"))}</small></span>
+          <span><b>${escapeHtml(valueLabel(dispatch?.state || "unknown"))}</b><small>${escapeHtml(dispatch?.task_id || t("control.none"))}</small></span>
+          <span><b>${escapeHtml(valueLabel(record.circuit?.state || "unknown"))}</b><small>${escapeHtml(record.cooldown_until || record.circuit?.next_probe_not_before || t("time.none"))}</small></span>
+          <span><b>${escapeHtml(task?.model_route?.requested_model || t("control.none"))}</b><small data-control-actual-model>${escapeHtml(actual || t("control.actualUnknown"))}</small></span>
+          <span><b>${escapeHtml(next)}</b><small>${escapeHtml(record.capacity_id)}</small></span>
+        </button>
+      `;
+    }).join("")}</div>
+  `;
+}
+
+function renderControlRecordDetail() {
+  const record = controlCapacityRecords().find((item) => item.capacity_id === state.controlPlane.selectedCapacityId);
+  if (!record) return `<div class="control-empty">${escapeHtml(state.controlPlane.deepLinkMessage || t("control.select"))}</div>`;
+  const dispatch = latestDispatchForCapacity(record);
+  const task = taskForControlDispatch(dispatch);
+  const matchingFindings = controlFindings().filter((finding) => finding.capacity_id === record.capacity_id || (dispatch?.task_id && finding.task_id === dispatch.task_id));
+  const evidence = (state.capacity?.evidence || []).filter((item) => (record.evidence_refs || []).includes(item.evidence_id));
+  const fallback = task?.completion_envelope?.capacity_evidence?.fallback || task?.capacity_evidence?.fallback || null;
+  return `
+    <section class="control-detail-section" data-control-detail-id="${escapeHtml(record.capacity_id)}">
+      <div class="section-title compact-title"><div><span class="eyebrow">${escapeHtml(record.capacity_id)}</span><h3>${escapeHtml(record.scope?.agent_id || t("control.scope"))}</h3></div></div>
+      <div class="control-detail-columns">
+        <div><h4>${escapeHtml(t("control.lifecycle"))}</h4>${controlLifecycle(dispatch)}</div>
+        <div><h4>${escapeHtml(t("control.evidenceLevel"))}</h4><p>${escapeHtml(valueLabel(record.evidence_level || "E0"))} · ${escapeHtml(valueLabel(record.classification || "unknown"))}</p><p>${escapeHtml(evidence.map((item) => item.summary).filter(Boolean).join(" / ") || t("control.notObserved"))}</p></div>
+        <div><h4>${escapeHtml(t("control.cooldown"))}</h4><p>${escapeHtml(record.cooldown_until || record.reset_at || record.circuit?.next_probe_not_before || t("time.none"))}</p><p>${escapeHtml(valueLabel(record.circuit?.state || "unknown"))}</p></div>
+      </div>
+      <div class="control-detail-columns">
+        <div><h4>${escapeHtml(t("control.model"))}</h4>${controlModelEvidence(task)}</div>
+        <div><h4>${escapeHtml(t("control.fallback"))}</h4><p>${escapeHtml(fallback ? JSON.stringify(fallback) : t("control.noFallback"))}</p></div>
+        <div><h4>${escapeHtml(t("control.completion"))}</h4><p>${escapeHtml(task?.completion_envelope?.status || t("control.noEnvelope"))}</p></div>
+      </div>
+      <div class="control-audit-mini"><h4>${escapeHtml(t("control.findings"))}</h4>${matchingFindings.length ? `<ul>${matchingFindings.slice(0, 4).map((finding) => `<li><b>${escapeHtml(valueLabel(finding.severity || "unknown"))}</b> ${escapeHtml(finding.message || finding.code || finding.finding_id)}</li>`).join("")}</ul>` : `<p>${escapeHtml(t("control.noFindings"))}</p>`}</div>
+    </section>
+  `;
+}
+
+function renderControlAuditLedger() {
+  const findings = controlFindings();
+  const summary = state.controlAudit?.summary || {};
+  return `
+    <section class="control-audit-summary"><p>${escapeHtml(t("control.findings"))}: ${findings.length}</p><p>${escapeHtml(t("control.userReview"))}: ${Number(summary.fallbacks_requiring_user_approval || 0)}</p></section>
+    <div class="control-flat-list">${findings.length ? findings.slice(0, 24).map((finding) => `<div><b>${escapeHtml(valueLabel(finding.severity || "unknown"))}</b><span>${escapeHtml(finding.task_id || finding.capacity_id || finding.finding_id)}</span><p>${escapeHtml(finding.message || finding.code || "")}</p></div>`).join("") : `<div class="control-empty">${escapeHtml(t("control.noFindings"))}</div>`}</div>
+  `;
+}
+
+function renderControlEvidenceLedger() {
+  const tasks = state.tasks.filter((task) => task.model_route || task.completion_envelope).slice().sort((left, right) => String(right.task_id).localeCompare(String(left.task_id)));
+  const rules = Array.isArray(state.modelPolicy?.rules) ? state.modelPolicy.rules : [];
+  return `
+    <section class="control-policy-strip"><b>${escapeHtml(t("control.modelPolicy"))}</b><span>${escapeHtml(t("control.policyRules"))}: ${rules.length}</span></section>
+    <div class="control-flat-list">${tasks.length ? tasks.map((task) => `
+      <div data-control-task-id="${escapeHtml(task.task_id)}"><b>${escapeHtml(task.task_id)}</b><span>${escapeHtml(task.title || "")}</span>${controlModelEvidence(task)}<p>${escapeHtml(t("control.completion"))}: ${escapeHtml(task.completion_envelope?.status || t("control.noEnvelope"))}</p></div>
+    `).join("") : `<div class="control-empty">${escapeHtml(t("control.none"))}</div>`}</div>
+  `;
+}
+
+function renderControlPlane() {
+  renderControlPlaneSummary();
+  renderControlTabs();
+  const ledger = $("controlPlaneLedger");
+  const detail = $("controlPlaneDetail");
+  if (!ledger || !detail) return;
+  if (state.controlPlane.tab === "audit") {
+    ledger.innerHTML = renderControlAuditLedger();
+    detail.innerHTML = "";
+    return;
+  }
+  if (state.controlPlane.tab === "evidence") {
+    ledger.innerHTML = renderControlEvidenceLedger();
+    detail.innerHTML = "";
+    return;
+  }
+  ledger.innerHTML = renderControlCapacityLedger();
+  detail.innerHTML = renderControlRecordDetail();
+}
+
+function applyControlFocus(recordId) {
+  state.controlPlane.tab = "capacity";
+  state.controlPlane.selectedCapacityId = recordId || null;
+  state.controlPlane.deepLinkMessage = recordId ? t("control.select") : null;
+}
+
+function scheduleControlFocus() {
+  if (state.currentView !== "control" || !state.controlPlane.selectedCapacityId) return;
+  window.setTimeout(() => {
+    const target = document.querySelector(`[data-capacity-record-id="${CSS.escape(state.controlPlane.selectedCapacityId)}"]`);
+    const detail = $("controlPlaneDetail");
+    if (!target || !detail) {
+      state.controlPlane.deepLinkMessage = t("control.select");
+      renderControlPlane();
+      return;
+    }
+    target.classList.add("is-deeplink-target");
+    detail.classList.add("is-deeplink-target");
+    detail.scrollIntoView({ block: "center", behavior: "smooth" });
+    detail.focus({ preventScroll: true });
+    window.setTimeout(() => {
+      target.classList.remove("is-deeplink-target");
+      detail.classList.remove("is-deeplink-target");
+    }, 1700);
+  }, 40);
+}
+
 
 function renderLiquidGlassState() {
   document.documentElement.classList.add("orquesta-liquid-ready");
@@ -4191,6 +4579,7 @@ function render() {
   renderFoundationAudit();
   renderSetupWizard();
   renderProgressPanel();
+  renderControlPlane();
   renderVisionPanelV2();
   renderUserTaskSummary();
   renderRepairCards();
@@ -4245,6 +4634,10 @@ function mergeState(fileName, data) {
   if (fileName === "agents.json") state.agents = data.agents || [];
   if (fileName === "sessions.json") state.sessions = data.sessions || [];
   if (fileName === "tasks.json") state.tasks = data.tasks || [];
+  if (fileName === "model_policy.json") state.modelPolicy = data || state.modelPolicy;
+  if (fileName === "capacity.json") state.capacity = data || state.capacity;
+  if (fileName === "control_audit.json") state.controlAudit = data || state.controlAudit;
+  if (fileName === "dashboard_actions.json") state.dashboardActions = data || state.dashboardActions;
   if (fileName === "trigger_audit.json") state.triggerAudit = data || state.triggerAudit;
   if (fileName === "directives.json") state.directives = data.directives || [];
   if (fileName === "events.jsonl") state.events = Array.isArray(data) ? data : [];
@@ -4275,6 +4668,10 @@ function mergeLiveState(data) {
   state.sessions = data.sessions || [];
   state.agents = applySessionOverlay(data.agents || [], state.sessions);
   state.tasks = data.tasks || [];
+  state.modelPolicy = data.modelPolicy || state.modelPolicy || null;
+  state.capacity = data.capacity || state.capacity || null;
+  state.controlAudit = data.controlAudit || state.controlAudit || null;
+  state.dashboardActions = data.dashboardActions || state.dashboardActions || { actions: [] };
   state.triggerAudit = data.triggerAudit || state.triggerAudit || {};
   state.directives = data.directives || [];
   state.events = data.events || [];
@@ -4678,12 +5075,31 @@ document.addEventListener("click", (event) => {
     if (state.currentView === "actions") {
       applyActionFocus(viewButton.dataset.actionCategory || null, viewButton.dataset.actionId || null);
     }
+    if (state.currentView === "control") {
+      applyControlFocus(viewButton.dataset.controlRecordId || null);
+    }
     const focusLabel = $("actionFocusLabel");
     if (focusLabel && viewButton.dataset.focusLabel) {
       focusLabel.textContent = viewButton.dataset.focusLabel;
     }
     render();
     scheduleActionFocus();
+    scheduleControlFocus();
+    return;
+  }
+  const controlTab = event.target.closest("[data-action='control-tab']");
+  if (controlTab) {
+    state.controlPlane.tab = controlTab.dataset.controlTab || "capacity";
+    state.controlPlane.deepLinkMessage = null;
+    renderControlPlane();
+    return;
+  }
+  const controlRecord = event.target.closest("[data-action='select-control-record']");
+  if (controlRecord) {
+    state.controlPlane.selectedCapacityId = controlRecord.dataset.capacityRecordId || null;
+    state.controlPlane.deepLinkMessage = null;
+    renderControlPlane();
+    $("controlPlaneDetail")?.focus({ preventScroll: true });
     return;
   }
   const delegationTruthToggle = event.target.closest("[data-action='toggle-delegation-truth']");
@@ -4704,6 +5120,19 @@ document.addEventListener("click", (event) => {
     state.previewAgentId = inspectButton.dataset.agentIdRef;
     renderTeamVisualizer();
   }
+});
+
+$("controlPlaneTabs")?.addEventListener("keydown", (event) => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const tabs = [...event.currentTarget.querySelectorAll("[role='tab']")];
+  if (!tabs.length) return;
+  event.preventDefault();
+  const current = Math.max(0, tabs.indexOf(document.activeElement));
+  const next = event.key === "Home" ? 0
+    : event.key === "End" ? tabs.length - 1
+      : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  tabs[next].focus();
+  tabs[next].click();
 });
 
 $("tasks").addEventListener("click", (event) => {
