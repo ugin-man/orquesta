@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { updateJsonAtomic, writeJsonAtomic } = require("./json-state");
 
 const VALID_NONE_REASONS = new Set([
   "purely_mechanical_change",
@@ -29,12 +30,23 @@ const VALID_CATEGORIES = new Set([
 const VALID_TIMINGS = new Set(["now", "before_next_task", "before_acceptance", "batch_later", "roadmap_review"]);
 const VALID_CANDIDATE_STATUSES = new Set([
   "pending_curator_review",
+  "observation",
+  "clustered",
   "curator_accepted",
   "curator_rejected",
   "merged_duplicate",
   "promoted_to_question",
   "retired"
 ]);
+const VALID_OBSERVATION_VALUE_TYPES = new Set([
+  "user_emergence",
+  "operating_rule",
+  "maintenance_note",
+  "duplicate",
+  "low_value"
+]);
+const VALID_USER_EMERGENCE_VALUES = new Set(["low", "medium", "high"]);
+const VALID_OBSERVATION_ACTIONS = new Set(["ignore", "keep_as_note", "curator_review", "ask_user"]);
 
 const REQUIRED_ITEM_FIELDS = [
   "priority",
@@ -115,6 +127,51 @@ function validateCandidateItem(item, index) {
   if (hasText(item.suggested_timing) && !VALID_TIMINGS.has(item.suggested_timing)) {
     errors.push(`${prefix}: invalid suggested_timing ${item.suggested_timing}`);
   }
+  if (item.observation !== undefined && item.observation !== null) {
+    errors.push(...validateObservation(item.observation, prefix));
+  }
+  return errors;
+}
+
+function defaultObservation() {
+  return {
+    value_type: "maintenance_note",
+    user_emergence_value: "low",
+    decision_cluster_id: null,
+    suggested_action: "curator_review",
+    reason: "Legacy candidate awaiting curator review."
+  };
+}
+
+function normalizeObservation(observation) {
+  if (!observation || typeof observation !== "object" || Array.isArray(observation)) return defaultObservation();
+  return {
+    value_type: observation.value_type,
+    user_emergence_value: observation.user_emergence_value,
+    decision_cluster_id: observation.decision_cluster_id ?? null,
+    suggested_action: observation.suggested_action,
+    reason: observation.reason
+  };
+}
+
+function validateObservation(observation, prefix = "observation") {
+  const errors = [];
+  if (!observation || typeof observation !== "object" || Array.isArray(observation)) {
+    return [`${prefix}: observation must be an object`];
+  }
+  if (!VALID_OBSERVATION_VALUE_TYPES.has(observation.value_type)) {
+    errors.push(`${prefix}: invalid observation value_type ${observation.value_type}`);
+  }
+  if (!VALID_USER_EMERGENCE_VALUES.has(observation.user_emergence_value)) {
+    errors.push(`${prefix}: invalid observation user_emergence_value ${observation.user_emergence_value}`);
+  }
+  if (observation.decision_cluster_id !== null && observation.decision_cluster_id !== undefined && !hasText(observation.decision_cluster_id)) {
+    errors.push(`${prefix}: invalid observation decision_cluster_id`);
+  }
+  if (!VALID_OBSERVATION_ACTIONS.has(observation.suggested_action)) {
+    errors.push(`${prefix}: invalid observation suggested_action ${observation.suggested_action}`);
+  }
+  if (!hasText(observation.reason)) errors.push(`${prefix}: missing observation reason`);
   return errors;
 }
 
@@ -248,8 +305,7 @@ function loadQuestionCandidateInbox(rootDir) {
 
 function saveQuestionCandidateInbox(rootDir, inbox) {
   const inboxPath = path.join(rootDir, ".orquesta", "vision", "question_candidates.json");
-  fs.mkdirSync(path.dirname(inboxPath), { recursive: true });
-  fs.writeFileSync(inboxPath, `${JSON.stringify(inbox, null, 2)}\n`, "utf8");
+  return writeJsonAtomic(inboxPath, inbox);
 }
 
 function appendSubmittedQuestionCandidates(rootDir, metadata, now = new Date().toISOString()) {
@@ -257,49 +313,53 @@ function appendSubmittedQuestionCandidates(rootDir, metadata, now = new Date().t
     return { recorded: 0, skipped: 0, candidates: [] };
   }
 
-  const inbox = loadQuestionCandidateInbox(rootDir);
-  inbox.version = inbox.version || 1;
-  inbox.candidates = Array.isArray(inbox.candidates) ? inbox.candidates : [];
-  const recorded = [];
-  let skipped = 0;
+  const inboxPath = path.join(rootDir, ".orquesta", "vision", "question_candidates.json");
+  let outcome = { recorded: 0, skipped: 0, candidates: [] };
+  const transaction = updateJsonAtomic(inboxPath, defaultQuestionCandidateInbox(), (current) => {
+    const inbox = current && typeof current === "object" ? current : defaultQuestionCandidateInbox();
+    inbox.version = inbox.version || 1;
+    inbox.candidates = Array.isArray(inbox.candidates) ? inbox.candidates : [];
+    const recorded = [];
+    let skipped = 0;
 
-  metadata.items.forEach((item) => {
-    const duplicate = inbox.candidates.some((candidate) => (
-      candidate.source_report_path === item.source_report_path && candidate.question === item.question
-    ));
-    if (duplicate) {
-      skipped += 1;
-      return;
-    }
-    const candidate = {
-      candidate_id: nextCandidateId(inbox.candidates, item.source_task_id),
-      status: "pending_curator_review",
-      priority: item.priority,
-      category: item.category,
-      question: item.question,
-      why_now: item.why_now,
-      user_impact: item.user_impact,
-      suggested_timing: item.suggested_timing,
-      source_task_id: item.source_task_id,
-      source_agent_id: item.source_agent_id,
-      source_report_path: item.source_report_path,
-      created_at: now,
-      curated_by: null,
-      curated_at: null,
-      curator_decision: null,
-      question_id: null,
-      notes: []
-    };
-    inbox.candidates.push(candidate);
-    recorded.push(candidate);
+    metadata.items.forEach((item) => {
+      const duplicate = inbox.candidates.some((candidate) => (
+        candidate.source_report_path === item.source_report_path && candidate.question === item.question
+      ));
+      if (duplicate) {
+        skipped += 1;
+        return;
+      }
+      const candidate = {
+        candidate_id: nextCandidateId(inbox.candidates, item.source_task_id),
+        status: item.observation ? "observation" : "pending_curator_review",
+        priority: item.priority,
+        category: item.category,
+        question: item.question,
+        why_now: item.why_now,
+        user_impact: item.user_impact,
+        suggested_timing: item.suggested_timing,
+        source_task_id: item.source_task_id,
+        source_agent_id: item.source_agent_id,
+        source_report_path: item.source_report_path,
+        observation: normalizeObservation(item.observation),
+        created_at: now,
+        curated_by: null,
+        curated_at: null,
+        curator_decision: null,
+        question_id: null,
+        notes: []
+      };
+      inbox.candidates.push(candidate);
+      recorded.push(candidate);
+    });
+
+    if (recorded.length) inbox.updated_at = now;
+    outcome = { recorded: recorded.length, skipped, candidates: recorded };
+    return inbox;
   });
 
-  if (recorded.length) {
-    inbox.updated_at = now;
-    saveQuestionCandidateInbox(rootDir, inbox);
-  }
-
-  return { recorded: recorded.length, skipped, candidates: recorded };
+  return { ...outcome, lock: transaction.lock };
 }
 
 function main() {
@@ -349,10 +409,12 @@ if (require.main === module) {
 
 module.exports = {
   VALID_NONE_REASONS,
+  defaultObservation,
   appendSubmittedQuestionCandidates,
   extractQuestionCandidates,
   inspectReportQuestionCandidates,
   inspectReportQuestionCandidatesFromText,
+  validateObservation,
   validateQuestionCandidateInbox,
   validateQuestionCandidates
 };

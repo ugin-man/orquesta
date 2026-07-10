@@ -36,13 +36,14 @@ When Orquesta is invoked in a repository:
 3. Check `.orquesta/setup/options.json` for bootstrap status. Resume incomplete setup from this file instead of creating duplicate foundation agents.
 4. Check `.orquesta/state/agents.json`, `sessions.json`, `tasks.json`, `directives.json`, and `events.jsonl`.
 5. If missing, create them from the schema in `references/state-schema.md`.
-6. When Codex thread tools are available and the task concerns the dashboard, agents, threads, or live state, refresh `.orquesta/state/sessions.json` from the project thread list before claiming the visualizer reflects reality.
-7. Read only the Orquesta state and the task-relevant project docs. Do not load every specialist document into the orchestrator context.
-8. Use `references/orchestration-protocol.md` for the workflow.
-9. Use `references/agent-contract.md` when appointing or steering a specialist thread.
-10. Use `references/vision-alignment.md` when user taste, implicit vision, art direction, story tone, game feel, or creative ambiguity affects the work.
-11. Use `references/failure-concierge.md` when command failures, permission errors, server startup failures, missing local dependencies, repeated retries, or quality-lowering fallbacks may require user-side action.
-12. Use `references/user-liaison.md` when accepted user-facing asks need batching, sequencing, dashboard visibility, or a user-side task queue.
+6. Run or refresh the foundation trigger audit (`npm run audit:triggers` or `node orquesta/scripts/foundation-trigger-audit.js`) and read `.orquesta/state/trigger_audit.json` before routing new Orquesta work. This distinguishes event-driven standby from neglected trigger-ready work.
+7. When Codex thread tools are available and the task concerns the dashboard, agents, threads, or live state, refresh `.orquesta/state/sessions.json` from the project thread list before claiming the visualizer reflects reality.
+8. Read only the Orquesta state and the task-relevant project docs. Do not load every specialist document into the orchestrator context.
+9. Use `references/orchestration-protocol.md` for the workflow.
+10. Use `references/agent-contract.md` when appointing or steering a specialist thread.
+11. Use `references/vision-alignment.md` when user taste, implicit vision, art direction, story tone, game feel, or creative ambiguity affects the work.
+12. Use `references/failure-concierge.md` when command failures, permission errors, server startup failures, missing local dependencies, repeated retries, or quality-lowering fallbacks may require user-side action.
+13. Use `references/user-liaison.md` when accepted user-facing asks need batching, sequencing, dashboard visibility, or a user-side task queue.
 
 ## Bootstrap Foundation
 
@@ -159,6 +160,7 @@ The source of truth is not chat history. The source of truth is:
 - `.orquesta/state/agents.json`
 - `.orquesta/state/sessions.json`
 - `.orquesta/state/tasks.json`
+- `.orquesta/state/trigger_audit.json`
 - `.orquesta/state/directives.json`
 - `.orquesta/state/events.jsonl`
 - `.orquesta/failures/incidents.json`

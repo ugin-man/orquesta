@@ -171,6 +171,13 @@ async function main() {
     const compactLongTextHeights = compactLongTextBlocks.map((node) => Math.round(node.getBoundingClientRect().height));
     const actionDeepLinkButtons = [...document.querySelectorAll("#notificationQueue [data-view-target='actions']")];
     const actionDeepLinksWithMetadata = actionDeepLinkButtons.filter((node) => node.dataset.actionCategory).length;
+    const controlPlane = document.querySelector("[data-view-panel='control']");
+    const controlSummary = document.querySelector("#controlPlaneSummary");
+    const controlLedger = document.querySelector("#controlPlaneLedger");
+    const controlDetail = document.querySelector("#controlPlaneDetail");
+    const controlCapacityRows = [...document.querySelectorAll("#controlPlaneLedger [data-capacity-record-id]")];
+    const controlActualUnknown = [...document.querySelectorAll("[data-control-actual-model]")]
+      .some((node) => /unknown|不明/i.test(node.textContent || ""));
     const legendRect = rectFor(legend);
     const teamRect = rectFor(teamTree);
     const legendInsideMap = Boolean(legendRect && teamRect
@@ -233,6 +240,13 @@ async function main() {
       hasHomeView: viewTargets.includes("home") && Boolean(document.querySelector("[data-view-panel='home']")),
       hasActionsView: viewTargets.includes("actions") && Boolean(document.querySelector("[data-view-panel='actions']")),
       hasDelegationView: viewTargets.includes("delegation") && Boolean(document.querySelector("[data-view-panel='delegation']")),
+      hasControlView: viewTargets.includes("control") && Boolean(controlPlane),
+      hasControlSummary: Boolean(controlSummary),
+      hasControlLedger: Boolean(controlLedger),
+      hasControlDetail: Boolean(controlDetail),
+      controlCapacityRowCount: controlCapacityRows.length,
+      controlActualUnknown,
+      apiHasControlState: Boolean(api && api.capacity && api.controlAudit && api.modelPolicy),
       hasSetupCard: Boolean(document.querySelector("#setupWizard")),
       apiAgentCount: agentCount,
       apiSource: api?.source || null,
@@ -315,6 +329,47 @@ async function main() {
     };
   });
 
+  await page.click("[data-view-target='control']");
+  await page.waitForTimeout(180);
+  result.controlPlane = await page.evaluate(() => {
+    const capacityRows = [...document.querySelectorAll("#controlPlaneLedger [data-capacity-record-id]")];
+    const firstRow = capacityRows[0];
+    const tabs = [...document.querySelectorAll("#controlPlaneTabs [role='tab']")];
+    const detail = document.querySelector("#controlPlaneDetail");
+    const actualModels = [...document.querySelectorAll("#controlPlaneLedger [data-control-actual-model]")]
+      .map((node) => (node.textContent || "").trim());
+    return {
+      active: document.querySelector("[data-view-panel='control']")?.classList.contains("active") || false,
+      capacityRows: capacityRows.length,
+      tabCount: tabs.length,
+      detailVisible: Boolean(detail?.textContent?.trim()),
+      selectedCapacityId: firstRow?.dataset.capacityRecordId || null,
+      actualModels,
+      hasAcceptedStartWarning: /Dispatch accepted; turn start unconfirmed|送信受理。ターン開始は未確認/.test(document.querySelector("#controlPlaneLedger")?.textContent || ""),
+      hasFalseRunningClaim: /dispatch accepted[^\n]*(running|started)|送信受理[^\n]*(実行中|稼働中)/i.test(document.querySelector("#controlPlaneLedger")?.textContent || "")
+    };
+  });
+  if (result.controlPlane.selectedCapacityId) {
+    await page.click(`#controlPlaneLedger [data-capacity-record-id='${result.controlPlane.selectedCapacityId}']`);
+    await page.waitForTimeout(120);
+    result.controlPlane.detailAfterSelect = await page.evaluate(() => ({
+      detailText: document.querySelector("#controlPlaneDetail")?.textContent || "",
+      focusedInsideDetail: document.querySelector("#controlPlaneDetail")?.contains(document.activeElement) || document.activeElement === document.querySelector("#controlPlaneDetail")
+    }));
+  }
+  await page.click("[data-view-target='home']");
+  await page.waitForTimeout(100);
+  const controlHomeNotice = page.locator("#notificationQueue [data-view-target='control'][data-control-record-id]").first();
+  if (await controlHomeNotice.count()) {
+    await controlHomeNotice.click();
+    await page.waitForTimeout(220);
+    result.controlDeepLink = await page.evaluate(() => ({
+      active: document.querySelector("[data-view-panel='control']")?.classList.contains("active") || false,
+      selected: document.querySelector("#controlPlaneLedger .control-ledger-row.is-selected")?.dataset.capacityRecordId || null,
+      focusInsideControl: document.querySelector("[data-view-panel='control']")?.contains(document.activeElement) || false
+    }));
+  }
+
   await page.click("[data-view-target='setup']");
   await page.waitForTimeout(250);
   result.setupLayout = await page.evaluate(() => {
@@ -389,6 +444,22 @@ async function main() {
   if (!result.hasHomeView) failures.push("Home view or Home navigation is missing");
   if (!result.hasActionsView) failures.push("User Actions focused view or navigation is missing");
   if (!result.hasDelegationView) failures.push("Delegation focused view or navigation is missing");
+  if (!result.hasControlView) failures.push("Control Plane view or navigation is missing");
+  if (!result.apiHasControlState) failures.push("API state does not expose capacity, controlAudit, and modelPolicy");
+  if (!result.hasControlSummary || !result.hasControlLedger || !result.hasControlDetail) {
+    failures.push("Control Plane summary, ledger, or selected-detail target is missing");
+  }
+  if (result.apiHasControlState && result.controlCapacityRowCount === 0) failures.push("Control Plane did not render capacity records");
+  if (result.apiHasControlState && !result.controlActualUnknown) failures.push("Control Plane does not preserve an unknown actual-model state");
+  if (!result.controlPlane?.active) failures.push("Control Plane did not open from its navigation tab");
+  if ((result.controlPlane?.capacityRows || 0) !== result.controlCapacityRowCount) failures.push("Control Plane capacity ledger changed unexpectedly after navigation");
+  if ((result.controlPlane?.tabCount || 0) < 3) failures.push("Control Plane section tabs are missing");
+  if (result.controlPlane?.capacityRows > 0 && !result.controlPlane?.detailAfterSelect?.detailText?.trim()) failures.push("Control Plane capacity selection did not render detail");
+  if (result.controlPlane?.hasFalseRunningClaim) failures.push("Control Plane labels dispatch accepted as running or started");
+  if (result.controlPlane?.hasAcceptedStartWarning === false) failures.push("Control Plane does not distinguish dispatch acceptance from turn start");
+  if (result.controlDeepLink && (!result.controlDeepLink.active || !result.controlDeepLink.selected || !result.controlDeepLink.focusInsideControl)) {
+    failures.push("Home Control Plane notification did not deep-link to a selected capacity record");
+  }
   if (!result.hasSetupCard) failures.push("setup card #setupWizard was not rendered in focused views");
   if (!result.setupLayout?.setupPanelWide) failures.push("setup panel is not wide enough for first-run project intake");
   if (!result.setupLayout?.foundationBelowSetup) failures.push("foundation audit panel is not below the setup panel");

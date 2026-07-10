@@ -9,10 +9,14 @@ const {
   normalizePort
 } = require("./scripts/dashboard-port-selection");
 const { buildDashboardStateEtag } = require("./scripts/dashboard-state-cache");
+const { appendJsonlAtomic, updateJsonAtomic, writeJsonAtomic } = require("./scripts/json-state");
 const {
   appendSubmittedQuestionCandidates,
   inspectReportQuestionCandidates
 } = require("./scripts/report-question-candidates-check");
+const { reviewTaskControl } = require("./scripts/control-audit");
+const { createEmptyCapacityLedger } = require("./scripts/capacity-gate");
+const { defaultModelPolicy } = require("./scripts/model-policy");
 
 const root = path.resolve(__dirname, "..");
 const dashboardRoot = path.join(__dirname, "assets", "dashboard");
@@ -44,9 +48,12 @@ function readJson(fileName) {
   return readJsonFrom(stateRoot, fileName, {});
 }
 
+function readModelPolicyState(basePath = stateRoot) {
+  return readJsonFrom(basePath, "model_policy.json", defaultModelPolicy());
+}
+
 function writeJsonTo(basePath, fileName, data) {
-  fs.mkdirSync(basePath, { recursive: true });
-  fs.writeFileSync(path.join(basePath, fileName), `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  return writeJsonAtomic(path.join(basePath, fileName), data);
 }
 
 function readSetupOptions() {
@@ -183,7 +190,7 @@ function readRequestJson(req) {
 
 function appendEvent(event) {
   const filePath = path.join(stateRoot, "events.jsonl");
-  fs.appendFileSync(filePath, `${JSON.stringify(event)}\n`, "utf8");
+  return appendJsonlAtomic(filePath, event);
 }
 
 function normalizeState(value) {
@@ -925,6 +932,156 @@ function saveVisionReview(payload) {
   return { saved: true, user_task_id: userTaskId, batch_id: batchId, status: batch.status, decision };
 }
 
+function updateReportReviewStateFiles({
+  stateRoot: targetStateRoot = stateRoot,
+  taskId,
+  decision,
+  note,
+  now,
+  reportPath,
+  questionCandidateSummary,
+  completionEnvelopeSummary
+}) {
+  let reviewedTask = null;
+  let reviewRecord = null;
+  const tasksResult = updateJsonAtomic(
+    path.join(targetStateRoot, "tasks.json"),
+    { version: 1, tasks: [] },
+    (tasksState) => {
+      tasksState.version = tasksState.version || 1;
+      tasksState.tasks = Array.isArray(tasksState.tasks) ? tasksState.tasks : [];
+      const task = tasksState.tasks.find((item) => item.task_id === taskId);
+      if (!task) {
+        const error = new Error(`Task not found: ${taskId}`);
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const currentReportPath = reportPathForTask(task);
+      if (currentReportPath !== reportPath) {
+        const error = new Error(`Task report changed during review: ${taskId}`);
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const previousState = task.state || "unknown";
+      reviewRecord = {
+        decision,
+        note,
+        reviewed_at: now,
+        reviewed_by: "orchestrator",
+        report: reportPath,
+        previous_state: previousState,
+        question_candidates: questionCandidateSummary
+      };
+
+      task.report_review = reviewRecord;
+      task.review_history = [...(task.review_history || []), reviewRecord];
+      task.report = reportPath;
+      task.artifacts = addUnique(task.artifacts, reportPath);
+
+      if (decision === "accept") {
+        task.state = "accepted";
+        task.completed_at = task.completed_at || now;
+        task.accepted_at = now;
+        if (completionEnvelopeSummary) {
+          task.control_rollout = "beta_v3";
+          task.completion_envelope = completionEnvelopeSummary;
+          reviewRecord.completion_envelope = completionEnvelopeSummary;
+        }
+        if (note) task.result_summary = note;
+      } else if (decision === "request_changes") {
+        task.state = "needs_revision";
+        task.blocked_by = [];
+        task.revision_requested_at = now;
+        if (note) task.result_summary = `Revision requested: ${note}`;
+      } else {
+        task.state = "needs_orchestrator_review";
+        task.review_held_at = now;
+        if (note) task.result_summary = `Review held: ${note}`;
+      }
+
+      tasksState.updated_at = now;
+      reviewedTask = { ...task };
+      return tasksState;
+    }
+  );
+
+  let reviewedAgent = null;
+  const agentsResult = updateJsonAtomic(
+    path.join(targetStateRoot, "agents.json"),
+    { version: 1, agents: [] },
+    (agentsState) => {
+      agentsState.version = agentsState.version || 1;
+      agentsState.agents = Array.isArray(agentsState.agents) ? agentsState.agents : [];
+      const agent = agentsState.agents.find((item) => item.agent_id === reviewedTask.owner_agent_id);
+      if (agent) {
+        if (decision === "accept") {
+          agent.status = "standby";
+          if (agent.current_task === taskId) agent.current_task = null;
+          agent.last_report_at = now;
+          agent.artifacts = addUnique(agent.artifacts, reportPath);
+        } else if (decision === "request_changes") {
+          agent.status = "active";
+          agent.current_task = taskId;
+        }
+        reviewedAgent = { ...agent };
+      }
+      agentsState.updated_at = now;
+      return agentsState;
+    }
+  );
+
+  return {
+    task: reviewedTask,
+    agent: reviewedAgent,
+    reviewRecord,
+    locks: {
+      tasks: tasksResult.lock,
+      agents: agentsResult.lock
+    }
+  };
+}
+
+function reconcileCapacityReportProduced({
+  stateRoot: targetStateRoot = stateRoot,
+  taskId,
+  agentId,
+  reportPath,
+  now
+}) {
+  const capacityPath = path.join(targetStateRoot, "capacity.json");
+  if (!fs.existsSync(capacityPath)) return null;
+  let reconciled = null;
+  const result = updateJsonAtomic(capacityPath, createEmptyCapacityLedger(), (capacity) => {
+    capacity.dispatches = Array.isArray(capacity.dispatches) ? capacity.dispatches : [];
+    const matches = capacity.dispatches
+      .filter((dispatch) => dispatch.task_id === taskId && (!agentId || dispatch.agent_id === agentId))
+      .sort((left, right) => Date.parse(left.queued_at || 0) - Date.parse(right.queued_at || 0));
+    const dispatch = matches[matches.length - 1];
+    if (!dispatch) return capacity;
+    dispatch.state = "report_produced";
+    dispatch.report_produced_at = now;
+    dispatch.report_path = reportPath;
+    capacity.updated_at = now;
+
+    const orchestra = capacity.orchestra;
+    if (orchestra && Array.isArray(orchestra.affected_task_ids) && orchestra.affected_task_ids.includes(taskId)) {
+      orchestra.affected_task_ids = orchestra.affected_task_ids.filter((id) => id !== taskId);
+      const onlyUnconfirmedStart = (orchestra.reason_codes || []).every((code) => code === "required_specialist_turn_start_unconfirmed");
+      if (orchestra.affected_task_ids.length === 0 && onlyUnconfirmedStart) {
+        orchestra.mode = "normal";
+        orchestra.reason_codes = [];
+        orchestra.changed_at = now;
+        orchestra.notification_key = null;
+      }
+    }
+    reconciled = { ...dispatch };
+    return capacity;
+  });
+  return { dispatch: reconciled, lock: result.lock };
+}
+
 function reviewSpecialistReport(payload) {
   const taskId = String(payload.task_id || "").trim();
   const decision = String(payload.decision || "").trim();
@@ -938,28 +1095,21 @@ function reviewSpecialistReport(payload) {
   }
 
   const now = new Date().toISOString();
-  const tasksState = readJson("tasks.json");
-  const agentsState = readJson("agents.json");
-  tasksState.version = tasksState.version || 1;
-  tasksState.tasks = tasksState.tasks || [];
-  agentsState.version = agentsState.version || 1;
-  agentsState.agents = agentsState.agents || [];
-
-  const task = tasksState.tasks.find((item) => item.task_id === taskId);
-  if (!task) {
+  const taskSnapshotState = readJson("tasks.json");
+  const taskSnapshot = (taskSnapshotState.tasks || []).find((item) => item.task_id === taskId);
+  if (!taskSnapshot) {
     const error = new Error(`Task not found: ${taskId}`);
     error.statusCode = 404;
     throw error;
   }
 
-  const reportPath = reportPathForTask(task);
+  const reportPath = reportPathForTask(taskSnapshot);
   if (!reportPath) {
     const error = new Error(`Task has no .orquesta/reports/*.md artifact: ${taskId}`);
     error.statusCode = 409;
     throw error;
   }
 
-  const previousState = task.state || "unknown";
   const reportAbsolutePath = safeReportAbsolutePath(reportPath);
   const questionCandidateCheck = inspectReportQuestionCandidates(reportAbsolutePath || reportPath);
   if (decision === "accept" && questionCandidateCheck.errors.length) {
@@ -968,20 +1118,52 @@ function reviewSpecialistReport(payload) {
     throw error;
   }
 
+  let controlReview = {
+    status: "not_required",
+    blockers: [],
+    warnings: []
+  };
+  if (decision === "accept") {
+    controlReview = reviewTaskControl({
+      root,
+      task: taskSnapshot,
+      reportPath,
+      now
+    });
+    if (controlReview.blockers.length) {
+      appendEvent({
+        timestamp: now,
+        type: "control_review_blocked",
+        actor: "orchestrator",
+        task_id: taskId,
+        agent_id: taskSnapshot.owner_agent_id || null,
+        report: reportPath,
+        finding_codes: controlReview.blockers.map((finding) => finding.code),
+        summary: `Blocked specialist report acceptance for ${taskId}: ${controlReview.blockers.map((finding) => finding.code).join(", ")}.`
+      });
+      const error = new Error(`Control review blocked acceptance: ${controlReview.blockers.map((finding) => finding.message).join("; ")}`);
+      error.statusCode = 409;
+      error.controlReview = controlReview;
+      throw error;
+    }
+  }
+
   let recordedQuestionCandidates = { recorded: 0, skipped: 0, candidates: [] };
   if (decision === "accept" && questionCandidateCheck.status === "submitted") {
     recordedQuestionCandidates = appendSubmittedQuestionCandidates(root, questionCandidateCheck.metadata, now);
   }
 
-  const agent = agentsState.agents.find((item) => item.agent_id === task.owner_agent_id);
-  const reviewRecord = {
-    decision,
-    note,
-    reviewed_at: now,
-    reviewed_by: "orchestrator",
-    report: reportPath,
-    previous_state: previousState,
-    question_candidates: {
+  if (decision === "accept" && controlReview.completion?.present) {
+    reconcileCapacityReportProduced({
+      stateRoot,
+      taskId,
+      agentId: taskSnapshot.owner_agent_id || null,
+      reportPath,
+      now
+    });
+  }
+
+  const questionCandidateSummary = {
       present: questionCandidateCheck.present,
       status: questionCandidateCheck.status,
       item_count: questionCandidateCheck.itemCount,
@@ -989,76 +1171,67 @@ function reviewSpecialistReport(payload) {
       skipped_duplicate_count: recordedQuestionCandidates.skipped,
       errors: questionCandidateCheck.errors,
       warnings: questionCandidateCheck.warnings
-    }
   };
+  const stateUpdate = updateReportReviewStateFiles({
+    stateRoot,
+    taskId,
+    decision,
+    note,
+    now,
+    reportPath,
+    questionCandidateSummary,
+    completionEnvelopeSummary: decision === "accept" && controlReview.completion?.present
+      ? {
+        status: "accepted",
+        path: reportPath,
+        validated_at: now
+      }
+      : null
+  });
+  const task = stateUpdate.task;
+  const reviewRecord = stateUpdate.reviewRecord;
 
-  task.report_review = reviewRecord;
-  task.review_history = [...(task.review_history || []), reviewRecord];
-  task.report = reportPath;
-  task.artifacts = addUnique(task.artifacts, reportPath);
-
-  if (decision === "accept") {
-    task.state = "accepted";
-    task.completed_at = task.completed_at || now;
-    task.accepted_at = now;
-    if (note) task.result_summary = note;
-    if (agent) {
-      agent.status = "standby";
-      if (agent.current_task === taskId) agent.current_task = null;
-      agent.last_report_at = now;
-      agent.artifacts = addUnique(agent.artifacts, reportPath);
-    }
-  } else if (decision === "request_changes") {
-    task.state = "needs_revision";
-    task.blocked_by = [];
-    task.revision_requested_at = now;
-    if (note) task.result_summary = `Revision requested: ${note}`;
-    if (agent) {
-      agent.status = "active";
-      agent.current_task = taskId;
-    }
-  } else {
-    task.state = "needs_orchestrator_review";
-    task.review_held_at = now;
-    if (note) task.result_summary = `Review held: ${note}`;
+  const productionStartPath = path.join(setupRoot, "production_start.json");
+  let productionStart = defaultProductionStart();
+  if (fs.existsSync(productionStartPath)) {
+    updateJsonAtomic(productionStartPath, defaultProductionStart(), (current) => {
+      productionStart = current;
+      const activationRequest = (current.activation_requests || []).find((request) => request.task_id === taskId);
+      if (!activationRequest) return current;
+      activationRequest.status = decision === "accept" ? "accepted" : decision === "request_changes" ? "changes_requested" : "needs_orchestrator_review";
+      activationRequest.reviewed_at = now;
+      activationRequest.report = reportPath;
+      if (decision === "accept") activationRequest.accepted_at = now;
+      if (decision === "request_changes") activationRequest.revision_requested_at = now;
+      current.updated_at = now;
+      current.status = decision === "accept"
+        ? "handoff_accepted"
+        : decision === "request_changes"
+          ? "handoff_changes_requested"
+          : "handoff_review_held";
+      return current;
+    });
   }
 
-  tasksState.updated_at = now;
-  agentsState.updated_at = now;
-  writeJsonTo(stateRoot, "tasks.json", tasksState);
-  writeJsonTo(stateRoot, "agents.json", agentsState);
-
-  let productionStart = readJsonFrom(setupRoot, "production_start.json", defaultProductionStart());
-  const activationRequest = (productionStart.activation_requests || []).find((request) => request.task_id === taskId);
-  if (activationRequest) {
-    activationRequest.status = decision === "accept" ? "accepted" : decision === "request_changes" ? "changes_requested" : "needs_orchestrator_review";
-    activationRequest.reviewed_at = now;
-    activationRequest.report = reportPath;
-    if (decision === "accept") activationRequest.accepted_at = now;
-    if (decision === "request_changes") activationRequest.revision_requested_at = now;
-    productionStart.updated_at = now;
-    productionStart.status = decision === "accept"
-      ? "handoff_accepted"
-      : decision === "request_changes"
-        ? "handoff_changes_requested"
-        : "handoff_review_held";
-    writeJsonTo(setupRoot, "production_start.json", productionStart);
-  }
-
-  let specialistPlan = readJsonFrom(setupRoot, "specialist_plan.json", defaultSpecialistPlan());
-  const candidate = (specialistPlan.candidates || []).find((item) => item.candidate_id === task.source_candidate_id);
-  if (candidate) {
-    candidate.activation_status = decision === "accept" ? "accepted" : decision === "request_changes" ? "changes_requested" : "needs_orchestrator_review";
-    candidate.activation_report = reportPath;
-    candidate.activation_reviewed_at = now;
-    if (decision === "accept") candidate.activation_accepted_at = now;
-    specialistPlan.updated_at = now;
-    specialistPlan.status = decision === "accept"
-      ? "production_handoff_accepted"
-      : decision === "request_changes"
-        ? "production_handoff_changes_requested"
-        : "production_handoff_review_held";
-    writeJsonTo(setupRoot, "specialist_plan.json", specialistPlan);
+  const specialistPlanPath = path.join(setupRoot, "specialist_plan.json");
+  let specialistPlan = defaultSpecialistPlan();
+  if (fs.existsSync(specialistPlanPath)) {
+    updateJsonAtomic(specialistPlanPath, defaultSpecialistPlan(), (current) => {
+      specialistPlan = current;
+      const candidate = (current.candidates || []).find((item) => item.candidate_id === task.source_candidate_id);
+      if (!candidate) return current;
+      candidate.activation_status = decision === "accept" ? "accepted" : decision === "request_changes" ? "changes_requested" : "needs_orchestrator_review";
+      candidate.activation_report = reportPath;
+      candidate.activation_reviewed_at = now;
+      if (decision === "accept") candidate.activation_accepted_at = now;
+      current.updated_at = now;
+      current.status = decision === "accept"
+        ? "production_handoff_accepted"
+        : decision === "request_changes"
+          ? "production_handoff_changes_requested"
+          : "production_handoff_review_held";
+      return current;
+    });
   }
 
   appendEvent({
@@ -1087,6 +1260,19 @@ function reviewSpecialistReport(payload) {
     });
   }
 
+  if (decision === "accept") {
+    appendEvent({
+      timestamp: now,
+      type: "control_review_passed",
+      actor: "orchestrator",
+      task_id: taskId,
+      agent_id: task.owner_agent_id || null,
+      report: reportPath,
+      warning_codes: controlReview.warnings.map((finding) => finding.code),
+      summary: `Control review passed for specialist report ${taskId}.`
+    });
+  }
+
   return {
     saved: true,
     task_id: taskId,
@@ -1096,7 +1282,12 @@ function reviewSpecialistReport(payload) {
     question_candidates: reviewRecord.question_candidates,
     task,
     productionStart,
-    specialistPlan
+    specialistPlan,
+    control_review: {
+      status: controlReview.status,
+      blockers: controlReview.blockers,
+      warnings: controlReview.warnings
+    }
   };
 }
 
@@ -1645,6 +1836,10 @@ const server = http.createServer(async (req, res) => {
         agents,
         sessions: readJson("sessions.json").sessions || [],
         tasks,
+        modelPolicy: readModelPolicyState(),
+        capacity: readJsonFrom(stateRoot, "capacity.json", createEmptyCapacityLedger()),
+        controlAudit: readJson("control_audit.json"),
+        dashboardActions: readJson("dashboard_actions.json"),
         triggerAudit: readJson("trigger_audit.json"),
         directives: readJson("directives.json").directives || [],
         events: readJsonl("events.jsonl"),
@@ -1657,7 +1852,9 @@ const server = http.createServer(async (req, res) => {
         },
         failures: {
           incidents: readJsonFrom(failuresRoot, "incidents.json", { incidents: [], wake_policy: {} }),
-          userActions: readJsonFrom(failuresRoot, "user_actions.json", { actions: [] })
+          userActions: readJsonFrom(failuresRoot, "user_actions.json", { actions: [] }),
+          incidentCandidates: readJsonFrom(failuresRoot, "incident_candidates.json", { candidates: [] }),
+          incidentClusters: readJsonFrom(failuresRoot, "incident_clusters.json", { clusters: [] })
         },
         userTasks: readJsonFrom(userTasksRoot, "queue.json", { tasks: [], policy: {} }),
         setup: {
@@ -1676,7 +1873,7 @@ const server = http.createServer(async (req, res) => {
             sample: warning.sample
           }))
         },
-        loadedFiles: ["agents.json", "sessions.json", "tasks.json", "trigger_audit.json", "directives.json", "events.jsonl", "question_candidates.json", "questions.json", "answers.json", "incidents.json", "user_actions.json", "queue.json", "options.json", "wizard.json", "project_intake.json", "specialist_plan.json", "production_start.json", "completion_map.json"],
+        loadedFiles: ["agents.json", "sessions.json", "tasks.json", "model_policy.json", "capacity.json", "control_audit.json", "dashboard_actions.json", "trigger_audit.json", "directives.json", "events.jsonl", "question_candidates.json", "questions.json", "answers.json", "incidents.json", "user_actions.json", "incident_candidates.json", "incident_clusters.json", "queue.json", "options.json", "wizard.json", "project_intake.json", "specialist_plan.json", "production_start.json", "completion_map.json"],
         loadedAt: new Date().toISOString(),
         source: "server"
       }, { etag });
@@ -1863,7 +2060,15 @@ async function startDashboardServer() {
   throw new Error("Could not start Orquesta dashboard after repeated port selection races.");
 }
 
-startDashboardServer().catch((error) => {
-  console.error(`Orquesta dashboard failed to start: ${error.stack || error.message || error}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  startDashboardServer().catch((error) => {
+    console.error(`Orquesta dashboard failed to start: ${error.stack || error.message || error}`);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  readModelPolicyState,
+  reviewSpecialistReport,
+  updateReportReviewStateFiles
+};

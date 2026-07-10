@@ -15,6 +15,8 @@ The orchestrator must not independently turn raw answers into project direction.
 
 Specialist question candidates are also raw material, not user-facing questions. Every specialist report must include structured `question_candidates`: either 0-3 useful candidates or `status: "none"` with a valid `none_reason`. The orchestrator stores submitted candidates in `.orquesta/vision/question_candidates.json`; `vision-curator` decides which candidates become curated questions in `.orquesta/vision/questions.json`.
 
+Beta V3 records each candidate as an observation before it becomes a question. `observation.value_type`, `user_emergence_value`, `decision_cluster_id`, `suggested_action`, and `reason` describe why it exists. A low-value or maintenance observation may stay in the inbox with `status: "observation"`; it must not create a user question merely because time passed.
+
 User answers are seeds for thought, not commands. A question exists to help the user notice, compare, and refine ideas, including ideas they had never consciously considered. Unless the user explicitly says a point is a hard requirement, Orquesta must treat the answer as provisional material for dialogue.
 
 Do not convert an answer directly into implementation work just because it sounds sensible. First turn it into a conversation object: what seems good, what may be weak, what alternative the AI suggests, what needs user confirmation, and what should not be adopted yet.
@@ -41,6 +43,8 @@ Specialist reports produce candidates, not final questions. Store raw candidates
 Use these statuses:
 
 - `pending_curator_review`: submitted by a specialist and waiting for curator triage
+- `observation`: raw operating or emergence material, not a user-facing question
+- `clustered`: linked to a curator decision cluster before promotion
 - `curator_accepted`: curator decided the candidate is useful
 - `curator_rejected`: curator rejected it as low-value, unclear, or not user-actionable
 - `merged_duplicate`: curator merged it into another candidate or existing question
@@ -60,6 +64,8 @@ Candidate items should include:
 - `source_report_path`
 
 `vision-curator` should batch low and medium candidates unless timing makes them acceptance-critical. Raw candidates should not appear directly as user-facing questions.
+
+Curator promotion is semantic work. Deterministic intake may validate and deduplicate observation metadata, but it cannot infer the user decision or rewrite the raw text into a question without `vision-curator`.
 
 ## Question Lifecycle
 

@@ -1,4 +1,4 @@
-# Orquesta beta.2
+# Orquesta Beta V3
 
 Orquesta turns Codex into a long-lived specialist team with a local dashboard, instead of a single disposable coding agent.
 
@@ -12,9 +12,9 @@ The current dashboard is a mission-control style workspace for that loop: a glas
 
 ## Beta Status
 
-Current beta version: `0.1.0-beta.2`.
+Current beta version: `0.3.0-beta.0`.
 
-This repository is beta-quality. The core workflow is usable, but the bootstrap flow should still be tested in a clean project after installing from GitHub.
+This repository is beta-quality. Beta V3 adds a file-backed Control Plane for evidence, capacity, completion review, question observations, incident intake, and model-route recommendations. Product-level thread dispatch and model switching remain optional adapters, not repository promises.
 
 The first GitHub-install bootstrap smoke test passed on 2026-06-22. The skill installed from this repository, initialized a separate project, created the foundation roles, and served the dashboard from a fallback port after detecting a local `4177` port conflict.
 
@@ -41,6 +41,10 @@ If you are interested in multi-agent workflows, Codex skills, game-development t
 - File-backed project state under `.orquesta/` in the target project.
 - A local browser dashboard for mission-control style team visualization, task state, delegation evidence, user-side actions, vision questions, trigger audit status, and repair cards.
 - Event-driven foundation roles. For example, `vision-curator` is not a watcher; trigger audit can surface pending question-candidate evidence so the orchestrator can deliberately wake or defer the curator.
+- Atomic control-state writes, deterministic `control_audit.json`, and completion-envelope validation for staged-in specialist work.
+- A separate Control Plane view that distinguishes dispatch acceptance, turn start, progress, report production, capacity circuits, fallbacks, and model evidence.
+- Question observations before curator promotion, and incident candidates/clusters before concierge repair cards or user tasks.
+- Signal-based Luna, Terra, and Sol recommendations with bounded escalation and review. A recommendation or requested model is not an applied or actual model.
 
 ## Repository Layout
 
@@ -122,6 +126,18 @@ The current dashboard direction is a mission-control interface rather than the e
 
 Trigger audit is visibility, not automation. It can show that curator wake conditions exist, but it must not turn `vision-curator` into a continuous watcher or promote raw question candidates without an explicit Orquesta route.
 
+## Beta V3 Evidence Boundaries
+
+Beta V3 applies hard gates progressively to staged-in `specialist_required` and medium/high-risk work. A valid handoff, specialist report, `question_candidates`, completion envelope, and task-scoped control audit are required before acceptance. Older accepted work remains compatible as a legacy warning unless it is reopened.
+
+Capacity is separate from task state and agent health. A `dispatch_accepted` result is not a started specialist turn. If a required capacity circuit is open, Orquesta stops that work, evaluates only bounded role-compatible fallbacks, and does not let the orchestrator quietly do the specialist work itself.
+
+Model routing is repository-owned recommendation and evidence by default. `recommended_model`, `requested_model`, `applied_model`, and `actual_model` are separate fields. The repository-only adapter records `unsupported` for product switching; it cannot prove the actual runtime model. Local counters are not presented as billing-token truth.
+
+When proof depends on visual judgment, tacit knowledge, credentialed judgment, or direct user experience, Orquesta may create a narrow user capability review task with a concrete procedure and expected response. This is not a generic ask-the-user fallback. If automation is unsafe or unstable, the affected task pauses rather than inventing evidence.
+
+The Codex in-app Browser currently has a reproducible crash path that can restart Codex Desktop. This is an external tool limitation, not an Orquesta defect by itself. Do not retry that route during a task. Use external-browser UAT only when the user can verify named behaviors and the result is recorded as user evidence.
+
 ## Development Checks
 
 ```powershell
@@ -136,13 +152,13 @@ npm run test:question-candidates
 npm run test:ports
 ```
 
-For dashboard UI changes, also run a browser DOM smoke check against a running dashboard:
+For dashboard UI changes, also run a browser DOM smoke check against a running dashboard when the browser surface is stable:
 
 ```powershell
 npm run smoke:dashboard -- http://127.0.0.1:4177/
 ```
 
-This check catches the user-only visualizer failure mode by asserting that agent nodes render and that the browser console has no render-stopping errors.
+This check catches the user-only visualizer failure mode by asserting that agent nodes render and that the browser console has no render-stopping errors. If the in-app Browser is unstable, pause that verification route and use the documented external-browser UAT procedure instead of claiming a smoke pass.
 
 See [GitHub install bootstrap smoke test](docs/testing/github-install-bootstrap-smoke-test.md) for the first external install result.
 

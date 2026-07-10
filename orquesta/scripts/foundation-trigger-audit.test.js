@@ -15,13 +15,19 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function writeBaseState(root, candidates) {
+function writeBaseState(root, candidates, failureState = {}) {
   writeJson(path.join(root, ".orquesta", "state", "agents.json"), {
     version: 1,
     agents: [
       {
         agent_id: "vision-curator",
         role: "vision-curator",
+        status: "standby",
+        last_heartbeat: NOW.toISOString()
+      },
+      {
+        agent_id: "error-concierge",
+        role: "error-concierge",
         status: "standby",
         last_heartbeat: NOW.toISOString()
       }
@@ -43,7 +49,9 @@ function writeBaseState(root, candidates) {
       pending_candidates_age_hours_gte: 24
     }
   });
-  writeJson(path.join(root, ".orquesta", "failures", "incidents.json"), { version: 1, incidents: [] });
+  writeJson(path.join(root, ".orquesta", "failures", "incidents.json"), { version: 1, incidents: failureState.incidents || [] });
+  writeJson(path.join(root, ".orquesta", "failures", "incident_candidates.json"), { version: 1, candidates: failureState.candidates || [] });
+  writeJson(path.join(root, ".orquesta", "failures", "incident_clusters.json"), { version: 1, clusters: failureState.clusters || [] });
   writeJson(path.join(root, ".orquesta", "failures", "user_actions.json"), { version: 1, actions: [] });
   writeJson(path.join(root, ".orquesta", "user_tasks", "queue.json"), { version: 1, tasks: [] });
   writeJson(path.join(root, ".orquesta", "setup", "options.json"), { version: 1, setup_status: "ready" });
@@ -79,6 +87,27 @@ function runCase(candidates) {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+}
+
+function runFailureCase(failureState) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-trigger-failure-audit-"));
+  try {
+    writeBaseState(root, [], failureState);
+    const audit = buildAudit(root, NOW);
+    return audit.foundation_agents.find((agent) => agent.agent_id === "error-concierge");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function incident(id, status) {
+  return {
+    incident_id: id,
+    status,
+    severity: "high",
+    failure_class: "shared.atomic_state",
+    title: `incident ${id}`
+  };
 }
 
 {
@@ -121,6 +150,38 @@ function runCase(candidates) {
   assert.strictEqual(summary.pending_count, 1);
   const excerpt = curator.evidence.find((item) => item.type === "question_candidate");
   assert(!Object.prototype.hasOwnProperty.call(excerpt, "question"));
+}
+
+{
+  const concierge = runFailureCase({
+    incidents: [incident("F004", "mitigated"), incident("F005", "mitigated"), incident("F006", "open")]
+  });
+  assert.strictEqual(concierge.trigger_status, "trigger_ready");
+  assert.deepStrictEqual(
+    concierge.evidence.filter((item) => item.incident_id).map((item) => item.incident_id),
+    ["F006"]
+  );
+}
+
+{
+  const concierge = runFailureCase({
+    incidents: [incident("F004", "mitigated"), incident("F005", "mitigated"), incident("F006", "mitigated")]
+  });
+  assert.strictEqual(concierge.trigger_status, "clear");
+  assert.deepStrictEqual(concierge.evidence.filter((item) => item.incident_id), []);
+}
+
+{
+  const concierge = runFailureCase({
+    candidates: [
+      { candidate_id: "IC-1", status: "candidate", global_fingerprint: "GF-SHARED", failure_class: "shared.atomic_state", severity: "medium", requires_user_approval: false },
+      { candidate_id: "IC-2", status: "candidate", global_fingerprint: "GF-SHARED", failure_class: "shared.atomic_state", severity: "medium", requires_user_approval: false },
+      { candidate_id: "IC-3", status: "candidate", global_fingerprint: "GF-FALLBACK", failure_class: "quality.browser", severity: "high", requires_user_approval: true }
+    ]
+  });
+  assert.strictEqual(concierge.trigger_status, "trigger_ready");
+  assert(concierge.evidence.some((item) => item.type === "repeated_incident_candidate"));
+  assert(concierge.evidence.some((item) => item.type === "quality_degradation_candidate"));
 }
 
 console.log("foundation trigger audit tests passed");

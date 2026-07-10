@@ -14,6 +14,7 @@ Coordinate long-lived specialist Codex threads without making the orchestrator a
 2. State Read
    - Read `.orquesta/CURRENT_ORCHESTRA.md`.
    - Read task-relevant state JSON.
+   - For Beta V3 staged-in work, read `.orquesta/state/control_audit.json`, `.orquesta/state/capacity.json`, and the current route evidence before claiming a specialist is running or a task is ready for acceptance.
    - Do not load every specialist's required reading into the orchestrator.
 
 3. Classification
@@ -92,13 +93,16 @@ Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open
    - Extract required specialist report `question_candidates` metadata. Store submitted candidates in `.orquesta/vision/question_candidates.json`; accept a `status: "none"` block only when it includes a valid `none_reason` and plausible rationale.
    - Update `directives.json` for user-to-specialist decisions or nuance.
    - Add unresolved creative question candidates to `.orquesta/vision/question_candidates.json` first. Only `vision-curator` should promote useful candidates into `.orquesta/vision/questions.json`.
-   - Add repeated or user-actionable command failures to `.orquesta/failures/incidents.json`.
+   - Store new command failures, ineffective repeats, and quality-degrading fallbacks as candidate evidence first. `incident_candidates.json` and `incident_clusters.json` are pre-acceptance records; only accepted incidents belong in `incidents.json`, and only `status: "open"` incidents keep an active concierge wake reason.
+   - Record capacity dispatch lifecycle separately from task state: `queued`, `dispatch_accepted`, `turn_started`, `progress_observed`, and `report_produced`. A message acceptance is not turn-start proof.
+   - Use the shared atomic JSON helper for control-state writes. Do not add a new control write through ad hoc read-modify-write code.
    - Append a short event to `events.jsonl`.
    - Treat reports as snapshots. If state changes after a specialist report is written, update JSON state first and ask the affected specialist to re-read before relying on that report.
 
 7. Acceptance
    - Orchestrator checks the report against acceptance checks.
    - For `specialist_required` tasks, verify `handoff_sent_at` and a specialist report path or report artifact before acceptance.
+   - For staged-in `specialist_required` and medium/high-risk work, validate the report `completion_envelope` and run a task-scoped control audit before acceptance. Missing or invalid evidence becomes `needs_revision` or a blocker; legacy accepted work remains warning-only unless reopened.
    - For specialist-owned reports, verify the report includes structured `question_candidates`. If the field is missing, set the task to `needs_revision`, `needs_report_metadata`, or equivalent instead of accepting it.
    - Accept `question_candidates.status: "none"` only when it includes a valid `none_reason` and a plausible one-sentence rationale. If the task clearly exposed user choice, product direction, quality risk, or future planning and the `none` rationale is weak, request revision.
    - If candidates are submitted, record them in `.orquesta/vision/question_candidates.json` for later `vision-curator` review. Do not push raw candidates directly to the user.
@@ -107,10 +111,26 @@ Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open
    - Do not mark project-level completion while unsynced specialist work exists.
    - If the report contains creative ambiguity, decide whether to queue questions, wake `vision-curator`, or update adopted vision documents.
    - If the report contains repeated environment, permission, dependency, or server-startup failure, decide whether to wake `error-concierge` before accepting a lower-quality fallback.
+   - Do not accept a fallback that weakens browser, visual, runtime, or acceptance evidence without explicit user approval.
+   - Keep model evidence separate: `recommended_model` is a policy result, `requested_model` is a request, `applied_model` needs adapter evidence, and `actual_model` remains null until independently proved.
+   - If a required capacity circuit is open, do not perform the affected specialist work directly. Use only a bounded, role-compatible, independent fallback with documented evidence downgrade, or pause the affected task.
 
 8. User Report
    - Report what changed, what is accepted, what remains blocked, and what needs approval.
    - Avoid dumping internal logs.
+
+## User Capability Route
+
+Use a user capability route when the user is the stronger evidence source, not as a default clarification loop. Valid cases include visual review, metacognitive or tacit-knowledge judgment, credentialed judgment, and direct real-world experience.
+
+When the only automated verification is unsafe or unstable:
+
+1. Pause the affected task and record the evidence gap and failed surface.
+2. Do not invent a passing result, silently lower the proof standard, or keep retrying the unstable tool.
+3. Ask `user-liaison` to create one concrete user task: exact procedure, behaviors to confirm, and the short response needed to resume.
+4. Record the user's result as user-supplied evidence, including its scope and any remaining uncertainty.
+
+This route does not hand ordinary design, implementation, or debugging work to the user. The Codex in-app Browser crash is an external tool limitation: when it recurs, stop that in-app route and use named external-browser UAT only when the user can verify the same behaviors. Do not classify the crash itself as an Orquesta product defect without separate evidence.
 
 ## New Thread Gate
 
@@ -170,10 +190,10 @@ Specialists may record failure incidents, but they must not silently keep retryi
 
 Use this flow:
 
-1. Specialist records concise failure evidence in `.orquesta/failures/incidents.json`.
+1. Specialist records concise failure evidence as an incident candidate. Deterministic fingerprinting and clustering happen before an accepted incident, repair card, or user task exists.
 2. Orchestrator checks the wake triggers in `references/failure-concierge.md`.
 3. Wake `error-concierge` when the failure may be user-actionable, repeated, environment-specific, or likely to force a quality-lowering fallback.
-4. Concierge clusters related incidents and writes a report plus repair cards in `.orquesta/failures/user_actions.json`.
+4. Concierge clusters related candidate evidence, distinguishes open from mitigated history, and writes a report. Repair cards in `.orquesta/failures/user_actions.json` exist only after concierge and orchestrator acceptance.
 5. Orchestrator accepts or rejects the concierge report.
 6. Codex retries, routes a Codex-fixable task, or asks the user to complete/skip the repair card.
 

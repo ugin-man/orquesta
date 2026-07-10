@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { writeJsonAtomic } = require("./json-state");
 
 const FOUNDATION_AGENT_IDS = ["vision-curator", "error-concierge", "user-liaison", "orquesta-admin"];
 const OPEN_USER_TASK_STATES = new Set(["ready", "active", "pending", "blocked", "needs_review", "needs_user_review"]);
@@ -30,8 +31,7 @@ function readJson(filePath, fallback) {
 }
 
 function writeJson(filePath, value) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  return writeJsonAtomic(filePath, value);
 }
 
 function parseDate(value) {
@@ -284,13 +284,15 @@ function visionTriggers(questionsState, answersState, questionCandidatesState, n
   };
 }
 
-function failureTriggers(incidentsState, actionsState, tasks) {
+function failureTriggers(incidentsState, actionsState, tasks, incidentCandidatesState = {}, incidentClustersState = {}) {
   const incidents = incidentsState.incidents || [];
   const actions = actionsState.actions || [];
+  const incidentCandidates = incidentCandidatesState.candidates || [];
+  const incidentClusters = incidentClustersState.clusters || [];
   const reasons = [];
   const evidence = [];
 
-  const openIncidents = incidents.filter((incident) => openState(incident.status));
+  const openIncidents = incidents.filter((incident) => normalize(incident.status) === "open");
   if (openIncidents.length) {
     reasons.push("Open failure incidents need concierge review.");
     evidence.push(...openIncidents.map((incident) => ({
@@ -309,6 +311,44 @@ function failureTriggers(incidentsState, actionsState, tasks) {
   if (repeatedClasses.length) {
     reasons.push("Repeated open failure classes meet concierge wake policy.");
     evidence.push(...repeatedClasses.map(([failure_class, count]) => ({ failure_class, count })));
+  }
+
+  const activeCandidateStatuses = new Set(["candidate", "promoted", "clustered"]);
+  const activeCandidates = incidentCandidates.filter((candidate) => activeCandidateStatuses.has(normalize(candidate.status)));
+  const repeatedCandidateFingerprints = Object.entries(activeCandidates.reduce((counts, candidate) => {
+    const key = candidate.global_fingerprint || candidate.fingerprint || "unknown";
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {})).filter(([, count]) => count >= 2);
+  if (repeatedCandidateFingerprints.length) {
+    reasons.push("Repeated incident candidates need error-concierge clustering review.");
+    evidence.push(...repeatedCandidateFingerprints.map(([global_fingerprint, count]) => ({
+      type: "repeated_incident_candidate",
+      global_fingerprint,
+      count
+    })));
+  }
+  const qualityCandidates = activeCandidates.filter((candidate) => candidate.requires_user_approval);
+  if (qualityCandidates.length) {
+    reasons.push("Quality-degradation incident candidates need review before any user-facing repair action.");
+    evidence.push(...qualityCandidates.map((candidate) => ({
+      type: "quality_degradation_candidate",
+      candidate_id: candidate.candidate_id || null,
+      failure_class: candidate.failure_class || null,
+      severity: candidate.severity || null,
+      requires_user_approval: true
+    })));
+  }
+  const openClusters = incidentClusters.filter((cluster) => normalize(cluster.status) === "open");
+  if (openClusters.length) {
+    reasons.push("Open incident clusters need error-concierge review.");
+    evidence.push(...openClusters.map((cluster) => ({
+      type: "incident_cluster",
+      cluster_id: cluster.cluster_id || null,
+      primary_class: cluster.primary_class || null,
+      occurrence_count: cluster.occurrence_count || 0,
+      requires_user_approval: Boolean(cluster.requires_user_approval)
+    })));
   }
 
   const openRepairCards = actions.filter((action) => openState(action.status));
@@ -472,6 +512,8 @@ function buildAudit(root, now = new Date()) {
   const answersState = readJson(path.join(visionRoot, "answers.json"), { answer_batches: [] });
   const questionCandidatesState = readJson(path.join(visionRoot, "question_candidates.json"), { version: 1, candidates: [], policy: {} });
   const incidentsState = readJson(path.join(failuresRoot, "incidents.json"), { incidents: [], wake_policy: {} });
+  const incidentCandidatesState = readJson(path.join(failuresRoot, "incident_candidates.json"), { version: 1, candidates: [] });
+  const incidentClustersState = readJson(path.join(failuresRoot, "incident_clusters.json"), { version: 1, clusters: [] });
   const actionsState = readJson(path.join(failuresRoot, "user_actions.json"), { actions: [] });
   const userTasksState = readJson(path.join(userTasksRoot, "queue.json"), { tasks: [], policy: {} });
   const setup = setupState(root);
@@ -481,7 +523,7 @@ function buildAudit(root, now = new Date()) {
   const sessionAudit = sessionFreshness(sessionsState, tasks, now);
   const triggerByAgent = {
     "vision-curator": { agent_id: "vision-curator", ...visionTriggers(questionsState, answersState, questionCandidatesState, now) },
-    "error-concierge": { agent_id: "error-concierge", ...failureTriggers(incidentsState, actionsState, tasks) },
+    "error-concierge": { agent_id: "error-concierge", ...failureTriggers(incidentsState, actionsState, tasks, incidentCandidatesState, incidentClustersState) },
     "user-liaison": { agent_id: "user-liaison", ...userLiaisonTriggers(tasks, userTasksState, answersState, actionsState) },
     "orquesta-admin": { agent_id: "orquesta-admin", ...adminTriggers(setup, sessionAudit, agents, tasks) }
   };
@@ -524,6 +566,8 @@ function buildAudit(root, now = new Date()) {
       ".orquesta/vision/questions.json",
       ".orquesta/vision/answers.json",
       ".orquesta/failures/incidents.json",
+      ".orquesta/failures/incident_candidates.json",
+      ".orquesta/failures/incident_clusters.json",
       ".orquesta/failures/user_actions.json",
       ".orquesta/user_tasks/queue.json",
       ".orquesta/setup/options.json",
