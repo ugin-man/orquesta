@@ -2,6 +2,13 @@
   "name": "orquesta-codex-skill",
   "version": "0.3.0-beta.0",
   "private": false,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "description": "Orquesta Beta V3 Codex skill for coordinating long-lived specialists with a file-backed Control Plane.",
   "keywords": [
     "codex",
@@ -17,6 +24,11 @@
   ],
   "scripts": {
     "dashboard": "node orquesta/dashboard-server.js",
+    "workbench:v4": "node apps/workbench/server.js --feature v4",
+    "test:v4:phase1": "npm run test --workspaces --if-present && node --test scripts/v4/phase-boundary-check.test.js",
+    "check:v4:phase1": "node scripts/v4/phase-boundary-check.js && npm run test:v4:phase1",
+    "fixture:v4:phase1": "node scripts/v4/run-fixture.js",
+    "review:v4:phase1": "node scripts/v4/verify-phase1.js",
     "check": "node --check orquesta/dashboard-server.js && node --check orquesta/assets/dashboard/app.js && node --check orquesta/scripts/dashboard-dom-smoke.js && node --check orquesta/scripts/validate-state-encoding.js && node --check orquesta/scripts/dashboard-port-selection.js && node --check orquesta/scripts/dashboard-port-selection.test.js && node --check orquesta/scripts/dashboard-state-cache.js && node --check orquesta/scripts/dashboard-state-cache.test.js && node --check orquesta/scripts/foundation-trigger-audit.js && node --check orquesta/scripts/foundation-trigger-audit.test.js && node --check orquesta/scripts/incident-intake.js && node --check orquesta/scripts/incident-intake.test.js && node --check orquesta/scripts/model-policy.js && node --check orquesta/scripts/model-policy.test.js && node --check orquesta/scripts/delegation-gate-check.js && node --check orquesta/scripts/delegation-gate-check.test.js && node --check orquesta/scripts/approval-wait-check.js && node --check orquesta/scripts/approval-wait-check.test.js && node --check orquesta/scripts/report-question-candidates-check.js && node --check orquesta/scripts/report-question-candidates-check.test.js && node --check orquesta/scripts/json-state.js && node --check orquesta/scripts/json-state.test.js && node --check orquesta/scripts/beta-v3-state-init.js && node --check orquesta/scripts/beta-v3-state-init.test.js && node --check orquesta/scripts/control-integration.test.js && node --check orquesta/scripts/completion-envelope-check.js && node --check orquesta/scripts/completion-envelope-check.test.js && node --check orquesta/scripts/capacity-gate.js && node --check orquesta/scripts/capacity-gate.test.js && node --check orquesta/scripts/control-audit.js && node --check orquesta/scripts/control-audit.test.js && node --check orquesta/scripts/dashboard-report-review.test.js && npm run test:ports && npm run test:cache && npm run test:triggers && npm run test:incident-intake && npm run test:model-policy && npm run test:delegation && npm run test:approval && npm run test:question-candidates && npm run test:json-state && npm run test:beta-v3-state && npm run test:control-integration && npm run test:completion-envelope && npm run test:capacity && npm run test:control-audit && npm run test:report-review && npm run check:encoding",
     "audit:triggers": "node orquesta/scripts/foundation-trigger-audit.js",
     "audit:control": "node orquesta/scripts/control-audit.js",
