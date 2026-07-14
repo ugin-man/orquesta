@@ -1,6 +1,7 @@
 .agents/
 .orquesta/
 .codex/
+.worktrees/
 
 node_modules/
 npm-debug.log*
