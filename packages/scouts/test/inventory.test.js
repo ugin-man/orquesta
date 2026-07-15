@@ -362,6 +362,79 @@ test("redacts unsafe package names, retained keys, specs, and lock paths without
   assert.equal(serialized.includes("?token="), false);
 });
 
+test("preserves valid package identifiers that contain auth, token, or secret substrings", (t) => {
+  const fixture = createFixture(t);
+  writeJson(path.join(fixture.projectRoot, "package.json"), {
+    name: "auth-service",
+    version: "1.0.0",
+    scripts: { "test:auth": "node test-auth.js" },
+    exports: { "./auth": "./auth.js" },
+    dependencies: {
+      jsonwebtoken: "9.0.2",
+      secretlint: "9.0.0",
+      oauth4webapi: "3.1.5",
+      "token-types": "6.0.0"
+    }
+  });
+  writeJson(path.join(fixture.projectRoot, "package-lock.json"), {
+    lockfileVersion: 3,
+    packages: {
+      "node_modules/jsonwebtoken": { version: "9.0.2" },
+      "node_modules/secretlint": { version: "9.0.0" },
+      "node_modules/oauth4webapi": { version: "3.1.5" },
+      "node_modules/token-types": { version: "6.0.0" }
+    }
+  });
+
+  const inventory = collectLocalInventory({
+    projectRoot: fixture.projectRoot,
+    codexHome: fixture.codexHome,
+    fixtureCatalogPath: fixture.fixtureCatalogPath,
+    clock: () => FIXED_TIME
+  });
+  const manifest = inventory.sources.find((item) => item.source_type === "package_manifest").metadata;
+  const packageProviders = inventory.providers.filter((item) => item.source_type === "package_manifest");
+  const lock = inventory.sources.find((item) => item.source_type === "package_lock").metadata;
+  assert.deepEqual(
+    {
+      package_name: manifest.name,
+      script_keys: manifest.scripts,
+      export_keys: manifest.exports,
+      dependency_names: manifest.dependencies.map((item) => item.name),
+      provider_ids: packageProviders.map((item) => item.provider_id),
+      capabilities: packageProviders.flatMap((item) => item.capabilities),
+      lock_paths: lock.packages.map((item) => item.package_path)
+    },
+    {
+      package_name: "auth-service",
+      script_keys: ["test:auth"],
+      export_keys: ["./auth"],
+      dependency_names: ["jsonwebtoken", "oauth4webapi", "secretlint", "token-types"],
+      provider_ids: [
+        "package:auth-service",
+        "package:jsonwebtoken",
+        "package:oauth4webapi",
+        "package:secretlint",
+        "package:token-types"
+      ],
+      capabilities: [
+        "package export ./auth",
+        "package script test:auth",
+        "package jsonwebtoken",
+        "package oauth4webapi",
+        "package secretlint",
+        "package token-types"
+      ],
+      lock_paths: [
+        "node_modules/jsonwebtoken",
+        "node_modules/oauth4webapi",
+        "node_modules/secretlint",
+        "node_modules/token-types"
+      ]
+    }
+  );
+});
+
 test("marks all sensitive MCP key forms and nested tables as redacted without retaining values", (t) => {
   const fixture = createFixture(t);
   writeText(path.join(fixture.codexHome, "config.toml"), [

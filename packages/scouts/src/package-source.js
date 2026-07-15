@@ -11,31 +11,29 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
-function containsSensitiveMarker(value) {
+function containsSensitiveValue(value) {
   return /[?]|:\/\/|token|secret|password|authorization|auth|bearer|api[_-]?key/i.test(value);
 }
 
 function safeVersionSpec(value) {
   const trimmed = value.trim();
-  if (trimmed && /^[0-9A-Za-z.*^~<>=|&!+_ -]+$/.test(trimmed) && !containsSensitiveMarker(trimmed)) return trimmed;
+  if (trimmed && /^[0-9A-Za-z.*^~<>=|&!+_ -]+$/.test(trimmed) && !containsSensitiveValue(trimmed)) return trimmed;
   return "redacted";
 }
 
 function safePackageName(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (!trimmed || containsSensitiveMarker(trimmed)) return null;
+  if (!trimmed) return null;
   if (/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(trimmed)) return trimmed;
   return null;
 }
 
 function safeScriptKey(value) {
-  if (containsSensitiveMarker(value)) return "redacted";
   return /^[A-Za-z0-9][A-Za-z0-9:_-]*$/.test(value) ? value : "redacted";
 }
 
 function safeExportKey(value) {
-  if (containsSensitiveMarker(value)) return "redacted";
   if (/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value)) return value;
   if (value === ".") return value;
   if (!/^\.\/[A-Za-z0-9*._/-]+$/.test(value)) return "redacted";
@@ -44,7 +42,7 @@ function safeExportKey(value) {
 
 function safeLockPackagePath(value) {
   const trimmed = value.trim();
-  if (!trimmed || containsSensitiveMarker(trimmed) || path.isAbsolute(trimmed)) return "redacted";
+  if (!trimmed || path.isAbsolute(trimmed)) return "redacted";
   const segments = trimmed.split("/");
   if (segments.some((segment) => !segment || segment === "." || segment === ".." || !/^[A-Za-z0-9@._-]+$/.test(segment))) {
     return "redacted";
