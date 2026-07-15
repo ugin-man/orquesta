@@ -1,7 +1,56 @@
 {
-  "$id": "phase-review", "type": "object", "required": ["phase_id", "status", "build_ref", "artifacts", "artifact_hashes", "review_packet_ref", "review_packet_hash", "checks", "demo_script", "screenshots", "known_gaps", "review_requested_at", "reviewed_at"],
+  "$id": "phase-review",
+  "type": "object",
+  "required": ["phase_id", "status", "build_ref", "artifacts", "artifact_hashes", "review_packet_ref", "review_packet_hash", "checks", "demo_script", "screenshots", "known_gaps", "review_requested_at", "reviewed_at", "review_cycle_revision", "user_decision"],
   "properties": {
-    "phase_id": { "type": "string", "pattern": ".+" }, "status": { "enum": ["in_progress", "ready_for_user_review", "changes_requested", "approved"] }, "build_ref": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }, "artifacts": { "type": "array", "items": { "type": "string" } }, "artifact_hashes": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^[a-f0-9]{64}$" } },
-    "review_packet_ref": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }, "review_packet_hash": { "anyOf": [{ "type": "string", "pattern": "^[a-f0-9]{64}$" }, { "type": "null" }] }, "checks": { "type": "array" }, "demo_script": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }, "screenshots": { "type": "array" }, "known_gaps": { "type": "array" }, "review_requested_at": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }, "reviewed_at": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }
-  }, "additionalProperties": false
+    "phase_id": { "type": "string", "pattern": ".+" },
+    "status": { "enum": ["in_progress", "ready_for_user_review", "changes_requested", "approved"] },
+    "build_ref": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] },
+    "artifacts": { "type": "array", "items": { "type": "string" } },
+    "artifact_hashes": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^[a-f0-9]{64}$" } },
+    "review_packet_ref": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] },
+    "review_packet_hash": { "anyOf": [{ "type": "string", "pattern": "^[a-f0-9]{64}$" }, { "type": "null" }] },
+    "checks": { "type": "array" },
+    "demo_script": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] },
+    "screenshots": { "type": "array" },
+    "known_gaps": { "type": "array" },
+    "review_requested_at": { "anyOf": [{ "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" }, { "type": "null" }] },
+    "reviewed_at": { "anyOf": [{ "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" }, { "type": "null" }] },
+    "review_cycle_revision": { "type": "integer", "minimum": 0 },
+    "user_decision": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["decision", "attestation"],
+          "properties": {
+            "decision": { "enum": ["approved", "changes_requested", "hold"] },
+            "attestation": {
+              "anyOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "required": ["source", "challenge_id", "target_id", "target_revision", "review_packet_hash", "token_hash", "captured_at", "expires_at", "identity_assurance"],
+                  "properties": {
+                    "source": { "const": "local_workbench_confirmation" },
+                    "challenge_id": { "type": "string", "pattern": ".+" },
+                    "target_id": { "type": "string", "pattern": ".+" },
+                    "target_revision": { "type": "integer", "minimum": 0 },
+                    "review_packet_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                    "token_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                    "captured_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+                    "expires_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+                    "identity_assurance": { "const": "local_interaction_unverified_identity" }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
 }

@@ -21,6 +21,17 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function withTaskIntentSchema(schema, callback) {
+  const schemaDir = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-contract-schema-"));
+  const schemaPath = path.join(schemaDir, "task-intent.schema.json");
+  fs.writeFileSync(schemaPath, JSON.stringify(schema), "utf8");
+  try {
+    return callback(schemaDir);
+  } finally {
+    fs.rmSync(schemaDir, { recursive: true, force: true });
+  }
+}
+
 const taskIntent = {
   task_intent_id: "TI-local-reuse",
   raw_request_ref: "fixture:local-reuse",
@@ -152,18 +163,20 @@ const phaseReview = {
   screenshots: [],
   known_gaps: [],
   review_requested_at: null,
-  reviewed_at: null
+  reviewed_at: null,
+  review_cycle_revision: 12,
+  user_decision: null
 };
 
 const approvalAttestation = {
   source: "local_workbench_confirmation",
   challenge_id: "CHALLENGE-local",
-  target_id: resolution.resolution_id,
+  target_id: phaseReview.phase_id,
   target_revision: 12,
   review_packet_hash: hash,
   token_hash: laterHash,
-  captured_at: timestamp,
-  expires_at: "2026-07-15T00:10:00.000Z",
+  captured_at: "2099-07-15T00:00:00.000Z",
+  expires_at: "2099-07-15T00:10:00.000Z",
   identity_assurance: "local_interaction_unverified_identity"
 };
 
@@ -220,6 +233,25 @@ test("canonical JSON is key-order invariant, preserves arrays, and rejects neste
   assert.throws(() => canonicalJson({ nested: { value: undefined } }), /undefined/);
 });
 
+test("canonical JSON rejects value-collapsing input and preserves safe own keys", () => {
+  const circularArray = [];
+  circularArray.push(circularArray);
+  const shared = { source: "shared" };
+  const sparse = [];
+  sparse[1] = "present";
+  const protoKey = JSON.parse('{"__proto__":{"safe":true},"a":1}');
+
+  assert.throws(() => canonicalJson(circularArray), TypeError, "circular arrays must not recurse until RangeError");
+  assert.equal(canonicalJson([shared, shared]), '[{"source":"shared"},{"source":"shared"}]');
+  assert.throws(() => canonicalJson(sparse), /sparse/);
+  assert.throws(() => canonicalJson([undefined]), /undefined/);
+  assert.throws(() => canonicalJson(new Date(timestamp)), /plain/);
+  assert.throws(() => canonicalJson(new Map()), /plain/);
+  assert.throws(() => canonicalJson(new Set()), /plain/);
+  assert.throws(() => canonicalJson({ [Symbol("hidden")]: true }), /symbol/);
+  assert.equal(canonicalJson(protoKey), '{"__proto__":{"safe":true},"a":1}');
+});
+
 test("schema loading rejects unknown keywords instead of ignoring them", () => {
   const schemaDir = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-contract-schema-"));
   const schemaPath = path.join(schemaDir, "task-intent.schema.json");
@@ -230,6 +262,45 @@ test("schema loading rejects unknown keywords instead of ignoring them", () => {
     fs.unlinkSync(schemaPath);
     fs.rmdirSync(schemaDir);
   }
+});
+
+test("schema loading rejects invalid supported keyword shapes and invalid patterns", () => {
+  const invalidSchemas = [
+    { type: "object", additionalProperties: "never" },
+    { type: "array", minItems: -1 },
+    { type: "string", pattern: "[" },
+    { type: "object", properties: { nested: { unsupported_keyword: true } } }
+  ];
+
+  for (const schema of invalidSchemas) {
+    withTaskIntentSchema(schema, (schemaDir) => {
+      assert.throws(() => loadSchema("task-intent", schemaDir), TypeError);
+    });
+  }
+});
+
+test("schema combinators keep sibling constraints, both keywords, exact oneOf, and code-unit error order", () => {
+  withTaskIntentSchema({
+    type: "object",
+    required: ["Z", "a"],
+    properties: {
+      Z: { type: "string", pattern: "^pass$", anyOf: [{ const: "pass" }, { const: "either" }], oneOf: [{ const: "pass" }, { const: "also" }] },
+      a: { oneOf: [{ type: "number" }, { type: "string", pattern: "^pass$" }, { const: "pass" }] }
+    },
+    additionalProperties: false
+  }, (schemaDir) => {
+    assert.equal(validateContract("task-intent", { Z: "pass", a: 1 }, { schemasDir: schemaDir }).ok, true);
+
+    const siblingFailure = validateContract("task-intent", { Z: "either", a: 1 }, { schemasDir: schemaDir });
+    assert.deepEqual(siblingFailure.errors.map((error) => error.code), ["oneOf", "pattern"]);
+
+    const multipleMatch = validateContract("task-intent", { Z: "pass", a: "pass" }, { schemasDir: schemaDir });
+    assert.equal(multipleMatch.ok, false);
+    assert.deepEqual(multipleMatch.errors.map((error) => error.code), ["oneOf"]);
+
+    const zeroMatch = validateContract("task-intent", { Z: "no", a: 1 }, { schemasDir: schemaDir });
+    assert.deepEqual(zeroMatch.errors.map((error) => error.code), ["anyOf", "oneOf", "pattern"]);
+  });
 });
 
 test("candidate evaluation requires every axis, bounded values, reasons, and actual_model null", () => {
@@ -255,7 +326,7 @@ test("approval attestation rejects raw token, secret, and request-supplied actor
   }
 });
 
-test("phase review evidence is required for user-review and approved states", () => {
+test("phase review approval requires an explicit user decision and a bound redacted attestation", () => {
   const ready = { ...phaseReview, status: "ready_for_user_review" };
   assert.equal(validateContract("phase-review", ready).ok, false);
   const complete = {
@@ -267,19 +338,86 @@ test("phase review evidence is required for user-review and approved states", ()
     review_packet_hash: laterHash
   };
   assert.equal(validateContract("phase-review", complete).ok, true);
-  assert.equal(validateContract("phase-review", { ...complete, status: "approved" }).ok, true);
+
+  const approved = {
+    ...complete,
+    status: "approved",
+    user_decision: {
+      decision: "approved",
+      attestation: { ...approvalAttestation, review_packet_hash: laterHash }
+    }
+  };
+  assert.equal(validateContract("phase-review", approved).ok, true);
+  assert.equal(validateContract("phase-review", { ...complete, status: "approved" }).ok, false);
+  assert.equal(validateContract("phase-review", {
+    ...approved,
+    user_decision: { decision: "approved", attestation: null }
+  }).ok, false);
 });
 
-test("phase approval binding reports packet and revision mismatch in deterministic order", () => {
-  const result = validatePhaseApprovalBinding({
-    phaseReview: { review_packet_hash: hash, journal_revision: 12 },
-    attestation: { review_packet_hash: laterHash, target_revision: 11 }
-  });
-  assert.deepEqual(result, {
-    ok: false,
-    errors: [
-      { path: "$.review_packet_hash", code: "approval_packet_hash_mismatch", message: "approval attestation review packet hash must match phase review" },
-      { path: "$.target_revision", code: "approval_revision_mismatch", message: "approval attestation target revision must match phase review journal revision" }
-    ]
+test("phase approval binding fails closed for missing, target, packet, revision, and expiry mismatches", () => {
+  const binding = {
+    phaseReview: { phase_id: phaseReview.phase_id, review_packet_hash: hash, review_cycle_revision: 12 },
+    attestation: { ...approvalAttestation, review_packet_hash: hash }
+  };
+  assert.equal(validatePhaseApprovalBinding(binding).ok, true);
+  assert.equal(validatePhaseApprovalBinding().ok, false);
+  assert.equal(validatePhaseApprovalBinding({ phaseReview: binding.phaseReview }).ok, false);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    attestation: { ...binding.attestation, target_id: "another-phase" }
+  }).errors.some((error) => error.code === "approval_target_mismatch"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    attestation: { ...binding.attestation, review_packet_hash: laterHash }
+  }).errors.some((error) => error.code === "approval_packet_hash_mismatch"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    attestation: { ...binding.attestation, target_revision: 11 }
+  }).errors.some((error) => error.code === "approval_revision_mismatch"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    attestation: { ...binding.attestation, expires_at: "2026-07-15T00:10:00.000Z" },
+    now: "2026-07-15T00:11:00.000Z"
+  }).errors.some((error) => error.code === "approval_attestation_expired"), true);
+});
+
+test("UTC timestamp schemas and approval attestation semantics reject malformed and reversed evidence", () => {
+  assert.equal(validateContract("approval-attestation", {
+    ...approvalAttestation,
+    captured_at: "not-a-timestamp",
+    expires_at: "also-not-a-timestamp"
+  }).ok, false);
+  assert.equal(validateContract("approval-attestation", {
+    ...approvalAttestation,
+    captured_at: "2026-02-30T00:00:00.000Z"
+  }).ok, false);
+  assert.equal(validateContract("approval-attestation", {
+    ...approvalAttestation,
+    expires_at: approvalAttestation.captured_at
+  }).ok, false);
+  assert.equal(validateContract("capability-provider", {
+    ...capabilityProvider,
+    last_verified_at: "not-a-timestamp"
+  }).ok, false);
+  assert.equal(validateContract("context-pack", {
+    ...contextPack,
+    expires_at: "not-a-timestamp"
+  }).ok, false);
+  assert.equal(validateContract("phase-review", {
+    ...phaseReview,
+    review_requested_at: "not-a-timestamp"
+  }).ok, false);
+});
+
+test("validation errors use deterministic code-unit order", () => {
+  withTaskIntentSchema({
+    type: "object",
+    required: ["Z", "a"],
+    properties: { Z: { type: "string" }, a: { type: "string" } },
+    additionalProperties: false
+  }, (schemaDir) => {
+    const result = validateContract("task-intent", { Z: 1, a: 1 }, { schemasDir: schemaDir });
+    assert.deepEqual(result.errors.map((error) => error.path), ["$.Z", "$.a"]);
   });
 });

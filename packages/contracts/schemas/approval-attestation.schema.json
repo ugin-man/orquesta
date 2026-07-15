@@ -1,6 +1,6 @@
 {
   "$id": "approval-attestation", "type": "object", "required": ["source", "challenge_id", "target_id", "target_revision", "review_packet_hash", "token_hash", "captured_at", "expires_at", "identity_assurance"],
   "properties": {
-    "source": { "const": "local_workbench_confirmation" }, "challenge_id": { "type": "string", "pattern": ".+" }, "target_id": { "type": "string", "pattern": ".+" }, "target_revision": { "type": "integer", "minimum": 0 }, "review_packet_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "token_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "captured_at": { "type": "string", "pattern": ".+" }, "expires_at": { "type": "string", "pattern": ".+" }, "identity_assurance": { "const": "local_interaction_unverified_identity" }
+    "source": { "const": "local_workbench_confirmation" }, "challenge_id": { "type": "string", "pattern": ".+" }, "target_id": { "type": "string", "pattern": ".+" }, "target_revision": { "type": "integer", "minimum": 0 }, "review_packet_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "token_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "captured_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" }, "expires_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" }, "identity_assurance": { "const": "local_interaction_unverified_identity" }
   }, "additionalProperties": false
 }

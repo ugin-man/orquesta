@@ -1,11 +1,14 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { isDeepStrictEqual } = require("node:util");
 
 const SUPPORTED_KEYWORDS = new Set([
   "$id", "$schema", "type", "required", "properties", "items",
   "enum", "const", "minItems", "minimum", "maximum", "pattern",
   "additionalProperties", "anyOf", "oneOf"
 ]);
+const SUPPORTED_TYPES = new Set(["null", "boolean", "string", "number", "integer", "array", "object"]);
+const UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const SCHEMA_NAMES = [
   "task-intent",
   "capability-need",
@@ -24,27 +27,62 @@ function schemaError(pathValue, code, message) {
   return { path: pathValue, code, message };
 }
 
+function isPlainObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function assertSupportedSchema(schema, schemaPath = "$") {
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-    throw new TypeError(`Schema at ${schemaPath} must be an object`);
-  }
+  if (!isPlainObject(schema)) throw new TypeError(`Schema at ${schemaPath} must be an object`);
+
   for (const [keyword, value] of Object.entries(schema)) {
     if (!SUPPORTED_KEYWORDS.has(keyword)) {
       throw new TypeError(`Unsupported schema keyword at ${schemaPath}: ${keyword}`);
     }
+    if ((keyword === "$id" || keyword === "$schema") && typeof value !== "string") {
+      throw new TypeError(`Schema ${keyword} at ${schemaPath} must be a string`);
+    }
+    if (keyword === "type" && (typeof value !== "string" || !SUPPORTED_TYPES.has(value))) {
+      throw new TypeError(`Schema type at ${schemaPath} must be a supported type`);
+    }
+    if (keyword === "required" && (!Array.isArray(value) || value.some((item) => typeof item !== "string"))) {
+      throw new TypeError(`Schema required at ${schemaPath} must be an array of strings`);
+    }
     if (keyword === "properties") {
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        throw new TypeError(`Schema properties at ${schemaPath} must be an object`);
-      }
+      if (!isPlainObject(value)) throw new TypeError(`Schema properties at ${schemaPath} must be an object`);
       for (const [property, child] of Object.entries(value)) {
         assertSupportedSchema(child, `${schemaPath}.properties.${property}`);
       }
-    } else if (keyword === "items") {
-      assertSupportedSchema(value, `${schemaPath}.items`);
-    } else if (keyword === "additionalProperties" && value && typeof value === "object") {
-      assertSupportedSchema(value, `${schemaPath}.additionalProperties`);
-    } else if (keyword === "anyOf" || keyword === "oneOf") {
-      if (!Array.isArray(value)) throw new TypeError(`Schema ${keyword} at ${schemaPath} must be an array`);
+    }
+    if (keyword === "items") assertSupportedSchema(value, `${schemaPath}.items`);
+    if (keyword === "enum" && (!Array.isArray(value) || value.length === 0)) {
+      throw new TypeError(`Schema enum at ${schemaPath} must be a non-empty array`);
+    }
+    if (keyword === "minItems" && (!Number.isInteger(value) || value < 0)) {
+      throw new TypeError(`Schema minItems at ${schemaPath} must be a non-negative integer`);
+    }
+    if ((keyword === "minimum" || keyword === "maximum") && (typeof value !== "number" || !Number.isFinite(value))) {
+      throw new TypeError(`Schema ${keyword} at ${schemaPath} must be a finite number`);
+    }
+    if (keyword === "pattern") {
+      if (typeof value !== "string") throw new TypeError(`Schema pattern at ${schemaPath} must be a string`);
+      try {
+        new RegExp(value);
+      } catch {
+        throw new TypeError(`Schema pattern at ${schemaPath} must be a valid regular expression`);
+      }
+    }
+    if (keyword === "additionalProperties") {
+      if (typeof value !== "boolean" && !isPlainObject(value)) {
+        throw new TypeError(`Schema additionalProperties at ${schemaPath} must be boolean or an object`);
+      }
+      if (isPlainObject(value)) assertSupportedSchema(value, `${schemaPath}.additionalProperties`);
+    }
+    if (keyword === "anyOf" || keyword === "oneOf") {
+      if (!Array.isArray(value) || value.length === 0) {
+        throw new TypeError(`Schema ${keyword} at ${schemaPath} must be a non-empty array`);
+      }
       value.forEach((child, index) => assertSupportedSchema(child, `${schemaPath}.${keyword}[${index}]`));
     }
   }
@@ -61,7 +99,7 @@ function loadSchema(name, schemasDir = defaultSchemasDir) {
 function typeMatches(value, expectedType) {
   if (expectedType === "null") return value === null;
   if (expectedType === "array") return Array.isArray(value);
-  if (expectedType === "object") return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  if (expectedType === "object") return isPlainObject(value);
   if (expectedType === "integer") return Number.isInteger(value);
   if (expectedType === "number") return typeof value === "number" && Number.isFinite(value);
   return typeof value === expectedType;
@@ -69,23 +107,21 @@ function typeMatches(value, expectedType) {
 
 function validateSchema(schema, value, valuePath = "$") {
   const errors = [];
-  if (schema.anyOf || schema.oneOf) {
-    const alternatives = schema.anyOf || schema.oneOf;
-    const matches = alternatives.filter((alternative) => validateSchema(alternative, value, valuePath).length === 0);
-    const requiredMatches = schema.oneOf ? 1 : 1;
-    if ((schema.oneOf && matches.length !== requiredMatches) || (schema.anyOf && matches.length < requiredMatches)) {
-      return [schemaError(valuePath, schema.oneOf ? "oneOf" : "anyOf", "must match an allowed schema")];
-    }
-    return errors;
+  if (schema.anyOf) {
+    const matches = schema.anyOf.filter((alternative) => validateSchema(alternative, value, valuePath).length === 0);
+    if (matches.length === 0) errors.push(schemaError(valuePath, "anyOf", "must match an allowed schema"));
   }
-
+  if (schema.oneOf) {
+    const matches = schema.oneOf.filter((alternative) => validateSchema(alternative, value, valuePath).length === 0);
+    if (matches.length !== 1) errors.push(schemaError(valuePath, "oneOf", "must match exactly one allowed schema"));
+  }
   if (schema.type && !typeMatches(value, schema.type)) {
-    return [schemaError(valuePath, "type", `must be ${schema.type}`)];
+    errors.push(schemaError(valuePath, "type", `must be ${schema.type}`));
   }
-  if (schema.const !== undefined && value !== schema.const) {
+  if (Object.hasOwn(schema, "const") && !isDeepStrictEqual(value, schema.const)) {
     errors.push(schemaError(valuePath, "const", `must equal ${JSON.stringify(schema.const)}`));
   }
-  if (schema.enum && !schema.enum.includes(value)) {
+  if (schema.enum && !schema.enum.some((entry) => isDeepStrictEqual(entry, value))) {
     errors.push(schemaError(valuePath, "enum", "must be one of the allowed values"));
   }
   if (schema.minimum !== undefined && typeof value === "number" && value < schema.minimum) {
@@ -103,7 +139,7 @@ function validateSchema(schema, value, valuePath = "$") {
   if (schema.items && Array.isArray(value)) {
     value.forEach((item, index) => errors.push(...validateSchema(schema.items, item, `${valuePath}[${index}]`)));
   }
-  if (schema.type === "object" && value && typeof value === "object" && !Array.isArray(value)) {
+  if (isPlainObject(value) && (schema.type === "object" || schema.properties || schema.required || schema.additionalProperties !== undefined)) {
     for (const property of schema.required || []) {
       if (!Object.hasOwn(value, property)) errors.push(schemaError(`${valuePath}.${property}`, "required", "is required"));
     }
@@ -115,7 +151,7 @@ function validateSchema(schema, value, valuePath = "$") {
       if (Object.hasOwn(properties, property)) continue;
       if (schema.additionalProperties === false) {
         errors.push(schemaError(`${valuePath}.${property}`, "additionalProperties", "is not allowed"));
-      } else if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+      } else if (isPlainObject(schema.additionalProperties)) {
         errors.push(...validateSchema(schema.additionalProperties, value[property], `${valuePath}.${property}`));
       }
     }
@@ -123,8 +159,30 @@ function validateSchema(schema, value, valuePath = "$") {
   return errors;
 }
 
-function phaseReviewErrors(value) {
-  if (!value || !["ready_for_user_review", "approved"].includes(value.status)) return [];
+function isValidUtcTimestamp(value) {
+  if (typeof value !== "string" || !UTC_TIMESTAMP_PATTERN.test(value)) return false;
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime()) && date.toISOString() === value;
+}
+
+function approvalAttestationErrors(value) {
+  if (!isPlainObject(value)) return [];
+  const errors = [];
+  if (!isValidUtcTimestamp(value.captured_at)) {
+    errors.push(schemaError("$.captured_at", "timestamp", "must be a valid UTC timestamp"));
+  }
+  if (!isValidUtcTimestamp(value.expires_at)) {
+    errors.push(schemaError("$.expires_at", "timestamp", "must be a valid UTC timestamp"));
+  }
+  if (isValidUtcTimestamp(value.captured_at) && isValidUtcTimestamp(value.expires_at)
+    && new Date(value.expires_at).getTime() <= new Date(value.captured_at).getTime()) {
+    errors.push(schemaError("$.expires_at", "approval_expiry_order", "must be later than captured_at"));
+  }
+  return errors;
+}
+
+function phaseReviewErrors(value, options) {
+  if (!isPlainObject(value) || !["ready_for_user_review", "approved"].includes(value.status)) return [];
   const errors = [];
   if (typeof value.review_packet_ref !== "string" || !value.review_packet_ref) {
     errors.push(schemaError("$.review_packet_ref", "phase_review_evidence", "is required before user review"));
@@ -135,28 +193,50 @@ function phaseReviewErrors(value) {
   if (typeof value.build_ref !== "string" || !value.build_ref) {
     errors.push(schemaError("$.build_ref", "phase_review_evidence", "is required before user review"));
   }
-  if (!value.artifact_hashes || typeof value.artifact_hashes !== "object" || Array.isArray(value.artifact_hashes) || Object.keys(value.artifact_hashes).length === 0) {
+  if (!isPlainObject(value.artifact_hashes) || Object.keys(value.artifact_hashes).length === 0) {
     errors.push(schemaError("$.artifact_hashes", "phase_review_evidence", "must contain artifact hashes before user review"));
+  }
+  if (value.status === "approved") {
+    const decision = value.user_decision;
+    if (!isPlainObject(decision) || decision.decision !== "approved") {
+      errors.push(schemaError("$.user_decision", "approval_user_decision_required", "must record an explicit approved user decision"));
+    } else if (!isPlainObject(decision.attestation)) {
+      errors.push(schemaError("$.user_decision.attestation", "approval_attestation_required", "must contain a redacted approval attestation"));
+    } else {
+      const binding = validatePhaseApprovalBinding({
+        phaseReview: value,
+        attestation: decision.attestation,
+        now: options.now
+      });
+      errors.push(...binding.errors);
+    }
   }
   return errors;
 }
 
+function codeUnitCompare(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function sortErrors(errors) {
   return errors.sort((left, right) => (
-    left.path.localeCompare(right.path)
-    || left.code.localeCompare(right.code)
-    || left.message.localeCompare(right.message)
+    codeUnitCompare(left.path, right.path)
+    || codeUnitCompare(left.code, right.code)
+    || codeUnitCompare(left.message, right.message)
   ));
 }
 
-function validateContract(name, value) {
-  const errors = validateSchema(loadSchema(name), value, "$");
-  if (name === "phase-review") errors.push(...phaseReviewErrors(value));
+function validateContract(name, value, options = {}) {
+  const errors = validateSchema(loadSchema(name, options.schemasDir), value, "$");
+  if (name === "approval-attestation") errors.push(...approvalAttestationErrors(value));
+  if (name === "phase-review") errors.push(...phaseReviewErrors(value, options));
   return { ok: errors.length === 0, errors: sortErrors(errors) };
 }
 
-function assertContract(name, value) {
-  const result = validateContract(name, value);
+function assertContract(name, value, options) {
+  const result = validateContract(name, value, options);
   if (!result.ok) {
     const error = new TypeError(`${name} contract validation failed: ${result.errors.map((item) => `${item.path} ${item.code}`).join(", ")}`);
     error.errors = result.errors;
@@ -165,15 +245,44 @@ function assertContract(name, value) {
   return value;
 }
 
-function validatePhaseApprovalBinding({ phaseReview, attestation } = {}) {
+function validatePhaseApprovalBinding({ phaseReview, attestation, now = new Date() } = {}) {
   const errors = [];
-  if (phaseReview?.review_packet_hash !== attestation?.review_packet_hash) {
+  if (!isPlainObject(phaseReview)) {
+    errors.push(schemaError("$.phaseReview", "approval_phase_review_missing", "phase review is required"));
+  }
+  if (!isPlainObject(attestation)) {
+    errors.push(schemaError("$.attestation", "approval_attestation_missing", "approval attestation is required"));
+  }
+  if (errors.length > 0) return { ok: false, errors: sortErrors(errors) };
+
+  if (typeof phaseReview.phase_id !== "string" || !phaseReview.phase_id
+    || !Number.isInteger(phaseReview.review_cycle_revision) || phaseReview.review_cycle_revision < 0
+    || typeof phaseReview.review_packet_hash !== "string" || !/^[a-f0-9]{64}$/.test(phaseReview.review_packet_hash)) {
+    errors.push(schemaError("$.phaseReview", "approval_phase_review_invalid", "phase review binding fields are invalid"));
+  }
+
+  const attestationResult = validateContract("approval-attestation", attestation);
+  if (!attestationResult.ok) {
+    errors.push(schemaError("$.attestation", "approval_attestation_invalid", "approval attestation is malformed or unverified"));
+  }
+
+  if (phaseReview.phase_id !== attestation.target_id) {
+    errors.push(schemaError("$.target_id", "approval_target_mismatch", "approval attestation target must match phase review"));
+  }
+  if (phaseReview.review_packet_hash !== attestation.review_packet_hash) {
     errors.push(schemaError("$.review_packet_hash", "approval_packet_hash_mismatch", "approval attestation review packet hash must match phase review"));
   }
-  if (phaseReview?.journal_revision !== attestation?.target_revision) {
-    errors.push(schemaError("$.target_revision", "approval_revision_mismatch", "approval attestation target revision must match phase review journal revision"));
+  if (phaseReview.review_cycle_revision !== attestation.target_revision) {
+    errors.push(schemaError("$.target_revision", "approval_revision_mismatch", "approval attestation target revision must match phase review review cycle revision"));
   }
-  return { ok: errors.length === 0, errors };
+
+  const nowDate = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(nowDate.getTime())) {
+    errors.push(schemaError("$.now", "approval_binding_clock_invalid", "binding clock must be a valid timestamp"));
+  } else if (isValidUtcTimestamp(attestation.expires_at) && new Date(attestation.expires_at).getTime() <= nowDate.getTime()) {
+    errors.push(schemaError("$.expires_at", "approval_attestation_expired", "approval attestation has expired"));
+  }
+  return { ok: errors.length === 0, errors: sortErrors(errors) };
 }
 
 module.exports = {
