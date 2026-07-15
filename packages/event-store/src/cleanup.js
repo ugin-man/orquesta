@@ -35,10 +35,10 @@ function removeProbeTree(probeRoot, workspaceRoot) {
   const probe = assertProbeRoot(probeRoot, workspaceRoot);
   const knownDirectories = new Set(["pending", "projections", "quarantine"]);
   function allowedFile(name, relativeDirectory) {
-    if (relativeDirectory === "") return new Set(["events.jsonl", "events.jsonl.bak", "events.jsonl.lock"]).has(name) || /^events\.jsonl\.lock\.(transition|release)-[a-f0-9]+$/u.test(name);
-    if (relativeDirectory === "pending") return /^[a-f0-9]{64}\.json(?:\.bak)?$/u.test(name) || /^\.[a-f0-9]{64}\.json\.\d+\.[a-f0-9]+\.tmp$/u.test(name);
+    if (relativeDirectory === "") return new Set(["events.jsonl", "events.jsonl.bak", "events.jsonl.lock"]).has(name) || /^events\.jsonl\.lock\.(transition|release)-[a-f0-9]+$/u.test(name) || /^events\.jsonl\.conflict-[a-f0-9]{64}$/u.test(name);
+    if (relativeDirectory === "pending") return /^[a-f0-9]{64}\.json(?:\.bak)?$/u.test(name) || /^[a-f0-9]{64}\.json\.(?:conflict-[a-f0-9]{64}|consume-[a-f0-9]{32})$/u.test(name) || /^\.[a-f0-9]{64}\.json\.\d+\.[a-f0-9]+\.tmp$/u.test(name);
     if (relativeDirectory === "projections") return new Set(["state.json", "state.json.bak"]).has(name) || /^\.state\.json\.\d+\.[a-f0-9]+\.tmp$/u.test(name);
-    if (relativeDirectory === "quarantine") return /^events-[a-f0-9]{64}\.jsonl$/u.test(name) || /^pending-[a-f0-9]{64}\.json$/u.test(name);
+    if (relativeDirectory === "quarantine") return /^events-[a-f0-9]{64}\.jsonl$/u.test(name) || /^pending-[a-f0-9]{64}\.json$/u.test(name) || /^conflict-[a-f0-9]{64}\.json(?:\.bak)?$/u.test(name) || /^\.conflict-[a-f0-9]{64}\.json\.\d+\.[a-f0-9]+\.tmp$/u.test(name);
     return false;
   }
   function clear(directory, relativeDirectory = "") {

@@ -377,10 +377,210 @@ test("recovery case 03: pending with the same batch id but a different journal h
     const source = request("case-03"); const store = createEventStore({ stateRoot: f.root, workspaceId: "recovery" }); store.commit(source);
     pending(f, JSON.parse(fs.readFileSync(f.journal, "utf8").trim()), "recovery");
     const pendingPath = pendingFile(f); const changed = JSON.parse(fs.readFileSync(pendingPath, "utf8")); changed.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(changed)}\n`);
-    const inspection = inspectReadOnly(store, f.root, "blocked_conflict");
+    const inspection = inspectReadOnly(store, f.root, "quarantine_conflict");
     assert.equal(inspection.last_valid_sequence, 1); assert.equal(inspection.required_user_decision, "user_decision");
     assert.equal(inspection.quarantine_paths.length, 2); assert.equal(Object.hasOwn(inspection, "selected_revision"), false);
     assert.equal(fs.existsSync(f.journal), true); assert.equal(fs.existsSync(pendingPath), true);
+  } finally { f.cleanup(); }
+});
+
+test("same-batch hash conflict explicitly quarantines both verified artifacts before user review", () => {
+  const f = fixture();
+  try {
+    const source = request("quarantine-conflict");
+    const store = createEventStore({ stateRoot: f.root, workspaceId: "recovery" });
+    store.commit(source);
+    const entry = JSON.parse(fs.readFileSync(f.journal, "utf8").trim());
+    const pendingPath = pending(f, entry, "recovery");
+    const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64);
+    fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`, "utf8");
+    const journalBytes = fs.readFileSync(f.journal); const pendingBytes = fs.readFileSync(pendingPath);
+    const inspection = inspectReadOnly(store, f.root, "quarantine_conflict");
+    const applied = store.applyRecovery(recoveryInput(inspection));
+    assert.equal(applied.status, "conflict_quarantined");
+    assert.equal(fs.existsSync(f.journal), false); assert.equal(fs.existsSync(pendingPath), false);
+    const quarantine = path.join(f.root, "quarantine"); const artifacts = fs.readdirSync(quarantine).sort();
+    const journalArtifact = artifacts.find((name) => name.startsWith("events-"));
+    const pendingArtifact = artifacts.find((name) => name.startsWith("pending-"));
+    const manifestArtifact = artifacts.find((name) => name.startsWith("conflict-"));
+    assert.deepEqual(fs.readFileSync(path.join(quarantine, journalArtifact)), journalBytes);
+    assert.deepEqual(fs.readFileSync(path.join(quarantine, pendingArtifact)), pendingBytes);
+    const manifest = JSON.parse(fs.readFileSync(path.join(quarantine, manifestArtifact), "utf8"));
+    assert.equal(manifest.required_user_decision, "user_decision"); assert.equal(manifest.status, "user_decision"); assert.equal(Object.hasOwn(manifest, "selected_revision"), false); assert.equal(Object.keys(manifest).some((key) => key.includes("bytes_base64")), false);
+    const blocked = store.inspectRecovery(); assert.equal(blocked.action, "blocked_conflict"); assert.equal(blocked.required_user_decision, "user_decision");
+  } finally { f.cleanup(); }
+});
+
+test("conflict quarantine resumes after journal transition and rejects a replacement pending", () => {
+  const f = fixture();
+  try {
+    const source = request("quarantine-resume"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+    const stopping = createEventStore({ stateRoot: f.root, testRecoveryHooks: { afterConflictJournalTransition() { throw Object.assign(new Error("stop"), { code: "EVENT_TEST_STOP_CONFLICT_JOURNAL" }); } } });
+    const first = inspectReadOnly(stopping, f.root, "quarantine_conflict");
+    assert.throws(() => stopping.applyRecovery(recoveryInput(first)), { code: "EVENT_TEST_STOP_CONFLICT_JOURNAL" });
+    const resumed = createEventStore({ stateRoot: f.root }); const second = inspectReadOnly(resumed, f.root, "quarantine_conflict");
+    assert.equal(resumed.applyRecovery(recoveryInput(second)).status, "conflict_quarantined");
+    const replacement = Buffer.from("replacement pending\n", "utf8");
+    fs.writeFileSync(pendingPath, replacement);
+    assert.equal(resumed.inspectRecovery().action, "blocked_conflict");
+    assert.deepEqual(fs.readFileSync(pendingPath), replacement);
+  } finally { f.cleanup(); }
+});
+
+test("conflict quarantine resumes after the pending transition and keeps a post-inspection replacement", () => {
+  const f = fixture();
+  try {
+    const source = request("quarantine-pending-stop"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+    const stopping = createEventStore({ stateRoot: f.root, testRecoveryHooks: { afterConflictPendingTransition() { throw Object.assign(new Error("stop"), { code: "EVENT_TEST_STOP_CONFLICT_PENDING" }); } } });
+    const first = inspectReadOnly(stopping, f.root, "quarantine_conflict");
+    assert.throws(() => stopping.applyRecovery(recoveryInput(first)), { code: "EVENT_TEST_STOP_CONFLICT_PENDING" });
+    const replacement = Buffer.from("replacement after inspection\n", "utf8");
+    const guarded = createEventStore({ stateRoot: f.root, testRecoveryHooks: { beforeConflictPendingMove() { fs.writeFileSync(pendingPath, replacement); } } });
+    const second = inspectReadOnly(guarded, f.root, "quarantine_conflict");
+    assert.throws(() => guarded.applyRecovery(recoveryInput(second)), { code: "RECOVERY_CONFLICT_VERIFY_FAILED" });
+    assert.deepEqual(fs.readFileSync(pendingPath), replacement);
+  } finally { f.cleanup(); }
+});
+
+test("conflict quarantine resumes after the pending transition without selecting a revision", () => {
+  const f = fixture();
+  try {
+    const source = request("quarantine-pending-resume"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+    const stopping = createEventStore({ stateRoot: f.root, testRecoveryHooks: { afterConflictPendingTransition() { throw Object.assign(new Error("stop"), { code: "EVENT_TEST_STOP_CONFLICT_PENDING" }); } } });
+    const first = inspectReadOnly(stopping, f.root, "quarantine_conflict"); assert.throws(() => stopping.applyRecovery(recoveryInput(first)), { code: "EVENT_TEST_STOP_CONFLICT_PENDING" });
+    const resumed = createEventStore({ stateRoot: f.root }); const second = inspectReadOnly(resumed, f.root, "quarantine_conflict");
+    assert.equal(resumed.applyRecovery(recoveryInput(second)).status, "conflict_quarantined");
+    const blocked = resumed.inspectRecovery(); assert.equal(blocked.action, "blocked_conflict"); assert.equal(Object.hasOwn(blocked, "selected_revision"), false);
+  } finally { f.cleanup(); }
+});
+
+test("completed conflict quarantine preserves later canonical replacements as user-decision evidence", () => {
+  const f = fixture();
+  try {
+    const source = request("quarantine-complete-replacement"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+    const store = createEventStore({ stateRoot: f.root }); const inspection = inspectReadOnly(store, f.root, "quarantine_conflict"); assert.equal(store.applyRecovery(recoveryInput(inspection)).status, "conflict_quarantined");
+    const replacement = Buffer.from("replacement after completed conflict\n", "utf8"); fs.writeFileSync(pendingPath, replacement);
+    const blocked = inspectReadOnly(store, f.root, "blocked_conflict");
+    assert.throws(() => store.applyRecovery(recoveryInput(blocked)), { code: "RECOVERY_ACTION_BLOCKED" });
+    assert.deepEqual(fs.readFileSync(pendingPath), replacement);
+  } finally { f.cleanup(); }
+});
+
+test("a status-only conflict completion never accepts remaining original artifacts", () => {
+  const f = fixture();
+  try {
+    const source = request("quarantine-status-tamper"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+    const stopping = createEventStore({ stateRoot: f.root, testRecoveryHooks: { afterConflictJournalTransition() { throw Object.assign(new Error("stop"), { code: "EVENT_TEST_STOP_CONFLICT_JOURNAL" }); } } });
+    const first = inspectReadOnly(stopping, f.root, "quarantine_conflict"); assert.throws(() => stopping.applyRecovery(recoveryInput(first)), { code: "EVENT_TEST_STOP_CONFLICT_JOURNAL" });
+    const manifestPath = path.join(f.root, "quarantine", fs.readdirSync(path.join(f.root, "quarantine")).find((name) => name.startsWith("conflict-")));
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")); manifest.status = "user_decision"; fs.writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
+    const blocked = inspectReadOnly(createEventStore({ stateRoot: f.root }), f.root, "blocked_conflict");
+    assert.equal(blocked.diagnostics.conflict_reason, "completed_artifacts_present");
+    assert.equal(fs.existsSync(pendingPath), true); assert.equal(fs.readdirSync(f.root).some((name) => name.includes(".conflict-")), true);
+  } finally { f.cleanup(); }
+});
+
+test("a completed conflict never hides an exact transition behind a replacement", () => {
+  const f = fixture();
+  try {
+    const source = request("quarantine-transition-replacement"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+    const stopping = createEventStore({ stateRoot: f.root, testRecoveryHooks: { afterConflictPendingTransition() { throw Object.assign(new Error("stop"), { code: "EVENT_TEST_STOP_CONFLICT_PENDING" }); } } });
+    const first = inspectReadOnly(stopping, f.root, "quarantine_conflict"); assert.throws(() => stopping.applyRecovery(recoveryInput(first)), { code: "EVENT_TEST_STOP_CONFLICT_PENDING" });
+    const quarantine = path.join(f.root, "quarantine"); const manifestPath = path.join(quarantine, fs.readdirSync(quarantine).find((name) => name.startsWith("conflict-")));
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")); manifest.status = "user_decision"; fs.writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
+    const transition = path.join(f.root, "pending", `${path.basename(pendingPath)}.conflict-${manifest.id}`); const transitionBytes = fs.readFileSync(transition); const replacement = Buffer.from("replacement pending after transition\n", "utf8"); fs.writeFileSync(pendingPath, replacement);
+    const blocked = inspectReadOnly(createEventStore({ stateRoot: f.root }), f.root, "blocked_conflict");
+    assert.equal(blocked.diagnostics.conflict_reason, "completed_artifacts_present"); assert.deepEqual(fs.readFileSync(transition), transitionBytes); assert.deepEqual(fs.readFileSync(pendingPath), replacement);
+  } finally { f.cleanup(); }
+});
+
+test("conflict completion resumes from ready evidence after an atomic manifest update failure", () => {
+  const f = fixture();
+  try {
+    const source = request("quarantine-completion-resume"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+    const stopping = createEventStore({ stateRoot: f.root, testRecoveryHooks: { beforeConflictManifestComplete() { throw Object.assign(new Error("manifest update failed"), { code: "EVENT_TEST_CONFLICT_MANIFEST_COMPLETE" }); } } });
+    const first = inspectReadOnly(stopping, f.root, "quarantine_conflict"); assert.throws(() => stopping.applyRecovery(recoveryInput(first)), { code: "EVENT_TEST_CONFLICT_MANIFEST_COMPLETE" });
+    assert.equal(fs.existsSync(f.journal), false); assert.equal(fs.existsSync(pendingPath), false);
+    const resumed = createEventStore({ stateRoot: f.root }); const second = inspectReadOnly(resumed, f.root, "quarantine_conflict");
+    assert.equal(resumed.applyRecovery(recoveryInput(second)).status, "conflict_quarantined"); assert.equal(inspectReadOnly(resumed, f.root, "blocked_conflict").required_user_decision, "user_decision");
+  } finally { f.cleanup(); }
+});
+
+test("a OneDrive conflict copy blocks an incomplete manifest without touching any conflict evidence", () => {
+  const f = fixture();
+  try {
+    const source = request("quarantine-onedrive-copy"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+    const stopping = createEventStore({ stateRoot: f.root, testRecoveryHooks: { afterConflictJournalTransition() { throw Object.assign(new Error("stop"), { code: "EVENT_TEST_STOP_CONFLICT_JOURNAL" }); } } });
+    const first = inspectReadOnly(stopping, f.root, "quarantine_conflict"); assert.throws(() => stopping.applyRecovery(recoveryInput(first)), { code: "EVENT_TEST_STOP_CONFLICT_JOURNAL" });
+    const copyPath = path.join(f.root, "events (conflicted copy).jsonl"); fs.writeFileSync(copyPath, "onedrive alternate\n", "utf8"); const before = treeSnapshot(f.root);
+    const blockedStore = createEventStore({ stateRoot: f.root }); const blocked = inspectReadOnly(blockedStore, f.root, "blocked_conflict");
+    assert.equal(blocked.required_user_decision, "user_decision"); assert.equal(blocked.conflicts.length, 1); assert.throws(() => blockedStore.applyRecovery(recoveryInput(blocked)), { code: "RECOVERY_ACTION_BLOCKED" }); assert.deepEqual(treeSnapshot(f.root), before);
+  } finally { f.cleanup(); }
+});
+
+test("conflict quarantine rejects journal replacement after inspection without moving it", () => {
+  const f = fixture();
+  try {
+    const source = request("quarantine-journal-replacement"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+    const replacement = Buffer.from("replacement journal\n", "utf8");
+    const store = createEventStore({ stateRoot: f.root, testRecoveryHooks: { beforeConflictJournalMove() { fs.writeFileSync(f.journal, replacement); } } });
+    const inspection = inspectReadOnly(store, f.root, "quarantine_conflict");
+    assert.throws(() => store.applyRecovery(recoveryInput(inspection)), { code: "RECOVERY_CONFLICT_VERIFY_FAILED" });
+    assert.deepEqual(fs.readFileSync(f.journal), replacement); assert.equal(fs.existsSync(pendingPath), true);
+  } finally { f.cleanup(); }
+});
+
+test("tampered conflict manifest never reaches an outside path", () => {
+  const f = fixture(); const outside = path.join(os.tmpdir(), `orquesta-conflict-outside-${process.pid}.txt`);
+  try {
+    fs.writeFileSync(outside, "outside evidence\n");
+    const source = request("quarantine-tampered-manifest"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+    const stopping = createEventStore({ stateRoot: f.root, testRecoveryHooks: { afterConflictJournalTransition() { throw Object.assign(new Error("stop"), { code: "EVENT_TEST_STOP_CONFLICT_JOURNAL" }); } } });
+    const first = inspectReadOnly(stopping, f.root, "quarantine_conflict"); assert.throws(() => stopping.applyRecovery(recoveryInput(first)), { code: "EVENT_TEST_STOP_CONFLICT_JOURNAL" });
+    const manifestPath = path.join(f.root, "quarantine", fs.readdirSync(path.join(f.root, "quarantine")).find((name) => name.startsWith("conflict-")));
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")); manifest.canonical_path = outside; fs.writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
+    const guarded = createEventStore({ stateRoot: f.root }); const inspection = inspectReadOnly(guarded, f.root, "blocked_conflict");
+    assert.throws(() => guarded.applyRecovery(recoveryInput(inspection)), { code: "RECOVERY_ACTION_BLOCKED" });
+    assert.equal(fs.readFileSync(outside, "utf8"), "outside evidence\n"); assert.equal(fs.existsSync(pendingPath), true);
+  } finally { if (fs.existsSync(outside)) fs.unlinkSync(outside); f.cleanup(); }
+});
+
+function assertLateRecoveryPendingSwap(name, journaled) {
+  const f = fixture();
+  try {
+    const source = request(`late-pending-${name}`); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    const pendingPath = pending(f, entry); if (journaled) fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8");
+    const replacement = Buffer.from(`${JSON.stringify({ replacement: name })}\n`, "utf8");
+    const store = createEventStore({ stateRoot: f.root, testLockHooks: { beforeDeleteReleaseArtifact() { fs.writeFileSync(pendingPath, replacement); } } });
+    const inspection = inspectReadOnly(store, f.root, journaled ? "finalize_pending_commit" : "retry_pending_commit");
+    assert.throws(() => store.applyRecovery(recoveryInput(inspection)), { code: "EVENT_PENDING_VERIFY_FAILED" });
+    assert.deepEqual(fs.readFileSync(pendingPath), replacement);
+    assert.equal(store.inspectRecovery().action, "blocked_pending");
+  } finally { f.cleanup(); }
+}
+test("retry_pending_commit rejects a late pending replacement during lock release", () => assertLateRecoveryPendingSwap("retry", false));
+test("finalize_pending_commit rejects a late pending replacement during lock release", () => assertLateRecoveryPendingSwap("finalize", true));
+
+test("finalize_pending_commit preserves pending evidence when projection rebuild fails", () => {
+  const f = fixture();
+  try {
+    const source = request("finalize-projection-failure"); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+    fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry);
+    const store = createEventStore({ stateRoot: f.root, reducers: { "counter.add"() { throw Object.assign(new Error("projection rebuild failed"), { code: "EVENT_PROJECTION_REBUILD_FAILED" }); } } });
+    const inspection = inspectReadOnly(store, f.root, "finalize_pending_commit");
+    assert.throws(() => store.applyRecovery(recoveryInput(inspection)), { code: "EVENT_PROJECTION_REBUILD_FAILED" });
+    assert.equal(fs.existsSync(pendingPath), true);
+    assert.equal(inspectReadOnly(store, f.root, "finalize_pending_commit").last_valid_sequence, 1);
   } finally { f.cleanup(); }
 });
 
@@ -474,7 +674,7 @@ test("explicit finalize_pending_commit rebuilds a journaled pending batch and re
     pending(f, { ...entry, batch_id: entry.batch_id }, "recovery");
     const pendingPath = pendingFile(f);
     const changed = JSON.parse(fs.readFileSync(pendingPath, "utf8")); changed.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(changed)}\n`);
-    assert.equal(store.inspectRecovery().action, "blocked_conflict");
+    assert.equal(store.inspectRecovery().action, "quarantine_conflict");
   } finally { f.cleanup(); }
 });
 

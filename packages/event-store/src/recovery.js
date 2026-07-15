@@ -7,7 +7,6 @@ const { canonicalJson, validateContract } = require("@orquesta/contracts");
 const { eventStoreError } = require("./errors");
 const { snapshot, recoveryId } = require("./diagnostics");
 const { projectionPath } = require("./projection-store");
-const { removeArtifact } = require("./cleanup");
 const { replaceFileAtomic } = require("./atomic-replace");
 const { releaseJournalLock } = require("./lock");
 const PENDING_FIELDS = ["batch_id", "created_at", "expected_revision", "journal_path", "next_sequence", "pending_version", "serialized_batch", "sha256", "workspace_id"];
@@ -93,6 +92,156 @@ function matchingQuarantineJournals(stateRoot, backup, pending) {
     } catch { return false; }
   });
 }
+function bytesHash(bytes) { return crypto.createHash("sha256").update(bytes).digest("hex"); }
+function conflictDirectory(stateRoot) { return path.join(stateRoot, "quarantine"); }
+function conflictManifestPath(stateRoot, id) { return path.join(conflictDirectory(stateRoot), `conflict-${id}.json`); }
+const CONFLICT_FIELDS = ["conflict_version", "id", "journal_sha256", "pending_name", "pending_sha256", "required_user_decision", "status"];
+function conflictArtifactPaths(stateRoot, journalPath, value) {
+  const directory = conflictDirectory(stateRoot);
+  return {
+    journal: {
+      canonical_path: journalPath,
+      transition_path: `${journalPath}.conflict-${value.id}`,
+      quarantine_path: path.join(directory, `events-${value.journal_sha256}.jsonl`),
+      sha256: value.journal_sha256,
+    },
+    pending: {
+      canonical_path: path.join(stateRoot, "pending", value.pending_name),
+      transition_path: path.join(stateRoot, "pending", `${value.pending_name}.conflict-${value.id}`),
+      quarantine_path: path.join(directory, `pending-${value.pending_sha256}.json`),
+      sha256: value.pending_sha256,
+    },
+  };
+}
+function strictConflictManifest(stateRoot, journalPath, manifestPath, value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(CONFLICT_FIELDS)) throw new Error("invalid fields");
+  if (value.conflict_version !== 1 || value.status !== "in_progress" && value.status !== "user_decision" || value.required_user_decision !== "user_decision") throw new Error("invalid metadata");
+  if (!/^[a-f0-9]{64}$/u.test(value.id) || !/^[a-f0-9]{64}$/u.test(value.journal_sha256) || !/^[a-f0-9]{64}$/u.test(value.pending_sha256) || !/^[a-f0-9]{64}\.json$/u.test(value.pending_name)) throw new Error("invalid identifiers");
+  if (path.resolve(manifestPath) !== path.resolve(conflictManifestPath(stateRoot, value.id))) throw new Error("manifest path mismatch");
+  const artifacts = conflictArtifactPaths(stateRoot, journalPath, value);
+  if (sha256(`${value.journal_sha256}:${value.pending_sha256}`) !== value.id) throw new Error("manifest evidence mismatch");
+  return { manifestPath, value, ...artifacts };
+}
+function readConflictManifests(stateRoot, journalPath) {
+  const directory = conflictDirectory(stateRoot);
+  if (!fs.existsSync(directory)) return [];
+  return fs.readdirSync(directory).filter((name) => /^conflict-[a-f0-9]{64}\.json$/u.test(name)).sort().map((name) => {
+    const manifestPath = path.join(directory, name);
+    try {
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(fs.readFileSync(manifestPath));
+      if (!text.endsWith("\n") || text.slice(0, -1).includes("\n")) throw new Error("manifest JSON line shape");
+      return strictConflictManifest(stateRoot, journalPath, manifestPath, JSON.parse(text.slice(0, -1)));
+    } catch {
+      return { manifestPath, value: null };
+    }
+  });
+}
+function bytesEqualAt(filePath, expected) {
+  try { return fs.readFileSync(filePath).equals(expected); } catch { return false; }
+}
+function conflictProgress(manifest) {
+  if (!manifest?.value) return "invalid";
+  const { journal, pending, value } = manifest;
+  const evidence = (item) => {
+    try { const bytes = fs.readFileSync(item.quarantine_path); return bytesHash(bytes) === item.sha256 ? bytes : null; } catch { return null; }
+  };
+  const journalBytes = evidence(journal); const pendingBytes = evidence(pending);
+  if (!journalBytes || !pendingBytes) return "invalid";
+  const stateAt = (filePath, expected) => {
+    if (!fs.existsSync(filePath)) return "absent";
+    return bytesEqualAt(filePath, expected) ? "exact" : "replacement";
+  };
+  const states = [journal, pending].map((item, index) => ({
+    canonical: stateAt(item.canonical_path, index === 0 ? journalBytes : pendingBytes),
+    transition: stateAt(item.transition_path, index === 0 ? journalBytes : pendingBytes),
+  }));
+  if (value.status === "user_decision") {
+    if (states.some((state) => state.transition !== "absent" || state.canonical === "exact")) return "completed_artifacts_present";
+    return "complete";
+  }
+  if (states.some((state) => state.canonical === "replacement" || state.transition === "replacement")) return "replacement";
+  if (states.some((state) => state.canonical === "exact" && state.transition === "exact")) return "invalid";
+  return states.every((state) => state.canonical === "absent" && state.transition === "absent") ? "ready" : "incomplete";
+}
+function writeVerifiedEvidence(target, bytes) {
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  if (fs.existsSync(target)) {
+    if (!bytesEqualAt(target, bytes)) throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Existing quarantine evidence differs from the conflict artifact", { path: target });
+    return;
+  }
+  let descriptor;
+  try {
+    descriptor = fs.openSync(target, "wx"); fs.writeFileSync(descriptor, bytes); fs.fsyncSync(descriptor);
+  } catch (error) {
+    throw eventStoreError("RECOVERY_CONFLICT_QUARANTINE_FAILED", "Could not create quarantine evidence", { path: target, cause_code: error.code || null });
+  } finally { if (descriptor !== undefined) fs.closeSync(descriptor); }
+  if (!bytesEqualAt(target, bytes)) throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Quarantine evidence reread differs from the conflict artifact", { path: target });
+}
+function manifestForConflict(stateRoot, journalPath, pendingPath, journalBytes, pendingBytes) {
+  const journalHash = bytesHash(journalBytes); const pendingHash = bytesHash(pendingBytes); const id = sha256(`${journalHash}:${pendingHash}`);
+  const manifestPath = conflictManifestPath(stateRoot, id);
+  const value = {
+    conflict_version: 1,
+    id,
+    required_user_decision: "user_decision",
+    status: "in_progress",
+    journal_sha256: journalHash,
+    pending_name: path.basename(pendingPath),
+    pending_sha256: pendingHash,
+  };
+  return { manifestPath, value, bytes: Buffer.from(`${canonicalJson(value)}\n`, "utf8"), ...conflictArtifactPaths(stateRoot, journalPath, value) };
+}
+function expectedArtifactHash(inspection, target) {
+  return inspection.artifacts.find((artifact) => artifact.path === target)?.sha256 || null;
+}
+function createConflictManifest(stateRoot, journalPath, inspection) {
+  const manifests = readConflictManifests(stateRoot, journalPath);
+  if (manifests.length === 1 && manifests[0].value) return manifests[0];
+  if (manifests.length) throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Conflict manifest state is ambiguous", { manifests: manifests.map((item) => item.manifestPath) });
+  const [pendingPath] = pendingFiles(stateRoot);
+  if (!pendingPath || !fs.existsSync(journalPath)) throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Conflict artifacts disappeared before quarantine", { journal_path: journalPath, pending_path: pendingPath || null });
+  const journalBytes = fs.readFileSync(journalPath); const pendingBytes = fs.readFileSync(pendingPath);
+  if (expectedArtifactHash(inspection, journalPath) !== bytesHash(journalBytes) || expectedArtifactHash(inspection, pendingPath) !== bytesHash(pendingBytes)) {
+    throw eventStoreError("RECOVERY_STATE_CHANGED", "Conflict artifacts changed after inspection");
+  }
+  const manifest = manifestForConflict(stateRoot, journalPath, pendingPath, journalBytes, pendingBytes);
+  writeVerifiedEvidence(manifest.journal.quarantine_path, journalBytes);
+  writeVerifiedEvidence(manifest.pending.quarantine_path, pendingBytes);
+  writeVerifiedEvidence(manifest.manifestPath, manifest.bytes);
+  return strictConflictManifest(stateRoot, journalPath, manifest.manifestPath, manifest.value);
+}
+function completeConflictManifest(manifest, hooks) {
+  if (hooks?.beforeConflictManifestComplete) hooks.beforeConflictManifestComplete({ manifest });
+  const completed = { ...manifest.value, status: "user_decision" };
+  replaceFileAtomic(manifest.manifestPath, `${canonicalJson(completed)}\n`);
+  const verified = readConflictManifests(path.dirname(path.dirname(manifest.manifestPath)), manifest.journal.canonical_path);
+  const same = verified.find((item) => item.manifestPath === manifest.manifestPath);
+  if (!same?.value || same.value.status !== "user_decision") throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Conflict completion manifest was not atomically verified", { manifest_path: manifest.manifestPath });
+  return same;
+}
+function transitionConflictArtifact(item, hooks, beforeHookName, afterHookName) {
+  let expected;
+  try { expected = fs.readFileSync(item.quarantine_path); } catch (error) { throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Conflict quarantine evidence could not be reread", { path: item.quarantine_path, cause_code: error.code || null }); }
+  if (bytesHash(expected) !== item.sha256) throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Conflict quarantine evidence hash changed", { path: item.quarantine_path });
+  if (hooks?.[beforeHookName]) hooks[beforeHookName]({ item });
+  if (fs.existsSync(item.canonical_path)) {
+    if (!bytesEqualAt(item.canonical_path, expected)) throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Canonical conflict artifact changed before quarantine move", { path: item.canonical_path });
+    try { fs.renameSync(item.canonical_path, item.transition_path); } catch (error) { throw eventStoreError("RECOVERY_CONFLICT_QUARANTINE_FAILED", "Could not move canonical conflict artifact", { path: item.canonical_path, transition_path: item.transition_path, cause_code: error.code || null }); }
+    if (!bytesEqualAt(item.transition_path, expected)) {
+      if (!fs.existsSync(item.canonical_path)) {
+        try { fs.renameSync(item.transition_path, item.canonical_path); } catch { /* The transition remains blocking evidence. */ }
+      }
+      throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Conflict transition differs from verified evidence", { path: item.canonical_path, transition_path: item.transition_path });
+    }
+    if (hooks?.[afterHookName]) hooks[afterHookName]({ item });
+  }
+  if (fs.existsSync(item.transition_path)) {
+    if (!bytesEqualAt(item.transition_path, expected)) throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Conflict transition changed before completion", { transition_path: item.transition_path });
+    try { fs.unlinkSync(item.transition_path); } catch (error) { throw eventStoreError("RECOVERY_CONFLICT_QUARANTINE_FAILED", "Could not remove verified conflict transition", { transition_path: item.transition_path, cause_code: error.code || null }); }
+  } else if (fs.existsSync(item.canonical_path)) {
+    throw eventStoreError("RECOVERY_CONFLICT_QUARANTINE_FAILED", "Canonical conflict artifact remains after transition", { path: item.canonical_path });
+  }
+}
 function readPending(pendingPaths, lastValid, journal, workspaceId) {
   if (!pendingPaths.length) return { kind: "none" };
   if (pendingPaths.length !== 1) return { kind: "blocked_pending", reason: "multiple_pending" };
@@ -135,11 +284,19 @@ function recoverySummary(stateRoot, journalPath, diagnosis, lock) {
 function inspect({ stateRoot, journalPath, readJournal, replay, hostId, workspaceId }) {
   const projection = projectionPath(stateRoot); const artifacts = snapshot(stateRoot, journalPath, projection); const id = recoveryId(artifacts); const diagnosis = diagnoseJournal(journalPath, readJournal); let lock = parseLock(`${journalPath}.lock`, hostId); const conflictPaths = fs.existsSync(stateRoot) ? fs.readdirSync(stateRoot).filter((name) => /conflicted copy/i.test(name)).sort().map((name) => path.join(stateRoot, name)) : [];
   const pendingPaths = pendingFiles(stateRoot); let pending = readPending(pendingPaths, diagnosis.last_valid_sequence, diagnosis.journal, workspaceId);
-  let action = "none"; let required = null; let quarantinePaths = [];
+  const manifests = readConflictManifests(stateRoot, journalPath); const manifest = manifests.length === 1 ? manifests[0] : null;
+  let action = "none"; let required = null; let quarantinePaths = []; let conflictReason = null;
   const resumeBackup = !fs.existsSync(journalPath) ? readBackup(journalPath, readJournal) : null;
   lock = finalizeLockEligibility(lock, diagnosis.last_valid_sequence, pending);
   const resumeQuarantine = !fs.existsSync(journalPath) && resumeBackup ? matchingQuarantineJournals(stateRoot, resumeBackup, readPending(pendingPaths, resumeBackup.entries.length, null, workspaceId)) : [];
   if (conflictPaths.length) { action = "blocked_conflict"; required = "user_decision"; }
+  else if (manifest?.value) {
+    const progress = conflictProgress(manifest);
+    action = progress === "incomplete" || progress === "ready" ? "quarantine_conflict" : "blocked_conflict";
+    if (progress !== "complete" && progress !== "incomplete") conflictReason = progress;
+    required = "user_decision";
+    quarantinePaths = [manifest.journal.quarantine_path, manifest.pending.quarantine_path, manifest.manifestPath];
+  } else if (manifests.length > 1 || (manifests.length === 1 && !manifests[0].value)) { action = "blocked_conflict"; required = "user_decision"; }
   else if (lock.exists) { action = lock.eligible ? "stale_lock" : "blocked_lock"; required = lock.eligible ? "explicit_lock_recovery" : "manual_lock_repair"; }
   else if (!fs.existsSync(journalPath) && (resumeBackup || resumeQuarantine.length)) {
     const backup = resumeBackup; const quarantined = resumeQuarantine; const backupPending = backup ? readPending(pendingPaths, backup.entries.length, null, workspaceId) : { kind: "none" };
@@ -153,7 +310,7 @@ function inspect({ stateRoot, journalPath, readJournal, replay, hostId, workspac
     else if (pending.kind === "blocked_pending") { action = "blocked_pending"; required = "manual_pending_repair"; quarantinePaths = [path.join(stateRoot, "quarantine", `pending-${id}.json`)]; }
     else { action = "blocked_corruption"; required = "manual_recovery"; quarantinePaths = [path.join(stateRoot, "quarantine", `events-${id}.jsonl`)]; }
   } else if (pending.kind !== "none") {
-    action = pending.kind; required = pending.kind === "blocked_pending" ? "manual_pending_repair" : pending.kind === "blocked_conflict" ? "user_decision" : "explicit_recovery";
+    action = pending.kind === "blocked_conflict" && pending.reason === "pending_journal_hash_mismatch" ? "quarantine_conflict" : pending.kind; required = pending.kind === "blocked_pending" ? "manual_pending_repair" : pending.kind === "blocked_conflict" ? "user_decision" : "explicit_recovery";
     if (pending.kind === "blocked_pending") quarantinePaths = [path.join(stateRoot, "quarantine", `pending-${id}.json`)];
     if (pending.kind === "blocked_conflict") quarantinePaths = [path.join(stateRoot, "quarantine", `events-${id}.jsonl`), path.join(stateRoot, "quarantine", `pending-${id}.json`)];
   } else {
@@ -163,7 +320,7 @@ function inspect({ stateRoot, journalPath, readJournal, replay, hostId, workspac
     } catch { action = "rebuild_projection"; }
   }
   const conflicts = conflictPaths.map((target) => { const stat = fs.statSync(target); return { path: target, size: stat.size, mtime_ms: stat.mtimeMs, sha256: crypto.createHash("sha256").update(fs.readFileSync(target)).digest("hex") }; });
-  return { recovery_id: id, action, last_valid_sequence: diagnosis.last_valid_sequence, quarantine_paths: quarantinePaths, required_user_decision: required, artifacts, conflicts, diagnostics: { corruption_line: diagnosis.corruption_line, journal_error: diagnosis.error || null, pending_reason: pending.reason || null, lock_reason: lock.reason || null }, summary: recoverySummary(stateRoot, journalPath, diagnosis, lock) };
+  return { recovery_id: id, action, last_valid_sequence: diagnosis.last_valid_sequence, quarantine_paths: quarantinePaths, required_user_decision: required, artifacts, conflicts, diagnostics: { corruption_line: diagnosis.corruption_line, journal_error: diagnosis.error || null, pending_reason: pending.reason || null, lock_reason: lock.reason || null, conflict_reason: conflictReason }, summary: recoverySummary(stateRoot, journalPath, diagnosis, lock) };
 }
 function apply({ inspection, input, stateRoot, journalPath, readJournal, replay, rebuild, retry, hostId, workspaceId, hooks }) {
   if (!input?.operator || input.operator.type !== "local_operator" || input.operator.id !== "explicit-recovery-command") throw eventStoreError("RECOVERY_OPERATOR_INVALID", "Recovery requires the fixed local operator");
@@ -174,6 +331,21 @@ function apply({ inspection, input, stateRoot, journalPath, readJournal, replay,
   if (input.action === "blocked_lock") throw eventStoreError("RECOVERY_LOCK_NOT_ELIGIBLE", "Lock ownership is not safe to release", { reason: current.diagnostics.lock_reason });
   if (input.action === "blocked_pending") throw eventStoreError("RECOVERY_PENDING_INVALID", "Pending evidence is not safe to retry", { reason: current.diagnostics.pending_reason });
   if (["blocked_conflict", "blocked_corruption", "none"].includes(input.action)) throw eventStoreError("RECOVERY_ACTION_BLOCKED", "Recovery action is not safe in Phase 1", { action: input.action });
+  if (input.action === "quarantine_conflict") {
+    const manifest = createConflictManifest(stateRoot, journalPath, current);
+    const progress = conflictProgress(manifest);
+    if (progress === "invalid" || progress === "replacement") throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Conflict quarantine evidence is invalid or was replaced", { manifest_path: manifest.manifestPath, progress });
+    if (progress === "incomplete") {
+      transitionConflictArtifact(manifest.journal, hooks, "beforeConflictJournalMove", "afterConflictJournalTransition");
+      transitionConflictArtifact(manifest.pending, hooks, "beforeConflictPendingMove", "afterConflictPendingTransition");
+    }
+    const completed = conflictProgress(manifest);
+    if (completed !== "ready") throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Conflict quarantine transition did not finish safely", { manifest_path: manifest.manifestPath, progress: completed });
+    completeConflictManifest(manifest, hooks);
+    const after = inspect({ stateRoot, journalPath, readJournal, replay, hostId, workspaceId });
+    if (after.action !== "blocked_conflict" || after.required_user_decision !== "user_decision") throw eventStoreError("RECOVERY_CONFLICT_VERIFY_FAILED", "Conflict quarantine did not leave a durable user-decision blocker", { manifest_path: manifest.manifestPath });
+    return { status: "conflict_quarantined", quarantine_paths: after.quarantine_paths, summary: after.summary };
+  }
   if (input.action === "stale_lock") {
     if (current.action !== "stale_lock") throw eventStoreError("RECOVERY_LOCK_NOT_ELIGIBLE", "Lock ownership is not safe to release");
     let journal;
@@ -187,7 +359,7 @@ function apply({ inspection, input, stateRoot, journalPath, readJournal, replay,
   }
   if (input.action === "rebuild_projection") return result("projection_rebuilt", rebuild());
   if (input.action === "finalize_pending_commit") {
-    const pendingPath = pendingFiles(stateRoot)[0]; const pending = readPending([pendingPath], current.last_valid_sequence, readJournal(journalPath), workspaceId); const retried = retry(requestFromEntry(pending.entry), pendingPath); rebuild(); if (fs.existsSync(pendingPath)) removeArtifact(pendingPath); return result("pending_committed_rebuilt", { retried });
+    const pendingPath = pendingFiles(stateRoot)[0]; const pending = readPending([pendingPath], current.last_valid_sequence, readJournal(journalPath), workspaceId); const retried = retry(requestFromEntry(pending.entry), pendingPath); return result("pending_committed_rebuilt", { retried });
   }
   if (input.action === "restore_backup_retry") {
     const pendingPath = pendingFiles(stateRoot)[0]; const copyPath = inspection.quarantine_paths[0];
@@ -201,7 +373,7 @@ function apply({ inspection, input, stateRoot, journalPath, readJournal, replay,
     const after = inspect({ stateRoot, journalPath, readJournal, replay, hostId, workspaceId }); return apply({ inspection: after, input: { ...input, recoveryId: after.recovery_id, action: after.action }, stateRoot, journalPath, readJournal, replay, rebuild, retry, hostId, workspaceId, hooks });
   }
   if (input.action === "retry_pending_commit") {
-    const pendingPath = pendingFiles(stateRoot)[0]; const pending = readPending([pendingPath], current.last_valid_sequence, readJournal(journalPath), workspaceId); const retried = retry(requestFromEntry(pending.entry), pendingPath); if (fs.existsSync(pendingPath)) removeArtifact(pendingPath); return result(retried.status, { sequence: retried.sequence, retried });
+    const pendingPath = pendingFiles(stateRoot)[0]; const pending = readPending([pendingPath], current.last_valid_sequence, readJournal(journalPath), workspaceId); const retried = retry(requestFromEntry(pending.entry), pendingPath); return result(retried.status, { sequence: retried.sequence, retried });
   }
   throw eventStoreError("RECOVERY_ACTION_BLOCKED", "Recovery action is not safe in Phase 1", { action: input.action });
 }

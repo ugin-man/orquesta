@@ -162,7 +162,7 @@ function assertNoUnresolvedPending(stateRoot, allowedPendingPath = null) {
   }
 }
 
-function readStrictPendingWrapper(pendingPath) {
+function readStrictPendingEvidence(pendingPath) {
   let text;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(fs.readFileSync(pendingPath));
@@ -181,11 +181,16 @@ function readStrictPendingWrapper(pendingPath) {
   if (!isPlainObject(pending) || JSON.stringify(Object.keys(pending).sort()) !== JSON.stringify(PENDING_FIELDS)) {
     throw pendingVerifyError("Pending evidence fields do not match the commit protocol", { pending_path: pendingPath });
   }
-  return pending;
+  return { pending, bytes: Buffer.from(text, "utf8") };
+}
+
+function readStrictPendingWrapper(pendingPath) {
+  return readStrictPendingEvidence(pendingPath).pending;
 }
 
 function readRecoveryPending(pendingPath, request, nextSequence, workspaceId) {
-  const pending = readStrictPendingWrapper(pendingPath);
+  const evidence = readStrictPendingEvidence(pendingPath);
+  const pending = evidence.pending;
   if (typeof pending.batch_id !== "string") {
     throw pendingVerifyError("Recovery pending evidence has an invalid batch id", { pending_path: pendingPath });
   }
@@ -209,7 +214,32 @@ function readRecoveryPending(pendingPath, request, nextSequence, workspaceId) {
     || requestIdentity(entry) !== requestIdentity(request)) {
     throw pendingVerifyError("Recovery pending evidence does not match the requested batch", { pending_path: pendingPath });
   }
-  return { pending, entry, serializedBatch: pending.serialized_batch };
+  return { pending, entry, serializedBatch: pending.serialized_batch, pendingBytes: evidence.bytes };
+}
+
+function consumeRecoveryPending(pendingPath, pendingBytes, lock) {
+  let current;
+  try { current = fs.readFileSync(pendingPath); } catch (error) { throw pendingVerifyError("Recovery pending evidence disappeared before consumption", { pending_path: pendingPath, cause_code: error.code || null }); }
+  if (!current.equals(pendingBytes)) throw pendingVerifyError("Recovery pending evidence changed before consumption", { pending_path: pendingPath });
+  const transitionPath = `${pendingPath}.consume-${lock.metadata.nonce}`;
+  if (fs.existsSync(transitionPath)) throw pendingVerifyError("Recovery pending consumption transition already exists", { pending_path: pendingPath, transition_path: transitionPath });
+  try { fs.renameSync(pendingPath, transitionPath); } catch (error) { throw eventStoreError("EVENT_PENDING_CONSUME_FAILED", "Could not move verified recovery pending into consumption transition", { pending_path: pendingPath, transition_path: transitionPath, cause_code: error.code || null }); }
+  let moved;
+  try { moved = fs.readFileSync(transitionPath); } catch (error) { throw eventStoreError("EVENT_PENDING_CONSUME_FAILED", "Could not reread recovery pending consumption transition", { pending_path: pendingPath, transition_path: transitionPath, cause_code: error.code || null }); }
+  if (!moved.equals(pendingBytes)) {
+    if (!fs.existsSync(pendingPath)) {
+      try { fs.renameSync(transitionPath, pendingPath); } catch { /* The transition remains blocking evidence. */ }
+    }
+    throw pendingVerifyError("Recovery pending consumption transition differs from verified evidence", { pending_path: pendingPath, transition_path: transitionPath });
+  }
+  try { fs.unlinkSync(transitionPath); } catch (error) { throw eventStoreError("EVENT_PENDING_CONSUME_FAILED", "Could not delete verified recovery pending transition", { pending_path: pendingPath, transition_path: transitionPath, cause_code: error.code || null }); }
+  return { pendingPath };
+}
+
+function assertNoRecoveryPendingReplacement(consumption) {
+  if (consumption && fs.existsSync(consumption.pendingPath)) {
+    throw pendingVerifyError("Recovery pending evidence was replaced during lock release", { pending_path: consumption.pendingPath });
+  }
 }
 
 function verifyPersistedPending(pendingPath, expected) {
@@ -308,6 +338,8 @@ function createEventStore(options = {}) {
       let priorJournalText = "";
       let result;
       let primaryError;
+      let recoveryPending;
+      let recoveryPendingConsumption;
       const controlledFailure = { error: null };
       try {
         assertRequestObject(request);
@@ -326,6 +358,7 @@ function createEventStore(options = {}) {
         if (existing) {
           if (internal.recoveryPendingPath) {
             const recovered = readRecoveryPending(internal.recoveryPendingPath, request, existing.sequence, workspaceId);
+            recoveryPending = recovered;
             const physicalTail = journal.text.slice(0, -1).split("\n").at(-1);
             if (existing.sequence !== journal.entries.length || !physicalTail || sha256Text(physicalTail) !== recovered.pending.sha256) {
               throw pendingVerifyError("Recovery pending evidence does not match the physical journal tail", { pending_path: internal.recoveryPendingPath });
@@ -354,6 +387,7 @@ function createEventStore(options = {}) {
           let pending;
           if (reusePending) {
             const recovered = readRecoveryPending(pendingPath, request, journal.entries.length + 1, workspaceId);
+            recoveryPending = recovered;
             entry = recovered.entry; serializedBatch = recovered.serializedBatch; pending = recovered.pending;
           } else {
             const committedAt = clock();
@@ -403,6 +437,8 @@ function createEventStore(options = {}) {
           if (!reusePending) unlinkIfPresent(pendingPath);
           result = { status: "committed", sequence: entry.sequence };
         }
+        if (recoveryPending && result?.status === "idempotent") rebuildProjections();
+        if (recoveryPending) recoveryPendingConsumption = consumeRecoveryPending(internal.recoveryPendingPath, recoveryPending.pendingBytes, lock);
       } catch (error) {
         primaryError = error;
         if (controlledFailure.error === error && pendingPath) {
@@ -425,6 +461,9 @@ function createEventStore(options = {}) {
           if (primaryError) attachReleaseFailure(primaryError, structured);
           else primaryError = structured;
         }
+      }
+      if (!primaryError && recoveryPendingConsumption) {
+        try { assertNoRecoveryPendingReplacement(recoveryPendingConsumption); } catch (error) { primaryError = error; }
       }
       if (primaryError) throw primaryError;
       return result;
