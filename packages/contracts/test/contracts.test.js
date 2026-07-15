@@ -252,6 +252,19 @@ test("canonical JSON rejects value-collapsing input and preserves safe own keys"
   assert.equal(canonicalJson(protoKey), '{"__proto__":{"safe":true},"a":1}');
 });
 
+test("canonical JSON rejects non-index own array properties instead of discarding them", () => {
+  const enumerable = [1];
+  enumerable.extra = "dropped";
+  const nonEnumerable = [1];
+  Object.defineProperty(nonEnumerable, "hidden", { value: "dropped" });
+  const protoKey = [1];
+  Object.defineProperty(protoKey, "__proto__", { value: "dropped", enumerable: true });
+
+  assert.throws(() => canonicalJson(enumerable), /array properties/);
+  assert.throws(() => canonicalJson(nonEnumerable), /array properties/);
+  assert.throws(() => canonicalJson(protoKey), /array properties/);
+});
+
 test("schema loading rejects unknown keywords instead of ignoring them", () => {
   const schemaDir = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-contract-schema-"));
   const schemaPath = path.join(schemaDir, "task-intent.schema.json");
@@ -342,9 +355,15 @@ test("phase review approval requires an explicit user decision and a bound redac
   const approved = {
     ...complete,
     status: "approved",
+    reviewed_at: "2020-07-15T00:05:00.000Z",
     user_decision: {
       decision: "approved",
-      attestation: { ...approvalAttestation, review_packet_hash: laterHash }
+      attestation: {
+        ...approvalAttestation,
+        review_packet_hash: laterHash,
+        captured_at: "2020-07-15T00:00:00.000Z",
+        expires_at: "2020-07-15T00:10:00.000Z"
+      }
     }
   };
   assert.equal(validateContract("phase-review", approved).ok, true);
@@ -357,8 +376,18 @@ test("phase review approval requires an explicit user decision and a bound redac
 
 test("phase approval binding fails closed for missing, target, packet, revision, and expiry mismatches", () => {
   const binding = {
-    phaseReview: { phase_id: phaseReview.phase_id, review_packet_hash: hash, review_cycle_revision: 12 },
-    attestation: { ...approvalAttestation, review_packet_hash: hash }
+    phaseReview: {
+      phase_id: phaseReview.phase_id,
+      review_packet_hash: hash,
+      review_cycle_revision: 12,
+      reviewed_at: "2020-07-15T00:05:00.000Z"
+    },
+    attestation: {
+      ...approvalAttestation,
+      review_packet_hash: hash,
+      captured_at: "2020-07-15T00:00:00.000Z",
+      expires_at: "2020-07-15T00:10:00.000Z"
+    }
   };
   assert.equal(validatePhaseApprovalBinding(binding).ok, true);
   assert.equal(validatePhaseApprovalBinding().ok, false);
@@ -377,8 +406,45 @@ test("phase approval binding fails closed for missing, target, packet, revision,
   }).errors.some((error) => error.code === "approval_revision_mismatch"), true);
   assert.equal(validatePhaseApprovalBinding({
     ...binding,
-    attestation: { ...binding.attestation, expires_at: "2026-07-15T00:10:00.000Z" },
-    now: "2026-07-15T00:11:00.000Z"
+    phaseReview: { ...binding.phaseReview, reviewed_at: "2020-07-15T00:10:00.000Z" }
+  }).errors.some((error) => error.code === "approval_attestation_expired"), true);
+});
+
+test("approval uses saved reviewed_at as a deterministic reference time", () => {
+  const binding = {
+    phaseReview: {
+      phase_id: phaseReview.phase_id,
+      review_packet_hash: hash,
+      review_cycle_revision: 12,
+      reviewed_at: "2020-07-15T00:05:00.000Z"
+    },
+    attestation: {
+      ...approvalAttestation,
+      review_packet_hash: hash,
+      captured_at: "2020-07-15T00:05:00.000Z",
+      expires_at: "2020-07-15T00:10:00.000Z"
+    }
+  };
+  const first = validatePhaseApprovalBinding(binding);
+  const second = validatePhaseApprovalBinding(binding);
+
+  assert.equal(first.ok, true, "historically valid evidence must not depend on the current machine date");
+  assert.deepEqual(second, first);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    phaseReview: { ...binding.phaseReview, reviewed_at: null }
+  }).errors.some((error) => error.code === "approval_reference_time_missing"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    attestation: { ...binding.attestation, captured_at: "2020-07-15T00:06:00.000Z" }
+  }).errors.some((error) => error.code === "approval_capture_after_review"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    phaseReview: { ...binding.phaseReview, reviewed_at: "2020-07-15T00:10:00.000Z" }
+  }).errors.some((error) => error.code === "approval_attestation_expired"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    phaseReview: { ...binding.phaseReview, reviewed_at: "2020-07-15T00:11:00.000Z" }
   }).errors.some((error) => error.code === "approval_attestation_expired"), true);
 });
 
@@ -400,13 +466,25 @@ test("UTC timestamp schemas and approval attestation semantics reject malformed 
     ...capabilityProvider,
     last_verified_at: "not-a-timestamp"
   }).ok, false);
+  assert.equal(validateContract("capability-provider", {
+    ...capabilityProvider,
+    last_verified_at: "2026-02-30T00:00:00.000Z"
+  }).ok, false);
   assert.equal(validateContract("context-pack", {
     ...contextPack,
     expires_at: "not-a-timestamp"
   }).ok, false);
+  assert.equal(validateContract("context-pack", {
+    ...contextPack,
+    expires_at: "2026-02-30T00:00:00.000Z"
+  }).ok, false);
   assert.equal(validateContract("phase-review", {
     ...phaseReview,
     review_requested_at: "not-a-timestamp"
+  }).ok, false);
+  assert.equal(validateContract("phase-review", {
+    ...phaseReview,
+    review_requested_at: "2026-02-30T00:00:00.000Z"
   }).ok, false);
 });
 

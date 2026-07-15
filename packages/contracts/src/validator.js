@@ -181,7 +181,18 @@ function approvalAttestationErrors(value) {
   return errors;
 }
 
-function phaseReviewErrors(value, options) {
+function timestampFieldErrors(value, fields) {
+  if (!isPlainObject(value)) return [];
+  const errors = [];
+  for (const field of fields) {
+    if (value[field] !== null && !isValidUtcTimestamp(value[field])) {
+      errors.push(schemaError(`$.${field}`, "timestamp", "must be a valid UTC timestamp"));
+    }
+  }
+  return errors;
+}
+
+function phaseReviewErrors(value) {
   if (!isPlainObject(value) || !["ready_for_user_review", "approved"].includes(value.status)) return [];
   const errors = [];
   if (typeof value.review_packet_ref !== "string" || !value.review_packet_ref) {
@@ -205,8 +216,7 @@ function phaseReviewErrors(value, options) {
     } else {
       const binding = validatePhaseApprovalBinding({
         phaseReview: value,
-        attestation: decision.attestation,
-        now: options.now
+        attestation: decision.attestation
       });
       errors.push(...binding.errors);
     }
@@ -231,7 +241,12 @@ function sortErrors(errors) {
 function validateContract(name, value, options = {}) {
   const errors = validateSchema(loadSchema(name, options.schemasDir), value, "$");
   if (name === "approval-attestation") errors.push(...approvalAttestationErrors(value));
-  if (name === "phase-review") errors.push(...phaseReviewErrors(value, options));
+  if (name === "capability-provider") errors.push(...timestampFieldErrors(value, ["last_verified_at"]));
+  if (name === "context-pack") errors.push(...timestampFieldErrors(value, ["expires_at"]));
+  if (name === "phase-review") {
+    errors.push(...timestampFieldErrors(value, ["review_requested_at", "reviewed_at"]));
+    errors.push(...phaseReviewErrors(value));
+  }
   return { ok: errors.length === 0, errors: sortErrors(errors) };
 }
 
@@ -245,7 +260,7 @@ function assertContract(name, value, options) {
   return value;
 }
 
-function validatePhaseApprovalBinding({ phaseReview, attestation, now = new Date() } = {}) {
+function validatePhaseApprovalBinding({ phaseReview, attestation } = {}) {
   const errors = [];
   if (!isPlainObject(phaseReview)) {
     errors.push(schemaError("$.phaseReview", "approval_phase_review_missing", "phase review is required"));
@@ -259,6 +274,12 @@ function validatePhaseApprovalBinding({ phaseReview, attestation, now = new Date
     || !Number.isInteger(phaseReview.review_cycle_revision) || phaseReview.review_cycle_revision < 0
     || typeof phaseReview.review_packet_hash !== "string" || !/^[a-f0-9]{64}$/.test(phaseReview.review_packet_hash)) {
     errors.push(schemaError("$.phaseReview", "approval_phase_review_invalid", "phase review binding fields are invalid"));
+  }
+  if (!isValidUtcTimestamp(phaseReview.reviewed_at)) {
+    const code = phaseReview.reviewed_at === null || phaseReview.reviewed_at === undefined
+      ? "approval_reference_time_missing"
+      : "approval_reference_time_invalid";
+    errors.push(schemaError("$.reviewed_at", code, "phase review reviewed_at must be a valid UTC approval reference time"));
   }
 
   const attestationResult = validateContract("approval-attestation", attestation);
@@ -276,11 +297,18 @@ function validatePhaseApprovalBinding({ phaseReview, attestation, now = new Date
     errors.push(schemaError("$.target_revision", "approval_revision_mismatch", "approval attestation target revision must match phase review review cycle revision"));
   }
 
-  const nowDate = now instanceof Date ? now : new Date(now);
-  if (Number.isNaN(nowDate.getTime())) {
-    errors.push(schemaError("$.now", "approval_binding_clock_invalid", "binding clock must be a valid timestamp"));
-  } else if (isValidUtcTimestamp(attestation.expires_at) && new Date(attestation.expires_at).getTime() <= nowDate.getTime()) {
-    errors.push(schemaError("$.expires_at", "approval_attestation_expired", "approval attestation has expired"));
+  if (isValidUtcTimestamp(phaseReview.reviewed_at)
+    && isValidUtcTimestamp(attestation.captured_at)
+    && isValidUtcTimestamp(attestation.expires_at)) {
+    const reviewedAt = new Date(phaseReview.reviewed_at).getTime();
+    const capturedAt = new Date(attestation.captured_at).getTime();
+    const expiresAt = new Date(attestation.expires_at).getTime();
+    if (capturedAt > reviewedAt) {
+      errors.push(schemaError("$.captured_at", "approval_capture_after_review", "approval attestation must be captured on or before reviewed_at"));
+    }
+    if (reviewedAt >= expiresAt) {
+      errors.push(schemaError("$.expires_at", "approval_attestation_expired", "approval attestation must expire after reviewed_at"));
+    }
   }
   return { ok: errors.length === 0, errors: sortErrors(errors) };
 }

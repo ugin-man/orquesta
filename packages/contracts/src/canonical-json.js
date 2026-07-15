@@ -16,6 +16,13 @@ function normalize(value, stack = new Set()) {
   stack.add(value);
   try {
     if (Array.isArray(value)) {
+      for (const key of Object.getOwnPropertyNames(value)) {
+        if (key === "length") continue;
+        const index = Number(key);
+        if (!Number.isInteger(index) || index < 0 || index >= value.length || String(index) !== key) {
+          throw new TypeError("canonical JSON does not allow non-index array properties");
+        }
+      }
       const normalized = [];
       for (let index = 0; index < value.length; index += 1) {
         if (!Object.hasOwn(value, index)) throw new TypeError("canonical JSON does not allow sparse arrays");
