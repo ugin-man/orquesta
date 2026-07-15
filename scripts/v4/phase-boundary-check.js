@@ -4,6 +4,57 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "../..");
+const V3_DASHBOARD_BASELINE = "node orquesta/dashboard-server.js";
+const V3_CHECK_BASELINE = [
+  "node --check orquesta/dashboard-server.js",
+  "node --check orquesta/assets/dashboard/app.js",
+  "node --check orquesta/scripts/dashboard-dom-smoke.js",
+  "node --check orquesta/scripts/validate-state-encoding.js",
+  "node --check orquesta/scripts/dashboard-port-selection.js",
+  "node --check orquesta/scripts/dashboard-port-selection.test.js",
+  "node --check orquesta/scripts/dashboard-state-cache.js",
+  "node --check orquesta/scripts/dashboard-state-cache.test.js",
+  "node --check orquesta/scripts/foundation-trigger-audit.js",
+  "node --check orquesta/scripts/foundation-trigger-audit.test.js",
+  "node --check orquesta/scripts/incident-intake.js",
+  "node --check orquesta/scripts/incident-intake.test.js",
+  "node --check orquesta/scripts/model-policy.js",
+  "node --check orquesta/scripts/model-policy.test.js",
+  "node --check orquesta/scripts/delegation-gate-check.js",
+  "node --check orquesta/scripts/delegation-gate-check.test.js",
+  "node --check orquesta/scripts/approval-wait-check.js",
+  "node --check orquesta/scripts/approval-wait-check.test.js",
+  "node --check orquesta/scripts/report-question-candidates-check.js",
+  "node --check orquesta/scripts/report-question-candidates-check.test.js",
+  "node --check orquesta/scripts/json-state.js",
+  "node --check orquesta/scripts/json-state.test.js",
+  "node --check orquesta/scripts/beta-v3-state-init.js",
+  "node --check orquesta/scripts/beta-v3-state-init.test.js",
+  "node --check orquesta/scripts/control-integration.test.js",
+  "node --check orquesta/scripts/completion-envelope-check.js",
+  "node --check orquesta/scripts/completion-envelope-check.test.js",
+  "node --check orquesta/scripts/capacity-gate.js",
+  "node --check orquesta/scripts/capacity-gate.test.js",
+  "node --check orquesta/scripts/control-audit.js",
+  "node --check orquesta/scripts/control-audit.test.js",
+  "node --check orquesta/scripts/dashboard-report-review.test.js",
+  "npm run test:ports",
+  "npm run test:cache",
+  "npm run test:triggers",
+  "npm run test:incident-intake",
+  "npm run test:model-policy",
+  "npm run test:delegation",
+  "npm run test:approval",
+  "npm run test:question-candidates",
+  "npm run test:json-state",
+  "npm run test:beta-v3-state",
+  "npm run test:control-integration",
+  "npm run test:completion-envelope",
+  "npm run test:capacity",
+  "npm run test:control-audit",
+  "npm run test:report-review",
+  "npm run check:encoding"
+].join(" && ");
 const workspacePackages = {
   "apps/workbench": ["@orquesta/core", "@orquesta/event-store"],
   "packages/contracts": [],
@@ -28,6 +79,30 @@ function isSupportedNodeVersion(version = process.version) {
   return Number.isInteger(major) && major >= 20;
 }
 
+function hasV3Baseline(scripts = {}) {
+  return scripts.dashboard === V3_DASHBOARD_BASELINE && scripts.check === V3_CHECK_BASELINE;
+}
+
+function hasActiveIgnoreRule(content, expectedRule) {
+  let active = false;
+  for (const rawLine of String(content || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line === expectedRule) active = true;
+    if (line === `!${expectedRule}`) active = false;
+  }
+  return active;
+}
+
+function isAllowedWorkspaceLink(entry) {
+  if (!entry || entry.link !== true || typeof entry.resolved !== "string") return false;
+  const normalized = entry.resolved.replace(/\\/g, "/");
+  if (/^[a-z][a-z0-9+.-]*:/i.test(normalized) || normalized.startsWith("/")) return false;
+  const segments = normalized.split("/");
+  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) return false;
+  return Object.hasOwn(workspacePackages, normalized);
+}
+
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(root, relativePath), "utf8"));
 }
@@ -42,14 +117,13 @@ function checkBoundary() {
   const gitignore = fs.readFileSync(path.join(root, ".gitignore"), "utf8");
 
   addError(errors, pkg.private === false, "Root package must remain private: false.");
-  addError(errors, pkg.scripts?.dashboard === "node orquesta/dashboard-server.js", "V3 dashboard command changed.");
-  addError(errors, /^node --check orquesta\/dashboard-server\.js/.test(pkg.scripts?.check || ""), "V3 check command changed.");
+  addError(errors, hasV3Baseline(pkg.scripts), "V3 dashboard or check command changed.");
   addError(errors, JSON.stringify(pkg.workspaces) === JSON.stringify(["apps/*", "packages/*"]), "V4 workspace surface is invalid.");
   addError(errors, pkg.scripts?.["workbench:v4"] === "node apps/workbench/server.js --feature v4", "V4 workbench command is invalid.");
   addError(errors, isSupportedNodeVersion(), `Node ${process.version} is below the required major version 20.`);
 
   for (const ignoredPath of [".orquesta/", "output/", "node_modules/"]) {
-    addError(errors, gitignore.includes(ignoredPath), `${ignoredPath} must be ignored.`);
+    addError(errors, hasActiveIgnoreRule(gitignore, ignoredPath), `${ignoredPath} must be ignored.`);
   }
   for (const relativePath of forbiddenDirectories) {
     addError(errors, !fs.existsSync(path.join(root, relativePath)), `Forbidden Phase 1 directory exists: ${relativePath}`);
@@ -75,8 +149,7 @@ function checkBoundary() {
   if (fs.existsSync(lockfilePath)) {
     const lockfile = JSON.parse(fs.readFileSync(lockfilePath, "utf8"));
     for (const [packagePath, entry] of Object.entries(lockfile.packages || {})) {
-      const workspaceLink = entry.link === true && typeof entry.resolved === "string" && !/^https?:/i.test(entry.resolved);
-      addError(errors, !Object.hasOwn(entry, "resolved") || workspaceLink, `Lockfile contains a registry artifact: ${packagePath}`);
+      addError(errors, !Object.hasOwn(entry, "resolved") || isAllowedWorkspaceLink(entry), `Lockfile contains a registry artifact: ${packagePath}`);
     }
   }
 
@@ -96,4 +169,12 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { checkBoundary, isSupportedNodeVersion };
+module.exports = {
+  V3_DASHBOARD_BASELINE,
+  V3_CHECK_BASELINE,
+  checkBoundary,
+  hasActiveIgnoreRule,
+  hasV3Baseline,
+  isAllowedWorkspaceLink,
+  isSupportedNodeVersion
+};
