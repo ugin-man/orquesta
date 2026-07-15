@@ -523,6 +523,164 @@ test("reused injector Error cannot authorize rollback from a later product callb
   }
 });
 
+test("frozen primary Error keeps identity when controlled cleanup fails", () => {
+  const f = fixture();
+  const originalUnlinkSync = fs.unlinkSync;
+  try {
+    const primaryError = new Error("frozen controlled failure");
+    primaryError.code = "EVENT_TEST_ABORT";
+    Object.freeze(primaryError);
+    let cleanupAttempted = false;
+    const store = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      testFailureInjector(point) {
+        if (point === "after_pending_fsync") throw primaryError;
+      },
+    });
+    fs.unlinkSync = function patchedUnlinkSync(filePath, ...args) {
+      if (String(filePath).includes(`${path.sep}pending${path.sep}`)) {
+        cleanupAttempted = true;
+        const cleanupError = new Error("pending cleanup denied");
+        cleanupError.code = "EPERM";
+        throw cleanupError;
+      }
+      return originalUnlinkSync.call(fs, filePath, ...args);
+    };
+    let caught;
+    try {
+      store.commit(batch({ batch_id: "frozen-cleanup", event_id: "frozen-cleanup-event" }));
+    } catch (error) {
+      caught = error;
+    }
+    assert.strictEqual(caught, primaryError);
+    assert.equal(caught.code, "EVENT_TEST_ABORT");
+    assert.equal(caught.message, "frozen controlled failure");
+    assert.equal(cleanupAttempted, true);
+    assert.equal(pendingFiles(f.root).length, 1);
+    assert.equal(fs.existsSync(`${f.journalPath}.lock`), false);
+  } finally {
+    fs.unlinkSync = originalUnlinkSync;
+    f.cleanup();
+  }
+});
+
+test("frozen primary Error keeps identity when lock release fails", () => {
+  const f = fixture();
+  try {
+    const primaryError = new Error("frozen product failure");
+    primaryError.code = "EVENT_OPERATION_FAILED";
+    Object.freeze(primaryError);
+    const store = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      project() {
+        throw primaryError;
+      },
+      testLockHooks: {
+        beforeDeleteReleaseArtifact() {
+          const releaseError = new Error("release denied");
+          releaseError.code = "EPERM";
+          throw releaseError;
+        },
+      },
+    });
+    let caught;
+    try {
+      store.commit(batch({ batch_id: "frozen-release", event_id: "frozen-release-event" }));
+    } catch (error) {
+      caught = error;
+    }
+    assert.strictEqual(caught, primaryError);
+    assert.equal(caught.code, "EVENT_OPERATION_FAILED");
+    assert.equal(caught.message, "frozen product failure");
+    assert.equal(readLines(f.journalPath).length, 1);
+    assert.equal(pendingFiles(f.root).length, 1);
+    const releaseArtifacts = fs.readdirSync(f.root).filter((name) => name.includes(".transition-") || name.includes(".release-"));
+    assert.equal(releaseArtifacts.length > 0, true);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("hostile proxy primary Error keeps identity when lock release fails", () => {
+  const f = fixture();
+  try {
+    const primaryTarget = new Error("proxy product failure");
+    primaryTarget.code = "EVENT_OPERATION_FAILED";
+    const primaryError = new Proxy(primaryTarget, {
+      set() {
+        throw new Error("primary evidence is read-only");
+      },
+    });
+    const store = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      project() {
+        throw primaryError;
+      },
+      testLockHooks: {
+        beforeDeleteReleaseArtifact() {
+          const releaseError = new Error("release denied");
+          releaseError.code = "EPERM";
+          throw releaseError;
+        },
+      },
+    });
+    let caught;
+    try {
+      store.commit(batch({ batch_id: "proxy-release", event_id: "proxy-release-event" }));
+    } catch (error) {
+      caught = error;
+    }
+    assert.strictEqual(caught, primaryError);
+    assert.equal(caught.code, "EVENT_OPERATION_FAILED");
+    assert.equal(caught.message, "proxy product failure");
+    assert.equal(readLines(f.journalPath).length, 1);
+    assert.equal(pendingFiles(f.root).length, 1);
+    const releaseArtifacts = fs.readdirSync(f.root).filter((name) => name.includes(".transition-") || name.includes(".release-"));
+    assert.equal(releaseArtifacts.length > 0, true);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("extensible primary Error keeps structured cleanup failure evidence", () => {
+  const f = fixture();
+  const originalUnlinkSync = fs.unlinkSync;
+  try {
+    const primaryError = new Error("extensible controlled failure");
+    primaryError.code = "EVENT_TEST_ABORT";
+    const store = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      testFailureInjector(point) {
+        if (point === "after_pending_fsync") throw primaryError;
+      },
+    });
+    fs.unlinkSync = function patchedUnlinkSync(filePath, ...args) {
+      if (String(filePath).includes(`${path.sep}pending${path.sep}`)) {
+        const cleanupError = new Error("pending cleanup denied");
+        cleanupError.code = "EPERM";
+        throw cleanupError;
+      }
+      return originalUnlinkSync.call(fs, filePath, ...args);
+    };
+    let caught;
+    try {
+      store.commit(batch({ batch_id: "extensible-cleanup", event_id: "extensible-cleanup-event" }));
+    } catch (error) {
+      caught = error;
+    }
+    assert.strictEqual(caught, primaryError);
+    assert.equal(caught.cleanup_failure.code, "EPERM");
+    assert.equal(caught.cleanup_failure.message, "pending cleanup denied");
+  } finally {
+    fs.unlinkSync = originalUnlinkSync;
+    f.cleanup();
+  }
+});
+
 test("preserves the primary operation error when release also fails", () => {
   const f = fixture();
   try {

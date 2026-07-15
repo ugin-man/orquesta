@@ -219,13 +219,21 @@ function releaseFailure(lock, error) {
   });
 }
 
+function attachSecondaryEvidence(primary, property, evidence) {
+  if (!primary || (typeof primary !== "object" && typeof primary !== "function")) return false;
+  try {
+    return Reflect.set(primary, property, evidence);
+  } catch {
+    return false;
+  }
+}
+
 function attachReleaseFailure(primary, releaseError) {
-  if (!primary || (typeof primary !== "object" && typeof primary !== "function")) return;
-  primary.release_failure = {
+  return attachSecondaryEvidence(primary, "release_failure", {
     code: releaseError.code,
     message: releaseError.message,
     details: releaseError.details,
-  };
+  });
 }
 
 function createEventStore(options = {}) {
@@ -330,10 +338,10 @@ function createEventStore(options = {}) {
           try {
             removeControlledArtifacts({ pendingPath, journalPath, priorJournalText });
           } catch (cleanupError) {
-            primaryError.cleanup_failure = {
+            attachSecondaryEvidence(primaryError, "cleanup_failure", {
               code: cleanupError.code || null,
               message: cleanupError.message,
-            };
+            });
           }
         }
       }
