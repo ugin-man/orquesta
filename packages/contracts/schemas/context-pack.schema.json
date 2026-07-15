@@ -1,0 +1,8 @@
+{
+  "$id": "context-pack", "type": "object", "required": ["context_pack_id", "task_intent_id", "owner_agent_id", "objective", "acceptance_criteria", "adopted_decisions", "capability_resolutions", "required_reading", "relevant_state_excerpts", "interfaces", "allowed_files", "forbidden_actions", "excluded_context", "evidence_requirements", "provenance", "token_budget", "expires_at", "status"],
+  "properties": {
+    "context_pack_id": { "type": "string", "pattern": ".+" }, "task_intent_id": { "type": "string", "pattern": ".+" }, "owner_agent_id": { "type": "string", "pattern": ".+" }, "objective": { "type": "string", "pattern": ".+" },
+    "acceptance_criteria": { "type": "array", "minItems": 1 }, "adopted_decisions": { "type": "array" }, "capability_resolutions": { "type": "array" }, "required_reading": { "type": "array" }, "relevant_state_excerpts": { "type": "array" }, "interfaces": { "type": "array" }, "allowed_files": { "type": "array" }, "forbidden_actions": { "type": "array" }, "excluded_context": { "type": "array" }, "evidence_requirements": { "type": "array" }, "provenance": { "type": "array" },
+    "token_budget": { "anyOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] }, "expires_at": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }, "status": { "enum": ["draft", "ready", "expired"] }
+  }, "additionalProperties": false
+}

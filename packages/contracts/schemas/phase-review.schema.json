@@ -1,0 +1,7 @@
+{
+  "$id": "phase-review", "type": "object", "required": ["phase_id", "status", "build_ref", "artifacts", "artifact_hashes", "review_packet_ref", "review_packet_hash", "checks", "demo_script", "screenshots", "known_gaps", "review_requested_at", "reviewed_at"],
+  "properties": {
+    "phase_id": { "type": "string", "pattern": ".+" }, "status": { "enum": ["in_progress", "ready_for_user_review", "changes_requested", "approved"] }, "build_ref": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }, "artifacts": { "type": "array", "items": { "type": "string" } }, "artifact_hashes": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^[a-f0-9]{64}$" } },
+    "review_packet_ref": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }, "review_packet_hash": { "anyOf": [{ "type": "string", "pattern": "^[a-f0-9]{64}$" }, { "type": "null" }] }, "checks": { "type": "array" }, "demo_script": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }, "screenshots": { "type": "array" }, "known_gaps": { "type": "array" }, "review_requested_at": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }, "reviewed_at": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }
+  }, "additionalProperties": false
+}
