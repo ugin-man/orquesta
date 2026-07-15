@@ -147,7 +147,13 @@ const eventBatch = {
   batch_id: "BATCH-local",
   actor: { type: "agent", id: "implementation-001" },
   correlation_id: "CORR-local",
-  events: [{ type: "contract.checked", payload: { source: "fixture" } }]
+  events: [{
+    event_id: "EVENT-contract-checked",
+    schema_version: 1,
+    type: "contract.checked",
+    payload: { source: "fixture" },
+    evidence_refs: []
+  }]
 };
 
 const phaseReview = {
@@ -213,6 +219,29 @@ test("every approved schema accepts its fixture and rejects a meaningful invalid
     mutate(invalid);
     assert.equal(validateContract(schemaName, invalid).ok, false, schemaName);
   }
+});
+
+test("EventBatch matches the journal event contract and rejects obsolete event shapes", () => {
+  assert.equal(validateContract("event-batch", eventBatch).ok, true);
+  const validEvent = eventBatch.events[0];
+
+  for (const field of ["event_id", "schema_version", "evidence_refs"]) {
+    const invalid = clone(eventBatch);
+    delete invalid.events[0][field];
+    assert.equal(validateContract("event-batch", invalid).ok, false, field);
+  }
+  for (const [field, value] of [
+    ["event_id", ""],
+    ["schema_version", 0],
+    ["evidence_refs", [1]],
+    ["evidence", { obsolete: true }],
+    ["unknown", true]
+  ]) {
+    const invalid = clone(eventBatch);
+    invalid.events[0][field] = value;
+    assert.equal(validateContract("event-batch", invalid).ok, false, field);
+  }
+  assert.deepEqual(validEvent.evidence_refs, []);
 });
 
 test("TaskIntent rejects an empty acceptance criteria list with stable error shape", () => {
