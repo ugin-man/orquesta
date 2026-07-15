@@ -11,17 +11,53 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function containsSensitiveMarker(value) {
+  return /[?]|:\/\/|token|secret|password|authorization|auth|bearer|api[_-]?key/i.test(value);
+}
+
 function safeVersionSpec(value) {
-  if (/^[0-9A-Za-z.*^~<>=|&!+_ -]+$/.test(value) && !/(token|secret|password|api[_-]?key)/i.test(value)) return value;
+  const trimmed = value.trim();
+  if (trimmed && /^[0-9A-Za-z.*^~<>=|&!+_ -]+$/.test(trimmed) && !containsSensitiveMarker(trimmed)) return trimmed;
   return "redacted";
 }
 
-function safeStringEntries(value) {
+function safePackageName(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || containsSensitiveMarker(trimmed)) return null;
+  if (/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/.test(trimmed)) return trimmed;
+  return null;
+}
+
+function safeScriptKey(value) {
+  if (containsSensitiveMarker(value)) return "redacted";
+  return /^[A-Za-z0-9][A-Za-z0-9:_-]*$/.test(value) ? value : "redacted";
+}
+
+function safeExportKey(value) {
+  if (containsSensitiveMarker(value)) return "redacted";
+  if (/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value)) return value;
+  if (value === ".") return value;
+  if (!/^\.\/[A-Za-z0-9*._/-]+$/.test(value)) return "redacted";
+  return value.split("/").some((segment) => segment === "..") ? "redacted" : value;
+}
+
+function safeLockPackagePath(value) {
+  const trimmed = value.trim();
+  if (!trimmed || containsSensitiveMarker(trimmed) || path.isAbsolute(trimmed)) return "redacted";
+  const segments = trimmed.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === ".." || !/^[A-Za-z0-9@._-]+$/.test(segment))) {
+    return "redacted";
+  }
+  return trimmed;
+}
+
+function safeDependencyEntries(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return [];
   return Object.entries(value)
     .filter(([name, version]) => typeof name === "string" && typeof version === "string")
-    .map(([name, version]) => [name, safeVersionSpec(version)])
-    .sort(([left], [right]) => compareText(left, right));
+    .map(([name, version]) => ({ name: safePackageName(name) || "redacted", version: safeVersionSpec(version) }))
+    .sort((left, right) => compareText(left.name, right.name));
 }
 
 function collectPackageSources({ projectRoot }) {
@@ -35,29 +71,31 @@ function collectPackageSources({ projectRoot }) {
   } else {
     const manifest = readJson(manifestPath);
     const scriptNames = manifest.scripts && typeof manifest.scripts === "object"
-      ? Object.keys(manifest.scripts).sort()
+      ? [...new Set(Object.keys(manifest.scripts).map(safeScriptKey))].sort(compareText)
       : [];
     const exportNames = manifest.exports && typeof manifest.exports === "object"
-      ? Object.keys(manifest.exports).sort()
+      ? [...new Set(Object.keys(manifest.exports).map(safeExportKey))].sort(compareText)
       : [];
     const dependencyEntries = [
-      ...safeStringEntries(manifest.dependencies),
-      ...safeStringEntries(manifest.devDependencies)
+      ...safeDependencyEntries(manifest.dependencies),
+      ...safeDependencyEntries(manifest.devDependencies)
     ];
+    const safeManifestName = safePackageName(manifest.name);
+    const manifestVersion = typeof manifest.version === "string" ? safeVersionSpec(manifest.version) : null;
     sources.push({
       source_type: "package_manifest",
       source_ref: "package.json",
       status: "available",
       metadata: {
-        name: typeof manifest.name === "string" ? manifest.name : null,
-        version: typeof manifest.version === "string" ? manifest.version : null,
+        name: safeManifestName || (typeof manifest.name === "string" ? "redacted" : null),
+        version: manifestVersion,
         exports: exportNames,
         scripts: scriptNames,
-        dependencies: dependencyEntries.map(([name, version]) => ({ name, version }))
+        dependencies: dependencyEntries
       }
     });
 
-    const projectName = typeof manifest.name === "string" && manifest.name ? manifest.name : "workspace-root";
+    const projectName = safeManifestName || (typeof manifest.name === "string" ? "redacted-package" : "workspace-root");
     providers.push({
       provider_id: `package:${projectName}`,
       provider_type: "package_manifest",
@@ -65,7 +103,7 @@ function collectPackageSources({ projectRoot }) {
       source_ref: "package.json",
       source_uri: "workspace:package.json",
       name: projectName,
-      version: typeof manifest.version === "string" && manifest.version ? manifest.version : "unknown",
+      version: manifestVersion || "unknown",
       capabilities: [
         ...exportNames.map((name) => `package export ${name}`),
         ...scriptNames.map((name) => `package script ${name}`)
@@ -75,7 +113,8 @@ function collectPackageSources({ projectRoot }) {
       evidence_refs: ["workspace:package.json"]
     });
 
-    for (const [name, version] of dependencyEntries) {
+    for (const { name, version } of dependencyEntries) {
+      if (name === "redacted") continue;
       providers.push({
         provider_id: `package:${name}`,
         provider_type: "npm_package",
@@ -100,7 +139,7 @@ function collectPackageSources({ projectRoot }) {
       ? Object.entries(lock.packages)
         .filter(([packagePath, metadata]) => packagePath && metadata && typeof metadata.version === "string")
         .map(([packagePath, metadata]) => ({
-          package_path: /[?]|:\/\/|(token|secret|password|api[_-]?key)/i.test(packagePath) ? "redacted" : packagePath,
+          package_path: safeLockPackagePath(packagePath),
           version: safeVersionSpec(metadata.version)
         }))
         .sort((left, right) => compareText(left.package_path, right.package_path))

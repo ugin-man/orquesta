@@ -73,6 +73,36 @@ test("returns an unresolved empty result without inventing a build candidate", (
   assert.equal(JSON.stringify(result).includes("build"), false);
 });
 
+test("stops deterministically with unresolved evidence when inventory contains a provider conflict", () => {
+  const conflicting = provider("conflicted-provider", "browser QA");
+  const result = scoutNeed({
+    need: { need_id: "NEED-CONFLICT", description: "browser QA" },
+    inventory: {
+      providers: [conflicting],
+      conflicts: [{
+        provider_id: "conflicted-provider",
+        status: "conflict",
+        hashes: ["a".repeat(64), "b".repeat(64)]
+      }]
+    },
+    budget: { max_candidates: 3, max_sources: 4 },
+    allowed_sources: ["fixture"]
+  });
+
+  assert.deepEqual(result.candidates, []);
+  assert.equal(result.stop_reason, "inventory_conflict");
+  assert.equal(result.unresolved, true);
+  assert.deepEqual(result.conflicts, [{
+    provider_id: "conflicted-provider",
+    status: "conflict",
+    hashes: ["a".repeat(64), "b".repeat(64)]
+  }]);
+  assert.deepEqual(result.evidence_refs, [
+    `provider:conflicted-provider#sha256:${"a".repeat(64)}`,
+    `provider:conflicted-provider#sha256:${"b".repeat(64)}`
+  ]);
+});
+
 test("orders equal-source candidates by deterministic code-unit order", () => {
   const result = scoutNeed({
     need: { need_id: "NEED-ORDER", description: "deterministic ordering" },

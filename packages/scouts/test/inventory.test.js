@@ -252,6 +252,168 @@ test("rejects repository source references outside the injected workspace", (t) 
   );
 });
 
+test("rejects fixture catalogs outside the workspace or resolving outside through a symlink", (t) => {
+  const fixture = createFixture(t);
+  const outsideCatalog = path.join(path.dirname(fixture.projectRoot), "outside-providers.json");
+  writeJson(outsideCatalog, {
+    version: 1,
+    providers: [{ provider_id: "outside", capabilities: ["SECRET_OUTSIDE_FIXTURE"] }]
+  });
+
+  const collect = (fixtureCatalogPath) => collectLocalInventory({
+    projectRoot: fixture.projectRoot,
+    codexHome: fixture.codexHome,
+    fixtureCatalogPath,
+    clock: () => FIXED_TIME
+  });
+  assert.throws(() => collect(outsideCatalog), (error) => error && error.code === "INVENTORY_FIXTURE_OUTSIDE_WORKSPACE");
+
+  const linkedCatalog = path.join(fixture.projectRoot, "linked-providers.json");
+  fs.symlinkSync(outsideCatalog, linkedCatalog, "file");
+  assert.throws(() => collect(linkedCatalog), (error) => error && error.code === "INVENTORY_FIXTURE_OUTSIDE_WORKSPACE");
+
+  const directoryCatalog = path.join(fixture.projectRoot, "catalog-directory");
+  fs.mkdirSync(directoryCatalog);
+  assert.throws(() => collect(directoryCatalog), (error) => error && error.code === "INVENTORY_FIXTURE_NOT_REGULAR_FILE");
+
+  const missingCatalog = path.join(fixture.projectRoot, "missing", "providers.json");
+  const inventory = collect(missingCatalog);
+  const source = inventory.sources.find((item) => item.source_type === "fixture");
+  assert.deepEqual(source, { source_type: "fixture", source_ref: "missing/providers.json", status: "absent" });
+  assert.equal(path.isAbsolute(source.source_ref), false);
+  assert.equal(source.source_ref.split("/").includes(".."), false);
+});
+
+test("rejects fixture providers with blank ids or any blank or non-string capability", (t) => {
+  const fixture = createFixture(t);
+  const invalidProviders = [
+    { provider_id: "", capabilities: ["valid"] },
+    { provider_id: " ", capabilities: ["valid"] },
+    { provider_id: "valid", capabilities: [] },
+    { provider_id: "valid", capabilities: [""] },
+    { provider_id: "valid", capabilities: [" "] },
+    { provider_id: "valid", capabilities: ["valid", " "] },
+    { provider_id: "valid", capabilities: ["valid", 42] }
+  ];
+
+  for (const invalidProvider of invalidProviders) {
+    writeJson(fixture.fixtureCatalogPath, { version: 1, providers: [invalidProvider] });
+    assert.throws(
+      () => collectLocalInventory({
+        projectRoot: fixture.projectRoot,
+        codexHome: fixture.codexHome,
+        fixtureCatalogPath: fixture.fixtureCatalogPath,
+        clock: () => FIXED_TIME
+      }),
+      (error) => error && error.code === "INVENTORY_FIXTURE_INVALID"
+    );
+  }
+
+  writeJson(fixture.fixtureCatalogPath, {
+    version: 1,
+    providers: [{ provider_id: " trimmed-provider ", capabilities: [" first capability ", "second capability"] }]
+  });
+  const inventory = collectLocalInventory({
+    projectRoot: fixture.projectRoot,
+    codexHome: fixture.codexHome,
+    fixtureCatalogPath: fixture.fixtureCatalogPath,
+    clock: () => FIXED_TIME
+  });
+  const provider = inventory.providers.find((item) => item.provider_id === "trimmed-provider");
+  assert.deepEqual(provider.capabilities, ["first capability", "second capability"]);
+});
+
+test("redacts unsafe package names, retained keys, specs, and lock paths without persisting sentinels", (t) => {
+  const fixture = createFixture(t);
+  writeJson(path.join(fixture.projectRoot, "package.json"), {
+    name: "project?token=PACKAGE_NAME_SENTINEL",
+    version: "1.0.0",
+    scripts: { "run?token=SCRIPT_KEY_SENTINEL": "node safe.js" },
+    exports: { "./entry?token=EXPORT_KEY_SENTINEL": "./safe.js" },
+    dependencies: {
+      "dependency?token=DEPENDENCY_NAME_SENTINEL": "1.0.0",
+      "safe-package": "https://registry.invalid/pkg?token=SPEC_VALUE_SENTINEL"
+    }
+  });
+  writeJson(path.join(fixture.projectRoot, "package-lock.json"), {
+    lockfileVersion: 3,
+    packages: {
+      "node_modules/pkg?token=LOCK_PATH_SENTINEL": { version: "1.0.0" },
+      "node_modules/safe-package": { version: "https://invalid/?token=LOCK_VERSION_SENTINEL" }
+    }
+  });
+
+  const inventory = collectLocalInventory({
+    projectRoot: fixture.projectRoot,
+    codexHome: fixture.codexHome,
+    fixtureCatalogPath: fixture.fixtureCatalogPath,
+    clock: () => FIXED_TIME
+  });
+  const serialized = JSON.stringify(inventory);
+  for (const sentinel of [
+    "PACKAGE_NAME_SENTINEL",
+    "SCRIPT_KEY_SENTINEL",
+    "EXPORT_KEY_SENTINEL",
+    "DEPENDENCY_NAME_SENTINEL",
+    "SPEC_VALUE_SENTINEL",
+    "LOCK_PATH_SENTINEL",
+    "LOCK_VERSION_SENTINEL"
+  ]) assert.equal(serialized.includes(sentinel), false, sentinel);
+  assert.equal(serialized.includes("?token="), false);
+});
+
+test("marks all sensitive MCP key forms and nested tables as redacted without retaining values", (t) => {
+  const fixture = createFixture(t);
+  writeText(path.join(fixture.codexHome, "config.toml"), [
+    "[mcp_servers.args]",
+    'command = "ARGS_COMMAND_SENTINEL"',
+    'args = ["ARGS_VALUE_SENTINEL"]',
+    "[mcp_servers.args.env]",
+    'SECRET = "NESTED_ENV_SENTINEL"',
+    "[mcp_servers.headers]",
+    'url = "https://example.invalid/mcp"',
+    'header = "HEADER_SENTINEL"',
+    'http_headers = { Authorization = "HTTP_HEADERS_SENTINEL" }',
+    'env_http_headers = { Authorization = "ENV_HTTP_HEADERS_SENTINEL" }',
+    "[mcp_servers.auth]",
+    'url = "https://example.invalid/mcp?token=QUERY_SENTINEL"',
+    'auth = "AUTH_SENTINEL"',
+    'authorization = "AUTHORIZATION_SENTINEL"',
+    'token = "TOKEN_SENTINEL"',
+    'bearer_token_env_var = "BEARER_ENV_SENTINEL"',
+    ""
+  ].join("\n"));
+
+  const inventory = collectLocalInventory({
+    projectRoot: fixture.projectRoot,
+    codexHome: fixture.codexHome,
+    fixtureCatalogPath: fixture.fixtureCatalogPath,
+    clock: () => FIXED_TIME
+  });
+  const providers = inventory.providers
+    .filter((item) => item.provider_type === "codex_mcp")
+    .map((item) => ({ name: item.name, transport: item.transport, redaction_status: item.redaction_status }));
+  assert.deepEqual(providers, [
+    { name: "args", transport: "stdio", redaction_status: "redacted" },
+    { name: "auth", transport: "http", redaction_status: "redacted" },
+    { name: "headers", transport: "http", redaction_status: "redacted" }
+  ]);
+  const serialized = JSON.stringify(inventory);
+  for (const sentinel of [
+    "ARGS_COMMAND_SENTINEL",
+    "ARGS_VALUE_SENTINEL",
+    "NESTED_ENV_SENTINEL",
+    "HEADER_SENTINEL",
+    "HTTP_HEADERS_SENTINEL",
+    "ENV_HTTP_HEADERS_SENTINEL",
+    "QUERY_SENTINEL",
+    "AUTH_SENTINEL",
+    "AUTHORIZATION_SENTINEL",
+    "TOKEN_SENTINEL",
+    "BEARER_ENV_SENTINEL"
+  ]) assert.equal(serialized.includes(sentinel), false, sentinel);
+});
+
 test("deduplicates the same provider id and hash but records different hashes as conflicts", (t) => {
   const fixture = createFixture(t);
   const manifest = JSON.parse(fs.readFileSync(path.join(fixture.projectRoot, "orquesta.capabilities.json"), "utf8"));
@@ -267,7 +429,7 @@ test("deduplicates the same provider id and hash but records different hashes as
     clock: () => FIXED_TIME
   });
 
-  assert.equal(inventory.providers.filter((item) => item.provider_id === "repo-json-helper").length, 1);
+  assert.equal(inventory.providers.filter((item) => item.provider_id === "repo-json-helper").length, 0);
   assert.equal(inventory.conflicts.length, 1);
   assert.equal(inventory.conflicts[0].provider_id, "repo-json-helper");
   assert.equal(inventory.conflicts[0].hashes.length, 2);

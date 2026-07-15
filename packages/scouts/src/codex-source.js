@@ -167,31 +167,39 @@ function collectMcpMetadata(codexHome) {
     };
   }
   const lines = fs.readFileSync(configPath, "utf8").split(/\r?\n/);
-  const servers = [];
+  const servers = new Map();
   let current = null;
-  const flush = () => {
-    if (current) servers.push(current);
-    current = null;
+  const sensitiveKey = (key) => {
+    const normalized = key.toLowerCase();
+    return normalized === "args"
+      || normalized === "env"
+      || /token|secret|password|header|authorization|auth|bearer/.test(normalized);
   };
   for (const line of lines) {
-    const section = /^\s*\[mcp_servers\.([A-Za-z0-9_-]+)\]\s*$/.exec(line);
+    const section = /^\s*\[mcp_servers\.([A-Za-z0-9_-]+)(?:\.([A-Za-z0-9_-]+))?\]\s*$/.exec(line);
     if (section) {
-      flush();
-      current = { name: section[1], transport: "unknown", redacted: false };
+      const name = section[1];
+      const nestedTable = section[2] || null;
+      const server = servers.get(name) || { name, transport: "unknown", redacted: false };
+      if (nestedTable && sensitiveKey(nestedTable)) server.redacted = true;
+      servers.set(name, server);
+      current = { server, nestedTable };
       continue;
     }
     if (/^\s*\[/.test(line)) {
-      flush();
+      current = null;
       continue;
     }
     if (!current) continue;
-    if (/^\s*url\s*=/.test(line)) current.transport = "http";
-    else if (/^\s*command\s*=/.test(line) && current.transport === "unknown") current.transport = "stdio";
-    if (/^\s*(args|env|token|headers|authorization)\s*=/.test(line) || /\?/.test(line)) current.redacted = true;
+    const assignment = /^\s*([A-Za-z0-9_-]+)\s*=/.exec(line);
+    if (!assignment) continue;
+    const key = assignment[1].toLowerCase();
+    if (key === "url") current.server.transport = "http";
+    else if (key === "command" && current.server.transport === "unknown") current.server.transport = "stdio";
+    if (current.nestedTable || sensitiveKey(key) || /\?/.test(line)) current.server.redacted = true;
   }
-  flush();
 
-  const providers = servers
+  const providers = [...servers.values()]
     .sort((left, right) => compareText(left.name, right.name))
     .map((server) => ({
       provider_id: `codex-mcp:${server.name}`,

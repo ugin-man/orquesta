@@ -56,6 +56,30 @@ function scoutNeed({ need, inventory, budget = {}, allowed_sources: allowedSourc
   const maxCandidates = boundedInteger(budget.max_candidates, MAX_CANDIDATES, MAX_CANDIDATES);
   const maxSources = boundedInteger(budget.max_sources, MAX_SOURCES, MAX_SOURCES);
   const sourcesConsidered = allowedSources.slice(0, maxSources);
+  const conflicts = Array.isArray(inventory.conflicts)
+    ? inventory.conflicts
+      .filter((conflict) => conflict && typeof conflict.provider_id === "string" && Array.isArray(conflict.hashes))
+      .map((conflict) => ({
+        provider_id: conflict.provider_id,
+        status: "conflict",
+        hashes: [...new Set(conflict.hashes.filter((hash) => typeof hash === "string"))].sort(compareText)
+      }))
+      .sort((left, right) => compareText(left.provider_id, right.provider_id))
+    : [];
+  if (conflicts.length) {
+    return {
+      need_id: need.need_id || null,
+      candidates: [],
+      evidence_refs: conflicts.flatMap((conflict) => conflict.hashes.map(
+        (hash) => `provider:${conflict.provider_id}#sha256:${hash}`
+      )),
+      unverified_fields: ["provider_conflict"],
+      sources_considered: sourcesConsidered,
+      stop_reason: "inventory_conflict",
+      unresolved: true,
+      conflicts
+    };
+  }
   const sourceRank = new Map(sourcesConsidered.map((source, index) => [source, index]));
   const matching = inventory.providers
     .filter((provider) => sourceRank.has(sourceFamily(provider.source_type)))

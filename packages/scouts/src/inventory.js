@@ -80,7 +80,9 @@ function collectLocalInventory(options = {}) {
     version: 1,
     collected_at: collectedAt,
     sources,
-    providers: [...providersById.values()].sort((left, right) => compareText(left.provider_id, right.provider_id)),
+    providers: [...providersById.values()]
+      .filter((provider) => !conflictsById.has(provider.provider_id))
+      .sort((left, right) => compareText(left.provider_id, right.provider_id)),
     conflicts: [...conflictsById.values()].sort((left, right) => compareText(left.provider_id, right.provider_id))
   };
 }
