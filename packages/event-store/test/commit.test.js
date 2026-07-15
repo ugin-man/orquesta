@@ -476,6 +476,53 @@ test("product callbacks cannot forge controlled rollback with EVENT_TEST_ABORT",
   }
 });
 
+test("reused injector Error cannot authorize rollback from a later product callback", () => {
+  const f = fixture();
+  try {
+    const sharedError = new Error("shared controlled error");
+    sharedError.code = "EVENT_TEST_ABORT";
+    const controlledStore = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      testFailureInjector(point) {
+        if (point === "after_pending_fsync") throw sharedError;
+      },
+    });
+    let controlledCaught;
+    try {
+      controlledStore.commit(batch({ batch_id: "controlled-shared", event_id: "controlled-shared-event" }));
+    } catch (error) {
+      controlledCaught = error;
+    }
+    assert.strictEqual(controlledCaught, sharedError);
+    assert.deepEqual(pendingFiles(f.root), []);
+    assert.equal(fs.existsSync(f.journalPath), false);
+
+    const productStore = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      project() {
+        throw sharedError;
+      },
+    });
+    let productCaught;
+    try {
+      productStore.commit(batch({ batch_id: "product-shared", event_id: "product-shared-event" }));
+    } catch (error) {
+      productCaught = error;
+    }
+    assert.strictEqual(productCaught, sharedError);
+    assert.equal(readLines(f.journalPath).length, 1);
+    assert.equal(pendingFiles(f.root).length, 1);
+    assert.throws(
+      () => productStore.commit(batch({ expected_revision: 1, batch_id: "blocked-after-product-error", event_id: "blocked-after-product-error" })),
+      { code: "EVENT_PENDING_RECOVERY_REQUIRED" },
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
 test("preserves the primary operation error when release also fails", () => {
   const f = fixture();
   try {

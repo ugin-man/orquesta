@@ -22,8 +22,6 @@ const PENDING_FIELDS = [
   "batch_id", "created_at", "expected_revision", "journal_path", "next_sequence",
   "pending_version", "serialized_batch", "sha256", "workspace_id",
 ];
-const controlledFailureErrors = new WeakSet();
-
 function isUtcTimestamp(value) {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
     && !Number.isNaN(new Date(value).getTime()) && new Date(value).toISOString() === value;
@@ -192,17 +190,17 @@ function verifyPersistedPending(pendingPath, expected) {
   return actual;
 }
 
-function invokeTestFailureInjector(injector, point) {
+function invokeTestFailureInjector(injector, point, controlledFailure) {
   if (!injector) return;
   try {
     injector(point);
   } catch (error) {
     if (error && (typeof error === "object" || typeof error === "function")) {
-      controlledFailureErrors.add(error);
+      controlledFailure.error = error;
       throw error;
     }
     const wrapped = eventStoreError("EVENT_TEST_ABORT", "Test failure injector threw a non-error value", { point });
-    controlledFailureErrors.add(wrapped);
+    controlledFailure.error = wrapped;
     throw wrapped;
   }
 }
@@ -247,6 +245,7 @@ function createEventStore(options = {}) {
       let priorJournalText = "";
       let result;
       let primaryError;
+      const controlledFailure = { error: null };
       try {
         assertRequestObject(request);
         validateRequest(request, 0);
@@ -295,16 +294,16 @@ function createEventStore(options = {}) {
             created_at: committedAt,
           };
 
-          invokeTestFailureInjector(options.testFailureInjector, "before_pending_write");
+          invokeTestFailureInjector(options.testFailureInjector, "before_pending_write", controlledFailure);
           replaceFileAtomic(pendingPath, `${safeCanonicalJson(pending)}\n`);
-          invokeTestFailureInjector(options.testFailureInjector, "after_pending_fsync");
+          invokeTestFailureInjector(options.testFailureInjector, "after_pending_fsync", controlledFailure);
           const nextJournalText = `${journal.text}${serializedBatch}\n`;
           replaceFileAtomic(journalPath, nextJournalText, {
             onAfterTempFsync() {
-              invokeTestFailureInjector(options.testFailureInjector, "after_temp_journal_fsync");
+              invokeTestFailureInjector(options.testFailureInjector, "after_temp_journal_fsync", controlledFailure);
             },
           });
-          invokeTestFailureInjector(options.testFailureInjector, "after_journal_rename");
+          invokeTestFailureInjector(options.testFailureInjector, "after_journal_rename", controlledFailure);
           const verified = readJournal(journalPath);
           const physicalTail = verified.text.slice(0, -1).split("\n").at(-1);
           const tail = verified.entries.at(-1);
@@ -318,16 +317,16 @@ function createEventStore(options = {}) {
               actual_batch_id: tail.batch_id,
             });
           }
-          invokeTestFailureInjector(options.testFailureInjector, "after_journal_verify");
+          invokeTestFailureInjector(options.testFailureInjector, "after_journal_verify", controlledFailure);
           project(entry);
-          invokeTestFailureInjector(options.testFailureInjector, "after_projection_write");
-          invokeTestFailureInjector(options.testFailureInjector, "before_pending_delete");
+          invokeTestFailureInjector(options.testFailureInjector, "after_projection_write", controlledFailure);
+          invokeTestFailureInjector(options.testFailureInjector, "before_pending_delete", controlledFailure);
           unlinkIfPresent(pendingPath);
           result = { status: "committed", sequence: entry.sequence };
         }
       } catch (error) {
         primaryError = error;
-        if (controlledFailureErrors.has(error) && pendingPath) {
+        if (controlledFailure.error === error && pendingPath) {
           try {
             removeControlledArtifacts({ pendingPath, journalPath, priorJournalText });
           } catch (cleanupError) {
