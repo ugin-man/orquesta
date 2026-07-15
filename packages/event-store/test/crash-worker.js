@@ -1,6 +1,6 @@
 "use strict";
 
-const [mode, stateRoot, batchId = "crash-batch", eventId = "crash-event"] = process.argv.slice(2);
+const [mode, stateRoot, batchId = "crash-batch", eventId = "crash-event", crashPoint = "after_pending_fsync"] = process.argv.slice(2);
 
 if (!mode) process.exit(0);
 
@@ -41,7 +41,7 @@ try {
   const store = createEventStore({
     stateRoot,
     workspaceId: "workspace-a",
-    lockTimeoutMs: mode === "barrier" ? 500 : 50,
+    lockTimeoutMs: mode === "barrier" ? 500 : mode === "live" ? 5000 : mode === "commit" ? 500 : 50,
     testLockHooks: mode === "barrier" ? {
       afterAcquire() { sleep(75); },
       onContention() {
@@ -49,12 +49,29 @@ try {
       },
     } : undefined,
     testFailureInjector(point) {
-      if (mode === "crash" && point === "after_pending_fsync") {
+      if (mode === "crash" && point === crashPoint) {
         process.exit(86);
       }
     },
   });
-  const result = store.commit(request);
+  let result;
+  if (mode === "live") {
+    let lastError;
+    for (let attempt = 0; attempt < 48; attempt += 1) {
+      try {
+        const journalPath = require("node:path").join(stateRoot, "events.jsonl");
+        const text = require("node:fs").existsSync(journalPath) ? require("node:fs").readFileSync(journalPath, "utf8") : "";
+        request.expected_revision = text ? text.trim().split("\n").length : 0;
+        result = store.commit(request);
+        break;
+      } catch (error) {
+        lastError = error;
+        if (!["EVENT_REVISION_CONFLICT", "EVENT_LOCK_TIMEOUT", "EVENT_STALE_LOCK"].includes(error.code)) throw error;
+        sleep(Math.min(50, 5 * (attempt + 1)));
+      }
+    }
+    if (!result) throw lastError;
+  } else result = store.commit(request);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } catch (error) {
   process.stderr.write(`${JSON.stringify({ code: error.code, message: error.message })}\n`);

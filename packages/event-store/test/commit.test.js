@@ -23,9 +23,19 @@ function fixture() {
     root,
     journalPath: path.join(root, "events.jsonl"),
     cleanup() {
-      fs.rmSync(root, { recursive: true, force: true });
+      cleanupTree(root);
     },
   };
+}
+
+function cleanupTree(directory) {
+  if (!fs.existsSync(directory)) return;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory()) cleanupTree(target);
+    else fs.unlinkSync(target);
+  }
+  fs.rmdirSync(directory);
 }
 
 function batch(overrides = {}) {

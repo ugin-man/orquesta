@@ -8,6 +8,9 @@ const { canonicalHash, canonicalJson, validateContract } = require("@orquesta/co
 const { replaceFileAtomic, unlinkIfPresent } = require("./atomic-replace");
 const { acquireJournalLock, releaseJournalLock } = require("./lock");
 const { eventStoreError } = require("./errors");
+const projectionStore = require("./projection-store");
+const recovery = require("./recovery");
+const { removeArtifact, removeProbeTree } = require("./cleanup");
 
 const CRASH_POINTS = [
   "before_pending_write",
@@ -146,10 +149,11 @@ function pendingPathFor(stateRoot, batchId) {
   return pendingPath;
 }
 
-function assertNoUnresolvedPending(stateRoot) {
+function assertNoUnresolvedPending(stateRoot, allowedPendingPath = null) {
   const pendingDir = path.join(stateRoot, "pending");
   if (!fs.existsSync(pendingDir)) return;
-  const artifacts = fs.readdirSync(pendingDir);
+  const allowedName = allowedPendingPath ? path.basename(allowedPendingPath) : null;
+  const artifacts = fs.readdirSync(pendingDir).filter((name) => name !== allowedName);
   if (artifacts.length > 0) {
     throw eventStoreError("EVENT_PENDING_RECOVERY_REQUIRED", "Pending journal evidence requires explicit recovery", {
       pending_dir: pendingDir,
@@ -158,7 +162,7 @@ function assertNoUnresolvedPending(stateRoot) {
   }
 }
 
-function verifyPersistedPending(pendingPath, expected) {
+function readStrictPendingWrapper(pendingPath) {
   let text;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(fs.readFileSync(pendingPath));
@@ -168,15 +172,48 @@ function verifyPersistedPending(pendingPath, expected) {
   if (!text.endsWith("\n") || text.slice(0, -1).includes("\n")) {
     throw pendingVerifyError("Pending evidence must be one JSON line with a final newline", { pending_path: pendingPath });
   }
-  let actual;
+  let pending;
   try {
-    actual = JSON.parse(text.slice(0, -1));
+    pending = JSON.parse(text.slice(0, -1));
   } catch {
     throw pendingVerifyError("Pending evidence contains invalid JSON", { pending_path: pendingPath });
   }
-  if (!isPlainObject(actual) || JSON.stringify(Object.keys(actual).sort()) !== JSON.stringify(PENDING_FIELDS)) {
+  if (!isPlainObject(pending) || JSON.stringify(Object.keys(pending).sort()) !== JSON.stringify(PENDING_FIELDS)) {
     throw pendingVerifyError("Pending evidence fields do not match the commit protocol", { pending_path: pendingPath });
   }
+  return pending;
+}
+
+function readRecoveryPending(pendingPath, request, nextSequence, workspaceId) {
+  const pending = readStrictPendingWrapper(pendingPath);
+  if (typeof pending.batch_id !== "string") {
+    throw pendingVerifyError("Recovery pending evidence has an invalid batch id", { pending_path: pendingPath });
+  }
+  const expectedName = `${crypto.createHash("sha256").update(pending.batch_id, "utf8").digest("hex")}.json`;
+  if (pending.pending_version !== 1 || pending.workspace_id !== workspaceId || pending.journal_path !== ".orquesta/v4/events.jsonl"
+    || path.basename(pendingPath) !== expectedName
+    || !isUtcTimestamp(pending.created_at) || !/^[a-f0-9]{64}$/.test(pending.sha256)
+    || typeof pending.serialized_batch !== "string" || sha256Text(pending.serialized_batch) !== pending.sha256) {
+    throw pendingVerifyError("Recovery pending evidence has invalid protocol values", { pending_path: pendingPath });
+  }
+  let entry;
+  try { entry = JSON.parse(pending.serialized_batch); } catch { throw pendingVerifyError("Recovery pending serialized batch is invalid", { pending_path: pendingPath }); }
+  const core = isPlainObject(entry) ? { ...entry } : null;
+  if (core) { delete core.journal_version; delete core.committed_at; }
+  if (!isPlainObject(entry) || entry.journal_version !== 1 || pending.created_at !== entry.committed_at
+    || !validateContract("event-batch", core).ok) {
+    throw pendingVerifyError("Recovery pending serialized batch violates the journal contract", { pending_path: pendingPath });
+  }
+  if (entry.batch_id !== pending.batch_id || entry.expected_revision !== pending.expected_revision || entry.sequence !== pending.next_sequence
+    || entry.batch_id !== request.batch_id || entry.expected_revision !== request.expected_revision || entry.sequence !== nextSequence
+    || requestIdentity(entry) !== requestIdentity(request)) {
+    throw pendingVerifyError("Recovery pending evidence does not match the requested batch", { pending_path: pendingPath });
+  }
+  return { pending, entry, serializedBatch: pending.serialized_batch };
+}
+
+function verifyPersistedPending(pendingPath, expected) {
+  const actual = readStrictPendingWrapper(pendingPath);
   for (const field of PENDING_FIELDS) {
     if (actual[field] !== expected[field]) {
       throw pendingVerifyError("Pending evidence differs from the active commit", { pending_path: pendingPath, field });
@@ -245,9 +282,27 @@ function createEventStore(options = {}) {
   const clock = options.clock || (() => new Date().toISOString());
   const project = options.project || (() => undefined);
   const lockTimeoutMs = options.lockTimeoutMs === undefined ? 250 : options.lockTimeoutMs;
+  const defaultReducers = options.reducers || {};
+  const defaultInitialState = options.initialState || {};
+  let latestInspection = null;
+  const replay = ({ reducers = defaultReducers, initialState = defaultInitialState } = {}) => projectionStore.replay(readJournal, journalPath, reducers, initialState);
+  const rebuildProjections = ({ reducers = defaultReducers, initialState = defaultInitialState } = {}) => projectionStore.rebuild(readJournal, stateRoot, journalPath, reducers, initialState);
 
-  return {
-    commit(request) {
+  const api = {
+    replay,
+    rebuildProjections,
+    listProjectionPaths() { return projectionStore.listProjectionPaths(stateRoot); },
+    removeArtifact,
+    removeProbeTree,
+    inspectRecovery() {
+      latestInspection = recovery.inspect({ stateRoot, journalPath, readJournal, replay, hostId, workspaceId });
+      return latestInspection;
+    },
+    applyRecovery(input) {
+      if (!latestInspection) throw eventStoreError("RECOVERY_INSPECTION_REQUIRED", "Recovery requires a current inspection");
+      return recovery.apply({ inspection: latestInspection, input, stateRoot, journalPath, readJournal, replay, rebuild: rebuildProjections, retry: (request, pendingPath) => api.commit(request, { recoveryPendingPath: pendingPath }), hostId, workspaceId, hooks: options.testRecoveryHooks });
+    },
+    commit(request, internal = {}) {
       let lock;
       let pendingPath;
       let priorJournalText = "";
@@ -266,9 +321,16 @@ function createEventStore(options = {}) {
         });
         const journal = readJournal(journalPath);
         priorJournalText = journal.text;
-        assertNoUnresolvedPending(stateRoot);
+        assertNoUnresolvedPending(stateRoot, internal.recoveryPendingPath || null);
         const existing = journal.entries.find((entry) => entry.batch_id === request.batch_id);
         if (existing) {
+          if (internal.recoveryPendingPath) {
+            const recovered = readRecoveryPending(internal.recoveryPendingPath, request, existing.sequence, workspaceId);
+            const physicalTail = journal.text.slice(0, -1).split("\n").at(-1);
+            if (existing.sequence !== journal.entries.length || !physicalTail || sha256Text(physicalTail) !== recovered.pending.sha256) {
+              throw pendingVerifyError("Recovery pending evidence does not match the physical journal tail", { pending_path: internal.recoveryPendingPath });
+            }
+          }
           if (requestIdentity(existing) !== requestIdentity(request)) {
             throw eventStoreError("EVENT_BATCH_ID_CONFLICT", "Batch id was already committed with different immutable content", { batch_id: request.batch_id });
           }
@@ -285,26 +347,34 @@ function createEventStore(options = {}) {
             }
           }
 
-          pendingPath = pendingPathFor(stateRoot, request.batch_id);
-          const committedAt = clock();
-          if (!isUtcTimestamp(committedAt)) throw eventStoreError("EVENT_CLOCK_INVALID", "Clock must provide a real millisecond UTC timestamp");
-          const entry = { journal_version: 1, ...core, committed_at: committedAt };
-          const serializedBatch = safeCanonicalJson(entry);
-          const pending = {
-            pending_version: 1,
-            workspace_id: workspaceId,
-            journal_path: ".orquesta/v4/events.jsonl",
-            batch_id: request.batch_id,
-            expected_revision: request.expected_revision,
-            next_sequence: entry.sequence,
-            serialized_batch: serializedBatch,
-            sha256: sha256Text(serializedBatch),
-            created_at: committedAt,
-          };
-
-          invokeTestFailureInjector(options.testFailureInjector, "before_pending_write", controlledFailure);
-          replaceFileAtomic(pendingPath, `${safeCanonicalJson(pending)}\n`);
-          invokeTestFailureInjector(options.testFailureInjector, "after_pending_fsync", controlledFailure);
+          pendingPath = internal.recoveryPendingPath || pendingPathFor(stateRoot, request.batch_id);
+          const reusePending = Boolean(internal.recoveryPendingPath);
+          let entry;
+          let serializedBatch;
+          let pending;
+          if (reusePending) {
+            const recovered = readRecoveryPending(pendingPath, request, journal.entries.length + 1, workspaceId);
+            entry = recovered.entry; serializedBatch = recovered.serializedBatch; pending = recovered.pending;
+          } else {
+            const committedAt = clock();
+            if (!isUtcTimestamp(committedAt)) throw eventStoreError("EVENT_CLOCK_INVALID", "Clock must provide a real millisecond UTC timestamp");
+            entry = { journal_version: 1, ...core, committed_at: committedAt };
+            serializedBatch = safeCanonicalJson(entry);
+            pending = {
+              pending_version: 1,
+              workspace_id: workspaceId,
+              journal_path: ".orquesta/v4/events.jsonl",
+              batch_id: request.batch_id,
+              expected_revision: request.expected_revision,
+              next_sequence: entry.sequence,
+              serialized_batch: serializedBatch,
+              sha256: sha256Text(serializedBatch),
+              created_at: committedAt,
+            };
+            invokeTestFailureInjector(options.testFailureInjector, "before_pending_write", controlledFailure);
+            replaceFileAtomic(pendingPath, `${safeCanonicalJson(pending)}\n`);
+            invokeTestFailureInjector(options.testFailureInjector, "after_pending_fsync", controlledFailure);
+          }
           const nextJournalText = `${journal.text}${serializedBatch}\n`;
           replaceFileAtomic(journalPath, nextJournalText, {
             onAfterTempFsync() {
@@ -326,10 +396,11 @@ function createEventStore(options = {}) {
             });
           }
           invokeTestFailureInjector(options.testFailureInjector, "after_journal_verify", controlledFailure);
+          rebuildProjections();
           project(entry);
           invokeTestFailureInjector(options.testFailureInjector, "after_projection_write", controlledFailure);
           invokeTestFailureInjector(options.testFailureInjector, "before_pending_delete", controlledFailure);
-          unlinkIfPresent(pendingPath);
+          if (!reusePending) unlinkIfPresent(pendingPath);
           result = { status: "committed", sequence: entry.sequence };
         }
       } catch (error) {
@@ -359,6 +430,7 @@ function createEventStore(options = {}) {
       return result;
     },
   };
+  return api;
 }
 
 module.exports = { createEventStore, CRASH_POINTS, readJournal };
