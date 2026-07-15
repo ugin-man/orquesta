@@ -162,6 +162,30 @@ function assertNoUnresolvedPending(stateRoot, allowedPendingPath = null) {
   }
 }
 
+function unresolvedUserDecisionArtifacts(stateRoot, journalPath) {
+  const artifacts = new Set();
+  const root = path.resolve(stateRoot);
+  const journalDirectory = path.dirname(journalPath);
+  const journalName = path.basename(journalPath);
+  const addNamed = (directory, matcher) => {
+    if (!fs.existsSync(directory)) return;
+    fs.readdirSync(directory).filter((name) => matcher.test(name)).forEach((name) => artifacts.add(path.join(directory, name)));
+  };
+  addNamed(journalDirectory, new RegExp(`^${journalName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\.conflict-[a-f0-9]{64}$`, "u"));
+  addNamed(path.join(root, "pending"), /^[a-f0-9]{64}\.json\.conflict-[a-f0-9]{64}$/u);
+  addNamed(path.join(root, "quarantine"), /^conflict-[a-f0-9]{64}\.json(?:\.bak)?$/u);
+  addNamed(path.join(root, "quarantine"), /^\.conflict-[a-f0-9]{64}\.json\.\d+\.[a-f0-9]{16}\.tmp$/u);
+  if (fs.existsSync(root)) fs.readdirSync(root).filter((name) => /conflicted copy/iu.test(name)).forEach((name) => artifacts.add(path.join(root, name)));
+  return [...artifacts].sort();
+}
+
+function assertNoUnresolvedUserDecision(stateRoot, journalPath) {
+  const artifacts = unresolvedUserDecisionArtifacts(stateRoot, journalPath);
+  if (artifacts.length) {
+    throw eventStoreError("EVENT_RECOVERY_REQUIRED", "Durable user-decision recovery evidence requires explicit resolution", { artifacts });
+  }
+}
+
 function readStrictPendingEvidence(pendingPath) {
   let text;
   try {
@@ -351,9 +375,12 @@ function createEventStore(options = {}) {
           timeoutMs: lockTimeoutMs,
           testHooks: options.testLockHooks,
         });
+        assertNoUnresolvedUserDecision(stateRoot, journalPath);
         const journal = readJournal(journalPath);
         priorJournalText = journal.text;
         assertNoUnresolvedPending(stateRoot, internal.recoveryPendingPath || null);
+        if (options.testLockHooks?.afterRecoveryEvidenceCheck) options.testLockHooks.afterRecoveryEvidenceCheck({ stateRoot, journalPath });
+        assertNoUnresolvedUserDecision(stateRoot, journalPath);
         const existing = journal.entries.find((entry) => entry.batch_id === request.batch_id);
         if (existing) {
           if (internal.recoveryPendingPath) {

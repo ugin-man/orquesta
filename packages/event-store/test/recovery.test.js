@@ -526,6 +526,51 @@ test("a OneDrive conflict copy blocks an incomplete manifest without touching an
   } finally { f.cleanup(); }
 });
 
+function arrangeConflictWriteGate(f, stage) {
+  const source = request(`write-gate-${stage}`); const entry = { journal_version: 1, sequence: 1, ...source, committed_at: "2026-07-15T00:00:00.000Z" };
+  fs.writeFileSync(f.journal, `${JSON.stringify(entry)}\n`, "utf8"); const pendingPath = pending(f, entry); const wrapper = JSON.parse(fs.readFileSync(pendingPath, "utf8")); wrapper.sha256 = "0".repeat(64); fs.writeFileSync(pendingPath, `${JSON.stringify(wrapper)}\n`);
+  const hooks = stage === "in-progress" ? { beforeConflictJournalMove() { throw Object.assign(new Error("stop"), { code: "EVENT_TEST_STOP_CONFLICT_IN_PROGRESS" }); } }
+    : stage === "ready" ? { beforeConflictManifestComplete() { throw Object.assign(new Error("stop"), { code: "EVENT_TEST_STOP_CONFLICT_READY" }); } } : null;
+  const stopping = createEventStore({ stateRoot: f.root, testRecoveryHooks: hooks || undefined }); const inspection = inspectReadOnly(stopping, f.root, "quarantine_conflict");
+  if (hooks) assert.throws(() => stopping.applyRecovery(recoveryInput(inspection)), { code: stage === "ready" ? "EVENT_TEST_STOP_CONFLICT_READY" : "EVENT_TEST_STOP_CONFLICT_IN_PROGRESS" });
+  else assert.equal(stopping.applyRecovery(recoveryInput(inspection)).status, "conflict_quarantined");
+  return { pendingPath, entry };
+}
+
+test("normal commits fail closed for every unresolved user-decision recovery artifact", () => {
+  const variants = [
+    ["in-progress manifest", (f) => arrangeConflictWriteGate(f, "in-progress")],
+    ["ready manifest", (f) => arrangeConflictWriteGate(f, "ready")],
+    ["completed manifest", (f) => arrangeConflictWriteGate(f, "completed")],
+    ["completed journal replacement", (f) => { const state = arrangeConflictWriteGate(f, "completed"); fs.writeFileSync(f.journal, "replacement journal\n", "utf8"); return state; }],
+    ["completed pending replacement", (f) => { const state = arrangeConflictWriteGate(f, "completed"); fs.writeFileSync(state.pendingPath, "replacement pending\n", "utf8"); return state; }],
+    ["tampered manifest", (f) => { const state = arrangeConflictWriteGate(f, "in-progress"); const quarantine = path.join(f.root, "quarantine"); const manifestPath = path.join(quarantine, fs.readdirSync(quarantine).find((name) => name.startsWith("conflict-"))); const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")); manifest.journal_sha256 = "0".repeat(64); fs.writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`); return state; }],
+    ["conflict manifest backup residue", (f) => { const quarantine = path.join(f.root, "quarantine"); fs.mkdirSync(quarantine, { recursive: true }); fs.writeFileSync(path.join(quarantine, `conflict-${"e".repeat(64)}.json.bak`), "backup residue\n", "utf8"); return {}; }],
+    ["conflict manifest temp residue", (f) => { const quarantine = path.join(f.root, "quarantine"); fs.mkdirSync(quarantine, { recursive: true }); fs.writeFileSync(path.join(quarantine, `.conflict-${"f".repeat(64)}.json.${process.pid}.${"a".repeat(16)}.tmp`), "temp residue\n", "utf8"); return {}; }],
+    ["journal conflict transition", (f) => { fs.writeFileSync(`${f.journal}.conflict-${"a".repeat(64)}`, "transition evidence\n", "utf8"); return {}; }],
+    ["pending conflict transition", (f) => { const name = `${"b".repeat(64)}.json.conflict-${"c".repeat(64)}`; fs.mkdirSync(path.join(f.root, "pending"), { recursive: true }); fs.writeFileSync(path.join(f.root, "pending", name), "transition evidence\n", "utf8"); return {}; }],
+    ["OneDrive conflicted copy", (f) => { fs.writeFileSync(path.join(f.root, "events (conflicted copy).jsonl"), "copy evidence\n", "utf8"); return {}; }],
+  ];
+  for (const [name, arrange] of variants) {
+    const f = fixture();
+    try {
+      arrange(f); const before = treeSnapshot(f.root); const store = createEventStore({ stateRoot: f.root }); const normal = { ...request(`write-gate-normal-${name.replace(/\s+/g, "-")}`), expected_revision: fs.existsSync(f.journal) ? 1 : 0 };
+      assert.throws(() => store.commit(normal), (error) => error?.code === "EVENT_RECOVERY_REQUIRED" && Array.isArray(error.details?.artifacts) && error.details.artifacts.length > 0 && error.details.artifacts.every((value, index, values) => index === 0 || values[index - 1] <= value), name);
+      assert.deepEqual(treeSnapshot(f.root), before, name);
+    } finally { f.cleanup(); }
+  }
+});
+
+test("normal commit rechecks user-decision evidence after pending inspection", () => {
+  const f = fixture();
+  try {
+    const manifestPath = path.join(f.root, "quarantine", `conflict-${"d".repeat(64)}.json`);
+    const store = createEventStore({ stateRoot: f.root, testLockHooks: { afterRecoveryEvidenceCheck() { fs.mkdirSync(path.dirname(manifestPath), { recursive: true }); fs.writeFileSync(manifestPath, "{}\n", "utf8"); } } });
+    assert.throws(() => store.commit(request("write-gate-recheck")), (error) => error?.code === "EVENT_RECOVERY_REQUIRED" && error.details?.artifacts?.includes(manifestPath));
+    assert.equal(fs.existsSync(f.journal), false); assert.equal(fs.existsSync(manifestPath), true);
+  } finally { f.cleanup(); }
+});
+
 test("conflict quarantine rejects journal replacement after inspection without moving it", () => {
   const f = fixture();
   try {
