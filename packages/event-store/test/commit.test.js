@@ -53,6 +53,34 @@ function readLines(journalPath) {
   return fs.readFileSync(journalPath, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
 }
 
+function pendingFiles(root) {
+  const directory = path.join(root, "pending");
+  return fs.existsSync(directory) ? fs.readdirSync(directory) : [];
+}
+
+function transientArtifacts(root) {
+  const found = [];
+  function visit(directory) {
+    if (!fs.existsSync(directory)) return;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(target);
+      else if (entry.name.includes(".lock") || entry.name.includes(".transition-") || entry.name.includes(".release-") || entry.name.endsWith(".tmp")) found.push(target);
+    }
+  }
+  visit(root);
+  return found;
+}
+
+async function waitForFiles(filePaths, timeoutMs = 1500) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (filePaths.every((filePath) => fs.existsSync(filePath))) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`Timed out waiting for ${filePaths.join(", ")}`);
+}
+
 function runWorker(args) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(__dirname, "crash-worker.js"), ...args], {
@@ -134,6 +162,19 @@ test("returns a structured EventStore error for null and invalid event ids", () 
   }
 });
 
+test("wraps JSON-external payload values as EVENT_BATCH_INVALID", () => {
+  const f = fixture();
+  try {
+    const request = batch();
+    request.events[0].payload.unsupported = undefined;
+    const store = createEventStore({ stateRoot: f.root, workspaceId: "workspace-a" });
+    assert.throws(() => store.commit(request), (error) => error.code === "EVENT_BATCH_INVALID" && error.details.cause_code === "CANONICALIZATION_FAILED");
+    assert.equal(fs.existsSync(f.journalPath), false);
+  } finally {
+    f.cleanup();
+  }
+});
+
 test("blocks malformed UTF-8 and a journal without a final newline", () => {
   const f = fixture();
   try {
@@ -191,6 +232,87 @@ test("does not steal a valid dead-owner lock", () => {
   }
 });
 
+test("treats semantically malformed live-owner metadata as stale evidence", () => {
+  const f = fixture();
+  try {
+    const lockPath = `${f.journalPath}.lock`;
+    fs.writeFileSync(lockPath, `${JSON.stringify({
+      owner_pid: process.pid,
+      host_id: "host-a",
+      nonce: "",
+      acquired_at: "not-a-timestamp",
+      target_revision: -1,
+    })}\n`, "utf8");
+    assert.throws(() => acquireJournalLock({ journalPath: f.journalPath, hostId: "host-a", targetRevision: 0, timeoutMs: 1 }), { code: "EVENT_STALE_LOCK" });
+    assert.equal(fs.existsSync(lockPath), true);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("does not move a replacement owner during release transition", () => {
+  const f = fixture();
+  try {
+    const lock = acquireJournalLock({ journalPath: f.journalPath, hostId: "host-a", targetRevision: 0, timeoutMs: 20 });
+    const replacement = { ...lock.metadata, nonce: "replacement-after-inspect" };
+    assert.throws(() => releaseJournalLock(lock, {
+      testHooks: {
+        afterTransitionMarker() {
+          fs.unlinkSync(lock.lockPath);
+          fs.writeFileSync(lock.lockPath, `${JSON.stringify(replacement)}\n`, "utf8");
+        },
+      },
+    }), { code: "EVENT_LOCK_OWNERSHIP_LOST" });
+    assert.equal(inspectJournalLock(f.journalPath).metadata.nonce, replacement.nonce);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("restores a replacement owner swapped after the final release recheck", () => {
+  const f = fixture();
+  try {
+    const lock = acquireJournalLock({ journalPath: f.journalPath, hostId: "host-a", targetRevision: 0, timeoutMs: 20 });
+    const replacement = { ...lock.metadata, nonce: "replacement-before-release-move" };
+    assert.throws(() => releaseJournalLock(lock, {
+      testHooks: {
+        beforeReleaseMove() {
+          fs.unlinkSync(lock.lockPath);
+          fs.writeFileSync(lock.lockPath, `${JSON.stringify(replacement)}\n`, "utf8");
+        },
+      },
+    }), (error) => error.code === "EVENT_LOCK_OWNERSHIP_LOST" && error.details.replacement_restored === true);
+    assert.equal(inspectJournalLock(f.journalPath).metadata.nonce, replacement.nonce);
+    const transitionArtifacts = fs.readdirSync(f.root).filter((name) => name.includes(".transition-") || name.includes(".release-"));
+    assert.deepEqual(transitionArtifacts, []);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("blocks acquisition when a transition appears between precheck and wx ownership", () => {
+  const f = fixture();
+  try {
+    const markerPath = `${f.journalPath}.lock.transition-race`;
+    assert.throws(() => acquireJournalLock({
+      journalPath: f.journalPath,
+      hostId: "host-a",
+      targetRevision: 0,
+      timeoutMs: 20,
+      testHooks: {
+        afterTransitionPrecheck() {
+          fs.writeFileSync(markerPath, "transition\n", "utf8");
+        },
+      },
+    }), { code: "EVENT_STALE_LOCK" });
+    assert.equal(fs.existsSync(`${f.journalPath}.lock`), true);
+    assert.equal(fs.existsSync(markerPath), true);
+    assert.throws(() => acquireJournalLock({ journalPath: f.journalPath, hostId: "host-b", targetRevision: 0, timeoutMs: 1 }), { code: "EVENT_STALE_LOCK" });
+  } finally {
+    f.cleanup();
+  }
+});
+
 test("atomic replacement rereads exact target bytes after rename", () => {
   const f = fixture();
   const originalReadFileSync = fs.readFileSync;
@@ -222,6 +344,25 @@ test("two real processes racing revision zero append exactly one batch", async (
   }
 });
 
+test("two barrier-synchronized processes prove lock contention before revision conflict", async () => {
+  const f = fixture();
+  try {
+    const ready = ["barrier-a", "barrier-b"].map((id) => path.join(f.root, `.ready-${id}`));
+    const [firstPromise, secondPromise] = [
+      runWorker(["barrier", f.root, "barrier-a", "barrier-event-a"]),
+      runWorker(["barrier", f.root, "barrier-b", "barrier-event-b"]),
+    ];
+    await waitForFiles(ready);
+    fs.writeFileSync(path.join(f.root, ".start"), "go\n", "utf8");
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
+    assert.equal([first, second].filter((result) => result.code === 0).length, 1, `${first.stderr}\n${second.stderr}`);
+    assert.equal(JSON.parse([first, second].find((result) => result.code !== 0).stderr).code, "EVENT_REVISION_CONFLICT");
+    assert.equal(fs.existsSync(path.join(f.root, ".contention-observed")), true);
+  } finally {
+    f.cleanup();
+  }
+});
+
 test("rejects a physically changed but canonically equivalent tail before projection", () => {
   const f = fixture();
   try {
@@ -238,6 +379,124 @@ test("rejects a physically changed but canonically equivalent tail before projec
     });
     assert.throws(() => store.commit(batch()), { code: "EVENT_JOURNAL_VERIFY_FAILED" });
     assert.equal(projectionCalls, 0);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("uses the persisted pending record as the success oracle", () => {
+  const f = fixture();
+  try {
+    let projectionCalls = 0;
+    const store = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      project() { projectionCalls += 1; },
+      testFailureInjector(point) {
+        if (point !== "after_pending_fsync") return;
+        const [pendingFile] = pendingFiles(f.root);
+        const pendingPath = path.join(f.root, "pending", pendingFile);
+        const pending = JSON.parse(fs.readFileSync(pendingPath, "utf8"));
+        pending.sha256 = "0".repeat(64);
+        fs.writeFileSync(pendingPath, `${JSON.stringify(pending)}\n`, "utf8");
+      },
+    });
+    assert.throws(() => store.commit(batch()), { code: "EVENT_PENDING_VERIFY_FAILED" });
+    assert.equal(projectionCalls, 0);
+    assert.equal(pendingFiles(f.root).length, 1);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("unresolved pending blocks idempotent and new writes after projection failure", () => {
+  const f = fixture();
+  try {
+    const request = batch({ batch_id: "projection-failure", event_id: "projection-event" });
+    const store = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      project() {
+        const error = new Error("projection failed");
+        error.code = "EVENT_OPERATION_FAILED";
+        throw error;
+      },
+    });
+    assert.throws(() => store.commit(request), { code: "EVENT_OPERATION_FAILED" });
+    assert.equal(pendingFiles(f.root).length, 1);
+    assert.throws(() => store.commit(request), { code: "EVENT_PENDING_RECOVERY_REQUIRED" });
+    assert.throws(() => store.commit(batch({ expected_revision: 1 })), { code: "EVENT_PENDING_RECOVERY_REQUIRED" });
+    assert.equal(readLines(f.journalPath).length, 1);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("unresolved pending blocks every write after exact-tail verification failure", () => {
+  const f = fixture();
+  try {
+    const request = batch({ batch_id: "tail-failure", event_id: "tail-event" });
+    const tamperingStore = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      testFailureInjector(point) {
+        if (point !== "after_journal_rename") return;
+        const line = fs.readFileSync(f.journalPath, "utf8").trimEnd();
+        fs.writeFileSync(f.journalPath, ` ${line} \n`, "utf8");
+      },
+    });
+    assert.throws(() => tamperingStore.commit(request), { code: "EVENT_JOURNAL_VERIFY_FAILED" });
+    const ordinaryStore = createEventStore({ stateRoot: f.root, workspaceId: "workspace-a" });
+    assert.throws(() => ordinaryStore.commit(request), { code: "EVENT_PENDING_RECOVERY_REQUIRED" });
+    assert.throws(() => ordinaryStore.commit(batch({ expected_revision: 1 })), { code: "EVENT_PENDING_RECOVERY_REQUIRED" });
+    assert.equal(pendingFiles(f.root).length, 1);
+    assert.equal(readLines(f.journalPath).length, 1);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("product callbacks cannot forge controlled rollback with EVENT_TEST_ABORT", () => {
+  const f = fixture();
+  try {
+    const store = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      project() {
+        const error = new Error("product failure");
+        error.code = "EVENT_TEST_ABORT";
+        throw error;
+      },
+    });
+    assert.throws(() => store.commit(batch()), { code: "EVENT_TEST_ABORT" });
+    assert.equal(readLines(f.journalPath).length, 1);
+    assert.equal(pendingFiles(f.root).length, 1);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test("preserves the primary operation error when release also fails", () => {
+  const f = fixture();
+  try {
+    const store = createEventStore({
+      stateRoot: f.root,
+      workspaceId: "workspace-a",
+      project() {
+        const error = new Error("operation failed");
+        error.code = "EVENT_OPERATION_FAILED";
+        throw error;
+      },
+      testLockHooks: {
+        beforeDeleteReleaseArtifact() {
+          const error = new Error("release denied");
+          error.code = "EPERM";
+          throw error;
+        },
+      },
+    });
+    assert.throws(() => store.commit(batch()), (error) => error.code === "EVENT_OPERATION_FAILED" && error.release_failure?.code === "EVENT_LOCK_RELEASE_FAILED");
+    assert.equal(pendingFiles(f.root).length, 1);
   } finally {
     f.cleanup();
   }
@@ -263,7 +522,12 @@ test("each controlled abort point can be retried with exactly one committed even
       });
       assert.throws(() => store.commit(request), { code: "EVENT_TEST_ABORT" });
       assert.deepEqual(store.commit(request), { status: "committed", sequence: 1 });
-      assert.equal(readLines(f.journalPath).length, 1);
+      const lines = readLines(f.journalPath);
+      assert.equal(lines.length, 1);
+      assert.equal(lines[0].events.length, 1);
+      assert.equal(lines[0].events[0].event_id, request.events[0].event_id);
+      assert.deepEqual(pendingFiles(f.root), []);
+      assert.deepEqual(transientArtifacts(f.root), []);
     } finally {
       f.cleanup();
     }

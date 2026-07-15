@@ -2,6 +2,7 @@
 
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { canonicalHash, canonicalJson, validateContract } = require("@orquesta/contracts");
 const { replaceFileAtomic, unlinkIfPresent } = require("./atomic-replace");
@@ -17,14 +18,48 @@ const CRASH_POINTS = [
   "after_projection_write",
   "before_pending_delete",
 ];
+const PENDING_FIELDS = [
+  "batch_id", "created_at", "expected_revision", "journal_path", "next_sequence",
+  "pending_version", "serialized_batch", "sha256", "workspace_id",
+];
+const controlledFailureErrors = new WeakSet();
 
 function isUtcTimestamp(value) {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
     && !Number.isNaN(new Date(value).getTime()) && new Date(value).toISOString() === value;
 }
 
+function isPlainObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function journalError(message, details = {}) {
   return eventStoreError("EVENT_JOURNAL_INVALID", message, details);
+}
+
+function pendingVerifyError(message, details = {}) {
+  return eventStoreError("EVENT_PENDING_VERIFY_FAILED", message, details);
+}
+
+function canonicalFailure(error) {
+  return eventStoreError("EVENT_BATCH_INVALID", "Commit request cannot be canonicalized", {
+    cause_code: "CANONICALIZATION_FAILED",
+    cause_message: error?.message || String(error),
+  });
+}
+
+function safeCanonicalJson(value) {
+  try {
+    return canonicalJson(value);
+  } catch (error) {
+    throw canonicalFailure(error);
+  }
+}
+
+function sha256Text(text) {
+  return crypto.createHash("sha256").update(text, "utf8").digest("hex");
 }
 
 function readJournal(journalPath) {
@@ -70,18 +105,28 @@ function readJournal(journalPath) {
 }
 
 function requestIdentity(request) {
-  return canonicalHash({
-    expected_revision: request.expected_revision,
-    batch_id: request.batch_id,
-    actor: request.actor,
-    correlation_id: request.correlation_id,
-    events: request.events,
-  });
+  try {
+    return canonicalHash({
+      expected_revision: request.expected_revision,
+      batch_id: request.batch_id,
+      actor: request.actor,
+      correlation_id: request.correlation_id,
+      events: request.events,
+    });
+  } catch (error) {
+    throw canonicalFailure(error);
+  }
+}
+
+function assertRequestObject(request) {
+  if (!request || typeof request !== "object" || Array.isArray(request)) {
+    throw eventStoreError("EVENT_BATCH_INVALID", "Commit request must be an EventBatch request object");
+  }
 }
 
 function validateRequest(request, nextSequence) {
-  if (!request || typeof request !== "object" || Array.isArray(request)
-    || Object.hasOwn(request, "sequence") || Object.hasOwn(request, "journal_version") || Object.hasOwn(request, "committed_at")) {
+  assertRequestObject(request);
+  if (Object.hasOwn(request, "sequence") || Object.hasOwn(request, "journal_version") || Object.hasOwn(request, "committed_at")) {
     throw eventStoreError("EVENT_BATCH_INVALID", "Commit request must contain only EventBatch request fields");
   }
   const core = { ...request, sequence: nextSequence };
@@ -95,16 +140,6 @@ function validateRequest(request, nextSequence) {
   return core;
 }
 
-function assertRequestObject(request) {
-  if (!request || typeof request !== "object" || Array.isArray(request)) {
-    throw eventStoreError("EVENT_BATCH_INVALID", "Commit request must be an EventBatch request object");
-  }
-}
-
-function sha256Text(text) {
-  return crypto.createHash("sha256").update(text, "utf8").digest("hex");
-}
-
 function pendingPathFor(stateRoot, batchId) {
   const pendingDir = path.join(stateRoot, "pending");
   const filename = `${crypto.createHash("sha256").update(batchId, "utf8").digest("hex")}.json`;
@@ -113,10 +148,86 @@ function pendingPathFor(stateRoot, batchId) {
   return pendingPath;
 }
 
+function assertNoUnresolvedPending(stateRoot) {
+  const pendingDir = path.join(stateRoot, "pending");
+  if (!fs.existsSync(pendingDir)) return;
+  const artifacts = fs.readdirSync(pendingDir);
+  if (artifacts.length > 0) {
+    throw eventStoreError("EVENT_PENDING_RECOVERY_REQUIRED", "Pending journal evidence requires explicit recovery", {
+      pending_dir: pendingDir,
+      artifacts: artifacts.sort(),
+    });
+  }
+}
+
+function verifyPersistedPending(pendingPath, expected) {
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(fs.readFileSync(pendingPath));
+  } catch (error) {
+    throw pendingVerifyError("Pending evidence cannot be reread as strict UTF-8", { pending_path: pendingPath, cause_code: error.code || null });
+  }
+  if (!text.endsWith("\n") || text.slice(0, -1).includes("\n")) {
+    throw pendingVerifyError("Pending evidence must be one JSON line with a final newline", { pending_path: pendingPath });
+  }
+  let actual;
+  try {
+    actual = JSON.parse(text.slice(0, -1));
+  } catch {
+    throw pendingVerifyError("Pending evidence contains invalid JSON", { pending_path: pendingPath });
+  }
+  if (!isPlainObject(actual) || JSON.stringify(Object.keys(actual).sort()) !== JSON.stringify(PENDING_FIELDS)) {
+    throw pendingVerifyError("Pending evidence fields do not match the commit protocol", { pending_path: pendingPath });
+  }
+  for (const field of PENDING_FIELDS) {
+    if (actual[field] !== expected[field]) {
+      throw pendingVerifyError("Pending evidence differs from the active commit", { pending_path: pendingPath, field });
+    }
+  }
+  if (actual.pending_version !== 1 || actual.journal_path !== ".orquesta/v4/events.jsonl"
+    || !isUtcTimestamp(actual.created_at) || !/^[a-f0-9]{64}$/.test(actual.sha256)
+    || sha256Text(actual.serialized_batch) !== actual.sha256) {
+    throw pendingVerifyError("Pending evidence has invalid protocol values", { pending_path: pendingPath });
+  }
+  return actual;
+}
+
+function invokeTestFailureInjector(injector, point) {
+  if (!injector) return;
+  try {
+    injector(point);
+  } catch (error) {
+    if (error && (typeof error === "object" || typeof error === "function")) {
+      controlledFailureErrors.add(error);
+      throw error;
+    }
+    const wrapped = eventStoreError("EVENT_TEST_ABORT", "Test failure injector threw a non-error value", { point });
+    controlledFailureErrors.add(wrapped);
+    throw wrapped;
+  }
+}
+
 function removeControlledArtifacts({ pendingPath, journalPath, priorJournalText }) {
   unlinkIfPresent(pendingPath);
   if (priorJournalText === "") unlinkIfPresent(journalPath);
   else replaceFileAtomic(journalPath, priorJournalText);
+}
+
+function releaseFailure(lock, error) {
+  return eventStoreError("EVENT_LOCK_RELEASE_FAILED", "Journal lock release failed", {
+    lock_path: lock.lockPath,
+    cause_code: error?.code || null,
+    cause_message: error?.message || String(error),
+  });
+}
+
+function attachReleaseFailure(primary, releaseError) {
+  if (!primary || (typeof primary !== "object" && typeof primary !== "function")) return;
+  primary.release_failure = {
+    code: releaseError.code,
+    message: releaseError.message,
+    details: releaseError.details,
+  };
 }
 
 function createEventStore(options = {}) {
@@ -124,7 +235,7 @@ function createEventStore(options = {}) {
   if (typeof stateRoot !== "string" || !stateRoot) throw new TypeError("stateRoot is required");
   const journalPath = path.join(stateRoot, "events.jsonl");
   const workspaceId = options.workspaceId || "workspace";
-  const hostId = options.hostId || require("node:os").hostname();
+  const hostId = options.hostId || os.hostname();
   const clock = options.clock || (() => new Date().toISOString());
   const project = options.project || (() => undefined);
   const lockTimeoutMs = options.lockTimeoutMs === undefined ? 250 : options.lockTimeoutMs;
@@ -134,85 +245,111 @@ function createEventStore(options = {}) {
       let lock;
       let pendingPath;
       let priorJournalText = "";
+      let result;
+      let primaryError;
       try {
         assertRequestObject(request);
         validateRequest(request, 0);
-        const targetRevision = Number.isInteger(request?.expected_revision) ? request.expected_revision : -1;
-        lock = acquireJournalLock({ journalPath, hostId, targetRevision, timeoutMs: lockTimeoutMs });
+        lock = acquireJournalLock({
+          journalPath,
+          hostId,
+          targetRevision: request.expected_revision,
+          timeoutMs: lockTimeoutMs,
+          testHooks: options.testLockHooks,
+        });
         const journal = readJournal(journalPath);
         priorJournalText = journal.text;
+        assertNoUnresolvedPending(stateRoot);
         const existing = journal.entries.find((entry) => entry.batch_id === request.batch_id);
         if (existing) {
           if (requestIdentity(existing) !== requestIdentity(request)) {
             throw eventStoreError("EVENT_BATCH_ID_CONFLICT", "Batch id was already committed with different immutable content", { batch_id: request.batch_id });
           }
-          return { status: "idempotent", sequence: existing.sequence };
+          result = { status: "idempotent", sequence: existing.sequence };
+        } else {
+          if (request.expected_revision !== journal.entries.length) {
+            throw eventStoreError("EVENT_REVISION_CONFLICT", "Expected revision does not match current journal revision", { expected_revision: request.expected_revision, actual_revision: journal.entries.length });
+          }
+          const core = validateRequest(request, journal.entries.length + 1);
+          const committedEventIds = new Set(journal.entries.flatMap((entry) => entry.events.map((event) => event.event_id)));
+          for (const event of request.events) {
+            if (committedEventIds.has(event.event_id)) {
+              throw eventStoreError("EVENT_DUPLICATE_EVENT_ID", "Event id was already committed", { event_id: event.event_id });
+            }
+          }
+
+          pendingPath = pendingPathFor(stateRoot, request.batch_id);
+          const committedAt = clock();
+          if (!isUtcTimestamp(committedAt)) throw eventStoreError("EVENT_CLOCK_INVALID", "Clock must provide a real millisecond UTC timestamp");
+          const entry = { journal_version: 1, ...core, committed_at: committedAt };
+          const serializedBatch = safeCanonicalJson(entry);
+          const pending = {
+            pending_version: 1,
+            workspace_id: workspaceId,
+            journal_path: ".orquesta/v4/events.jsonl",
+            batch_id: request.batch_id,
+            expected_revision: request.expected_revision,
+            next_sequence: entry.sequence,
+            serialized_batch: serializedBatch,
+            sha256: sha256Text(serializedBatch),
+            created_at: committedAt,
+          };
+
+          invokeTestFailureInjector(options.testFailureInjector, "before_pending_write");
+          replaceFileAtomic(pendingPath, `${safeCanonicalJson(pending)}\n`);
+          invokeTestFailureInjector(options.testFailureInjector, "after_pending_fsync");
+          const nextJournalText = `${journal.text}${serializedBatch}\n`;
+          replaceFileAtomic(journalPath, nextJournalText, {
+            onAfterTempFsync() {
+              invokeTestFailureInjector(options.testFailureInjector, "after_temp_journal_fsync");
+            },
+          });
+          invokeTestFailureInjector(options.testFailureInjector, "after_journal_rename");
+          const verified = readJournal(journalPath);
+          const physicalTail = verified.text.slice(0, -1).split("\n").at(-1);
+          const tail = verified.entries.at(-1);
+          const persistedPending = verifyPersistedPending(pendingPath, pending);
+          if (tail.sequence !== entry.sequence || tail.batch_id !== entry.batch_id || sha256Text(physicalTail) !== persistedPending.sha256) {
+            throw eventStoreError("EVENT_JOURNAL_VERIFY_FAILED", "Journal tail did not match the persisted pending evidence", {
+              journal_path: journalPath,
+              expected_sequence: entry.sequence,
+              actual_sequence: tail.sequence,
+              expected_batch_id: entry.batch_id,
+              actual_batch_id: tail.batch_id,
+            });
+          }
+          invokeTestFailureInjector(options.testFailureInjector, "after_journal_verify");
+          project(entry);
+          invokeTestFailureInjector(options.testFailureInjector, "after_projection_write");
+          invokeTestFailureInjector(options.testFailureInjector, "before_pending_delete");
+          unlinkIfPresent(pendingPath);
+          result = { status: "committed", sequence: entry.sequence };
         }
-        if (request.expected_revision !== journal.entries.length) {
-          throw eventStoreError("EVENT_REVISION_CONFLICT", "Expected revision does not match current journal revision", { expected_revision: request.expected_revision, actual_revision: journal.entries.length });
-        }
-        const core = validateRequest(request, journal.entries.length + 1);
-        const committedEventIds = new Set(journal.entries.flatMap((entry) => entry.events.map((event) => event.event_id)));
-        for (const event of request.events) {
-          if (committedEventIds.has(event.event_id)) {
-            throw eventStoreError("EVENT_DUPLICATE_EVENT_ID", "Event id was already committed", { event_id: event.event_id });
+      } catch (error) {
+        primaryError = error;
+        if (controlledFailureErrors.has(error) && pendingPath) {
+          try {
+            removeControlledArtifacts({ pendingPath, journalPath, priorJournalText });
+          } catch (cleanupError) {
+            primaryError.cleanup_failure = {
+              code: cleanupError.code || null,
+              message: cleanupError.message,
+            };
           }
         }
-
-        pendingPath = pendingPathFor(stateRoot, request.batch_id);
-        if (fs.existsSync(pendingPath)) throw eventStoreError("EVENT_PENDING_RECOVERY_REQUIRED", "Pending journal commit requires explicit recovery", { pending_path: pendingPath });
-        const committedAt = clock();
-        if (!isUtcTimestamp(committedAt)) throw eventStoreError("EVENT_CLOCK_INVALID", "Clock must provide a real millisecond UTC timestamp");
-        const entry = { journal_version: 1, ...core, committed_at: committedAt };
-        const serializedBatch = canonicalJson(entry);
-        const pending = {
-          pending_version: 1,
-          workspace_id: workspaceId,
-          journal_path: ".orquesta/v4/events.jsonl",
-          batch_id: request.batch_id,
-          expected_revision: request.expected_revision,
-          next_sequence: entry.sequence,
-          serialized_batch: serializedBatch,
-          sha256: crypto.createHash("sha256").update(serializedBatch, "utf8").digest("hex"),
-          created_at: committedAt,
-        };
-
-        options.testFailureInjector?.("before_pending_write");
-        replaceFileAtomic(pendingPath, `${canonicalJson(pending)}\n`);
-        options.testFailureInjector?.("after_pending_fsync");
-        const nextJournalText = `${journal.text}${serializedBatch}\n`;
-        replaceFileAtomic(journalPath, nextJournalText, {
-          onAfterTempFsync() {
-            options.testFailureInjector?.("after_temp_journal_fsync");
-          },
-        });
-        options.testFailureInjector?.("after_journal_rename");
-        const verified = readJournal(journalPath);
-        const physicalTail = verified.text.slice(0, -1).split("\n").at(-1);
-        const tail = verified.entries.at(-1);
-        if (tail.sequence !== entry.sequence || tail.batch_id !== entry.batch_id || sha256Text(physicalTail) !== pending.sha256) {
-          throw eventStoreError("EVENT_JOURNAL_VERIFY_FAILED", "Journal tail did not match the staged batch bytes and identity", {
-            journal_path: journalPath,
-            expected_sequence: entry.sequence,
-            actual_sequence: tail.sequence,
-            expected_batch_id: entry.batch_id,
-            actual_batch_id: tail.batch_id,
-          });
-        }
-        options.testFailureInjector?.("after_journal_verify");
-        project(entry);
-        options.testFailureInjector?.("after_projection_write");
-        options.testFailureInjector?.("before_pending_delete");
-        unlinkIfPresent(pendingPath);
-        return { status: "committed", sequence: entry.sequence };
-      } catch (error) {
-        if (error && error.code === "EVENT_TEST_ABORT" && pendingPath) {
-          removeControlledArtifacts({ pendingPath, journalPath, priorJournalText });
-        }
-        throw error;
-      } finally {
-        if (lock) releaseJournalLock(lock);
       }
+
+      if (lock) {
+        try {
+          releaseJournalLock(lock, { testHooks: options.testLockHooks });
+        } catch (error) {
+          const structured = releaseFailure(lock, error);
+          if (primaryError) attachReleaseFailure(primaryError, structured);
+          else primaryError = structured;
+        }
+      }
+      if (primaryError) throw primaryError;
+      return result;
     },
   };
 }
