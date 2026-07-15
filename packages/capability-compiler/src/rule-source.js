@@ -51,7 +51,7 @@ function nextCodePoint(text, index) {
 }
 
 function isTokenRunNeighbor(value) {
-  return /^(?:[a-z0-9]|\p{Script=Latin}|\p{Nd})$/u.test(value);
+  return /^(?:[a-z0-9]|\p{Script=Latin}|\p{Nd}|\p{M})$/u.test(value);
 }
 
 function matchesTerm(text, term) {

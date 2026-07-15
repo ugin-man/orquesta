@@ -158,6 +158,19 @@ test("compiler rejects ASCII terms embedded in Unicode Latin or decimal tokens",
   }
 });
 
+test("compiler rejects ASCII terms separated from Unicode token neighbors only by combining marks", () => {
+  for (const desiredOutcome of ["İuiを確認する", "I\u0307uiを確認する", "a\u034Fuiを確認する", "ui\u0338を確認する"]) {
+    const graph = compileCapabilities({
+      taskIntent: createTaskIntent(input({ desiredOutcome, acceptanceCriteria: ["browser evidence"] })),
+      rules: fixtureRules,
+    });
+    assert.equal(graph.needs.length, 1, desiredOutcome);
+    assert.equal(graph.needs[0].kind, "human_judgment", desiredOutcome);
+    assert.deepEqual(graph.provenance, [], desiredOutcome);
+    assert.equal(graph.needs.some((need) => ["asset", "evidence", "code"].includes(need.kind)), false, desiredOutcome);
+  }
+});
+
 test("compiler rejects cyclic and unknown emit dependencies", () => {
   const taskIntent = createTaskIntent(input());
   const cycle = [{
