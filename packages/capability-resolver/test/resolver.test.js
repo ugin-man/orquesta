@@ -31,7 +31,7 @@ function axes(value) {
   };
 }
 
-function candidate(providerId, value, staticMetadata, resolutionMode = "reuse") {
+function candidate(providerId, value, staticMetadata, resolutionMode = "reuse", overrides = {}) {
   return {
     provider_id: providerId,
     provider_type: "fixture",
@@ -45,7 +45,21 @@ function candidate(providerId, value, staticMetadata, resolutionMode = "reuse") 
     static_metadata: staticMetadata,
     axes: axes(value),
     uncertainty_penalty: 5,
+    estimated_total_cost: 0,
+    ...overrides,
   };
+}
+
+function resolverError(run, code) {
+  let thrown = null;
+  try {
+    run();
+  } catch (error) {
+    thrown = error;
+  }
+  assert.ok(thrown, `Expected ${code}.`);
+  assert.equal(thrown.code, code);
+  return { code: thrown.code, details: thrown.details };
 }
 
 test("resolver includes one conservative deterministic build candidate for every Need", () => {
@@ -56,6 +70,7 @@ test("resolver includes one conservative deterministic build candidate for every
   assert.equal(build.resolution_mode, "build");
   assert.equal(build.uncertainty_penalty, 100);
   assert.ok(build.unknowns.includes("implementation_estimate"));
+  assert.ok(build.unknowns.includes("total_cost"));
 });
 
 test("resolver separates raw and eligible leaders, keeps hard rejects and needs-user candidates out of ranking", () => {
@@ -184,6 +199,7 @@ test("resolver keeps a planned but unverified build candidate comparable for an 
       axes: axes(70),
       uncertainty_penalty: 4,
       unknowns: [],
+      estimated_total_cost: 0,
     }],
     policy: WEIGHTS_V1,
   });
@@ -263,6 +279,7 @@ test("resolver treats explicit Audit facts as authoritative without erasing omit
       axes: axes(70),
       uncertainty_penalty: 4,
       unknowns: [],
+      estimated_total_cost: 0,
     }],
     policy: WEIGHTS_V1,
   });
@@ -270,6 +287,163 @@ test("resolver treats explicit Audit facts as authoritative without erasing omit
   assert.equal(evidencedBuild.candidate_score, 66);
   assert.deepEqual(evidencedBuild.unknowns, []);
   assert.equal(buildEvidence.resolution.mode, "build");
+});
+
+test("resolver rejects duplicate array Audit facts in a stable order-independent error", () => {
+  const mit = { candidate_id: "reuse-a", static_metadata: { license: "MIT" } };
+  const forbidden = { candidate_id: "reuse-a", static_metadata: { license: "forbidden" } };
+  const first = resolverError(
+    () => resolveNeed({ need, scoutedCandidates: [candidate("reuse-a", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" })], auditFacts: [mit, forbidden], policy: WEIGHTS_V1 }),
+    "RESOLVER_AUDIT_FACT_DUPLICATE",
+  );
+  const second = resolverError(
+    () => resolveNeed({ need, scoutedCandidates: [candidate("reuse-a", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" })], auditFacts: [forbidden, mit], policy: WEIGHTS_V1 }),
+    "RESOLVER_AUDIT_FACT_DUPLICATE",
+  );
+  assert.deepEqual(first, second);
+  assert.deepEqual(first.details, { candidate_ids: ["reuse-a"] });
+});
+
+test("resolver rejects duplicate non-synthetic providers and keeps resolution identifiers disjoint", () => {
+  const duplicate = candidate("reuse-a", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" });
+  const conflictingDuplicate = candidate("reuse-a", 95, { license: "forbidden", runtime: "compatible", security: "no_critical_finding" });
+  const error = resolverError(
+    () => resolveNeed({ need, scoutedCandidates: [duplicate, conflictingDuplicate], auditFacts: [], policy: WEIGHTS_V1 }),
+    "RESOLVER_SCOUTED_CANDIDATE_DUPLICATE",
+  );
+  assert.deepEqual(error.details, { provider_ids: ["reuse-a"] });
+
+  const callerBuild = createBuildCandidate({ need, policyVersion: "phase1-v1" });
+  const proposal = resolveNeed({ need, scoutedCandidates: [callerBuild, callerBuild, duplicate], auditFacts: [], policy: WEIGHTS_V1 });
+  const rankedIds = proposal.ranked_candidates.map((entry) => entry.candidate_id);
+  const rejectedIds = proposal.rejected_candidates.map((entry) => entry.candidate_id);
+  assert.equal([...rankedIds, ...rejectedIds].filter((id) => id === "build:CN-RESOLVE-001").length, 1);
+  assert.deepEqual(rankedIds.filter((id) => rejectedIds.includes(id)), []);
+  assert.equal(proposal.resolution.rejected_provider_ids.includes(proposal.resolution.selected_provider_id), false);
+  assert.ok(rankedIds.includes(proposal.resolution.selected_provider_id));
+});
+
+test("resolver treats exact Audit license unknown as ineligible before selection", () => {
+  const proposal = resolveNeed({
+    need,
+    scoutedCandidates: [candidate("reuse-a", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" })],
+    auditFacts: [{ candidate_id: "reuse-a", unknowns: ["license"] }],
+    policy: WEIGHTS_V1,
+  });
+  const rejected = proposal.rejected_candidates.find((entry) => entry.candidate_id === "reuse-a");
+  assert.ok(rejected);
+  assert.equal(rejected.eligibility, "ineligible");
+  assert.equal(proposal.ranked_candidates.some((entry) => entry.candidate_id === "reuse-a"), false);
+  assert.equal(proposal.resolution.selected_provider_id, null);
+});
+
+test("resolver keeps total-cost estimates distinct from the cost score axis", () => {
+  const unknownCost = candidate("reuse-unknown", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" });
+  delete unknownCost.estimated_total_cost;
+  const unknownProposal = resolveNeed({ need, scoutedCandidates: [unknownCost], auditFacts: [], policy: WEIGHTS_V1 });
+  const unknownSummary = unknownProposal.ranked_candidates.find((entry) => entry.candidate_id === "reuse-unknown");
+  assert.equal(unknownProposal.inconclusive, true);
+  assert.equal(unknownProposal.resolution.mode, "ask");
+  assert.equal(unknownProposal.resolution.selected_provider_id, null);
+  assert.equal(unknownProposal.resolution.total_cost, 0);
+  assert.equal(unknownSummary.estimated_total_cost, null);
+  assert.equal(unknownSummary.cost_status, "unknown");
+  assert.equal(unknownProposal.cost_evidence.status, "unknown");
+  assert.ok(unknownSummary.unknowns.includes("total_cost"));
+
+  const zeroProposal = resolveNeed({
+    need,
+    scoutedCandidates: [candidate("reuse-zero", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" })],
+    auditFacts: [],
+    policy: WEIGHTS_V1,
+  });
+  assert.equal(zeroProposal.resolution.mode, "reuse");
+  assert.equal(zeroProposal.resolution.total_cost, 0);
+  assert.equal(zeroProposal.ranked_candidates[0].estimated_total_cost, 0);
+  assert.equal(zeroProposal.ranked_candidates[0].cost_status, "estimated");
+  assert.equal(zeroProposal.cost_evidence.status, "estimated");
+
+  const positiveProposal = resolveNeed({
+    need,
+    scoutedCandidates: [candidate("reuse-positive", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" })],
+    auditFacts: [{ candidate_id: "reuse-positive", estimated_total_cost: 42 }],
+    policy: WEIGHTS_V1,
+  });
+  assert.equal(positiveProposal.resolution.mode, "reuse");
+  assert.equal(positiveProposal.resolution.total_cost, 42);
+  assert.equal(positiveProposal.ranked_candidates[0].estimated_total_cost, 42);
+  assert.equal(positiveProposal.cost_evidence.estimated_total_cost, 42);
+
+  const staleUnknown = candidate("reuse-stale-cost", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" }, "reuse", {
+    unknowns: ["total_cost", "runtime"],
+  });
+  delete staleUnknown.estimated_total_cost;
+  const reconciledProposal = resolveNeed({
+    need,
+    scoutedCandidates: [staleUnknown],
+    auditFacts: [{ candidate_id: "reuse-stale-cost", estimated_total_cost: 17 }],
+    policy: WEIGHTS_V1,
+  });
+  const reconciledSummary = reconciledProposal.ranked_candidates.find((entry) => entry.candidate_id === "reuse-stale-cost");
+  assert.equal(reconciledProposal.resolution.mode, "reuse");
+  assert.equal(reconciledSummary.estimated_total_cost, 17);
+  assert.equal(reconciledSummary.cost_status, "estimated");
+  assert.deepEqual(reconciledSummary.unknowns, ["runtime"]);
+
+  for (const value of [-1, Number.NaN, Number.POSITIVE_INFINITY, "zero"]) {
+    resolverError(
+      () => resolveNeed({ need, scoutedCandidates: [candidate("invalid-cost", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" }, "reuse", { estimated_total_cost: value })], auditFacts: [], policy: WEIGHTS_V1 }),
+      "RESOLVER_ESTIMATED_TOTAL_COST_INVALID",
+    );
+  }
+  resolverError(
+    () => resolveNeed({
+      need,
+      scoutedCandidates: [candidate("invalid-audit-cost", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" })],
+      auditFacts: [{ candidate_id: "invalid-audit-cost", estimated_total_cost: "zero" }],
+      policy: WEIGHTS_V1,
+    }),
+    "RESOLVER_ESTIMATED_TOTAL_COST_INVALID",
+  );
+});
+
+test("resolver never labels a retained candidate selected for ask or abandon proposals", () => {
+  const tied = resolveNeed({
+    need,
+    scoutedCandidates: [
+      candidate("reuse-a", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" }),
+      candidate("reuse-b", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" }),
+    ],
+    auditFacts: [],
+    policy: WEIGHTS_V1,
+  });
+  assert.equal(tied.inconclusive, true);
+  assert.deepEqual(tied.inconclusive_reasons, ["score_tie"]);
+  assert.equal(tied.cost_evidence.status, "not_selected");
+  assert.equal(tied.ranked_candidates.some((entry) => entry.why_selected), false);
+  assert.ok(tied.ranked_candidates.every((entry) => entry.why_not_selected));
+
+  const highPenalty = resolveNeed({
+    need,
+    scoutedCandidates: [candidate("reuse-high-penalty", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" }, "reuse", { uncertainty_penalty: 50 })],
+    auditFacts: [],
+    policy: WEIGHTS_V1,
+  });
+  assert.equal(highPenalty.inconclusive, true);
+  assert.deepEqual(highPenalty.inconclusive_reasons, ["high_uncertainty_penalty"]);
+  assert.equal(highPenalty.cost_evidence.status, "not_selected");
+  assert.equal(highPenalty.ranked_candidates.some((entry) => entry.why_selected), false);
+  assert.ok(highPenalty.ranked_candidates.every((entry) => entry.why_not_selected));
+
+  const abandoned = resolveNeed({
+    need: { ...need, status: "superseded" },
+    scoutedCandidates: [candidate("reuse-superseded", 80, { license: "MIT", runtime: "compatible", security: "no_critical_finding" })],
+    auditFacts: [],
+    policy: WEIGHTS_V1,
+  });
+  assert.equal(abandoned.resolution.mode, "abandon");
+  assert.equal(abandoned.ranked_candidates.some((entry) => entry.why_selected), false);
+  assert.ok(abandoned.ranked_candidates.every((entry) => entry.why_not_selected));
 });
 
 test("resolver abandons only an explicitly superseded Need", () => {

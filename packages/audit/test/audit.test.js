@@ -142,3 +142,19 @@ test("audit separates static hard rejection from pending user decisions without 
   assert.ok(nameOnly.unknowns.includes("license"));
   assert.equal(nameOnly.facts.some((fact) => /safe|secure/i.test(fact)), false);
 });
+
+test("audit treats the exact license unknown code as a hard license failure without broad unknown heuristics", () => {
+  const licenseUnknown = evaluateCandidate({
+    candidate: candidate({ unknowns: ["license"] }),
+    need,
+  });
+  assert.equal(licenseUnknown.eligibility, "ineligible");
+  assert.ok(licenseUnknown.hard_gate_results.some((result) => result.gate === "license" && result.status === "fail"));
+
+  const otherUnknowns = evaluateCandidate({
+    candidate: candidate({ unknowns: ["runtime", "security", "license_notes"] }),
+    need,
+  });
+  assert.equal(otherUnknowns.eligibility, "eligible");
+  assert.ok(otherUnknowns.hard_gate_results.every((result) => result.status !== "fail"));
+});

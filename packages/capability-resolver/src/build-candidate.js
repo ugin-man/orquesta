@@ -36,7 +36,7 @@ function createBuildCandidate({ need, policyVersion = "phase1-v1" } = {}) {
     },
     axes,
     uncertainty_penalty: 100,
-    unknowns: ["implementation_estimate", ...(accessibilityRequired ? ["accessibility_verification"] : [])],
+    unknowns: ["implementation_estimate", "total_cost", ...(accessibilityRequired ? ["accessibility_verification"] : [])],
   };
 }
 

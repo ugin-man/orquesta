@@ -17,6 +17,10 @@ function requiresUserDecision(value) {
   return value === true || value === "required" || value === "needs_user";
 }
 
+function hasExactUnknown(candidate, code) {
+  return Array.isArray(candidate.unknowns) && candidate.unknowns.includes(code);
+}
+
 function evaluateHardGates({ candidate, need } = {}) {
   const metadata = metadataFor(candidate);
   const constraints = Array.isArray(need && need.hard_constraints) ? need.hard_constraints : [];
@@ -32,10 +36,13 @@ function evaluateHardGates({ candidate, need } = {}) {
   });
 
   const license = metadata.license;
+  const licenseUnknown = hasExactUnknown(candidate, "license");
   results.push({
     gate: "license",
-    status: !license || license === "unknown" || license === "forbidden" ? "fail" : "pass",
-    reason: !license || license === "unknown"
+    status: !license || license === "unknown" || license === "forbidden" || licenseUnknown ? "fail" : "pass",
+    reason: licenseUnknown
+      ? "Static metadata does not have confirmed license evidence."
+      : !license || license === "unknown"
       ? "Static metadata does not provide a usable license value."
       : license === "forbidden"
         ? "Static metadata records a forbidden license."
