@@ -122,6 +122,42 @@ test("compiler normalizes NFKC and dedupes only an identical verification need",
   assert.ok(graph.provenance.some((item) => item.rule_id === "ui-browser-duplicate-v1"));
 });
 
+test("compiler keeps ASCII terms on token boundaries without weakening UI or Japanese matches", () => {
+  const falsePositive = compileCapabilities({
+    taskIntent: createTaskIntent(input({
+      desiredOutcome: "build a compiler",
+      acceptanceCriteria: ["browser evidence"],
+    })),
+    rules: fixtureRules,
+  });
+  assert.equal(falsePositive.needs.length, 1);
+  assert.equal(falsePositive.needs[0].kind, "human_judgment");
+  assert.deepEqual(falsePositive.provenance, []);
+  assert.equal(falsePositive.needs.some((need) => ["asset", "evidence", "code"].includes(need.kind)), false);
+
+  for (const desiredOutcome of ["UI画面を確認する", "ui画面を確認する", "ＵＩ画面を確認する", "画面を確認する"]) {
+    const matched = compileCapabilities({
+      taskIntent: createTaskIntent(input({ desiredOutcome, acceptanceCriteria: ["ブラウザで確認する"] })),
+      rules: fixtureRules,
+    });
+    assert.equal(matched.needs.some((need) => need.kind === "asset"), true, desiredOutcome);
+    assert.equal(matched.needs.some((need) => need.kind === "evidence"), true, desiredOutcome);
+  }
+});
+
+test("compiler rejects ASCII terms embedded in Unicode Latin or decimal tokens", () => {
+  for (const desiredOutcome of ["éuiéを確認する", "١ui٢を確認する"]) {
+    const graph = compileCapabilities({
+      taskIntent: createTaskIntent(input({ desiredOutcome, acceptanceCriteria: ["browser evidence"] })),
+      rules: fixtureRules,
+    });
+    assert.equal(graph.needs.length, 1, desiredOutcome);
+    assert.equal(graph.needs[0].kind, "human_judgment", desiredOutcome);
+    assert.deepEqual(graph.provenance, [], desiredOutcome);
+    assert.equal(graph.needs.some((need) => ["asset", "evidence", "code"].includes(need.kind)), false, desiredOutcome);
+  }
+});
+
 test("compiler rejects cyclic and unknown emit dependencies", () => {
   const taskIntent = createTaskIntent(input());
   const cycle = [{

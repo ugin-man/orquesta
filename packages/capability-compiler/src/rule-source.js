@@ -25,6 +25,50 @@ function requireTerms(value, field) {
   return value;
 }
 
+function isAsciiAlphaNumeric(value) {
+  if (typeof value !== "string" || value.length !== 1) return false;
+  const code = value.charCodeAt(0);
+  return (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
+}
+
+function isAsciiAlphaNumericTerm(value) {
+  return value.length > 0 && [...value].every(isAsciiAlphaNumeric);
+}
+
+function previousCodePoint(text, index) {
+  if (index <= 0) return "";
+  const last = text.charCodeAt(index - 1);
+  if (last >= 0xdc00 && last <= 0xdfff && index > 1) {
+    const first = text.charCodeAt(index - 2);
+    if (first >= 0xd800 && first <= 0xdbff) return text.slice(index - 2, index);
+  }
+  return text[index - 1];
+}
+
+function nextCodePoint(text, index) {
+  if (index >= text.length) return "";
+  return String.fromCodePoint(text.codePointAt(index));
+}
+
+function isTokenRunNeighbor(value) {
+  return /^(?:[a-z0-9]|\p{Script=Latin}|\p{Nd})$/u.test(value);
+}
+
+function matchesTerm(text, term) {
+  const normalizedTerm = normalizeText(term);
+  if (!isAsciiAlphaNumericTerm(normalizedTerm)) return text.includes(normalizedTerm);
+  let start = 0;
+  while (start < text.length) {
+    const index = text.indexOf(normalizedTerm, start);
+    if (index === -1) return false;
+    const before = previousCodePoint(text, index);
+    const after = nextCodePoint(text, index + normalizedTerm.length);
+    if (!isTokenRunNeighbor(before) && !isTokenRunNeighbor(after)) return true;
+    start = index + normalizedTerm.length;
+  }
+  return false;
+}
+
 function validateCatalog(catalog) {
   if (!catalog || typeof catalog !== "object" || Array.isArray(catalog)
     || catalog.catalog_version !== 1 || !Array.isArray(catalog.rules)) {
@@ -68,10 +112,10 @@ function matchingFields(rule, taskIntent) {
   const desiredOutcome = normalizeText(taskIntent.desired_outcome);
   const criteria = taskIntent.acceptance_criteria.map(normalizeText).join(" ");
   const fields = [];
-  if (rule.match.any_terms.length > 0 && rule.match.any_terms.some((term) => desiredOutcome.includes(normalizeText(term)))) {
+  if (rule.match.any_terms.length > 0 && rule.match.any_terms.some((term) => matchesTerm(desiredOutcome, term))) {
     fields.push("desired_outcome");
   }
-  if (rule.match.acceptance_terms.length > 0 && rule.match.acceptance_terms.some((term) => criteria.includes(normalizeText(term)))) {
+  if (rule.match.acceptance_terms.length > 0 && rule.match.acceptance_terms.some((term) => matchesTerm(criteria, term))) {
     fields.push("acceptance_criteria");
   }
   const needsOutcome = rule.match.any_terms.length > 0;
