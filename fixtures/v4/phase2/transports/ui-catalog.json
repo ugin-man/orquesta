@@ -1,0 +1,6 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": "{\"items\":[{\"id\":\"ui-helper\",\"source_uri\":\"https://catalog.example.test/ui-helper\",\"version\":\"1.0.0\"}]}",
+  "captured_at": "2026-07-16T00:00:00.000Z"
+}

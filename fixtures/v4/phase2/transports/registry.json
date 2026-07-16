@@ -1,0 +1,6 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": "{\"items\":[{\"id\":\"codex-sdk\",\"source_uri\":\"https://registry.npmjs.org/@openai/codex-sdk\",\"version\":\"0.144.5\",\"license\":\"Apache-2.0\"}]}",
+  "captured_at": "2026-07-16T00:00:00.000Z"
+}
