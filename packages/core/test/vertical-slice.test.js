@@ -41,6 +41,26 @@ function trustedDraftContextPack({ taskIntent, resolutions }) {
   return { context_pack: { context_pack_id: `CP-${canonicalHash(content).slice(0, 12)}`, ...content } };
 }
 
+function assertGoldenEvidence(actual, expected, label) {
+  assert.ok(expected && typeof expected === "object" && !Array.isArray(expected), `${label} must contain explicit golden evidence`);
+  assert.ok(Object.keys(expected).length > 0, `${label} must not be empty`);
+  const visit = (value, golden, location) => {
+    if (Array.isArray(golden)) {
+      assert.ok(Array.isArray(value), `${location} must be an array`);
+      assert.equal(value.length, golden.length, `${location} must preserve the golden item count`);
+      golden.forEach((item, index) => visit(value[index], item, `${location}[${index}]`));
+      return;
+    }
+    if (golden && typeof golden === "object") {
+      assert.ok(value && typeof value === "object" && !Array.isArray(value), `${location} must be an object`);
+      for (const [key, nested] of Object.entries(golden)) visit(value[key], nested, `${location}.${key}`);
+      return;
+    }
+    assert.deepEqual(value, golden, `${location} must match the golden value`);
+  };
+  visit(actual, expected, label);
+}
+
 test("vertical lifecycle commits through the real EventStore and replay matches after projections are removed", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-core-vertical-"));
   const store = createEventStore({ stateRoot: root, workspaceId: "vertical", clock: () => "2026-07-16T07:30:00.000Z", reducers: createProjectors(), initialState: {} });
@@ -98,4 +118,65 @@ test("an active Phase Review cannot be replaced by a second request for the same
   boundary.execute({ command_id: "review-first", name: "phase-review.request", payload });
   assert.throws(() => boundary.execute({ command_id: "review-second", name: "phase-review.request", payload }), { code: "CORE_PHASE_REVIEW_ACTIVE" });
   assert.equal(boundary.replay().phase_reviews.length, 1);
+});
+
+test("Task 10 fixtures derive independent golden review evidence from Core and the Event Journal", () => {
+  const { loadFixtureExpected, runFixture } = require("../../../scripts/v4/run-fixture");
+  const fixtureIds = ["local-reuse", "adapt-vs-build", "blocked-candidate"];
+
+  for (const fixtureId of fixtureIds) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), `orquesta-v4-${fixtureId}-`));
+    const first = runFixture({ fixtureId, stateRoot: root });
+    const expected = loadFixtureExpected(fixtureId);
+    assertGoldenEvidence(first.review_view, expected, `${fixtureId} golden evidence`);
+    assert.ok(first.review_view.provider_evidence.length > 0, `${fixtureId} must preserve fixture-scoped provider source and hash evidence`);
+    assert.ok(first.review_view.evaluation_evidence.every((evaluation) => evaluation.axis_values && evaluation.hard_gates), `${fixtureId} must preserve scored hard-gate evidence`);
+    assert.ok(first.review_view.resolution_summaries.every((resolution) => resolution.approval_status === "pending_user"), `${fixtureId} must preserve pending Resolution evidence`);
+    assert.ok(first.review_view.timeline_event_types.includes("context.pack.created"), `${fixtureId} must preserve Context Pack timeline evidence`);
+    assert.equal(first.review_view.cost_evidence.status, "estimated", `${fixtureId} must identify selected cost evidence`);
+    assert.equal(first.review_view.cost_evidence.selected_candidate_estimate, first.review_view.cost_evidence.resolution_total_cost, `${fixtureId} CandidateEvaluation cost must match the Resolution total`);
+    assert.ok(first.review_view.evaluation_evidence.every((evaluation) => evaluation.actual_model === null), `${fixtureId} must retain actual_model null without runtime proof`);
+    assert.ok(first.review_view.evaluation_evidence.every((evaluation) => evaluation.axis_contributions), `${fixtureId} must retain immutable-weight contribution evidence`);
+    assert.equal(Object.hasOwn(first.review_view, "journal_batch_count"), false, `${fixtureId} golden view must not include shared-root batch counts`);
+    assert.equal(Object.hasOwn(first.review_view, "journal_event_count"), false, `${fixtureId} golden view must not include shared-root event counts`);
+    assert.equal(Object.hasOwn(first.review_view, "fixture_history_ids"), false, `${fixtureId} golden view must not include shared-root fixture history`);
+
+    const repeated = runFixture({ fixtureId, stateRoot: root });
+    assert.equal(repeated.journal.batch_count, first.journal.batch_count, `${fixtureId} rerun must not append batches`);
+    assert.equal(repeated.journal.event_count, first.journal.event_count, `${fixtureId} rerun must not append events`);
+  }
+});
+
+test("Task 10 fixtures coexist without adding history on an A-B-C-A rerun", () => {
+  const { runFixture } = require("../../../scripts/v4/run-fixture");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-v4-fixture-shared-"));
+  runFixture({ fixtureId: "local-reuse", stateRoot: root });
+  runFixture({ fixtureId: "adapt-vs-build", stateRoot: root });
+  const beforeCrossFixtureRerun = runFixture({ fixtureId: "blocked-candidate", stateRoot: root }).journal;
+  const combined = runFixture({ fixtureId: "local-reuse", stateRoot: root });
+  assert.equal(combined.journal.batch_count, beforeCrossFixtureRerun.batch_count, "A after B and C must not append batches");
+  assert.equal(combined.journal.event_count, beforeCrossFixtureRerun.event_count, "A after B and C must not append events");
+  assert.equal(combined.journal.fixture_ids.length, 3, "fixture history must coexist without a reset");
+  assert.equal(combined.review_view.scout_invoked, false);
+  assert.equal(combined.review_view.external_scout_invoked, false);
+  assert.equal(combined.review_view.local_inventory_recorded, true);
+
+  const adapt = runFixture({ fixtureId: "adapt-vs-build", stateRoot: root }).review_view;
+  assert.deepEqual(adapt.adaptation_evidence, [
+    "target URL argument",
+    "Workbench data-testid",
+    "fixture completion assertion",
+  ]);
+  assert.equal(adapt.build_maintenance_cost, 15);
+  assert.equal(adapt.uncertainty_by_mode.adapt, 18);
+  assert.equal(adapt.uncertainty_by_mode.build, 45);
+
+  const blocked = runFixture({ fixtureId: "blocked-candidate", stateRoot: root }).review_view;
+  const unknownLicense = blocked.provider_evidence.find((provider) => provider.provider_id === "ui-catalog-unknown-license");
+  assert.deepEqual(unknownLicense.evidence_refs, ["workspace:fixtures/v4/phase1/blocked-candidate/providers.json"]);
+  assert.equal(unknownLicense.source_type, "fixture");
+  assert.equal(blocked.proposed_mode, "build");
+  assert.ok(blocked.proposed_provider_id.startsWith("build:"));
+  assert.deepEqual(blocked.required_reading, []);
+  assert.equal(blocked.provider_evidence.some((provider) => provider.provider_id === "local-ui-safe-helper"), false);
 });

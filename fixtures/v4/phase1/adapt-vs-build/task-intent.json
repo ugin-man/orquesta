@@ -1,0 +1,13 @@
+{
+  "fixture_id": "adapt-vs-build",
+  "task_intent": {
+    "rawRequestRef": "fixture:adapt-vs-build",
+    "desiredOutcome": "Adapt the admin UI smoke check for the current workbench.",
+    "acceptanceCriteria": ["Verify browser evidence without running a browser in Phase 1."],
+    "constraints": [],
+    "risk": { "impact": "medium", "reversible": true },
+    "authorityBoundary": { "agent_may": ["propose"], "user_only": ["approve"] },
+    "assumptions": [],
+    "status": "compiled"
+  }
+}

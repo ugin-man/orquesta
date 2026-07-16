@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "provider_id": "dashboard-dom-smoke-adapt",
+      "provider_type": "repository_file",
+      "source_uri": "workspace:orquesta/scripts/dashboard-dom-smoke.js",
+      "source_type": "repository",
+      "capabilities": ["dashboard_smoke_adaptation"],
+      "trust_tier": "local",
+      "availability": "available",
+      "version": "repository",
+      "last_verified_at": "2026-07-16T00:00:00.000Z",
+      "evidence_refs": ["workspace:orquesta/scripts/dashboard-dom-smoke.js"]
+    },
+    {
+      "provider_id": "fixture-rule-catalog-reference",
+      "provider_type": "repository_file",
+      "source_uri": "workspace:fixtures/v4/phase1/compiler-rules.json",
+      "source_type": "repository",
+      "capabilities": ["fixture_rule_reference"],
+      "trust_tier": "local",
+      "availability": "available",
+      "version": "repository",
+      "last_verified_at": "2026-07-16T00:00:00.000Z",
+      "evidence_refs": ["workspace:fixtures/v4/phase1/compiler-rules.json"]
+    }
+  ],
+  "conflicts": [],
+  "candidates": [
+    {
+      "provider_id": "dashboard-dom-smoke-adapt",
+      "provider_type": "repository_file",
+      "source_uri": "workspace:orquesta/scripts/dashboard-dom-smoke.js",
+      "source_type": "repository",
+      "resolution_mode": "adapt",
+      "static_metadata": { "license": "MIT", "runtime": "compatible", "security": "reviewed" },
+      "axes": {
+        "task_fit": { "value": 91, "reason": "target URL argument" },
+        "integration_ease": { "value": 86, "reason": "Workbench data-testid" },
+        "evidence_strength": { "value": 80, "reason": "fixture completion assertion" },
+        "maintainability": { "value": 79, "reason": "The change reuses an existing test surface." },
+        "security": { "value": 84, "reason": "No external execution is proposed." },
+        "license_fit": { "value": 90, "reason": "The local repository license metadata is recorded." },
+        "exit_option": { "value": 82, "reason": "The adapted check can be removed independently." },
+        "cost": { "value": 74, "reason": "estimated_total_cost=5" }
+      },
+      "uncertainty_penalty": 18,
+      "unknowns": ["browser_execution"],
+      "estimated_total_cost": 5
+    },
+    {
+      "provider_id": "fixture-rule-catalog-reference",
+      "provider_type": "repository_file",
+      "source_uri": "workspace:fixtures/v4/phase1/compiler-rules.json",
+      "source_type": "repository",
+      "resolution_mode": "reuse",
+      "static_metadata": { "license": "MIT", "runtime": "compatible", "security": "reviewed" },
+      "axes": {
+        "task_fit": { "value": 42, "reason": "The catalog describes needs but is not the adaptation target." },
+        "integration_ease": { "value": 68, "reason": "It is local fixture metadata." },
+        "evidence_strength": { "value": 70, "reason": "The catalog is versioned repository evidence." },
+        "maintainability": { "value": 65, "reason": "It is a small bounded catalog." },
+        "security": { "value": 84, "reason": "No external execution is proposed." },
+        "license_fit": { "value": 90, "reason": "The local repository license metadata is recorded." },
+        "exit_option": { "value": 90, "reason": "The fixture reference is removable." },
+        "cost": { "value": 88, "reason": "Reuse has a low static cost." }
+      },
+      "uncertainty_penalty": 22,
+      "unknowns": [],
+      "estimated_total_cost": 1
+    }
+  ],
+  "audit_facts": [],
+  "build_audit_fact": {
+    "static_metadata": { "license": "not_applicable", "runtime": "compatible", "security": "unknown" },
+    "axes": {
+      "task_fit": { "value": 56, "reason": "A new build is only a fallback comparison." },
+      "integration_ease": { "value": 42, "reason": "A new build has no existing integration surface." },
+      "evidence_strength": { "value": 35, "reason": "No browser execution or completed evidence exists in Phase 1." },
+      "maintainability": { "value": 48, "reason": "A new build creates a separate maintenance surface." },
+      "security": { "value": 60, "reason": "No critical static finding is recorded." },
+      "license_fit": { "value": 60, "reason": "The synthetic build has no third-party license dependency." },
+      "exit_option": { "value": 58, "reason": "A new build can be removed with its own surface." },
+      "cost": { "value": 40, "reason": "estimated_total_cost=15" }
+    },
+    "uncertainty_penalty": 45,
+    "unknowns": ["implementation_estimate"],
+    "estimated_total_cost": 15
+  }
+}

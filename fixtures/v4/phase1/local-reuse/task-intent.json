@@ -1,0 +1,13 @@
+{
+  "fixture_id": "local-reuse",
+  "task_intent": {
+    "rawRequestRef": "fixture:local-reuse",
+    "desiredOutcome": "Reuse the UTF-8 JSON state helper in the admin UI.",
+    "acceptanceCriteria": ["Verify browser evidence for the reusable helper."],
+    "constraints": [],
+    "risk": { "impact": "low", "reversible": true },
+    "authorityBoundary": { "agent_may": ["propose"], "user_only": ["approve"] },
+    "assumptions": [],
+    "status": "compiled"
+  }
+}

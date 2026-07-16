@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "provider_id": "ui-catalog-unknown-license",
+      "provider_type": "repository_file",
+      "source_uri": "workspace:fixtures/v4/phase1/blocked-candidate/providers.json",
+      "source_type": "fixture",
+      "capabilities": ["fixture_unknown_license_candidate"],
+      "trust_tier": "fixture",
+      "availability": "available",
+      "version": "repository",
+      "last_verified_at": "2026-07-16T00:00:00.000Z",
+      "evidence_refs": ["workspace:fixtures/v4/phase1/blocked-candidate/providers.json"]
+    }
+  ],
+  "conflicts": [],
+  "candidates": [
+    {
+      "provider_id": "ui-catalog-unknown-license",
+      "provider_type": "repository_file",
+      "source_uri": "workspace:fixtures/v4/phase1/blocked-candidate/providers.json",
+      "source_type": "fixture",
+      "resolution_mode": "reuse",
+      "static_metadata": { "license": "unknown", "runtime": "compatible", "security": "reviewed" },
+      "axes": {
+        "task_fit": { "value": 100, "reason": "It is the highest static fit candidate." },
+        "integration_ease": { "value": 100, "reason": "It is already local." },
+        "evidence_strength": { "value": 100, "reason": "The source is directly inspectable." },
+        "maintainability": { "value": 100, "reason": "The catalog candidate is local." },
+        "security": { "value": 100, "reason": "No critical finding is recorded." },
+        "license_fit": { "value": 100, "reason": "The score intentionally tests gate precedence." },
+        "exit_option": { "value": 100, "reason": "The candidate is removable." },
+        "cost": { "value": 100, "reason": "The static estimate is low." }
+      },
+      "uncertainty_penalty": 0,
+      "unknowns": ["license"]
+    }
+  ],
+  "audit_facts": [],
+  "build_audit_fact": {
+    "static_metadata": { "license": "not_applicable", "runtime": "compatible", "security": "unknown" },
+    "axes": {
+      "task_fit": { "value": 56, "reason": "A new build is the eligible fallback." },
+      "integration_ease": { "value": 42, "reason": "A new build has no existing integration surface." },
+      "evidence_strength": { "value": 35, "reason": "No browser execution or completed evidence exists in Phase 1." },
+      "maintainability": { "value": 48, "reason": "A new build creates a separate maintenance surface." },
+      "security": { "value": 60, "reason": "No critical static finding is recorded." },
+      "license_fit": { "value": 60, "reason": "The synthetic build has no third-party license dependency." },
+      "exit_option": { "value": 58, "reason": "A new build can be removed with its own surface." },
+      "cost": { "value": 40, "reason": "estimated_total_cost=15" }
+    },
+    "uncertainty_penalty": 45,
+    "unknowns": [],
+    "estimated_total_cost": 15
+  }
+}
