@@ -14,6 +14,27 @@ const STANDARD_EFFECTS = new Set(["dependency_change", "network_access"]);
 const ESCALATION_TRIGGERS = Object.freeze([
   "budget_exhausted", "critical_risk_discovered", "scope_drift", "semantic_finding_not_machine_verifiable"
 ]);
+const METRIC_TO_BUDGET = Object.freeze({
+  handoffs: "max_handoffs",
+  independent_reviews: "max_independent_reviews",
+  correction_batches: "max_correction_batches",
+  reports: "max_reports",
+  auxiliary_tasks: "max_auxiliary_tasks"
+});
+const ESCALATION_LANES = Object.freeze({
+  fast: Object.freeze({
+    test_failure: "standard",
+    scope_drift: "standard",
+    new_risk: "standard",
+    acceptance_uncertain: "standard"
+  }),
+  standard: Object.freeze({
+    critical_risk_discovered: "critical",
+    semantic_finding_not_machine_verifiable: "critical",
+    scope_drift: "critical",
+    budget_exhausted: "critical"
+  })
+});
 const EXECUTION_BUDGETS = deepFreeze({
   fast: { max_handoffs: 0, max_independent_reviews: 0, max_correction_batches: 1, max_reports: 0, max_auxiliary_tasks: 0 },
   standard: { max_handoffs: 2, max_independent_reviews: 1, max_correction_batches: 1, max_reports: 1, max_auxiliary_tasks: 0 },
@@ -115,25 +136,18 @@ function laneFields(lane) {
   };
 }
 
-function createExecutionPlan({ taskIntent, riskProfile, revision = 1, supersedesExecutionPlanId = null } = {}) {
-  const validTaskIntent = detached(assertContract("task-intent", taskIntent));
-  if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
-  if (supersedesExecutionPlanId !== null && !/^EP-[a-f0-9]{12}$/.test(supersedesExecutionPlanId)) {
-    throw new TypeError("supersedesExecutionPlanId is invalid");
-  }
-  const { profile, missing } = normalizeRiskProfile(riskProfile);
-  const { lane, reasonCodes } = classify(profile, missing);
+function buildExecutionPlan({ taskIntentId, riskProfile, lane, reasonCodes, revision, supersedesExecutionPlanId, escalationTriggers }) {
   const { routing, review_policy } = laneFields(lane);
   const content = {
-    task_intent_id: validTaskIntent.task_intent_id,
+    task_intent_id: taskIntentId,
     policy_version: 1,
     lane,
-    risk_profile: profile,
-    reason_codes: reasonCodes,
+    risk_profile: riskProfile,
+    reason_codes: [...new Set(reasonCodes)].sort(compareText),
     routing,
     budget: detached(EXECUTION_BUDGETS[lane]),
     review_policy,
-    escalation_triggers: [...ESCALATION_TRIGGERS],
+    escalation_triggers: [...escalationTriggers].sort(compareText),
     revision,
     supersedes_execution_plan_id: supersedesExecutionPlanId
   };
@@ -144,8 +158,66 @@ function createExecutionPlan({ taskIntent, riskProfile, revision = 1, supersedes
   return deepFreeze(assertContract("execution-plan", detached(plan)));
 }
 
+function createExecutionPlan({ taskIntent, riskProfile, revision = 1, supersedesExecutionPlanId = null } = {}) {
+  const validTaskIntent = detached(assertContract("task-intent", taskIntent));
+  if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
+  if (supersedesExecutionPlanId !== null && !/^EP-[a-f0-9]{12}$/.test(supersedesExecutionPlanId)) {
+    throw new TypeError("supersedesExecutionPlanId is invalid");
+  }
+  const { profile, missing } = normalizeRiskProfile(riskProfile);
+  const { lane, reasonCodes } = classify(profile, missing);
+  return buildExecutionPlan({
+    taskIntentId: validTaskIntent.task_intent_id,
+    riskProfile: profile,
+    lane,
+    reasonCodes,
+    revision,
+    supersedesExecutionPlanId,
+    escalationTriggers: ESCALATION_TRIGGERS
+  });
+}
+
+function assessExecutionBudget(executionPlan, counts) {
+  const plan = assertContract("execution-plan", executionPlan);
+  if (!counts || typeof counts !== "object" || Array.isArray(counts)) {
+    throw new TypeError("Execution counts must be an object");
+  }
+  const exceeded = [];
+  for (const [metric, budgetField] of Object.entries(METRIC_TO_BUDGET)) {
+    if (!Number.isInteger(counts[metric]) || counts[metric] < 0) {
+      throw new TypeError(`Execution count ${metric} must be a non-negative integer`);
+    }
+    if (counts[metric] > plan.budget[budgetField]) exceeded.push(budgetField);
+  }
+  if (exceeded.length === 0) return { status: "within_budget", exceeded: [] };
+  return {
+    status: plan.lane === "critical" ? "user_decision_required" : "escalation_required",
+    exceeded
+  };
+}
+
+function escalateExecutionPlan({ executionPlan, trigger } = {}) {
+  const current = detached(assertContract("execution-plan", executionPlan));
+  if (current.lane === "critical") {
+    throw new TypeError("Critical execution plans cannot be escalated automatically");
+  }
+  const targetLane = ESCALATION_LANES[current.lane]?.[trigger];
+  if (!targetLane) throw new TypeError("Execution escalation trigger is invalid for the current lane");
+  return buildExecutionPlan({
+    taskIntentId: current.task_intent_id,
+    riskProfile: current.risk_profile,
+    lane: targetLane,
+    reasonCodes: [...current.reason_codes, `escalation:${trigger}`],
+    revision: current.revision + 1,
+    supersedesExecutionPlanId: current.execution_plan_id,
+    escalationTriggers: current.escalation_triggers
+  });
+}
+
 module.exports = {
   EXECUTION_LANES,
   EXECUTION_BUDGETS,
-  createExecutionPlan
+  assessExecutionBudget,
+  createExecutionPlan,
+  escalateExecutionPlan
 };

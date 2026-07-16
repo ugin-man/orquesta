@@ -4,7 +4,12 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { assertContract } = require("@orquesta/contracts");
 const { createTaskIntent } = require("../src/task-intent");
-const { createExecutionPlan, EXECUTION_BUDGETS } = require("../src");
+const {
+  assessExecutionBudget,
+  createExecutionPlan,
+  escalateExecutionPlan,
+  EXECUTION_BUDGETS
+} = require("../src");
 
 const taskFixture = require("../../../fixtures/v4/phase1/local-reuse/task-intent.json");
 const taskIntent = createTaskIntent(taskFixture.task_intent);
@@ -20,6 +25,18 @@ function riskProfile(overrides = {}) {
     user_review: "default",
     ...overrides
   };
+}
+
+function fastPlan() {
+  return createExecutionPlan({ taskIntent, riskProfile: riskProfile() });
+}
+
+function standardPlan() {
+  return createExecutionPlan({ taskIntent, riskProfile: riskProfile({ scope: "multiple_boundaries" }) });
+}
+
+function criticalPlan() {
+  return createExecutionPlan({ taskIntent, riskProfile: riskProfile({ effects: ["external_write"] }) });
 }
 
 test("classifies a reversible local deterministic task as fast", () => {
@@ -73,4 +90,50 @@ test("uses a conservative standard plan for an incomplete risk profile", () => {
 
   assert.equal(plan.lane, "standard");
   assert.deepEqual(plan.reason_codes, ["incomplete_profile"]);
+});
+
+test("requires escalation when a standard task exceeds one review", () => {
+  assert.deepEqual(assessExecutionBudget(standardPlan(), {
+    handoffs: 2,
+    independent_reviews: 2,
+    correction_batches: 0,
+    reports: 1,
+    auxiliary_tasks: 0
+  }), {
+    status: "escalation_required",
+    exceeded: ["max_independent_reviews"]
+  });
+});
+
+test("requires a user decision when a critical task exceeds budget", () => {
+  assert.equal(assessExecutionBudget(criticalPlan(), {
+    handoffs: 5,
+    independent_reviews: 2,
+    correction_batches: 2,
+    reports: 2,
+    auxiliary_tasks: 0
+  }).status, "user_decision_required");
+});
+
+test("escalates fast to standard without changing the TaskIntent", () => {
+  const current = fastPlan();
+  const next = escalateExecutionPlan({ executionPlan: current, trigger: "test_failure" });
+
+  assert.equal(next.lane, "standard");
+  assert.equal(next.revision, 2);
+  assert.equal(next.supersedes_execution_plan_id, current.execution_plan_id);
+  assert.equal(next.task_intent_id, current.task_intent_id);
+});
+
+test("escalates standard to critical but refuses a further critical escalation", () => {
+  const standard = standardPlan();
+  const critical = escalateExecutionPlan({ executionPlan: standard, trigger: "budget_exhausted" });
+
+  assert.equal(critical.lane, "critical");
+  assert.throws(() => escalateExecutionPlan({ executionPlan: critical, trigger: "budget_exhausted" }), /cannot be escalated/);
+});
+
+test("rejects unknown escalation triggers and has no de-escalation API", () => {
+  assert.throws(() => escalateExecutionPlan({ executionPlan: fastPlan(), trigger: "unknown" }), TypeError);
+  assert.equal(typeof require("../src").deescalateExecutionPlan, "undefined");
 });
