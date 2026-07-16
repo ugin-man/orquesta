@@ -503,6 +503,39 @@ test("compileContextPackV1 ignores acceptance references in a negated clause", (
   }
 });
 
+test("compileContextPackV1 accepts only bounded positive acceptance commands", () => {
+  const fixture = fixtureRoot(agentFixture({
+    required_reading: [{ source_ref: "baseline/task-owned.md", tags: ["task-owned"] }],
+    excluded_context: [],
+  }));
+  try {
+    writeFile(fixture.root, "interfaces/private.js", "module.exports = 'private';\n");
+    const agentContract = loadAgentContract({ agentsPath: fixture.agentsPath, agentId: "implementation-001" });
+    for (const criterion of [
+      "Never read interfaces/private.js.",
+      "No need to read interfaces/private.js.",
+      "The test interfaces/private.js is obsolete.",
+      "Verify tests/api.test.js; do not read interfaces/private.js.",
+    ]) {
+      const result = compileContextPackV1({
+        taskIntent: taskIntent({ acceptance_criteria: [criterion] }),
+        resolutions: [resolution({ evidence_refs: [] })],
+        agentContract,
+        workspaceRoot: fixture.root,
+      });
+      assert.equal(result.context_pack.required_reading.includes("interfaces/private.js"), false, criterion);
+      assert.equal(result.context_pack.interfaces.includes("interfaces/private.js"), false, criterion);
+      assert.equal(result.context_pack.provenance.some((entry) => entry.source_ref === "interfaces/private.js"), false, criterion);
+      assert.equal(result.omitted_context.some((entry) => entry.source_ref === "interfaces/private.js"), false, criterion);
+      if (criterion.startsWith("Verify")) {
+        assert.equal(result.context_pack.required_reading.includes("tests/api.test.js"), true, criterion);
+      }
+    }
+  } finally {
+    removeTree(fixture.root);
+  }
+});
+
 test("loadAgentContract returns an immutable detached snapshot tied to its selected provenance", () => {
   const fixture = fixtureRoot();
   try {

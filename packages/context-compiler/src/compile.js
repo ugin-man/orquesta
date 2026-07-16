@@ -131,9 +131,7 @@ function extractAcceptanceFiles(criteria) {
   const files = [];
   for (const criterion of criteria) {
     if (typeof criterion !== "string") continue;
-    if (/^\s*(?:do\s+not|don't|without|avoid)\b/i.test(criterion)) continue;
-    for (const match of criterion.matchAll(/\b(?:(do\s+not|don't|not|without|avoid)\s+)?(?:read|review|test|verify)\s+([^\s()[\]{}]+)/gi)) {
-      if (match[1]) continue;
+    for (const match of criterion.matchAll(/(?:^|(?:\band\s+then\b|\band\b|\bthen\b|[;:])\s*)(read|review|test|verify)\s+([^\s()[\]{}]+)/gi)) {
       const token = match[2].replace(/^["'`]+|["'`,.;:]+$/g, "");
       const reference = normalizeReference(token);
       if (reference && isInterfaceOrTestReference(reference)) files.push(reference);
