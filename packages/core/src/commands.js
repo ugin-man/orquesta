@@ -166,10 +166,29 @@ function assertCompiledContextPack(compiled, taskIntent, resolutions) {
       source_hash: canonicalHash(resolution),
     })),
   ];
+  const provenanceByKind = new Map();
+  for (const item of contextPack.provenance) {
+    const bySourceRef = provenanceByKind.get(item.kind) || new Map();
+    const entries = bySourceRef.get(item.source_ref) || [];
+    entries.push(item);
+    bySourceRef.set(item.source_ref, entries);
+    provenanceByKind.set(item.kind, bySourceRef);
+  }
+  const duplicateKeys = [];
+  for (const [kind, bySourceRef] of provenanceByKind) {
+    for (const [sourceRef, entries] of bySourceRef) {
+      if (entries.length > 1) duplicateKeys.push({ kind, source_ref: sourceRef });
+    }
+  }
+  duplicateKeys.sort((left, right) => compareText(left.kind, right.kind) || compareText(left.source_ref, right.source_ref));
+  if (duplicateKeys.length > 0) {
+    contextPackBindingError({ reason: "provenance_duplicate", ...duplicateKeys[0] });
+  }
   for (const required of requiredProvenance) {
-    const matches = contextPack.provenance.filter((item) => item && item.kind === required.kind
-      && item.source_ref === required.source_ref && item.source_hash === required.source_hash);
-    if (matches.length !== 1) contextPackBindingError({ reason: "provenance", source_ref: required.source_ref });
+    const entry = provenanceByKind.get(required.kind)?.get(required.source_ref)?.[0];
+    if (!entry || entry.source_hash !== required.source_hash) {
+      contextPackBindingError({ reason: "provenance", source_ref: required.source_ref });
+    }
   }
   return contextPack;
 }

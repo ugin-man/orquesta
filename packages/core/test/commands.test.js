@@ -9,6 +9,7 @@ const { createEventStore } = require("@orquesta/event-store");
 const { canonicalHash } = require("@orquesta/contracts");
 const { createCommandBoundary, COMMAND_NAMES } = require("../src");
 const { createTaskIntent } = require("../src/task-intent");
+const { initialProjection } = require("../src/projectors");
 
 function makeIntent(status = "compiled") {
   return {
@@ -69,6 +70,32 @@ function trustedDraftContextPack({ taskIntent, resolutions, request }) {
       context_pack_id: `CP-${canonicalHash(content).slice(0, 12)}`,
       ...content,
     },
+  };
+}
+
+function duplicateTaskIntentProvenance(input, duplicateHash, reverse) {
+  const contextPack = copy(trustedDraftContextPack(input).context_pack);
+  const taskIntentEntry = contextPack.provenance.find((entry) => entry.kind === "task_intent");
+  const duplicates = [
+    { ...taskIntentEntry },
+    { ...taskIntentEntry, source_hash: duplicateHash },
+  ];
+  if (reverse) duplicates.reverse();
+  contextPack.provenance = contextPack.provenance.flatMap((entry) => entry === taskIntentEntry ? duplicates : [entry]);
+  const content = { ...contextPack };
+  delete content.context_pack_id;
+  contextPack.context_pack_id = `CP-${canonicalHash(content).slice(0, 12)}`;
+  return contextPack;
+}
+
+function contextPackSnapshot(store, boundary) {
+  const replayed = store.replay({ reducers: boundary.projectors, initialState: initialProjection() });
+  const state = boundary.replay();
+  return {
+    watermark: replayed.watermark.journal_sequence,
+    context_packs: copy(state.context_packs),
+    current_context_pack_id: state.current_context_pack_id,
+    current_context_pack_sequence: state.current_context_pack_sequence,
   };
 }
 
@@ -695,6 +722,69 @@ test("context preview rejects a trusted compiler pack whose canonical lifecycle 
     payload: { context_pack: callerPack },
   }), { code: "CORE_CONTEXT_PACK_BINDING_INVALID" });
   assert.equal(boundary.replay().context_packs.length, 0);
+});
+
+test("context preview rejects duplicate provenance keys before it writes lifecycle evidence", () => {
+  const variants = [
+    { name: "conflicting", duplicateHash: "f".repeat(64), reverse: false },
+    { name: "conflicting-reversed", duplicateHash: "f".repeat(64), reverse: true },
+    { name: "same", duplicateHash: null, reverse: false },
+    { name: "same-reversed", duplicateHash: null, reverse: true },
+  ];
+  const outcomes = variants.map((variant) => {
+    let duplicate = true;
+    const { boundary, store } = makeBoundary({
+      compileContextPack: (input) => ({
+        context_pack: duplicate
+          ? duplicateTaskIntentProvenance(input, variant.duplicateHash || canonicalHash(input.taskIntent), variant.reverse)
+          : trustedDraftContextPack(input).context_pack,
+      }),
+    });
+    boundary.execute({ command_id: `provenance-${variant.name}-intent`, name: "task-intent.create", payload: makeIntent() });
+    boundary.execute({ command_id: `provenance-${variant.name}-compile`, name: "capability.compile", payload: {} });
+    const need = boundary.replay().capability_graphs[0].needs[0];
+    boundary.execute({ command_id: `provenance-${variant.name}-proposal`, name: "resolution.propose", payload: { need_id: need.need_id, candidates: [], audit_facts: [] } });
+    const command = { command_id: `provenance-${variant.name}-preview`, name: "context-pack.preview", payload: {} };
+    const before = contextPackSnapshot(store, boundary);
+    let result;
+    let error;
+    try {
+      result = boundary.execute(command);
+    } catch (caught) {
+      error = caught;
+    }
+    const after = contextPackSnapshot(store, boundary);
+    duplicate = false;
+    let cleanResult;
+    let cleanError;
+    try {
+      cleanResult = boundary.execute(command);
+    } catch (caught) {
+      cleanError = caught;
+    }
+    return {
+      status: result && result.status,
+      code: error && error.code,
+      details: error && error.details,
+      before,
+      after,
+      clean_status: cleanResult && cleanResult.status,
+      clean_code: cleanError && cleanError.code,
+    };
+  });
+
+  assert.deepEqual(outcomes.map((outcome) => outcome.status), [undefined, undefined, undefined, undefined]);
+  assert.deepEqual(outcomes.map((outcome) => outcome.code), Array(4).fill("CORE_CONTEXT_PACK_BINDING_INVALID"));
+  assert.deepEqual(outcomes.map((outcome) => outcome.details), Array(4).fill({
+    reason: "provenance_duplicate",
+    kind: "task_intent",
+    source_ref: `task_intent:${createTaskIntent(makeIntent()).task_intent_id}`,
+  }));
+  for (const outcome of outcomes) {
+    assert.deepEqual(outcome.after, outcome.before);
+    assert.equal(outcome.clean_status, "committed");
+    assert.equal(outcome.clean_code, undefined);
+  }
 });
 
 test("callback mutation cannot alter the precomputed command identity or a fresh retry", () => {
