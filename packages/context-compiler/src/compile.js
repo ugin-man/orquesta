@@ -22,6 +22,17 @@ function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function deepFreeze(value, seen = new Set()) {
+  if (!value || typeof value !== "object" || seen.has(value)) return value;
+  seen.add(value);
+  for (const child of Object.values(value)) deepFreeze(child, seen);
+  return Object.freeze(value);
+}
+
 function assertInputContract(name, value) {
   try {
     return assertContract(name, value);
@@ -44,6 +55,9 @@ function normalizeReference(value) {
   }
   if (!candidate || /^[a-z][a-z0-9+.-]*:/i.test(candidate)) return null;
   const normalized = path.posix.normalize(candidate.replace(/\\/g, "/"));
+  if (normalized === ".." || normalized.startsWith("../")) {
+    throw contextError("CONTEXT_WORKSPACE_ESCAPE", "Context reference must not escape the workspace.", { source_ref: value });
+  }
   return normalized === "." ? null : normalized;
 }
 
@@ -109,13 +123,20 @@ function globMatches(reference, pattern) {
   return new RegExp(`^${expression}$`).test(reference);
 }
 
+function isInterfaceOrTestReference(reference) {
+  return reference.startsWith("interfaces/") || reference.startsWith("tests/");
+}
+
 function extractAcceptanceFiles(criteria) {
   const files = [];
   for (const criterion of criteria) {
     if (typeof criterion !== "string") continue;
-    for (const rawToken of criterion.match(/[^\s()[\]{}]+/g) || []) {
-      const token = rawToken.replace(/^["'`]+|["'`,.;:]+$/g, "");
-      if (token.includes("/") && /\.[A-Za-z0-9]+$/.test(token)) files.push(token);
+    if (/^\s*(?:do\s+not|don't|without|avoid)\b/i.test(criterion)) continue;
+    for (const match of criterion.matchAll(/\b(?:(do\s+not|don't|not|without|avoid)\s+)?(?:read|review|test|verify)\s+([^\s()[\]{}]+)/gi)) {
+      if (match[1]) continue;
+      const token = match[2].replace(/^["'`]+|["'`,.;:]+$/g, "");
+      const reference = normalizeReference(token);
+      if (reference && isInterfaceOrTestReference(reference)) files.push(reference);
     }
   }
   return sortUnique(files);
@@ -199,6 +220,21 @@ function contractProvenance(root, contract) {
   if (hash(fs.readFileSync(realPath)) !== metadata.source_hash) {
     throw contextError("CONTEXT_AGENT_CONTRACT_INVALID", "Agent contract changed after it was loaded.", { agents_path: relative });
   }
+  let document;
+  try {
+    document = JSON.parse(fs.readFileSync(realPath, "utf8"));
+  } catch (error) {
+    throw contextError("CONTEXT_AGENT_CONTRACT_INVALID", "Agent contract file is not readable JSON.", { agents_path: relative });
+  }
+  if (!isPlainObject(document) || !Array.isArray(document.agents)) {
+    throw contextError("CONTEXT_AGENT_CONTRACT_INVALID", "Agent contract file must contain an agents array.", { agents_path: relative });
+  }
+  const matches = document.agents.filter((agent) => isPlainObject(agent) && agent.agent_id === metadata.target_agent_id);
+  if (matches.length !== 1 || contract.agent_id !== metadata.target_agent_id
+    || canonicalHash(matches[0]) !== metadata.selected_object_hash
+    || canonicalHash(cloneJson(contract)) !== metadata.selected_object_hash) {
+    throw contextError("CONTEXT_AGENT_CONTRACT_INVALID", "Agent contract snapshot does not match the selected source contract.", { agents_path: relative });
+  }
   return {
     kind: "agent_contract",
     source_ref: relative,
@@ -207,14 +243,29 @@ function contractProvenance(root, contract) {
   };
 }
 
+function assertResolutionApprovalConsistency(resolutions) {
+  const contradictions = resolutions
+    .filter((resolution) => (resolution.status === "approved" && resolution.approval_status !== "approved")
+      || (resolution.status === "proposed" && resolution.approval_status !== "pending_user"))
+    .map((resolution) => ({
+      resolution_id: resolution.resolution_id,
+      status: resolution.status,
+      approval_status: resolution.approval_status,
+    }))
+    .sort((left, right) => compareText(`${left.resolution_id}:${left.status}:${left.approval_status}`, `${right.resolution_id}:${right.status}:${right.approval_status}`));
+  if (contradictions.length) {
+    throw contextError("CONTEXT_RESOLUTION_APPROVAL_CONTRADICTION", "Resolution status and approval evidence are inconsistent.", { resolutions: contradictions });
+  }
+}
+
 function compileContextPackV1({ taskIntent, resolutions, agentContract, workspaceRoot: workspaceRootInput, referenceTime } = {}) {
-  const intent = assertInputContract("task-intent", taskIntent);
+  const intent = cloneJson(assertInputContract("task-intent", taskIntent));
   if (intent.status === "superseded") {
     throw contextError("CONTEXT_INPUT_STALE", "Superseded TaskIntent cannot produce a Context Pack.", { task_intent_id: intent.task_intent_id });
   }
   if (!Array.isArray(resolutions)) throw contextError("CONTEXT_INPUT_INVALID", "Resolutions must be an array.");
   if (!resolutions.length) throw contextError("CONTEXT_RESOLUTION_REQUIRED", "At least one Resolution is required for a Context Pack.");
-  const checkedResolutions = resolutions.map((resolution) => assertInputContract("resolution", resolution));
+  const checkedResolutions = resolutions.map((resolution) => cloneJson(assertInputContract("resolution", resolution)));
   const duplicateResolutionIds = checkedResolutions
     .map((resolution) => resolution.resolution_id)
     .filter((resolutionId, index, all) => all.indexOf(resolutionId) !== index);
@@ -228,13 +279,17 @@ function compileContextPackV1({ taskIntent, resolutions, agentContract, workspac
   if (invalidResolutionStatuses.length) {
     throw contextError("CONTEXT_RESOLUTION_STATUS_INVALID", "Only proposed or approved Resolutions can produce a Context Pack.", { resolutions: invalidResolutionStatuses });
   }
+  assertResolutionApprovalConsistency(checkedResolutions);
   if (!isPlainObject(agentContract) || typeof agentContract.agent_id !== "string" || !agentContract.agent_id) {
     throw contextError("CONTEXT_AGENT_CONTRACT_INVALID", "Named agent contract is invalid.");
   }
   const root = workspaceRoot(workspaceRootInput);
   assertNotExpired(checkedResolutions, referenceTime);
 
-  const excluded = new Set((Array.isArray(agentContract.excluded_context) ? agentContract.excluded_context : [])
+  const agentProvenance = contractProvenance(root, agentContract);
+  const selectedAgent = cloneJson(agentContract);
+
+  const excluded = new Set((Array.isArray(selectedAgent.excluded_context) ? selectedAgent.excluded_context : [])
     .map((reference) => normalizeReference(reference))
     .filter(Boolean));
   const candidates = [];
@@ -247,8 +302,9 @@ function compileContextPackV1({ taskIntent, resolutions, agentContract, workspac
   for (const reference of extractAcceptanceFiles(intent.acceptance_criteria)) {
     candidates.push({ source_ref: reference, kind: "acceptance_file", task_owned: false });
   }
-  for (const reference of taskOwnedBaselines(agentContract)) {
-    candidates.push({ source_ref: reference, kind: "task_owned_baseline", task_owned: true });
+  for (const sourceRef of taskOwnedBaselines(selectedAgent)) {
+    const reference = normalizeReference(sourceRef);
+    if (reference) candidates.push({ source_ref: reference, kind: "task_owned_baseline", task_owned: true });
   }
 
   const byReference = new Map();
@@ -267,10 +323,10 @@ function compileContextPackV1({ taskIntent, resolutions, agentContract, workspac
       omitted.push({ source_ref: reference, reason: "excluded_by_agent_contract" });
       continue;
     }
-    const file = readWorkspaceFile(root, reference);
-    if (candidate.task_owned && !isAllowedTaskWrite(reference, agentContract.allowed_files)) {
+    if (candidate.task_owned && !isAllowedTaskWrite(reference, selectedAgent.allowed_files)) {
       throw contextError("CONTEXT_TASK_WRITE_OUTSIDE_ALLOWED_FILES", "Task-owned file is outside the agent's allowed files.", { source_ref: reference });
     }
+    const file = readWorkspaceFile(root, reference);
     included.push({ ...file, kinds: [...candidate.kinds].sort(compareText) });
   }
 
@@ -291,33 +347,38 @@ function compileContextPackV1({ taskIntent, resolutions, agentContract, workspac
     source_ref: file.source_ref,
     source_hash: file.source_hash,
   }))).sort((left, right) => compareText(`${left.kind}:${left.source_ref}`, `${right.kind}:${right.source_ref}`));
-  const provenance = [contractProvenance(root, agentContract), taskProvenance, ...resolutionProvenance, ...fileProvenance]
+  const provenance = [agentProvenance, taskProvenance, ...resolutionProvenance, ...fileProvenance]
     .sort((left, right) => compareText(`${left.kind}:${left.source_ref}`, `${right.kind}:${right.source_ref}`));
-  const acceptanceFiles = extractAcceptanceFiles(intent.acceptance_criteria);
   const content = {
     task_intent_id: intent.task_intent_id,
-    owner_agent_id: agentContract.agent_id,
+    owner_agent_id: selectedAgent.agent_id,
     objective: intent.desired_outcome,
-    acceptance_criteria: intent.acceptance_criteria,
+    acceptance_criteria: cloneJson(intent.acceptance_criteria),
     adopted_decisions: [],
     capability_resolutions: checkedResolutions.map((resolution) => resolution.resolution_id).sort(compareText),
     required_reading: included.map((file) => file.source_ref).sort(compareText),
     relevant_state_excerpts: [],
-    interfaces: acceptanceFiles.filter((reference) => reference.startsWith("interfaces/")).sort(compareText),
-    allowed_files: agentContract.allowed_files,
-    forbidden_actions: agentContract.forbidden_actions,
-    excluded_context: agentContract.excluded_context,
-    evidence_requirements: intent.acceptance_criteria,
+    interfaces: included
+      .filter((file) => file.kinds.includes("acceptance_file") && file.source_ref.startsWith("interfaces/"))
+      .map((file) => file.source_ref)
+      .sort(compareText),
+    allowed_files: cloneJson(selectedAgent.allowed_files),
+    forbidden_actions: cloneJson(selectedAgent.forbidden_actions),
+    excluded_context: cloneJson(selectedAgent.excluded_context),
+    evidence_requirements: cloneJson(intent.acceptance_criteria),
     provenance,
     token_budget: null,
     expires_at: null,
-    status: checkedResolutions.every((resolution) => resolution.status === "approved") ? "ready" : "draft",
+    status: intent.status === "approved" && checkedResolutions.every((resolution) => resolution.status === "approved" && resolution.approval_status === "approved") ? "ready" : "draft",
   };
   const contextPack = assertContract("context-pack", {
     context_pack_id: `CP-${canonicalHash(content).slice(0, 12)}`,
     ...content,
   });
-  return { context_pack: contextPack, omitted_context: omitted.sort((left, right) => compareText(left.source_ref, right.source_ref)) };
+  return deepFreeze({
+    context_pack: contextPack,
+    omitted_context: omitted.sort((left, right) => compareText(left.source_ref, right.source_ref)),
+  });
 }
 
 module.exports = { compileContextPackV1 };

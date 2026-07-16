@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { assertContract } = require("@orquesta/contracts");
+const { assertContract, canonicalHash } = require("@orquesta/contracts");
 const { compileContextPackV1, loadAgentContract } = require("../src");
 
 function removeTree(root) {
@@ -58,7 +58,7 @@ function resolution(overrides = {}) {
   };
 }
 
-function agentFixture() {
+function agentFixture(overrides = {}) {
   return {
     agent_id: "implementation-001",
     required_reading: [
@@ -69,10 +69,11 @@ function agentFixture() {
     allowed_files: ["baseline/**", "interfaces/**", "tests/**"],
     forbidden_actions: ["network", "intent_graph"],
     excluded_context: ["excluded/private.md"],
+    ...overrides,
   };
 }
 
-function fixtureRoot() {
+function fixtureRoot(contract = agentFixture()) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-context-compiler-"));
   writeFile(root, "providers/selected.js", "module.exports = 'selected';\n");
   writeFile(root, "evidence/decision.md", "approved evidence\n");
@@ -83,7 +84,7 @@ function fixtureRoot() {
   writeFile(root, "docs/irrelevant-specialist.md", "whole specialist history\n");
   const agentsPath = writeFile(root, ".orquesta/state/agents.json", JSON.stringify({
     agents: [
-      agentFixture(),
+      contract,
       { agent_id: "other-agent", private_notes: "must not enter the selected contract" },
     ],
   }, null, 2));
@@ -98,6 +99,11 @@ function containsOwnKey(value, key) {
   if (!value || typeof value !== "object") return false;
   if (Object.prototype.hasOwnProperty.call(value, key)) return true;
   return Object.values(value).some((entry) => containsOwnKey(entry, key));
+}
+
+function expectedContextPackId(contextPack) {
+  const { context_pack_id: ignored, ...content } = contextPack;
+  return `CP-${canonicalHash(content).slice(0, 12)}`;
 }
 
 test("loadAgentContract returns one named contract and records only its file provenance", () => {
@@ -213,11 +219,12 @@ test("compileContextPackV1 rejects explicit workspace escapes but ignores non-fi
 });
 
 test("compileContextPackV1 normalizes exclusions without changing the public agent contract", () => {
-  const fixture = fixtureRoot();
+  const fixture = fixtureRoot(agentFixture({
+    required_reading: [{ source_ref: "baseline/task-owned.md", tags: ["task-owned"] }],
+    excluded_context: ["providers/./selected.js#private"],
+  }));
   try {
     const agentContract = loadAgentContract({ agentsPath: fixture.agentsPath, agentId: "implementation-001" });
-    agentContract.required_reading = [{ source_ref: "baseline/task-owned.md", tags: ["task-owned"] }];
-    agentContract.excluded_context = ["providers/./selected.js#private"];
     const result = compileContextPackV1({
       taskIntent: taskIntent(),
       resolutions: [resolution({ evidence_refs: ["providers/selected.js"] })],
@@ -324,6 +331,10 @@ test("compileContextPackV1 rejects an agent contract symlink that resolves outsi
 
 test("compileContextPackV1 rejects unsafe references and task-owned writes before a pack is emitted", () => {
   const fixture = fixtureRoot();
+  const restrictedContract = agentFixture({
+    required_reading: [{ source_ref: "providers/selected.js", tags: ["task-owned"] }],
+    allowed_files: ["baseline/**"],
+  });
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-context-outside-"));
   try {
     const agentContract = loadAgentContract({ agentsPath: fixture.agentsPath, agentId: "implementation-001" });
@@ -345,9 +356,8 @@ test("compileContextPackV1 rejects unsafe references and task-owned writes befor
       agentContract,
       workspaceRoot: fixture.root,
     }), "CONTEXT_FILE_NOT_REGULAR");
-    const outsideContract = loadAgentContract({ agentsPath: fixture.agentsPath, agentId: "implementation-001" });
-    outsideContract.required_reading = [{ source_ref: "providers/selected.js", tags: ["task-owned"] }];
-    outsideContract.allowed_files = ["baseline/**"];
+    const restrictedAgentsPath = writeFile(fixture.root, ".orquesta/state/restricted-agents.json", JSON.stringify({ agents: [restrictedContract] }));
+    const outsideContract = loadAgentContract({ agentsPath: restrictedAgentsPath, agentId: "implementation-001" });
     expectCode(() => compileContextPackV1({
       taskIntent: taskIntent(),
       resolutions: [resolution()],
@@ -366,5 +376,177 @@ test("compileContextPackV1 rejects unsafe references and task-owned writes befor
   } finally {
     removeTree(fixture.root);
     removeTree(outside);
+  }
+});
+
+test("compileContextPackV1 applies the approval truth matrix before marking a pack ready", () => {
+  const fixture = fixtureRoot();
+  try {
+    const agentContract = loadAgentContract({ agentsPath: fixture.agentsPath, agentId: "implementation-001" });
+    for (const status of ["draft", "compiled"]) {
+      const result = compileContextPackV1({
+        taskIntent: taskIntent({ status }),
+        resolutions: [resolution()],
+        agentContract,
+        workspaceRoot: fixture.root,
+      });
+      assert.equal(result.context_pack.status, "draft");
+    }
+    const preview = compileContextPackV1({
+      taskIntent: taskIntent({ status: "approved" }),
+      resolutions: [resolution({ status: "proposed", approval_status: "pending_user" })],
+      agentContract,
+      workspaceRoot: fixture.root,
+    });
+    assert.equal(preview.context_pack.status, "draft");
+    const ready = compileContextPackV1({
+      taskIntent: taskIntent({ status: "approved" }),
+      resolutions: [resolution({ status: "approved", approval_status: "approved" })],
+      agentContract,
+      workspaceRoot: fixture.root,
+    });
+    assert.equal(ready.context_pack.status, "ready");
+  } finally {
+    removeTree(fixture.root);
+  }
+});
+
+test("compileContextPackV1 rejects contradictory Resolution approval evidence", () => {
+  const fixture = fixtureRoot();
+  try {
+    const agentContract = loadAgentContract({ agentsPath: fixture.agentsPath, agentId: "implementation-001" });
+    for (const [status, approvalStatus] of [
+      ["approved", "pending_user"],
+      ["approved", "not_required"],
+      ["proposed", "approved"],
+      ["proposed", "not_required"],
+    ]) {
+      expectCode(() => compileContextPackV1({
+        taskIntent: taskIntent({ status: "approved" }),
+        resolutions: [resolution({ status, approval_status: approvalStatus })],
+        agentContract,
+        workspaceRoot: fixture.root,
+      }), "CONTEXT_RESOLUTION_APPROVAL_CONTRADICTION");
+    }
+  } finally {
+    removeTree(fixture.root);
+  }
+});
+
+test("compileContextPackV1 includes only explicit canonical interface and test acceptance references", () => {
+  const fixture = fixtureRoot(agentFixture({
+    required_reading: [{ source_ref: "baseline/task-owned.md", tags: ["task-owned"] }],
+    excluded_context: ["interfaces/./private.js#private"],
+  }));
+  try {
+    writeFile(fixture.root, "interfaces/private.js", "module.exports = 'private';\n");
+    writeFile(fixture.root, "docs/irrelevant-specialist.md", "not an interface\n");
+    const agentContract = loadAgentContract({ agentsPath: fixture.agentsPath, agentId: "implementation-001" });
+    const result = compileContextPackV1({
+      taskIntent: taskIntent({
+        acceptance_criteria: [
+          "Read interfaces/api.js and test tests/api.test.js.",
+          "Review interfaces/./api.js#alias and verify tests\\api.test.js.",
+          "Read interfaces/./private.js.",
+          "Do not read docs/irrelevant-specialist.md.",
+          "Mention interfaces/private.js without a reading requirement.",
+        ],
+      }),
+      resolutions: [resolution({ evidence_refs: [] })],
+      agentContract,
+      workspaceRoot: fixture.root,
+    });
+    assert.deepEqual(result.context_pack.required_reading, [
+      "baseline/task-owned.md",
+      "interfaces/api.js",
+      "tests/api.test.js",
+    ]);
+    assert.deepEqual(result.context_pack.interfaces, ["interfaces/api.js"]);
+    assert.deepEqual(result.omitted_context, [{ source_ref: "interfaces/private.js", reason: "excluded_by_agent_contract" }]);
+    assert.equal(result.context_pack.provenance.filter((entry) => entry.kind === "acceptance_file" && entry.source_ref === "interfaces/api.js").length, 1);
+    assert.equal(result.context_pack.required_reading.includes("docs/irrelevant-specialist.md"), false);
+    assert.equal(result.context_pack.interfaces.includes("interfaces/private.js"), false);
+    assert.equal(result.context_pack.provenance.some((entry) => entry.source_ref === "interfaces/private.js"), false);
+
+    for (const sourceRef of ["C:\\outside\\test.js", "\\\\server\\share\\test.js"]) {
+      expectCode(() => compileContextPackV1({
+        taskIntent: taskIntent({ acceptance_criteria: [`Read ${sourceRef}.`] }),
+        resolutions: [resolution({ evidence_refs: [] })],
+        agentContract,
+        workspaceRoot: fixture.root,
+      }), "CONTEXT_WORKSPACE_ESCAPE");
+    }
+  } finally {
+    removeTree(fixture.root);
+  }
+});
+
+test("compileContextPackV1 ignores acceptance references in a negated clause", () => {
+  const fixture = fixtureRoot(agentFixture({
+    required_reading: [{ source_ref: "baseline/task-owned.md", tags: ["task-owned"] }],
+    excluded_context: [],
+  }));
+  try {
+    writeFile(fixture.root, "interfaces/private.js", "module.exports = 'private';\n");
+    const agentContract = loadAgentContract({ agentsPath: fixture.agentsPath, agentId: "implementation-001" });
+    const result = compileContextPackV1({
+      taskIntent: taskIntent({ acceptance_criteria: ["Verify tests/api.test.js; do not read interfaces/private.js."] }),
+      resolutions: [resolution({ evidence_refs: [] })],
+      agentContract,
+      workspaceRoot: fixture.root,
+    });
+    assert.deepEqual(result.context_pack.required_reading, ["baseline/task-owned.md", "tests/api.test.js"]);
+    assert.deepEqual(result.context_pack.interfaces, []);
+    assert.equal(result.context_pack.provenance.some((entry) => entry.source_ref === "interfaces/private.js"), false);
+  } finally {
+    removeTree(fixture.root);
+  }
+});
+
+test("loadAgentContract returns an immutable detached snapshot tied to its selected provenance", () => {
+  const fixture = fixtureRoot();
+  try {
+    const agentContract = loadAgentContract({ agentsPath: fixture.agentsPath, agentId: "implementation-001" });
+    assert.throws(() => { agentContract.agent_id = "other-agent"; }, TypeError);
+    assert.throws(() => { agentContract.allowed_files.push("**"); }, TypeError);
+    assert.throws(() => { agentContract.forbidden_actions.push("shell"); }, TypeError);
+    assert.throws(() => { agentContract.excluded_context.push("private.md"); }, TypeError);
+    assert.throws(() => { agentContract.required_reading[0].source_ref = "docs/changed.md"; }, TypeError);
+    const result = compileContextPackV1({
+      taskIntent: taskIntent(),
+      resolutions: [resolution()],
+      agentContract,
+      workspaceRoot: fixture.root,
+    });
+    assert.equal(result.context_pack.owner_agent_id, "implementation-001");
+    assert.equal(result.context_pack.provenance.find((entry) => entry.kind === "agent_contract").target_agent_id, "implementation-001");
+  } finally {
+    removeTree(fixture.root);
+  }
+});
+
+test("compileContextPackV1 detaches inputs and returns a deeply immutable identity-stable result", () => {
+  const fixture = fixtureRoot();
+  try {
+    const inputIntent = taskIntent();
+    const inputResolution = resolution();
+    const agentContract = loadAgentContract({ agentsPath: fixture.agentsPath, agentId: "implementation-001" });
+    const result = compileContextPackV1({
+      taskIntent: inputIntent,
+      resolutions: [inputResolution],
+      agentContract,
+      workspaceRoot: fixture.root,
+    });
+    const before = JSON.parse(JSON.stringify(result));
+    inputIntent.acceptance_criteria.push("Read interfaces/private.js.");
+    inputResolution.evidence_refs.push("interfaces/private.js");
+    assert.deepEqual(result, before);
+    assert.throws(() => { result.context_pack.acceptance_criteria.push("Read other.js."); }, TypeError);
+    assert.throws(() => { result.context_pack.provenance[0].source_ref = "changed"; }, TypeError);
+    assert.throws(() => { result.omitted_context.push({ source_ref: "other", reason: "changed" }); }, TypeError);
+    assert.equal(result.context_pack.context_pack_id, expectedContextPackId(result.context_pack));
+    assert.deepEqual(result, before);
+  } finally {
+    removeTree(fixture.root);
   }
 });
