@@ -169,11 +169,56 @@ function prepareLocalProposal(initialProvider = localProvider("local-reuse")) {
 
 test("command boundary exposes only the approved Task 9 command names", () => {
   assert.deepEqual([...COMMAND_NAMES], [
-    "task-intent.create", "capability.compile", "inventory.refresh-local", "resolution.propose",
+    "task-intent.create", "capability.compile", "execution-plan.create", "execution-plan.escalate", "inventory.refresh-local", "resolution.propose",
     "resolution.approve", "context-pack.preview", "phase-review.request", "phase-review.decide",
   ]);
   const { boundary } = makeBoundary();
   assert.throws(() => boundary.execute({ command_id: "bad", name: "network.install", payload: {} }), { code: "CORE_COMMAND_UNKNOWN" });
+});
+
+test("Execution Plan commands require lifecycle evidence, journal once, replay, and escalate the current plan", () => {
+  const before = makeBoundary();
+  assert.throws(() => before.boundary.execute({
+    command_id: "plan-before-intent", name: "execution-plan.create", payload: { risk_profile: { scope: "multiple_boundaries" } }
+  }), { code: "CORE_TASK_INTENT_REQUIRED" });
+  assert.throws(() => before.boundary.execute({
+    command_id: "plan-before-current", name: "execution-plan.escalate", payload: { trigger: "scope_drift" }
+  }), { code: "CORE_EXECUTION_PLAN_REQUIRED" });
+
+  const { boundary, stateRoot } = makeBoundary();
+  boundary.execute({ command_id: "plan-intent", name: "task-intent.create", payload: makeIntent() });
+  assert.throws(() => boundary.execute({
+    command_id: "plan-before-graph", name: "execution-plan.create", payload: { risk_profile: { scope: "multiple_boundaries" } }
+  }), { code: "CORE_CAPABILITY_GRAPH_REQUIRED" });
+  boundary.execute({ command_id: "plan-graph", name: "capability.compile", payload: {} });
+
+  const create = {
+    command_id: "execution-plan-create",
+    name: "execution-plan.create",
+    payload: {
+      risk_profile: {
+        reversibility: "easy", scope: "single_boundary", verification: "deterministic", uncertainty: "low",
+        effects: ["workspace_write"], repeated_failures: 0, user_review: "default"
+      }
+    }
+  };
+  assert.equal(boundary.execute(create).status, "committed");
+  assert.equal(boundary.execute(create).status, "idempotent");
+  const first = boundary.replay();
+  assert.equal(first.execution_plans.length, 1);
+  assert.equal(first.current_execution_plan_id, first.execution_plans[0].execution_plan_id);
+  const batch = JSON.parse(fs.readFileSync(path.join(stateRoot, "events.jsonl"), "utf8").trim().split("\n").at(-1));
+  assert.deepEqual(batch.events.map((event) => event.type), ["execution.plan.created"]);
+
+  const escalation = boundary.execute({
+    command_id: "execution-plan-escalate", name: "execution-plan.escalate", payload: { trigger: "scope_drift" }
+  });
+  assert.equal(escalation.status, "committed");
+  const second = boundary.replay();
+  const current = second.execution_plans.find((plan) => plan.execution_plan_id === second.current_execution_plan_id);
+  assert.equal(current.lane, "standard");
+  assert.equal(current.revision, 2);
+  assert.equal(current.supersedes_execution_plan_id, first.execution_plans[0].execution_plan_id);
 });
 
 test("a command commits one EventStore batch and command identity is idempotent only for its canonical payload", () => {

@@ -14,7 +14,8 @@ function initialProjection() {
   return {
     task_intents: [], current_task_intent_id: null, capability_graphs: [], current_capability_graph_id: null,
     providers: [], inventory: null, candidate_evaluations: [], resolutions: [], artifacts: [], latest_resolution_by_need: {}, resolution_bindings: {},
-    context_packs: [], current_context_pack_id: null, current_context_pack_sequence: null, phase_reviews: [], timeline: [],
+    context_packs: [], current_context_pack_id: null, current_context_pack_sequence: null,
+    execution_plans: [], current_execution_plan_id: null, phase_reviews: [], timeline: [],
   };
 }
 
@@ -60,6 +61,11 @@ function createProjectors() {
       ...state,
       capability_graphs: replaceById(state.capability_graphs, event.payload.graph, "graph_id"),
       current_capability_graph_id: event.payload.graph.graph_id,
+    })),
+    "execution.plan.created": withTimeline((state, event) => ({
+      ...state,
+      execution_plans: replaceById(state.execution_plans, event.payload.execution_plan, "execution_plan_id"),
+      current_execution_plan_id: event.payload.execution_plan.execution_plan_id,
     })),
     "capability.provider.discovered": withTimeline((state, event) => ({
       ...state,

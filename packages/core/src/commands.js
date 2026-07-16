@@ -7,9 +7,10 @@ const { compileCapabilities } = require("@orquesta/capability-compiler");
 const { resolveNeed } = require("@orquesta/capability-resolver");
 const { createPhaseReview, decidePhaseReview, redactAttestation, resolutionApprovalTarget } = require("./phase-review");
 const { createProjectors, initialProjection } = require("./projectors");
+const { createExecutionPlan, escalateExecutionPlan } = require("./execution-policy");
 
 const COMMAND_NAMES = Object.freeze([
-  "task-intent.create", "capability.compile", "inventory.refresh-local", "resolution.propose",
+  "task-intent.create", "capability.compile", "execution-plan.create", "execution-plan.escalate", "inventory.refresh-local", "resolution.propose",
   "resolution.approve", "context-pack.preview", "phase-review.request", "phase-review.decide",
 ]);
 
@@ -320,6 +321,26 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
         ...graph.needs.map((need) => ({ type: "capability.need.declared", payload: { need, responsibility: "orchestrator" }, evidence_refs: [] })),
         { type: "capability.graph.compiled", payload: { graph, responsibility: "orchestrator" }, evidence_refs: [] },
       ], undefined, replayed);
+    }
+    if (command.name === "execution-plan.create") {
+      const taskIntent = currentIntent(state);
+      currentGraph(state);
+      const execution_plan = createExecutionPlan({ taskIntent: clone(taskIntent), riskProfile: clone(command.payload.risk_profile) });
+      return commit(command, identity, {
+        type: "execution.plan.created",
+        payload: { execution_plan, responsibility: "orchestrator" },
+        evidence_refs: [`task_intent:${taskIntent.task_intent_id}`, `capability_graph:${state.current_capability_graph_id}`]
+      }, undefined, replayed);
+    }
+    if (command.name === "execution-plan.escalate") {
+      const current = state.execution_plans.find((plan) => plan.execution_plan_id === state.current_execution_plan_id);
+      if (!current) throw coreError("CORE_EXECUTION_PLAN_REQUIRED", "An Execution Plan must exist before escalation.");
+      const execution_plan = escalateExecutionPlan({ executionPlan: clone(current), trigger: command.payload.trigger });
+      return commit(command, identity, {
+        type: "execution.plan.created",
+        payload: { execution_plan, previous_execution_plan_id: current.execution_plan_id, responsibility: "orchestrator" },
+        evidence_refs: [`execution_plan:${current.execution_plan_id}`]
+      }, undefined, replayed);
     }
     if (command.name === "inventory.refresh-local") {
       if (typeof collectInventory !== "function") throw coreError("CORE_INVENTORY_UNAVAILABLE", "Local inventory collector is not configured.");
