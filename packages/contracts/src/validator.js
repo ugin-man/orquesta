@@ -19,7 +19,8 @@ const SCHEMA_NAMES = [
   "context-pack",
   "event-batch",
   "phase-review",
-  "approval-attestation"
+  "approval-attestation",
+  "execution-plan"
 ];
 const defaultSchemasDir = path.resolve(__dirname, "../schemas");
 
@@ -224,6 +225,50 @@ function phaseReviewErrors(value) {
   return errors;
 }
 
+const EXECUTION_BUDGETS = {
+  fast: { max_handoffs: 0, max_independent_reviews: 0, max_correction_batches: 1, max_reports: 0, max_auxiliary_tasks: 0 },
+  standard: { max_handoffs: 2, max_independent_reviews: 1, max_correction_batches: 1, max_reports: 1, max_auxiliary_tasks: 0 },
+  critical: { max_handoffs: 4, max_independent_reviews: 2, max_correction_batches: 2, max_reports: 2, max_auxiliary_tasks: 0 }
+};
+
+function sortedUnique(values) {
+  return Array.isArray(values) && values.every((value, index) => (
+    typeof value === "string" && (index === 0 || codeUnitCompare(values[index - 1], value) < 0)
+  ));
+}
+
+function executionPlanErrors(value) {
+  if (!isPlainObject(value)) return [];
+  const errors = [];
+  if (!sortedUnique(value.reason_codes)) {
+    errors.push(schemaError("$.reason_codes", "sorted_unique", "must be sorted with no duplicate entries"));
+  }
+  if (isPlainObject(value.risk_profile) && !sortedUnique(value.risk_profile.effects)) {
+    errors.push(schemaError("$.risk_profile.effects", "sorted_unique", "must be sorted with no duplicate entries"));
+  }
+  if (!sortedUnique(value.escalation_triggers)) {
+    errors.push(schemaError("$.escalation_triggers", "sorted_unique", "must be sorted with no duplicate entries"));
+  }
+  if (Object.prototype.hasOwnProperty.call(EXECUTION_BUDGETS, value.lane)
+    && !isDeepStrictEqual(value.budget, EXECUTION_BUDGETS[value.lane])) {
+    errors.push(schemaError("$.budget", "execution_budget", "must match the lane budget"));
+  }
+  const expectedRouting = value.lane === "fast"
+    ? { routing_class: "inline_verified", handoff_required: false, specialist_report_required: false }
+    : { routing_class: "specialist_required", handoff_required: true, specialist_report_required: true };
+  if (["fast", "standard", "critical"].includes(value.lane)
+    && !isDeepStrictEqual(value.routing, expectedRouting)) {
+    errors.push(schemaError("$.routing", "execution_routing", "must match the lane routing policy"));
+  }
+  const expectedReviewPolicy = value.lane === "fast" ? "none"
+    : value.lane === "standard" ? "independent_once"
+      : value.lane === "critical" ? "independent_twice" : null;
+  if (expectedReviewPolicy && value.review_policy !== expectedReviewPolicy) {
+    errors.push(schemaError("$.review_policy", "execution_review_policy", "must match the lane review policy"));
+  }
+  return errors;
+}
+
 function codeUnitCompare(left, right) {
   if (left < right) return -1;
   if (left > right) return 1;
@@ -247,6 +292,7 @@ function validateContract(name, value, options = {}) {
     errors.push(...timestampFieldErrors(value, ["review_requested_at", "reviewed_at"]));
     errors.push(...phaseReviewErrors(value));
   }
+  if (name === "execution-plan") errors.push(...executionPlanErrors(value));
   return { ok: errors.length === 0, errors: sortErrors(errors) };
 }
 

@@ -1,0 +1,53 @@
+{
+  "$id": "execution-plan",
+  "type": "object",
+  "required": ["execution_plan_id", "task_intent_id", "policy_version", "lane", "risk_profile", "reason_codes", "routing", "budget", "review_policy", "escalation_triggers", "revision", "supersedes_execution_plan_id"],
+  "properties": {
+    "execution_plan_id": { "type": "string", "pattern": "^EP-[a-f0-9]{12}$" },
+    "task_intent_id": { "type": "string", "pattern": "^TI-[a-f0-9]{12}$" },
+    "policy_version": { "const": 1 },
+    "lane": { "enum": ["fast", "standard", "critical"] },
+    "risk_profile": {
+      "type": "object",
+      "required": ["reversibility", "scope", "verification", "uncertainty", "effects", "repeated_failures", "user_review"],
+      "properties": {
+        "reversibility": { "enum": ["easy", "costly", "irreversible"] },
+        "scope": { "enum": ["single_boundary", "multiple_boundaries"] },
+        "verification": { "enum": ["deterministic", "mixed", "human_only"] },
+        "uncertainty": { "enum": ["low", "medium", "high"] },
+        "effects": { "type": "array", "minItems": 1, "items": { "enum": ["local_read", "workspace_write", "dependency_change", "network_access", "external_write", "public_release", "credential_access", "payment", "destructive_operation", "data_migration", "security_boundary"] } },
+        "repeated_failures": { "type": "integer", "minimum": 0 },
+        "user_review": { "enum": ["default", "strict"] }
+      },
+      "additionalProperties": false
+    },
+    "reason_codes": { "type": "array", "items": { "type": "string", "pattern": ".+" } },
+    "routing": {
+      "type": "object",
+      "required": ["routing_class", "handoff_required", "specialist_report_required"],
+      "properties": {
+        "routing_class": { "enum": ["inline_verified", "specialist_required"] },
+        "handoff_required": { "type": "boolean" },
+        "specialist_report_required": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "budget": {
+      "type": "object",
+      "required": ["max_handoffs", "max_independent_reviews", "max_correction_batches", "max_reports", "max_auxiliary_tasks"],
+      "properties": {
+        "max_handoffs": { "type": "integer", "minimum": 0 },
+        "max_independent_reviews": { "type": "integer", "minimum": 0 },
+        "max_correction_batches": { "type": "integer", "minimum": 0 },
+        "max_reports": { "type": "integer", "minimum": 0 },
+        "max_auxiliary_tasks": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "review_policy": { "enum": ["none", "independent_once", "independent_twice"] },
+    "escalation_triggers": { "type": "array", "minItems": 1, "items": { "enum": ["budget_exhausted", "critical_risk_discovered", "scope_drift", "semantic_finding_not_machine_verifiable"] } },
+    "revision": { "type": "integer", "minimum": 1 },
+    "supersedes_execution_plan_id": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^EP-[a-f0-9]{12}$" }] }
+  },
+  "additionalProperties": false
+}

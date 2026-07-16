@@ -186,6 +186,44 @@ const approvalAttestation = {
   identity_assurance: "local_interaction_unverified_identity"
 };
 
+const executionPlan = {
+  execution_plan_id: "EP-06b6cf27e77f",
+  task_intent_id: "TI-4c2eea2b9e6d",
+  policy_version: 1,
+  lane: "standard",
+  risk_profile: {
+    reversibility: "easy",
+    scope: "multiple_boundaries",
+    verification: "deterministic",
+    uncertainty: "low",
+    effects: ["workspace_write"],
+    repeated_failures: 0,
+    user_review: "default"
+  },
+  reason_codes: ["multiple_boundaries"],
+  routing: {
+    routing_class: "specialist_required",
+    handoff_required: true,
+    specialist_report_required: true
+  },
+  budget: {
+    max_handoffs: 2,
+    max_independent_reviews: 1,
+    max_correction_batches: 1,
+    max_reports: 1,
+    max_auxiliary_tasks: 0
+  },
+  review_policy: "independent_once",
+  escalation_triggers: [
+    "budget_exhausted",
+    "critical_risk_discovered",
+    "scope_drift",
+    "semantic_finding_not_machine_verifiable"
+  ],
+  revision: 1,
+  supersedes_execution_plan_id: null
+};
+
 const fixtures = {
   "task-intent": [taskIntent, (value) => { value.acceptance_criteria = []; }],
   "capability-need": [capabilityNeed, (value) => { value.kind = "unknown"; }],
@@ -196,7 +234,8 @@ const fixtures = {
   "context-pack": [contextPack, (value) => { value.status = "published"; }],
   "event-batch": [eventBatch, (value) => { value.events = []; }],
   "phase-review": [phaseReview, (value) => { value.status = "ready_for_user_review"; }],
-  "approval-attestation": [approvalAttestation, (value) => { value.actor = { type: "user" }; }]
+  "approval-attestation": [approvalAttestation, (value) => { value.actor = { type: "user" }; }],
+  "execution-plan": [executionPlan, (value) => { value.lane = "unknown"; }]
 };
 
 test("public contract surface is stable", () => {
@@ -218,6 +257,19 @@ test("every approved schema accepts its fixture and rejects a meaningful invalid
     const invalid = clone(valid);
     mutate(invalid);
     assert.equal(validateContract(schemaName, invalid).ok, false, schemaName);
+  }
+});
+
+test("Execution Plan rejects unbound identity, noncanonical effects, and altered lane budgets", () => {
+  for (const mutate of [
+    (value) => { value.task_intent_id = "unbound"; },
+    (value) => { value.risk_profile.effects = ["workspace_write", "workspace_write"]; },
+    (value) => { value.risk_profile.effects = ["unknown_effect"]; },
+    (value) => { value.budget.max_reports = 2; }
+  ]) {
+    const invalid = clone(executionPlan);
+    mutate(invalid);
+    assert.equal(validateContract("execution-plan", invalid).ok, false);
   }
 });
 
