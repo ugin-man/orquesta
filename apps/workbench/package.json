@@ -4,7 +4,8 @@
   "private": true,
   "main": "src/index.js",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "start": "node server.js --feature v4"
   },
   "dependencies": {
     "@orquesta/core": "*",
