@@ -13,8 +13,8 @@ function compareText(left, right) {
 function initialProjection() {
   return {
     task_intents: [], current_task_intent_id: null, capability_graphs: [], current_capability_graph_id: null,
-    providers: [], inventory: null, candidate_evaluations: [], resolutions: [], artifacts: [], latest_resolution_by_need: {},
-    context_packs: [], phase_reviews: [], timeline: [],
+    providers: [], inventory: null, candidate_evaluations: [], resolutions: [], artifacts: [], latest_resolution_by_need: {}, resolution_bindings: {},
+    context_packs: [], current_context_pack_id: null, current_context_pack_sequence: null, phase_reviews: [], timeline: [],
   };
 }
 
@@ -34,7 +34,9 @@ function timeline(state, event, batch) {
       event_id: event.event_id,
       type: event.type,
       actor: clone(batch.actor),
-      responsibility: event.payload.responsibility || "orchestrator",
+      responsibility: event.payload && typeof event.payload.responsibility === "string" && event.payload.responsibility
+        ? event.payload.responsibility
+        : "unattributed",
       command_identity: event.payload.command_identity ? clone(event.payload.command_identity) : null,
       scout_skip_reason: event.payload.scout_skip_reason || null,
       evidence_refs: [...event.evidence_refs],
@@ -81,6 +83,10 @@ function createProjectors() {
     "resolution.proposed": withTimeline((state, event, batch) => ({
       ...state,
       resolutions: replaceById(state.resolutions, event.payload.resolution, "resolution_id"),
+      resolution_bindings: {
+        ...state.resolution_bindings,
+        [event.payload.resolution.resolution_id]: event.payload.proposal_binding ? clone(event.payload.proposal_binding) : null,
+      },
       latest_resolution_by_need: {
         ...state.latest_resolution_by_need,
         [event.payload.resolution.need_id]: { resolution_id: event.payload.resolution.resolution_id, sequence: batch.sequence },
@@ -92,9 +98,11 @@ function createProjectors() {
         ? { ...resolution, status: "approved", approval_status: "approved", reevaluate_when: [...resolution.reevaluate_when] }
         : resolution),
     })),
-    "context.pack.created": withTimeline((state, event) => ({
+    "context.pack.created": withTimeline((state, event, batch) => ({
       ...state,
       context_packs: replaceById(state.context_packs, event.payload.context_pack, "context_pack_id"),
+      current_context_pack_id: event.payload.context_pack.context_pack_id,
+      current_context_pack_sequence: batch.sequence,
     })),
     "artifact.produced": withTimeline((state, event) => ({
       ...state,

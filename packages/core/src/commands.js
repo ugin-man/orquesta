@@ -1,6 +1,6 @@
 "use strict";
 
-const { assertContract, canonicalHash } = require("@orquesta/contracts");
+const { assertContract, canonicalJson, canonicalHash } = require("@orquesta/contracts");
 const { RESPONSIBILITY } = require("@orquesta/audit");
 const { createTaskIntent } = require("./task-intent");
 const { compileCapabilities } = require("@orquesta/capability-compiler");
@@ -21,7 +21,15 @@ function coreError(code, message, details) {
 }
 
 function clone(value) {
+  if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
+}
+
+function deepFreeze(value, seen = new Set()) {
+  if (!value || typeof value !== "object" || seen.has(value)) return value;
+  seen.add(value);
+  for (const child of Object.values(value)) deepFreeze(child, seen);
+  return Object.freeze(value);
 }
 
 function compareText(left, right) {
@@ -38,6 +46,132 @@ function commandIdentity(command) {
   } catch {
     throw coreError("CORE_COMMAND_INVALID", "Command payload cannot be canonicalized.");
   }
+}
+
+function snapshotCommand(command) {
+  try {
+    const snapshot = JSON.parse(canonicalJson({
+      command_id: command.command_id,
+      name: command.name,
+      payload: command.payload,
+    }));
+    if (typeof snapshot.command_id !== "string" || !snapshot.command_id
+      || typeof snapshot.name !== "string" || !snapshot.name
+      || !Object.prototype.hasOwnProperty.call(snapshot, "payload")) {
+      throw coreError("CORE_COMMAND_INVALID", "Command requires command_id, name, and payload.");
+    }
+    return deepFreeze(snapshot);
+  } catch {
+    throw coreError("CORE_COMMAND_INVALID", "Command cannot be canonicalized.");
+  }
+}
+
+function safeProviderFingerprint(provider) {
+  return canonicalHash({
+    provider_id: provider.provider_id || null,
+    provider_type: provider.provider_type || null,
+    source_uri: provider.source_uri || null,
+    source_type: provider.source_type || null,
+    capabilities: Array.isArray(provider.capabilities) ? [...provider.capabilities].sort(compareText) : [],
+    trust_tier: provider.trust_tier || null,
+    availability: provider.availability || null,
+    version: provider.version || null,
+    last_verified_at: provider.last_verified_at || null,
+    provider_hash: provider.provider_hash || null,
+    evidence_refs: Array.isArray(provider.evidence_refs) ? [...provider.evidence_refs].sort(compareText) : [],
+  });
+}
+
+function proposalBinding(state, proposal) {
+  const candidates = [...proposal.ranked_candidates, ...proposal.rejected_candidates];
+  const candidateEvaluations = candidates
+    .filter((candidate) => candidate && candidate.evaluation && typeof candidate.evaluation.evaluation_id === "string")
+    .map((candidate) => ({
+      evaluation_id: candidate.evaluation.evaluation_id,
+      evaluation_hash: canonicalHash(candidate.evaluation),
+    }))
+    .sort((left, right) => compareText(left.evaluation_id, right.evaluation_id));
+  const selected = candidates.find((candidate) => candidate && candidate.candidate_id === proposal.resolution.selected_provider_id) || null;
+  const provider = selected && state.providers.find((item) => item.provider_id === selected.candidate_id);
+  return {
+    inventory_id: state.inventory && typeof state.inventory.inventory_id === "string" ? state.inventory.inventory_id : null,
+    candidate_evaluations: candidateEvaluations,
+    selected_evaluation_id: selected && selected.evaluation ? selected.evaluation.evaluation_id : null,
+    selected_evaluation_hash: selected && selected.evaluation ? canonicalHash(selected.evaluation) : null,
+    selected_provider_id: proposal.resolution.selected_provider_id,
+    selected_provider_fingerprint: provider ? safeProviderFingerprint(provider) : null,
+  };
+}
+
+function staleResolution(details) {
+  throw coreError("CORE_RESOLUTION_STALE", "Resolution evidence no longer matches the current proposal or inventory.", details);
+}
+
+function assertCurrentProposalEvidence(state, resolution) {
+  if (!resolution.selected_provider_id) return;
+  const binding = state.resolution_bindings && state.resolution_bindings[resolution.resolution_id];
+  if (!binding || binding.selected_provider_id !== resolution.selected_provider_id
+    || typeof binding.selected_evaluation_id !== "string" || typeof binding.selected_evaluation_hash !== "string") {
+    staleResolution({ resolution_id: resolution.resolution_id, reason: "proposal_binding_missing" });
+  }
+  const evaluation = state.candidate_evaluations.find((item) => item.evaluation_id === binding.selected_evaluation_id);
+  const listed = Array.isArray(binding.candidate_evaluations)
+    && binding.candidate_evaluations.some((item) => item.evaluation_id === binding.selected_evaluation_id
+      && item.evaluation_hash === binding.selected_evaluation_hash);
+  if (!listed || !evaluation || evaluation.need_id !== resolution.need_id
+    || evaluation.candidate_id !== resolution.selected_provider_id || evaluation.eligibility !== "eligible"
+    || canonicalHash(evaluation) !== binding.selected_evaluation_hash) {
+    staleResolution({ resolution_id: resolution.resolution_id, reason: "candidate_evaluation_changed" });
+  }
+  if (resolution.mode === "build") return;
+  const provider = state.providers.find((item) => item.provider_id === resolution.selected_provider_id);
+  if (!state.inventory || state.inventory.inventory_id !== binding.inventory_id || !provider
+    || safeProviderFingerprint(provider) !== binding.selected_provider_fingerprint) {
+    staleResolution({ resolution_id: resolution.resolution_id, reason: "inventory_provider_changed" });
+  }
+}
+
+function contextPackBindingError(details) {
+  throw coreError("CORE_CONTEXT_PACK_BINDING_INVALID", "Context Pack does not bind the current lifecycle inputs.", details);
+}
+
+function assertCompiledContextPack(compiled, taskIntent, resolutions) {
+  const candidate = compiled && compiled.context_pack ? compiled.context_pack : compiled;
+  let contextPack;
+  try {
+    contextPack = clone(assertContract("context-pack", candidate));
+  } catch {
+    throw coreError("CORE_CONTEXT_PACK_INVALID", "Context Compiler must return a schema-valid Context Pack.");
+  }
+  if (contextPack.status !== "draft") {
+    throw coreError("CORE_CONTEXT_PACK_NOT_DRAFT", "Only a draft Context Pack may be previewed before approval.");
+  }
+  const content = clone(contextPack);
+  delete content.context_pack_id;
+  if (contextPack.context_pack_id !== `CP-${canonicalHash(content).slice(0, 12)}`) {
+    contextPackBindingError({ reason: "context_pack_id" });
+  }
+  const expectedResolutionIds = resolutions.map((resolution) => resolution.resolution_id).sort(compareText);
+  const actualResolutionIds = [...contextPack.capability_resolutions].sort(compareText);
+  if (contextPack.task_intent_id !== taskIntent.task_intent_id
+    || actualResolutionIds.length !== expectedResolutionIds.length
+    || actualResolutionIds.some((resolutionId, index) => resolutionId !== expectedResolutionIds[index])) {
+    contextPackBindingError({ reason: "current_lifecycle_inputs" });
+  }
+  const requiredProvenance = [
+    { kind: "task_intent", source_ref: `task_intent:${taskIntent.task_intent_id}`, source_hash: canonicalHash(taskIntent) },
+    ...resolutions.map((resolution) => ({
+      kind: "capability_resolution",
+      source_ref: `resolution:${resolution.resolution_id}`,
+      source_hash: canonicalHash(resolution),
+    })),
+  ];
+  for (const required of requiredProvenance) {
+    const matches = contextPack.provenance.filter((item) => item && item.kind === required.kind
+      && item.source_ref === required.source_ref && item.source_hash === required.source_hash);
+    if (matches.length !== 1) contextPackBindingError({ reason: "provenance", source_ref: required.source_ref });
+  }
+  return contextPack;
 }
 
 function cleanInventory(inventory) {
@@ -84,7 +218,7 @@ function assertVerifiedAttestation(verified, target) {
   }
 }
 
-function createCommandBoundary({ eventStore, rules, collectInventory, verifyUserApproval, referenceTime } = {}) {
+function createCommandBoundary({ eventStore, rules, collectInventory, verifyUserApproval, compileContextPack, referenceTime } = {}) {
   if (!eventStore || typeof eventStore.commit !== "function" || typeof eventStore.replay !== "function") {
     throw new TypeError("An EventStore is required.");
   }
@@ -102,13 +236,10 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
     }
     return revision;
   }
-  function commit(command, eventRecords, actor = { type: "system", id: "orquesta-core" }, replayed = replayResult()) {
-    const state = replayed.state;
-    const existing = state.timeline.find((entry) => entry.batch_id === command.command_id);
-    const identity = commandIdentity(command);
+  function commit(command, identity, eventRecords, actor = { type: "system", id: "orquesta-core" }, replayed = replayResult()) {
     const events = (Array.isArray(eventRecords) ? eventRecords : [eventRecords]).map((record) => ({
       ...record,
-      payload: { ...record.payload, command_identity: identity },
+      payload: { ...record.payload, command_identity: clone(identity) },
     }));
     const request = {
       expected_revision: currentRevision(replayed),
@@ -127,11 +258,28 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
     if (!intent) throw coreError("CORE_TASK_INTENT_REQUIRED", "A TaskIntent must exist before this command.");
     return intent;
   }
-  function execute(command) {
-    if (!command || typeof command !== "object" || typeof command.command_id !== "string" || !command.command_id
-      || typeof command.name !== "string" || !Object.prototype.hasOwnProperty.call(command, "payload")) {
+  function currentGraph(state) {
+    const graph = state.capability_graphs.find((item) => item.graph_id === state.current_capability_graph_id);
+    if (!graph) throw coreError("CORE_CAPABILITY_GRAPH_REQUIRED", "A Capability Graph must exist before this command.");
+    return graph;
+  }
+  function currentResolutions(state) {
+    const graph = currentGraph(state);
+    const currentIds = graph.needs
+      .map((need) => state.latest_resolution_by_need[need.need_id] && state.latest_resolution_by_need[need.need_id].resolution_id)
+      .filter(Boolean)
+      .sort(compareText);
+    return currentIds.map((resolutionId) => {
+      const resolution = state.resolutions.find((item) => item.resolution_id === resolutionId);
+      if (!resolution) throw coreError("CORE_CONTEXT_RESOLUTION_REQUIRED", "Current Resolution evidence is unavailable.", { resolution_id: resolutionId });
+      return resolution;
+    });
+  }
+  function execute(input) {
+    if (!input || typeof input !== "object" || !Object.prototype.hasOwnProperty.call(input, "payload")) {
       throw coreError("CORE_COMMAND_INVALID", "Command requires command_id, name, and payload.");
     }
+    const command = snapshotCommand(input);
     if (!COMMAND_NAMES.includes(command.name)) throw coreError("CORE_COMMAND_UNKNOWN", "Command is not part of the Phase 1 Core boundary.", { name: command.name });
     const replayed = replayResult();
     const state = replayed.state;
@@ -144,19 +292,19 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
       throw coreError("CORE_COMMAND_ID_CONFLICT", "Command ID was already used with different immutable content.", { command_id: command.command_id });
     }
     if (command.name === "task-intent.create") {
-      const task_intent = createTaskIntent(command.payload);
-      return commit(command, { type: "task.intent.created", payload: { task_intent, responsibility: "orchestrator" }, evidence_refs: [task_intent.raw_request_ref] }, undefined, replayed);
+      const task_intent = createTaskIntent(clone(command.payload));
+      return commit(command, identity, { type: "task.intent.created", payload: { task_intent, responsibility: "orchestrator" }, evidence_refs: [task_intent.raw_request_ref] }, undefined, replayed);
     }
     if (command.name === "capability.compile") {
-      const graph = compileCapabilities({ taskIntent: currentIntent(state), rules });
-      return commit(command, [
+      const graph = compileCapabilities({ taskIntent: clone(currentIntent(state)), rules });
+      return commit(command, identity, [
         ...graph.needs.map((need) => ({ type: "capability.need.declared", payload: { need, responsibility: "orchestrator" }, evidence_refs: [] })),
         { type: "capability.graph.compiled", payload: { graph, responsibility: "orchestrator" }, evidence_refs: [] },
       ], undefined, replayed);
     }
     if (command.name === "inventory.refresh-local") {
       if (typeof collectInventory !== "function") throw coreError("CORE_INVENTORY_UNAVAILABLE", "Local inventory collector is not configured.");
-      const inventory = cleanInventory(collectInventory(command.payload));
+      const inventory = cleanInventory(collectInventory(clone(command.payload)));
       const events = inventory.providers.map((provider) => ({ type: "capability.provider.discovered", payload: { provider, responsibility: "scout" }, evidence_refs: provider.evidence_refs }));
       events.push({
         type: "capability.inventory.refreshed",
@@ -168,14 +316,14 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
         },
         evidence_refs: [],
       });
-      return commit(command, events, undefined, replayed);
+      return commit(command, identity, events, undefined, replayed);
     }
     if (command.name === "resolution.propose") {
-      const graph = state.capability_graphs.find((item) => item.graph_id === state.current_capability_graph_id);
+      const graph = currentGraph(state);
       const need = graph && graph.needs.find((item) => item.need_id === command.payload.need_id);
       if (!need) throw coreError("CORE_NEED_REQUIRED", "Resolution proposal requires a compiled Capability Need.");
       const discovered = new Map(state.providers.map((provider) => [provider.provider_id, provider]));
-      const suppliedCandidates = command.payload.candidates || [];
+      const suppliedCandidates = clone(command.payload.candidates || []);
       const candidates = suppliedCandidates.map((candidate) => {
         if (!candidate || candidate.provider_type === "new_build") {
           throw coreError("CORE_CANDIDATE_NOT_DISCOVERED", "Resolution proposal candidates must be discovered providers; synthetic builds are Resolver-owned.", { provider_id: candidate && candidate.provider_id || null });
@@ -190,17 +338,19 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
         }
         return { ...candidate, ...provider, evidence_refs: [...provider.evidence_refs] };
       });
-      const proposal = resolveNeed({ need, scoutedCandidates: candidates, auditFacts: command.payload.audit_facts || [] });
+      const proposal = resolveNeed({ need: clone(need), scoutedCandidates: candidates, auditFacts: clone(command.payload.audit_facts || []) });
+      const binding = proposalBinding(state, proposal);
       const resolutionPayload = {
         resolution: proposal.resolution,
         rejection_reasons: proposal.rejected_candidates.map((candidate) => ({ candidate_id: candidate.candidate_id, why_not_selected: candidate.why_not_selected })),
         responsibility: "orchestrator",
         responsibility_boundary: { ...RESPONSIBILITY },
+        proposal_binding: binding,
         scout_skip_reason: proposal.resolution.selected_provider_id && discovered.has(proposal.resolution.selected_provider_id)
           ? "local_inventory_satisfied_need"
           : null,
       };
-      return commit(command, [
+      return commit(command, identity, [
         ...[...proposal.ranked_candidates, ...proposal.rejected_candidates].map((candidate) => ({
           type: "candidate.evaluated",
           payload: { evaluation: candidate.evaluation, responsibility: "static_audit", responsibility_boundary: { ...RESPONSIBILITY } },
@@ -216,22 +366,26 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
       if (!latest || latest.resolution_id !== resolution.resolution_id) {
         throw coreError("CORE_RESOLUTION_STALE", "Only the latest proposed Resolution for a Capability Need can be approved.", { resolution_id: resolution.resolution_id, need_id: resolution.need_id });
       }
-      const evaluations = state.candidate_evaluations.filter((evaluation) => evaluation.need_id === resolution.need_id);
-      if (resolution.selected_provider_id && !evaluations.some((evaluation) => evaluation.candidate_id === resolution.selected_provider_id && evaluation.eligibility === "eligible")) {
-        throw coreError("CORE_RESOLUTION_HARD_GATE_FAILED", "Selected provider no longer passes its static hard gates.");
-      }
+      assertCurrentProposalEvidence(state, resolution);
       if (typeof verifyUserApproval !== "function") throw coreError("CORE_APPROVAL_INVALID", "Approval verification is required.");
       const target = { ...resolutionApprovalTarget(resolution, currentRevision(replayed)), candidate_id: resolution.selected_provider_id, mode: resolution.mode, decision: "approved" };
-      const verified = assertVerifiedAttestation(verifyUserApproval(command.payload.approval_evidence, target), target);
-      return commit(command, { type: "resolution.approved", payload: { resolution_id: resolution.resolution_id, attestation: verified.attestation, proposal_revision: currentRevision(replayed), responsibility: "user" }, evidence_refs: resolution.evidence_refs }, verified.actor, replayed);
+      const verified = assertVerifiedAttestation(verifyUserApproval(clone(command.payload.approval_evidence), clone(target)), target);
+      return commit(command, identity, { type: "resolution.approved", payload: { resolution_id: resolution.resolution_id, attestation: verified.attestation, proposal_revision: currentRevision(replayed), responsibility: "user" }, evidence_refs: resolution.evidence_refs }, verified.actor, replayed);
     }
     if (command.name === "context-pack.preview") {
-      let context_pack;
-      try { context_pack = clone(assertContract("context-pack", command.payload.context_pack)); } catch {
-        throw coreError("CORE_CONTEXT_PACK_INVALID", "Context Pack preview requires a schema-valid Context Pack.");
+      if (typeof compileContextPack !== "function") {
+        throw coreError("CORE_CONTEXT_COMPILER_REQUIRED", "Context Pack preview requires a trusted Context Compiler.");
       }
-      if (context_pack.status !== "draft") throw coreError("CORE_CONTEXT_PACK_NOT_DRAFT", "Only a draft Context Pack may be previewed before approval.");
-      return commit(command, { type: "context.pack.created", payload: { context_pack, responsibility: "orchestrator" }, evidence_refs: [] }, undefined, replayed);
+      const taskIntent = clone(currentIntent(state));
+      const resolutions = currentResolutions(state).map((resolution) => clone(resolution));
+      const request = clone(command.payload);
+      delete request.context_pack;
+      const context_pack = assertCompiledContextPack(
+        compileContextPack({ taskIntent: clone(taskIntent), resolutions: clone(resolutions), request, referenceTime: referenceTime || null }),
+        taskIntent,
+        resolutions,
+      );
+      return commit(command, identity, { type: "context.pack.created", payload: { context_pack, responsibility: "orchestrator" }, evidence_refs: [] }, undefined, replayed);
     }
     if (command.name === "phase-review.request") {
       const packet = state.artifacts.find((item) => item.artifact_ref === command.payload.review_packet_ref);
@@ -251,7 +405,7 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
         checks: command.payload.checks,
         revision,
       });
-      return commit(command, { type: "phase.review.requested", payload: { review, responsibility: "orchestrator" }, evidence_refs: [review.review_packet_ref, review.build_ref] }, undefined, replayed);
+      return commit(command, identity, { type: "phase.review.requested", payload: { review, responsibility: "orchestrator" }, evidence_refs: [review.review_packet_ref, review.build_ref] }, undefined, replayed);
     }
     const matchingReviews = state.phase_reviews.filter((item) => item.phase_id === command.payload.phase_id || item.phase_id.startsWith(`${command.payload.phase_id}:cycle-`));
     const review = matchingReviews.sort((left, right) => right.review_cycle_revision - left.review_cycle_revision)[0];
@@ -260,12 +414,12 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
     const decisionRevision = currentRevision(replayed);
     const target = { target_id: review.phase_id, target_revision: decisionRevision, review_packet_hash: review.review_packet_hash, decision: command.payload.decision };
     const verified = requiresUserDecision
-      ? assertVerifiedAttestation(verifyUserApproval && verifyUserApproval(command.payload.approval_evidence, target), target)
+      ? assertVerifiedAttestation(verifyUserApproval && verifyUserApproval(clone(command.payload.approval_evidence), clone(target)), target)
       : null;
     const decided = decidePhaseReview({
       review,
       decision: command.payload.decision,
-      approval_evidence: command.payload.approval_evidence,
+      approval_evidence: clone(command.payload.approval_evidence),
       verifyUserApproval: requiresUserDecision
         ? () => verified
         : undefined,
@@ -276,7 +430,7 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
       changes_requested: "phase.review.changes_requested",
       approved: "phase.review.approved",
     }[decided.status];
-    return commit(command, { type: eventType, payload: { review: decided, responsibility: decided.status === "approved" || decided.status === "changes_requested" ? "user" : "orchestrator" }, evidence_refs: [decided.review_packet_ref, decided.build_ref] }, verified ? verified.actor : undefined, replayed);
+    return commit(command, identity, { type: eventType, payload: { review: decided, responsibility: decided.status === "approved" || decided.status === "changes_requested" ? "user" : "orchestrator" }, evidence_refs: [decided.review_packet_ref, decided.build_ref] }, verified ? verified.actor : undefined, replayed);
   }
   return { execute, replay, projectors: reducers, reference_time: referenceTime || null };
 }
