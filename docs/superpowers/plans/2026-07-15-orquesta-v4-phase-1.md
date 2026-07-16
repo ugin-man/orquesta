@@ -1245,7 +1245,7 @@ changes_requested -> ready_for_user_review
 
 `approved`以降の再変更は新しいreview cycleを作り、過去eventを上書きしない。
 
-projectorはserver検証済みのredacted approval attestationをeventから再生するが、process-local HMACをreplay時に再検証しない。生HMAC tokenはjournalへ入らず、token hashと検証済みprovenanceだけがcanonical eventになる。
+projectorは承認adapterが入口で検証したredacted approval attestationをeventから再生し、UI sessionへ再問い合わせしない。`token_hash`はchallenge packetの相関用fingerprintであり、OS identityや暗号学的な本人性の証明には使わない。生cookie、CSRF token、challenge recordはjournalへ入れず、必要最小限のprovenanceだけをcanonical eventにする。
 
 - [ ] **Step 5: Run one vertical temp-store integration**
 
@@ -1397,6 +1397,8 @@ git commit -m "test(v4): add Phase 1 capability fixtures"
 
 **Depends on:** Task 10
 
+**Codex safety boundary:** Task 11はlocal fixtureの閲覧、replay、意味上の承認だけを扱い、command実行、install、web search、Codex dispatch、Auditionを持たない。OS権限、filesystem sandbox、network、credential、runtime approvalはCodex harnessへ任せ、Workbenchへ第二のsandbox、firewall、credential vault、command risk parserを追加しない。Task 11で守るのはloopback HTTP境界と、承認対象、candidate、journal revision、review packetのbindingである。Phase 2の実行機能はCodexの実profileをpreflightし、計画より広い場合にfail closedとする別taskで扱う。
+
 **Files:**
 
 - Modify: `apps/workbench/package.json`
@@ -1477,9 +1479,9 @@ defaultは`127.0.0.1:4181`、競合時は既存`orquesta/scripts/dashboard-port-
 
 raw file本文、SKILL本文、MCP command/env、secret、absolute home pathを返さない。
 
-- [ ] **Step 4: Mint user attestation server-side**
+- [ ] **Step 4: Bind a local approval challenge to the current target**
 
-`approval-session.js`はprocess起動時のrandom secret、HttpOnly/SameSite=Strict session cookie、same-origin/CSRF check、一回限りchallengeを使う。challengeはtarget ID、candidate ID、journal revision、10分以内のexpiryへbindする。bodyのactorは拒否し、成功時だけHMAC付きの短命approval evidenceをcoreへ渡す。
+`approval-session.js`はHttpOnly/SameSite=Strict session cookie、same-origin/CSRF check、serverが生成する一回限りのopaque challengeを使う。challengeはsession、target ID、candidate ID、journal revision、review packet hash、10分以内のexpiryへbindする。bodyのactorは拒否する。challengeは同じlocal process内のUI操作を現在の対象へbindするもので、OS user identityや暗号学的な本人性を証明しない。
 
 Nodeの`fetch`はcookie jarを持たないため、`approval-session.test.js`に`Set-Cookie`を保存し、次requestへ`Cookie`、`Origin`、CSRF tokenを明示して送るtest helperを置く。browserの暗黙挙動へ依存しない。
 
@@ -1489,8 +1491,7 @@ Resolution decision bodyは次だけを受ける。
 {
   "decision": "approved",
   "candidate_id": "provider-or-build-id",
-  "challenge_id": "CHALLENGE-001",
-  "confirmation": "Approve resolution RES-001 at revision 12"
+  "challenge_id": "CHALLENGE-001"
 }
 ```
 
@@ -1510,9 +1511,11 @@ serverは検証後に次を生成する。
 }
 ```
 
-Phase Review approvalは`confirmation: "Phase 1 approved"`の完全一致に加え、challengeを`phase-1`、current revision、review packet hashへbindする。reuse済みnonce、期限切れ、別candidate、別revision、actor入りbody、Origin不一致をAPI testで拒否する。testはtemp stateだけを使い、実projectのPhase Reviewをapproveしない。
+`token_hash`は`challenge_id`、target、candidate、revision、review packet hash、decisionのcanonical hashであり、HMACやidentity proofとして扱わない。serviceが生成したredacted attestationだけを`verifyUserApproval`へ渡し、request bodyのactorやattestationを信用しない。
 
-challenge stateは`active -> in_flight -> consumed`だけを許す。同じchallengeのparallel submitでは最初のrequestだけが`in_flight`を取る。EventStore commit成功後に`consumed`へし、commit失敗時はrevisionが変わっていない場合だけ`active`へ戻す。server restartでmemory challengeはすべて失効する。parallel double submit、commit failure retry、restart、expiryの各testでapproval eventが最大1件であることを確認する。
+Phase Review approvalは明示的なconfirm操作を使い、challengeを`phase-1`、current revision、review packet hashへbindする。決まった文章の手入力は要求しない。使用済みchallenge、期限切れ、別session、別candidate、別revision、別packet hash、actorまたはattestation入りbody、OriginまたはCSRF不一致をAPI testで拒否する。testはtemp stateだけを使い、実projectのPhase Reviewをapproveしない。
+
+challengeの取得と削除はCore commandを呼ぶ前に同期的に一度だけ行い、独自の`active -> in_flight -> consumed`状態機械や失敗後のreactivationは作らない。Coreへ渡す`command_id`は`approval:<challenge_id>`とし、既存のcommand identity、EventStore revision conflict、idempotent batchを原子性の正本にする。commitが失敗した場合、古いchallengeは戻さず新しいchallengeを要求する。server restartではmemory上のchallengeをすべて失効させる。parallel submit、commit failure、restart、expiryをtestし、approval eventが最大1件であることを確認する。
 
 - [ ] **Step 5: GREEN and commit**
 
@@ -1615,7 +1618,7 @@ dispatch、実行、Auditionが動いたように見える動詞やspinnerを使
 
 - hard gate fail候補のApprove buttonはdisabledで理由を関連付ける
 - user decisionはconfirmation dialog後にPOSTする
-- phase approvalはexact phrase入力を要求する
+- phase approvalはtarget、revision、review packetを表示する明示的なconfirm dialogを要求する
 - keyboardでfixture切替、candidate比較、timeline展開、approvalまで操作できる
 - scoreを色だけで表現しない
 - 360pxと1440pxで横scrollなし。ただし比較表内の明示scroll containerは可
@@ -1757,7 +1760,7 @@ output/v4-phase1-review/recovery-report.json
 
 `phase-1-review.md`は5分手順、三fixtureの期待点、採用/棄却、既知gap、Phase 2で増える機能、停止条件の評価を自然な日本語で書く。未実装を将来計画と明記する。
 
-`approval_assurance`は`local_ui_attestation_not_os_identity`とし、same-origin、challenge、nonce、revision/hash bindingで防ぐ範囲と、OS user identityまでは証明しない範囲をknown gapへ明記する。
+`approval_assurance`は`local_ui_attestation_not_os_identity`とし、same-origin、CSRF、single-use challenge、revision/hash bindingで防ぐ範囲と、OS user identityまでは証明しない範囲をknown gapへ明記する。HMAC、独自sandbox、決まった確認文を安全性の根拠にしない。
 
 `tested_node_versions`には実際にfull gateを通したversionだけを書く。Node 20実体で実行していない場合、`engines >=20`はAPI compatibility targetでありNode 20 runtime verificationは未完了、とknown gapへ残す。
 
