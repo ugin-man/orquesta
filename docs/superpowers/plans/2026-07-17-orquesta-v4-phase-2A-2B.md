@@ -450,12 +450,17 @@ git commit -m "feat(v4): define truthful Codex adapter fallback"
 
 - Create: `packages/codex-adapter/src/jsonl-transport.js`
 - Create: `packages/codex-adapter/src/app-server-adapter.js`
+- Create: `packages/codex-adapter/src/runtime-path.js`
 - Create: `packages/codex-adapter/protocol/app-server-schema.json`
 - Create: `packages/codex-adapter/protocol/app-server-version.json`
 - Create: `packages/codex-adapter/test/jsonl-transport.test.js`
 - Create: `packages/codex-adapter/test/app-server-adapter.test.js`
+- Create: `packages/codex-adapter/test/runtime-path.test.js`
 - Create: `packages/codex-adapter/test/fixtures/fake-app-server.js`
+- Create: `scripts/v4/probe-codex-runtime.js`
+- Modify: `packages/codex-adapter/package.json`
 - Modify: `packages/codex-adapter/src/index.js`
+- Modify: `package-lock.json`
 
 **Protocol contract:**
 
@@ -466,24 +471,52 @@ git commit -m "feat(v4): define truthful Codex adapter fallback"
 - Keep request responses, notifications, and server-initiated approval requests separate.
 - Emit `dispatch_accepted` from a successful `turn/start` response and `turn_started` only from a matching streamed notification.
 
-- [ ] **Step 1: Capture and pin the installed App Server schema**
+- [ ] **Step 1: Install and pin the official SDK runtime dependency**
+
+```powershell
+npm install @openai/codex-sdk@0.144.5 --workspace @orquesta/codex-adapter --save-exact
+```
+
+Expected: `packages/codex-adapter/package.json` and `package-lock.json` record `@openai/codex-sdk@0.144.5`, its `@openai/codex@0.144.5` dependency, and the selected optional Windows runtime package. Record package name, version, integrity, and install approval evidence in the implementation cycle.
+
+- [ ] **Step 2: Write and run bundled-runtime resolver RED tests**
+
+`runtime-path.test.js` must require `resolveBundledCodexRuntime()` to read the pinned `@openai/codex` package metadata, select the installed optional runtime matching the current platform and architecture, resolve its declared executable, reject a missing package, path escape, symlink escape, non-regular file, wrong platform, or unpinned version, and return an absolute executable path without using a shell.
+
+```powershell
+node --test packages/codex-adapter/test/runtime-path.test.js
+```
+
+Expected: FAIL because `runtime-path.js` does not exist.
+
+- [ ] **Step 3: Implement and probe the pinned bundled runtime**
+
+Implement `resolveBundledCodexRuntime({ sdkPackageRoot, platform, arch, fsAdapter })`. `probe-codex-runtime.js` must invoke the resolved executable with `spawnSync(runtimePath, ["--version"], { shell: false, windowsHide: true })`, require exit code 0, and verify version `0.144.5`. It must not fall back to the WindowsApps `codex.exe` path after resolution fails.
+
+```powershell
+node --test packages/codex-adapter/test/runtime-path.test.js
+node scripts/v4/probe-codex-runtime.js --expect-version 0.144.5
+```
+
+Expected: tests PASS and the bundled runtime exits 0. If the executable cannot be proven spawnable, stop Task 8 before schema capture.
+
+- [ ] **Step 4: Capture and pin the App Server schema from the resolved runtime**
 
 Run in a temporary output directory:
 
 ```powershell
-codex app-server generate-json-schema --out output/v4-phase2-app-server-schema
-codex --version
+node scripts/v4/probe-codex-runtime.js --expect-version 0.144.5 --schema-out output/v4-phase2-app-server-schema
 ```
 
-Normalize the generated request/notification subset into `app-server-schema.json` and store the exact CLI version plus source hash in `app-server-version.json`. Expected: both commands succeed. If schema generation is unavailable, stop Task 8 with `unsupported`; do not guess wire fields.
+The probe must invoke `spawnSync(runtimePath, ["app-server", "generate-json-schema", "--out", schemaOut], { shell: false, windowsHide: true })`. Normalize the generated request/notification subset into `app-server-schema.json` and store the exact CLI version, resolved runtime package, executable hash, and schema source hash in `app-server-version.json`. Expected: runtime and schema commands succeed. If schema generation is unavailable, stop Task 8 with `unsupported`; do not guess wire fields.
 
-- [ ] **Step 2: Write transport and lifecycle RED tests**
+- [ ] **Step 5: Write transport and lifecycle RED tests**
 
 Use the fake process to test partial lines, multiple lines, invalid UTF-8, invalid JSON, oversized lines, duplicate response IDs, unknown IDs, process exit, stderr redaction, pending-request rejection on exit, initialize ordering, repeated initialize, and bounded queue behavior.
 
 Test start, resume, turn start, steer, interrupt, streamed item events, turn completion, out-of-order unrelated notifications, and server approval request/response. Validate fixtures against the pinned schema.
 
-- [ ] **Step 3: Run RED**
+- [ ] **Step 6: Run RED**
 
 ```powershell
 node --test packages/codex-adapter/test/jsonl-transport.test.js packages/codex-adapter/test/app-server-adapter.test.js
@@ -491,15 +524,15 @@ node --test packages/codex-adapter/test/jsonl-transport.test.js packages/codex-a
 
 Expected: FAIL because transport and adapter modules do not exist.
 
-- [ ] **Step 4: Implement transport and adapter**
+- [ ] **Step 7: Implement transport and adapter**
 
 Do not enable experimental WebSocket transport. Do not pass credentials on the command line. Do not synthesize thread IDs, turn IDs, approval IDs, or actual models. Normalize only schema-validated messages.
 
-- [ ] **Step 5: Run GREEN and commit**
+- [ ] **Step 8: Run GREEN and commit**
 
 ```powershell
 npm test --workspace @orquesta/codex-adapter
-git add packages/codex-adapter
+git add packages/codex-adapter scripts/v4/probe-codex-runtime.js package-lock.json
 git commit -m "feat(v4): integrate Codex App Server over stdio"
 ```
 
@@ -507,15 +540,13 @@ git commit -m "feat(v4): integrate Codex App Server over stdio"
 
 ### Task 9: Implement the TypeScript SDK adapter
 
-**Risk-adaptive lane:** standard, escalating to critical for the one live dependency-install and runtime verification cycle.
+**Risk-adaptive lane:** standard. The exact SDK and bundled runtime dependency were installed, pinned, and probed in Task 8.
 
 **Files:**
 
 - Create: `packages/codex-adapter/src/sdk-adapter.js`
 - Create: `packages/codex-adapter/test/sdk-adapter.test.js`
-- Modify: `packages/codex-adapter/package.json`
 - Modify: `packages/codex-adapter/src/index.js`
-- Modify: `package-lock.json`
 
 **Interface mapping:**
 
@@ -538,13 +569,14 @@ node --test packages/codex-adapter/test/sdk-adapter.test.js
 
 Expected: FAIL because `sdk-adapter.js` does not exist.
 
-- [ ] **Step 3: Install and pin the official SDK**
+- [ ] **Step 3: Verify the Task 8 pin without reinstalling**
 
 ```powershell
-npm install @openai/codex-sdk@0.144.5 --workspace @orquesta/codex-adapter --save-exact
+npm ls @openai/codex-sdk @openai/codex --workspace @orquesta/codex-adapter --depth=1
+node scripts/v4/probe-codex-runtime.js --expect-version 0.144.5
 ```
 
-Expected: `packages/codex-adapter/package.json` and `package-lock.json` record `@openai/codex-sdk@0.144.5`, its `@openai/codex@0.144.5` dependency, and the selected optional Windows runtime package. Record package name, version, integrity, and install approval evidence in the implementation cycle.
+Expected: the already-pinned SDK and Codex runtime are both `0.144.5`, and the bundled runtime remains spawnable with `shell: false`. Do not run `npm install` in Task 9.
 
 - [ ] **Step 4: Implement dynamic import and capability reporting**
 
@@ -554,7 +586,7 @@ Use `await import("@openai/codex-sdk")` from CommonJS. Map `ThreadOptions` model
 
 ```powershell
 npm test --workspace @orquesta/codex-adapter
-git add packages/codex-adapter package-lock.json
+git add packages/codex-adapter
 git commit -m "feat(v4): add the Codex TypeScript SDK adapter"
 ```
 
@@ -806,12 +838,10 @@ Expected: all commands PASS, Phase 1 fixture histories remain unchanged, and no 
 - [ ] **Step 6: Verify forbidden scope and runtime truth**
 
 ```powershell
-git diff --name-only 4ee490b..HEAD
-rg -n -i "electron|tauri|pwa|installer|apps/desktop|experience ledger|intent graph" packages scripts fixtures apps package.json
-rg -n "actual_model" packages scripts fixtures
+node scripts/v4/verify-phase2.js --scope-base 4ee490b --scope-head HEAD
 ```
 
-Expected: no application shell, Phase 3 implementation, dashboard redesign, or unbound actual-model claim. References in negative tests or explicit exclusions are allowed only when assertions prove absence.
+The scope mode must inspect only paths and added lines in `4ee490b..HEAD`. It uses an explicit allowlist for Phase 2 package, Core/Audit/contract integration, fixture, verifier, protocol, and documentation paths; rejects additions under application UI, dashboard, Phase 3, or plugin paths; and validates model-evidence objects through contracts rather than matching raw words. Expected: no out-of-scope path or unbound actual-model claim, with existing Phase 1 exclusion text ignored.
 
 - [ ] **Step 7: Commit Task 13**
 
