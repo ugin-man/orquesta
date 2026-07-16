@@ -318,8 +318,9 @@ function runtimeEvidenceErrors(value) {
   if (!isPlainObject(value)) return [];
   const errors = timestampFieldErrors(value, ["captured_at"]);
   if (value.actual_model !== null && (!value.payload_ref || !value.payload_hash
+    || value.event_kind !== "model_observed"
     || !["app_server", "approved_hook"].includes(value.source))) {
-    errors.push(schemaError("$.actual_model", "actual_model_evidence", "requires bound App Server or approved-hook payload evidence"));
+    errors.push(schemaError("$.actual_model", "actual_model_evidence", "requires bound App Server or approved-hook model observation evidence"));
   }
   return errors;
 }

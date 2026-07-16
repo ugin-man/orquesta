@@ -740,3 +740,13 @@ test("Phase 2 durable evidence contracts reject unknown durable fields", () => {
     assert.equal(validateContract(name, invalid).ok, false, name);
   }
 });
+
+test("runtime evidence binds a non-null actual model to model observation evidence", () => {
+  const turnStarted = clone(phase2Contracts["runtime-evidence"].value);
+  turnStarted.actual_model = "gpt-5.6-terra";
+  assert.equal(validateContract("runtime-evidence", turnStarted).ok, false);
+
+  const observed = clone(turnStarted);
+  observed.event_kind = "model_observed";
+  assert.equal(validateContract("runtime-evidence", observed).ok, true);
+});
