@@ -117,6 +117,67 @@ Report review decisions:
 
 The dashboard endpoint `POST /api/reports/review` performs this file-backed synchronization. It does not message specialist threads by itself; the orchestrator still owns any follow-up handoff.
 
+## Phase 1.5 Execution Policy
+
+Tasks without `execution_policy_version` remain compatible with the legacy Delegation Gate. A Phase 1.5 task has one canonical Execution Plan and records implementation, review, correction, and QA as same-task `execution_cycles`. Its `canonical_state_root` is the only state root used for routing and acceptance; a product worktree snapshot is not evidence.
+
+```json
+{
+  "execution_policy_version": 1,
+  "canonical_state_root": "C:\\project",
+  "execution_plan": {
+    "execution_plan_id": "EP-06b6cf27e77f",
+    "task_intent_id": "TI-4c2eea2b9e6d",
+    "policy_version": 1,
+    "lane": "standard",
+    "risk_profile": {
+      "reversibility": "easy",
+      "scope": "multiple_boundaries",
+      "verification": "deterministic",
+      "uncertainty": "low",
+      "effects": ["workspace_write"],
+      "repeated_failures": 0,
+      "user_review": "default"
+    },
+    "reason_codes": ["multiple_boundaries"],
+    "routing": {
+      "routing_class": "specialist_required",
+      "handoff_required": true,
+      "specialist_report_required": true
+    },
+    "budget": {
+      "max_handoffs": 2,
+      "max_independent_reviews": 1,
+      "max_correction_batches": 1,
+      "max_reports": 1,
+      "max_auxiliary_tasks": 0
+    },
+    "review_policy": "independent_once",
+    "escalation_triggers": ["budget_exhausted", "critical_risk_discovered", "scope_drift", "semantic_finding_not_machine_verifiable"],
+    "revision": 1,
+    "supersedes_execution_plan_id": null
+  },
+  "execution_cycles": [
+    {"cycle_id": "implementation-1", "kind": "implementation", "owner_agent_id": "implementation-001", "status": "completed", "evidence_refs": ["commit:abc"]},
+    {"cycle_id": "review-1", "kind": "review", "owner_agent_id": "protocol-architect-001", "status": "accepted", "findings": {"critical": 0, "important": 0, "minor": 0}, "evidence_refs": [".orquesta/reports/T001-review.md"]}
+  ],
+  "completion_evidence": [
+    {"kind": "test", "ref": "npm run check:v4:phase15", "status": "passed"}
+  ],
+  "execution_metrics": {
+    "wall_time_ms": 1000,
+    "agent_turns": 2,
+    "handoffs": 1,
+    "independent_reviews": 1,
+    "correction_batches": 0,
+    "reports": 1,
+    "token_usage": {"coverage": "unknown", "known_total": null, "by_thread": []}
+  }
+}
+```
+
+`fast` is the normal `inline_verified` route with no handoff or review report. `standard` uses one owner and one independent review. `critical` allows up to two independent reviews and optional QA. Do not create `R`, `F`, or `RR` auxiliary task IDs; append the cycle to the parent task. Token coverage is `unknown`, `partial`, or `complete`. Keep `known_total` null when coverage is unknown and keep per-thread evidence for partial or complete coverage.
+
 ## Beta V3 Task Controls
 
 Beta V3 adds controls when a task is staged into the progressive gate. Legacy accepted tasks remain valid without backfilled fields unless they are reopened.

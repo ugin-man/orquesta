@@ -150,3 +150,17 @@ test("resolves canonical state root with explicit then environment then cwd prec
     for (const root of roots) fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("Phase 1.5 source documentation describes lanes, same-task cycles, canonical state, and token coverage", () => {
+  const root = path.resolve(__dirname, "..", "..");
+  const skill = fs.readFileSync(path.join(root, "orquesta", "SKILL.md"), "utf8");
+  const protocol = fs.readFileSync(path.join(root, "orquesta", "references", "orchestration-protocol.md"), "utf8");
+  const schema = fs.readFileSync(path.join(root, "orquesta", "references", "state-schema.md"), "utf8");
+  const source = `${skill}\n${protocol}\n${schema}`;
+
+  for (const required of ["inline_verified", "fast", "standard", "critical", "execution_cycles", "canonical_state_root", "complete", "partial", "unknown"]) {
+    assert.match(source, new RegExp(required));
+  }
+  assert.match(source, /auxiliary task|auxiliary_task|R, F, RR/i);
+  assert.doesNotMatch(skill, /no handoff, no implementation/i);
+});

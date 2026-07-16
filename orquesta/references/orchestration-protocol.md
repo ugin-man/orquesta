@@ -21,9 +21,23 @@ Coordinate long-lived specialist Codex threads without making the orchestrator a
    - Classify work as `bootstrap`, `persistent_role`, `bounded_task`, `review`, `standby`, or `direct_specialist_refinement`.
    - Reuse existing agents before creating new ones.
 
+## Execution Policy
+
+After Classification, create one deterministic Execution Plan for a Phase 1.5 task before Appointment. Use the enumerated risk profile to classify `fast`, `standard`, or `critical`; do not score free prose.
+
+- `fast` uses `inline_verified`, has no handoff or independent review, and needs deterministic completion evidence.
+- `standard` uses one owner handoff and one independent review. One correction batch is allowed on the same task.
+- `critical` uses one owner, up to two independent reviews, up to two correction batches, and optional QA.
+- Store implementation, review, correction, and QA as `execution_cycles` on the same task. `R`, `F`, and `RR` auxiliary task entries are invalid for a Phase 1.5 parent.
+- Escalate an insufficient lane on the same TaskIntent. Do not automatically downgrade a lane.
+
+Resolve the task state from `canonical_state_root`. An explicit `--state-root` wins over `ORQUESTA_STATE_ROOT`, which wins over the current directory. The resolved root must contain `.orquesta/state/tasks.json`.
+
+Legacy tasks without `execution_policy_version: 1` retain the legacy Delegation Gate below.
+
 ## Delegation Gate
 
-Run this gate after Classification and before Appointment or implementation. The gate is mandatory for specialist-domain work and must be recorded in `.orquesta/state/tasks.json` so it survives context compaction.
+Run this gate after Execution Policy and before Appointment or implementation. The gate is recorded in `.orquesta/state/tasks.json` so it survives context compaction.
 
 Use `routing_class`:
 
@@ -32,7 +46,7 @@ Use `routing_class`:
 - `direct_exception`: specialist-domain work the orchestrator is doing directly for a narrow approved reason.
 - `blocked`: work that cannot be routed safely yet.
 
-For `specialist_required` tasks:
+For legacy `specialist_required` tasks:
 
 1. Set `handoff_required: true`.
 2. Set `specialist_report_required: true` unless the task is explicitly report-free and low risk.
@@ -41,12 +55,14 @@ For `specialist_required` tasks:
 5. Do not accept the task until `specialist_report_path`, `report`, or a specialist report artifact is present and reviewed.
 6. Set `routing_gate_status: "passed"` only after the handoff evidence exists.
 
-For `direct_exception` tasks:
+For legacy `direct_exception` tasks:
 
 1. Record `direct_exception_reason`.
 2. Set `routing_gate_status: "bypassed_with_reason"`.
 3. Record `bypass_review_owner` when a later specialist review is useful.
 4. Keep the scope to orchestration bookkeeping, tiny state or report updates, emergency unblockers, or explicit user instruction.
+
+For Phase 1.5 tasks, validate lane routing, exact budget, completed `execution_cycles`, completion evidence, and honest token coverage. `unknown` token coverage has `known_total: null`; `partial` and `complete` coverage must retain per-thread evidence. Accepted standard and critical tasks require an accepted independent review with Critical and Important counts at zero.
 
 If a specialist exists and the task touches that lane, the short rule is: no handoff, no implementation; no report, no acceptance. Direct exceptions must be visible in task state rather than remembered from chat.
 
