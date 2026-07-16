@@ -28,8 +28,15 @@ function profile(overrides = {}) {
   };
 }
 
-function representativeTask(taskId, plan) {
+function representativeTask(taskId, plan, root) {
   const requiresReview = plan.lane !== "fast";
+  const implementation = {
+    cycle_id: `${taskId}-implementation-1`,
+    kind: "implementation",
+    owner_agent_id: "implementation-001",
+    status: "completed",
+    evidence_refs: ["commit:phase15-verifier"]
+  };
   const review = requiresReview ? [{
     cycle_id: `${taskId}-review-1`,
     kind: "review",
@@ -38,7 +45,10 @@ function representativeTask(taskId, plan) {
     findings: { critical: 0, important: 0, minor: 0 },
     evidence_refs: [`.orquesta/reports/${taskId}-review.md`]
   }] : [];
-  const handoffAttempts = requiresReview ? [{ sent_at: "2026-07-16T13:52:19.224Z" }] : [];
+  const handoffAttempts = requiresReview ? [
+    { cycle_id: implementation.cycle_id, owner_agent_id: implementation.owner_agent_id, sent_at: "2026-07-16T13:52:19.224Z" },
+    { cycle_id: review[0].cycle_id, owner_agent_id: review[0].owner_agent_id, sent_at: "2026-07-16T13:53:19.224Z" }
+  ] : [];
   return {
     task_id: taskId,
     state: "accepted",
@@ -51,16 +61,13 @@ function representativeTask(taskId, plan) {
     specialist_report_required: plan.routing.specialist_report_required,
     specialist_report_path: requiresReview ? `.orquesta/reports/${taskId}-review.md` : null,
     execution_policy_version: 1,
-    canonical_state_root: "<temporary-verifier-root>",
+    canonical_state_root: root,
     execution_plan: plan,
-    execution_cycles: [{
-      cycle_id: `${taskId}-implementation-1`,
-      kind: "implementation",
-      owner_agent_id: "implementation-001",
-      status: "completed",
-      evidence_refs: ["commit:phase15-verifier"]
-    }, ...review],
-    completion_evidence: [{ kind: "test", ref: "npm run check:v4:phase15", status: "passed" }],
+    execution_cycles: [implementation, ...review],
+    completion_evidence: [
+      { kind: "implementation", ref: "commit:phase15-verifier", status: "passed" },
+      { kind: "test", ref: "npm run check:v4:phase15", status: "passed" }
+    ],
     execution_metrics: {
       wall_time_ms: 1,
       agent_turns: requiresReview ? 2 : 1,
@@ -69,7 +76,10 @@ function representativeTask(taskId, plan) {
       correction_batches: 0,
       reports: review.length,
       token_usage: { coverage: "unknown", known_total: null, by_thread: [] }
-    }
+    },
+    ...(plan.lane === "critical" ? {
+      user_approval_evidence: { status: "approved", source: "phase15 verifier", scope: "temporary critical task" }
+    } : {})
   };
 }
 
@@ -115,9 +125,9 @@ function verifyPhase15() {
     };
     const tasks = [
       legacy,
-      representativeTask("P15-FAST", fast),
-      representativeTask("P15-STANDARD", standard),
-      representativeTask("P15-CRITICAL", critical)
+      representativeTask("P15-FAST", fast, root),
+      representativeTask("P15-STANDARD", standard, root),
+      representativeTask("P15-CRITICAL", critical, root)
     ];
     writeTasks(root, tasks);
     const valid = checkDelegationGate(root);

@@ -273,6 +273,20 @@ test("Execution Plan rejects unbound identity, noncanonical effects, and altered
   }
 });
 
+test("Execution Plan accepts the documented fast trigger set and rejects invented triggers", () => {
+  const fast = clone(executionPlan);
+  fast.lane = "fast";
+  fast.reason_codes = [];
+  fast.routing = { routing_class: "inline_verified", handoff_required: false, specialist_report_required: false };
+  fast.budget = { max_handoffs: 0, max_independent_reviews: 0, max_correction_batches: 1, max_reports: 0, max_auxiliary_tasks: 0 };
+  fast.review_policy = "none";
+  fast.escalation_triggers = ["acceptance_uncertain", "new_risk", "scope_drift", "test_failure"];
+  assert.equal(validateContract("execution-plan", fast).ok, true);
+
+  fast.escalation_triggers = ["invented_trigger"];
+  assert.equal(validateContract("execution-plan", fast).ok, false);
+});
+
 test("EventBatch matches the journal event contract and rejects obsolete event shapes", () => {
   assert.equal(validateContract("event-batch", eventBatch).ok, true);
   const validEvent = eventBatch.events[0];

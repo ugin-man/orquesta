@@ -171,12 +171,16 @@ Tasks without `execution_policy_version` remain compatible with the legacy Deleg
     "independent_reviews": 1,
     "correction_batches": 0,
     "reports": 1,
-    "token_usage": {"coverage": "unknown", "known_total": null, "by_thread": []}
+      "token_usage": {"coverage": "unknown", "known_total": null, "by_thread": []}
   }
 }
 ```
 
-`fast` is the normal `inline_verified` route with no handoff or review report. `standard` uses one owner and one independent review. `critical` allows up to two independent reviews and optional QA. Do not create `R`, `F`, or `RR` auxiliary task IDs; append the cycle to the parent task. Token coverage is `unknown`, `partial`, or `complete`. Keep `known_total` null when coverage is unknown and keep per-thread evidence for partial or complete coverage.
+`fast` is the normal `inline_verified` route with no handoff or review report. `standard` uses one owner and one independent review. `critical` allows up to two independent reviews and optional QA. Do not create `R`, `F`, or `RR` auxiliary task IDs; append the cycle to the parent task. `escalation_triggers` records the actual automatic triggers for the current lane: fast uses `acceptance_uncertain`, `new_risk`, `scope_drift`, and `test_failure`; standard uses `budget_exhausted`, `critical_risk_discovered`, `scope_drift`, and `semantic_finding_not_machine_verifiable`; critical has no automatic escalation trigger.
+
+For an accepted standard or critical task, `handoff_attempts` records the implementation and review `cycle_id` with its owner. The accepted review cycle's `evidence_refs` contains the same `specialist_report_path`. Critical acceptance uses the existing task-level `user_approval_evidence` object with `status: "approved"`, `source`, and `scope`.
+
+Token coverage is `unknown`, `partial`, or `complete`. Keep `known_total` null and `by_thread` empty when coverage is unknown. Each partial or complete `by_thread` entry has `thread_id`, finite `measured_tokens`, and `evidence_source`; their sum equals `known_total`. Complete coverage additionally lists the same unique thread IDs in `participating_thread_ids`.
 
 ## Beta V3 Task Controls
 

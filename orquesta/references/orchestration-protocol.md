@@ -62,9 +62,9 @@ For legacy `direct_exception` tasks:
 3. Record `bypass_review_owner` when a later specialist review is useful.
 4. Keep the scope to orchestration bookkeeping, tiny state or report updates, emergency unblockers, or explicit user instruction.
 
-For Phase 1.5 tasks, validate lane routing, exact budget, completed `execution_cycles`, completion evidence, and honest token coverage. `unknown` token coverage has `known_total: null`; `partial` and `complete` coverage must retain per-thread evidence. Accepted standard and critical tasks require an accepted independent review with Critical and Important counts at zero.
+For Phase 1.5 tasks, validate the Execution Plan contract and canonical ID, lane routing flags, exact budget, completed `execution_cycles`, completion evidence, and honest token coverage. `unknown` token coverage has `known_total: null`; `partial` and `complete` coverage retain unique `thread_id`, measured token values, and an evidence source. `complete` also records the full participating thread set. Accepted standard and critical tasks require a completed implementation cycle, an independent accepted review whose handoff and report reference that review cycle, and Critical and Important counts at zero. Accepted critical tasks also retain the existing approved `user_approval_evidence` record.
 
-If a specialist exists and the task touches that lane, the short rule is: no handoff, no implementation; no report, no acceptance. Direct exceptions must be visible in task state rather than remembered from chat.
+For legacy `specialist_required` work, the short rule is: no handoff, no implementation; no report, no acceptance. Phase 1.5 fast work is instead `inline_verified` with no handoff or report; standard and critical use the lane-specific review rules above. Direct exceptions must be visible in task state rather than remembered from chat.
 
 ## Bootstrap Loop
 

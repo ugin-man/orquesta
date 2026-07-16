@@ -325,6 +325,11 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
     if (command.name === "execution-plan.create") {
       const taskIntent = currentIntent(state);
       currentGraph(state);
+      if (state.current_execution_plan_id) {
+        throw coreError("CORE_EXECUTION_PLAN_EXISTS", "An Execution Plan already exists; use escalation for a lane change.", {
+          execution_plan_id: state.current_execution_plan_id
+        });
+      }
       const execution_plan = createExecutionPlan({ taskIntent: clone(taskIntent), riskProfile: clone(command.payload.risk_profile) });
       return commit(command, identity, {
         type: "execution.plan.created",

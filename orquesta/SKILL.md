@@ -20,7 +20,7 @@ Always preserve this split:
 
 Classify a Phase 1.5 task once into `fast`, `standard`, or `critical` before implementation. Store the deterministic Execution Plan in canonical `.orquesta/state/tasks.json`, then run the Delegation Gate against that task's `canonical_state_root`, not a worktree snapshot.
 
-- `fast` uses `inline_verified`: one owner or orchestrator, deterministic checks, no handoff and no review report.
+- `fast` uses `inline_verified`: one owner or orchestrator, deterministic checks, no handoff and no review report. It is a normal Phase 1.5 route, not a legacy direct exception.
 - `standard` uses one implementation owner and one independent review.
 - `critical` uses one owner, up to two independent reviews, and optional QA when the semantic risk requires it.
 - Review, correction, and QA are `execution_cycles` on the same task. Do not create `R`, `F`, or `RR` auxiliary task entries for a Phase 1.5 task.

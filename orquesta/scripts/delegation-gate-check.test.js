@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { canonicalHash } = require("@orquesta/contracts");
 const { checkDelegationGate, checkTask, resolveStateRoot } = require("./delegation-gate-check");
 
 const BUDGETS = {
@@ -21,8 +22,12 @@ function writeTasks(root, tasks) {
 }
 
 function executionPlan(lane) {
-  return {
-    execution_plan_id: `EP-${lane.padEnd(12, "a").slice(0, 12)}`,
+  const escalationTriggers = lane === "fast"
+    ? ["acceptance_uncertain", "new_risk", "scope_drift", "test_failure"]
+    : lane === "standard"
+      ? ["budget_exhausted", "critical_risk_discovered", "scope_drift", "semantic_finding_not_machine_verifiable"]
+      : [];
+  const content = {
     task_intent_id: "TI-4c2eea2b9e6d",
     policy_version: 1,
     lane,
@@ -33,22 +38,29 @@ function executionPlan(lane) {
       : { routing_class: "specialist_required", handoff_required: true, specialist_report_required: true },
     budget: BUDGETS[lane],
     review_policy: lane === "fast" ? "none" : lane === "standard" ? "independent_once" : "independent_twice",
-    escalation_triggers: ["budget_exhausted", "critical_risk_discovered", "scope_drift", "semantic_finding_not_machine_verifiable"],
+    escalation_triggers: escalationTriggers,
     revision: 1,
     supersedes_execution_plan_id: null
   };
+  return { execution_plan_id: `EP-${canonicalHash(content).slice(0, 12)}`, ...content };
 }
 
 function phase15Task(lane, overrides = {}) {
   const requiresReview = lane !== "fast";
+  const implementation = { cycle_id: "implementation-1", kind: "implementation", owner_agent_id: "implementation-001", status: "completed", evidence_refs: ["commit:abc"] };
   const cycles = [
-    { cycle_id: "implementation-1", kind: "implementation", owner_agent_id: "implementation-001", status: "completed", evidence_refs: ["commit:abc"] },
+    implementation,
     ...(requiresReview ? [{ cycle_id: "review-1", kind: "review", owner_agent_id: "protocol-architect-001", status: "accepted", findings: { critical: 0, important: 0, minor: 0 }, evidence_refs: [".orquesta/reports/P15-review.md"] }] : [])
   ];
+  const review = cycles.find((cycle) => cycle.kind === "review");
+  const handoffAttempts = requiresReview ? [
+    { cycle_id: implementation.cycle_id, owner_agent_id: implementation.owner_agent_id, sent_at: "2026-07-16T00:00:00.000Z" },
+    { cycle_id: review.cycle_id, owner_agent_id: review.owner_agent_id, sent_at: "2026-07-16T00:01:00.000Z" }
+  ] : [];
   const metrics = {
     wall_time_ms: 1000,
     agent_turns: requiresReview ? 2 : 1,
-    handoffs: requiresReview ? 1 : 0,
+    handoffs: handoffAttempts.length,
     independent_reviews: requiresReview ? 1 : 0,
     correction_batches: 0,
     reports: requiresReview ? 1 : 0,
@@ -62,17 +74,46 @@ function phase15Task(lane, overrides = {}) {
     routing_gate_status: "passed",
     handoff_required: requiresReview,
     handoff_sent_at: requiresReview ? "2026-07-16T00:00:00.000Z" : null,
-    handoff_attempts: requiresReview ? [{ sent_at: "2026-07-16T00:00:00.000Z" }] : [],
+    handoff_attempts: handoffAttempts,
     specialist_report_required: requiresReview,
     specialist_report_path: requiresReview ? ".orquesta/reports/P15-review.md" : null,
     execution_policy_version: 1,
     canonical_state_root: "C:\\project",
     execution_plan: executionPlan(lane),
     execution_cycles: cycles,
-    completion_evidence: [{ kind: "test", ref: "npm run check:v4:phase15", status: "passed" }],
+    completion_evidence: [
+      { kind: "implementation", ref: "commit:abc", status: "passed" },
+      { kind: "test", ref: "npm run check:v4:phase15", status: "passed" }
+    ],
     execution_metrics: metrics,
+    ...(lane === "critical" ? { user_approval_evidence: { status: "approved", source: "user-goal:phase15", scope: "task acceptance" } } : {}),
     ...overrides
   };
+}
+
+function acceptedPhase15Task(lane, root) {
+  const task = phase15Task(lane, {
+    canonical_state_root: root,
+    completion_evidence: [
+      { kind: "implementation", ref: "commit:phase15", status: "passed" },
+      { kind: "test", ref: "npm run check:v4:phase15", status: "passed" }
+    ]
+  });
+  if (lane !== "fast") {
+    const implementation = task.execution_cycles.find((cycle) => cycle.kind === "implementation");
+    const review = task.execution_cycles.find((cycle) => cycle.kind === "review");
+    task.handoff_attempts = [
+      { cycle_id: implementation.cycle_id, owner_agent_id: implementation.owner_agent_id, sent_at: "2026-07-16T00:00:00.000Z" },
+      { cycle_id: review.cycle_id, owner_agent_id: review.owner_agent_id, sent_at: "2026-07-16T00:01:00.000Z" }
+    ];
+    task.handoff_sent_at = "2026-07-16T00:00:00.000Z";
+    task.specialist_report_path = review.evidence_refs[0];
+    task.execution_metrics.handoffs = 2;
+  }
+  if (lane === "critical") {
+    task.user_approval_evidence = { status: "approved", source: "user-goal:phase15", scope: "task acceptance" };
+  }
+  return task;
 }
 
 test("legacy tasks remain on the existing delegation path", () => {
@@ -151,6 +192,70 @@ test("resolves canonical state root with explicit then environment then cwd prec
   }
 });
 
+test("Phase 1.5 gate rejects unsupported versions and binds contract, root, and routing flags", () => {
+  assert.match(checkTask({ ...phase15Task("standard"), execution_policy_version: 2 }).errors.join("\n"), /unsupported execution_policy_version/);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-phase15-binding-"));
+  try {
+    const valid = acceptedPhase15Task("standard", root);
+    writeTasks(root, [valid]);
+    assert.deepEqual(checkDelegationGate(root).errors, []);
+
+    const invalidCases = [
+      ["wrong root", (task) => { task.canonical_state_root = path.join(root, "other"); }, /canonical_state_root/],
+      ["wrong handoff flag", (task) => { task.handoff_required = false; }, /handoff_required/],
+      ["wrong report flag", (task) => { task.specialist_report_required = false; }, /specialist_report_required/],
+      ["invalid plan", (task) => { task.execution_plan.execution_plan_id = "EP-000000000000"; }, /execution_plan integrity/],
+    ];
+    for (const [label, mutate, expected] of invalidCases) {
+      const task = acceptedPhase15Task("standard", root);
+      mutate(task);
+      writeTasks(root, [task]);
+      assert.match(checkDelegationGate(root).errors.join("\n"), expected, label);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("accepted Phase 1.5 tasks bind implementation, review, completion, approval, and token evidence", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-phase15-acceptance-"));
+  try {
+    const valid = acceptedPhase15Task("critical", root);
+    valid.execution_metrics.token_usage = {
+      coverage: "complete",
+      known_total: 13,
+      by_thread: [
+        { thread_id: "implementation-thread", measured_tokens: 8, evidence_source: "observed" },
+        { thread_id: "review-thread", measured_tokens: 5, evidence_source: "observed" }
+      ],
+      participating_thread_ids: ["implementation-thread", "review-thread"]
+    };
+    writeTasks(root, [valid]);
+    assert.deepEqual(checkDelegationGate(root).errors, []);
+
+    const invalidCases = [
+      ["missing implementation", (task) => { task.execution_cycles = task.execution_cycles.filter((cycle) => cycle.kind !== "implementation"); }, /implementation cycle/],
+      ["missing implementation completion evidence", (task) => { task.completion_evidence = task.completion_evidence.filter((evidence) => evidence.kind !== "implementation"); }, /implementation completion evidence/],
+      ["failed completion", (task) => { task.completion_evidence.push({ kind: "test", ref: "failed", status: "failed" }); }, /all completion evidence/],
+      ["non-independent review", (task) => { task.execution_cycles.find((cycle) => cycle.kind === "review").owner_agent_id = "implementation-001"; }, /independent review owner/],
+      ["unbound review handoff", (task) => { task.handoff_attempts = task.handoff_attempts.filter((attempt) => attempt.cycle_id !== "review-1"); }, /handoff bound/],
+      ["unbound report", (task) => { task.specialist_report_path = ".orquesta/reports/other.md"; }, /review report/],
+      ["missing critical approval", (task) => { delete task.user_approval_evidence; }, /user_approval_evidence/],
+      ["meaningless partial tokens", (task) => { task.execution_metrics.token_usage = { coverage: "partial", known_total: 0, by_thread: [{}] }; }, /token_usage/],
+      ["incomplete complete coverage", (task) => { task.execution_metrics.token_usage.participating_thread_ids = ["implementation-thread"]; }, /participating_thread_ids/],
+    ];
+    for (const [label, mutate, expected] of invalidCases) {
+      const task = acceptedPhase15Task("critical", root);
+      task.execution_metrics.token_usage = JSON.parse(JSON.stringify(valid.execution_metrics.token_usage));
+      mutate(task);
+      writeTasks(root, [task]);
+      assert.match(checkDelegationGate(root).errors.join("\n"), expected, label);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("Phase 1.5 source documentation describes lanes, same-task cycles, canonical state, and token coverage", () => {
   const root = path.resolve(__dirname, "..", "..");
   const skill = fs.readFileSync(path.join(root, "orquesta", "SKILL.md"), "utf8");
@@ -163,4 +268,6 @@ test("Phase 1.5 source documentation describes lanes, same-task cycles, canonica
   }
   assert.match(source, /auxiliary task|auxiliary_task|R, F, RR/i);
   assert.doesNotMatch(skill, /no handoff, no implementation/i);
+  assert.doesNotMatch(protocol, /If a specialist exists and the task touches that lane, the short rule is: no handoff, no implementation/i);
+  assert.match(`${skill}\n${protocol}`, /fast.*inline_verified/i);
 });

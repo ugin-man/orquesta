@@ -221,6 +221,27 @@ test("Execution Plan commands require lifecycle evidence, journal once, replay, 
   assert.equal(current.supersedes_execution_plan_id, first.execution_plans[0].execution_plan_id);
 });
 
+test("Execution Plan creation is idempotent but cannot replace the current lane", () => {
+  const { boundary } = makeBoundary();
+  boundary.execute({ command_id: "locked-plan-intent", name: "task-intent.create", payload: makeIntent() });
+  boundary.execute({ command_id: "locked-plan-graph", name: "capability.compile", payload: {} });
+  const critical = {
+    command_id: "locked-plan-critical",
+    name: "execution-plan.create",
+    payload: { risk_profile: { effects: ["external_write"] } }
+  };
+  assert.equal(boundary.execute(critical).status, "committed");
+  assert.equal(boundary.execute(critical).status, "idempotent");
+  assert.throws(() => boundary.execute({
+    command_id: "locked-plan-fast",
+    name: "execution-plan.create",
+    payload: { risk_profile: { effects: ["workspace_write"] } }
+  }), { code: "CORE_EXECUTION_PLAN_EXISTS" });
+  const state = boundary.replay();
+  assert.equal(state.execution_plans.length, 1);
+  assert.equal(state.execution_plans[0].lane, "critical");
+});
+
 test("a command commits one EventStore batch and command identity is idempotent only for its canonical payload", () => {
   const { boundary } = makeBoundary();
   const command = { command_id: "cmd-intent", name: "task-intent.create", payload: makeIntent() };

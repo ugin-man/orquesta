@@ -137,3 +137,10 @@ test("rejects unknown escalation triggers and has no de-escalation API", () => {
   assert.throws(() => escalateExecutionPlan({ executionPlan: fastPlan(), trigger: "unknown" }), TypeError);
   assert.equal(typeof require("../src").deescalateExecutionPlan, "undefined");
 });
+
+test("records only the escalation triggers accepted by each automatic lane", () => {
+  assert.deepEqual(fastPlan().escalation_triggers, ["acceptance_uncertain", "new_risk", "scope_drift", "test_failure"]);
+  assert.deepEqual(standardPlan().escalation_triggers, [
+    "budget_exhausted", "critical_risk_discovered", "scope_drift", "semantic_finding_not_machine_verifiable"
+  ]);
+});

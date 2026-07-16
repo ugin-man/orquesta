@@ -11,9 +11,6 @@ const CRITICAL_EFFECTS = new Set([
   "external_write", "public_release", "credential_access", "payment", "destructive_operation", "data_migration", "security_boundary"
 ]);
 const STANDARD_EFFECTS = new Set(["dependency_change", "network_access"]);
-const ESCALATION_TRIGGERS = Object.freeze([
-  "budget_exhausted", "critical_risk_discovered", "scope_drift", "semantic_finding_not_machine_verifiable"
-]);
 const METRIC_TO_BUDGET = Object.freeze({
   handoffs: "max_handoffs",
   independent_reviews: "max_independent_reviews",
@@ -136,6 +133,10 @@ function laneFields(lane) {
   };
 }
 
+function laneEscalationTriggers(lane) {
+  return Object.keys(ESCALATION_LANES[lane] || {}).sort(compareText);
+}
+
 function buildExecutionPlan({ taskIntentId, riskProfile, lane, reasonCodes, revision, supersedesExecutionPlanId, escalationTriggers }) {
   const { routing, review_policy } = laneFields(lane);
   const content = {
@@ -173,7 +174,7 @@ function createExecutionPlan({ taskIntent, riskProfile, revision = 1, supersedes
     reasonCodes,
     revision,
     supersedesExecutionPlanId,
-    escalationTriggers: ESCALATION_TRIGGERS
+    escalationTriggers: laneEscalationTriggers(lane)
   });
 }
 
@@ -210,7 +211,7 @@ function escalateExecutionPlan({ executionPlan, trigger } = {}) {
     reasonCodes: [...current.reason_codes, `escalation:${trigger}`],
     revision: current.revision + 1,
     supersedesExecutionPlanId: current.execution_plan_id,
-    escalationTriggers: current.escalation_triggers
+    escalationTriggers: laneEscalationTriggers(targetLane)
   });
 }
 

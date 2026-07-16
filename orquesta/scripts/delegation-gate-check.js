@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { isDeepStrictEqual } = require("node:util");
+const { assertContract, canonicalHash } = require("@orquesta/contracts");
 
 const REVIEW_STATES = new Set([
   "active",
@@ -65,8 +66,11 @@ function looksLikeSpecialistDomain(task) {
   return SPECIALIST_HINTS.some((hint) => text.includes(hint));
 }
 
-function checkTask(task) {
-  if (task.execution_policy_version === 1) return checkTaskPhase15(task);
+function checkTask(task, options = {}) {
+  if (Object.hasOwn(task, "execution_policy_version")) {
+    if (task.execution_policy_version === 1) return checkTaskPhase15(task, options);
+    return { errors: [taskError(task, "unsupported execution_policy_version")], warnings: [] };
+  }
   const errors = [];
   const warnings = [];
   const id = task.task_id || "(unknown task)";
@@ -110,7 +114,60 @@ function integer(value) {
   return Number.isInteger(value) && value >= 0;
 }
 
-function checkTaskPhase15(task) {
+function nonemptyString(value) {
+  return typeof value === "string" && value.length > 0;
+}
+
+function uniqueStrings(values) {
+  return Array.isArray(values) && values.length > 0
+    && values.every((value) => nonemptyString(value))
+    && new Set(values).size === values.length;
+}
+
+function planIntegrityMatches(plan) {
+  const content = { ...plan };
+  delete content.execution_plan_id;
+  return plan.execution_plan_id === `EP-${canonicalHash(content).slice(0, 12)}`;
+}
+
+function sameStateRoot(left, right) {
+  return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
+}
+
+function tokenUsageErrors(task, token) {
+  if (!token || typeof token !== "object" || !["unknown", "partial", "complete"].includes(token.coverage) || !Array.isArray(token.by_thread)) {
+    return [taskError(task, "execution_metrics.token_usage is invalid")];
+  }
+  if (token.coverage === "unknown") {
+    return token.known_total === null && token.by_thread.length === 0
+      && (!Object.hasOwn(token, "participating_thread_ids") || (Array.isArray(token.participating_thread_ids) && token.participating_thread_ids.length === 0))
+      ? []
+      : [taskError(task, "token_usage unknown coverage requires known_total null and empty by_thread")];
+  }
+  if (!Number.isFinite(token.known_total) || token.known_total < 0 || token.by_thread.length === 0) {
+    return [taskError(task, "token_usage partial or complete coverage requires known_total and by_thread evidence")];
+  }
+  const entriesValid = token.by_thread.every((entry) => entry && typeof entry === "object"
+    && nonemptyString(entry.thread_id) && Number.isFinite(entry.measured_tokens) && entry.measured_tokens >= 0
+    && nonemptyString(entry.evidence_source));
+  const threadIds = token.by_thread.map((entry) => entry && entry.thread_id);
+  if (!entriesValid || new Set(threadIds).size !== threadIds.length) {
+    return [taskError(task, "token_usage requires unique thread_id, measured_tokens, and evidence_source entries")];
+  }
+  const measuredTotal = token.by_thread.reduce((total, entry) => total + entry.measured_tokens, 0);
+  if (measuredTotal !== token.known_total) {
+    return [taskError(task, "token_usage known_total must equal measured per-thread tokens")];
+  }
+  if (token.coverage === "complete") {
+    if (!uniqueStrings(token.participating_thread_ids) || token.participating_thread_ids.length !== threadIds.length
+      || token.participating_thread_ids.some((threadId) => !threadIds.includes(threadId))) {
+      return [taskError(task, "token_usage complete coverage requires matching participating_thread_ids")];
+    }
+  }
+  return [];
+}
+
+function checkTaskPhase15(task, { stateRoot = null } = {}) {
   const errors = [];
   const warnings = [];
   const plan = task.execution_plan;
@@ -119,12 +176,30 @@ function checkTaskPhase15(task) {
     errors.push(taskError(task, "Phase 1.5 task requires a known execution plan lane"));
     return { errors, warnings };
   }
+  try {
+    assertContract("execution-plan", plan);
+  } catch {
+    errors.push(taskError(task, "execution_plan contract is invalid"));
+    return { errors, warnings };
+  }
+  if (!planIntegrityMatches(plan)) {
+    errors.push(taskError(task, "execution_plan integrity does not match its canonical identifier"));
+  }
+  if (stateRoot && (!nonemptyString(task.canonical_state_root) || !sameStateRoot(task.canonical_state_root, stateRoot))) {
+    errors.push(taskError(task, "canonical_state_root must match the resolved state root"));
+  }
   if (!isDeepStrictEqual(plan.budget, PHASE15_BUDGETS[plan.lane])) {
     errors.push(taskError(task, "execution_plan budget must match the Phase 1.5 lane budget"));
   }
   const fast = plan.lane === "fast";
   if (task.routing_class !== (fast ? "inline_verified" : "specialist_required")) {
     errors.push(taskError(task, `${plan.lane} lane uses the wrong routing_class`));
+  }
+  if (task.handoff_required !== plan.routing.handoff_required) {
+    errors.push(taskError(task, "handoff_required must match execution_plan.routing"));
+  }
+  if (task.specialist_report_required !== plan.routing.specialist_report_required) {
+    errors.push(taskError(task, "specialist_report_required must match execution_plan.routing"));
   }
   const attempts = Array.isArray(task.handoff_attempts) ? task.handoff_attempts : null;
   const cycles = Array.isArray(task.execution_cycles) ? task.execution_cycles : null;
@@ -160,26 +235,47 @@ function checkTaskPhase15(task) {
         }
       }
     }
-    const token = metrics.token_usage;
-    if (!token || typeof token !== "object" || !["unknown", "partial", "complete"].includes(token.coverage) || !Array.isArray(token.by_thread)) {
-      errors.push(taskError(task, "execution_metrics.token_usage is invalid"));
-    } else if (token.coverage === "unknown") {
-      if (token.known_total !== null || token.by_thread.length !== 0) {
-        errors.push(taskError(task, "token_usage unknown coverage requires known_total null and empty by_thread"));
-      }
-    } else if (!Number.isFinite(token.known_total) || token.known_total < 0 || token.by_thread.length === 0) {
-      errors.push(taskError(task, "token_usage partial or complete coverage requires known_total and by_thread evidence"));
-    }
+    errors.push(...tokenUsageErrors(task, metrics.token_usage));
   }
   if (accepted) {
-    if (!Array.isArray(task.completion_evidence) || !task.completion_evidence.some((evidence) => evidence && evidence.status === "passed")) {
-      errors.push(taskError(task, "accepted Phase 1.5 task requires passed completion evidence"));
+    const completionEvidence = task.completion_evidence;
+    if (!Array.isArray(completionEvidence) || completionEvidence.length === 0 || completionEvidence.some((evidence) => !evidence || evidence.status !== "passed")) {
+      errors.push(taskError(task, "accepted Phase 1.5 task requires all completion evidence to be passed"));
+    }
+    if (!Array.isArray(completionEvidence) || !completionEvidence.some((evidence) => evidence && evidence.kind === "implementation" && evidence.status === "passed")) {
+      errors.push(taskError(task, "accepted Phase 1.5 task requires implementation completion evidence"));
+    }
+    const implementation = cycles.find((cycle) => cycle && cycle.kind === "implementation" && cycle.status === "completed"
+      && Array.isArray(cycle.evidence_refs) && cycle.evidence_refs.length > 0);
+    if (!implementation) {
+      errors.push(taskError(task, "accepted Phase 1.5 task requires a completed implementation cycle with evidence"));
     }
     if (!fast) {
       const acceptedReview = cycles.find((cycle) => cycle && cycle.kind === "review" && cycle.status === "accepted"
         && cycle.findings && cycle.findings.critical === 0 && cycle.findings.important === 0
         && Array.isArray(cycle.evidence_refs) && cycle.evidence_refs.length > 0);
       if (!acceptedReview) errors.push(taskError(task, "accepted standard or critical task requires independent accepted review evidence with zero Critical and Important findings"));
+      else {
+        if (!implementation || acceptedReview.owner_agent_id === implementation.owner_agent_id) {
+          errors.push(taskError(task, "accepted task requires an independent review owner"));
+        }
+        const reviewHandoff = attempts.find((attempt) => attempt && attempt.cycle_id === acceptedReview.cycle_id
+          && attempt.owner_agent_id === acceptedReview.owner_agent_id && nonemptyString(attempt.sent_at));
+        if (!reviewHandoff) errors.push(taskError(task, "accepted review requires a handoff bound to the review cycle"));
+        if (!nonemptyString(task.specialist_report_path) || !acceptedReview.evidence_refs.includes(task.specialist_report_path)) {
+          errors.push(taskError(task, "accepted review report must be bound to the review cycle"));
+        }
+      }
+      if (!nonemptyString(task.handoff_sent_at)) {
+        errors.push(taskError(task, "accepted standard or critical task requires handoff_sent_at"));
+      }
+    }
+    if (plan.lane === "critical") {
+      const approval = task.user_approval_evidence;
+      if (!approval || typeof approval !== "object" || approval.status !== "approved"
+        || !nonemptyString(approval.source) || !nonemptyString(approval.scope)) {
+        errors.push(taskError(task, "accepted critical task requires approved user_approval_evidence"));
+      }
     }
   }
   return { errors, warnings };
@@ -224,7 +320,7 @@ function checkDelegationGate(rootDir) {
     if (task && phase15TaskIds.has(task.execution_parent_task_id)) {
       result.errors.push(`${task.task_id || "(unknown task)"}: append an execution_cycle to Phase 1.5 parent ${task.execution_parent_task_id} instead of creating an auxiliary task`);
     }
-    const taskResult = checkTask(task);
+    const taskResult = checkTask(task, { stateRoot: rootDir });
     result.errors.push(...taskResult.errors);
     result.warnings.push(...taskResult.warnings);
   }

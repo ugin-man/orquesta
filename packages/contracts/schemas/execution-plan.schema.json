@@ -45,7 +45,7 @@
       "additionalProperties": false
     },
     "review_policy": { "enum": ["none", "independent_once", "independent_twice"] },
-    "escalation_triggers": { "type": "array", "minItems": 1, "items": { "enum": ["budget_exhausted", "critical_risk_discovered", "scope_drift", "semantic_finding_not_machine_verifiable"] } },
+    "escalation_triggers": { "type": "array", "items": { "enum": ["acceptance_uncertain", "budget_exhausted", "critical_risk_discovered", "new_risk", "scope_drift", "semantic_finding_not_machine_verifiable", "test_failure"] } },
     "revision": { "type": "integer", "minimum": 1 },
     "supersedes_execution_plan_id": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^EP-[a-f0-9]{12}$" }] }
   },
