@@ -50,5 +50,8 @@
     "test:model-policy": "node orquesta/scripts/model-policy.test.js",
     "test:ports": "node orquesta/scripts/dashboard-port-selection.test.js",
     "smoke:dashboard": "node orquesta/scripts/dashboard-dom-smoke.js"
+  },
+  "devDependencies": {
+    "playwright-core": "1.61.1"
   }
 }

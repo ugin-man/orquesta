@@ -120,7 +120,7 @@ test("keeps fixture mutation local and exposes only the fixed Phase 1 surface", 
     });
     assert.equal(tooLarge.status, 413);
 
-    assert.equal((await fetch(app.url)).status, 404);
+    assert.equal((await fetch(app.url)).status, 200);
   } finally {
     await app.close();
     state.cleanup();

@@ -103,6 +103,13 @@ function isAllowedWorkspaceLink(entry) {
   return Object.hasOwn(workspacePackages, normalized);
 }
 
+function isAllowedReviewDependency(packagePath, entry, rootManifest = {}) {
+  if (packagePath !== "node_modules/playwright-core" || !entry || entry.dev !== true) return false;
+  if (typeof entry.version !== "string" || rootManifest.devDependencies?.["playwright-core"] !== entry.version) return false;
+  if (typeof entry.integrity !== "string" || !entry.integrity.startsWith("sha512-") || entry.integrity.length <= "sha512-".length) return false;
+  return entry.resolved === `https://registry.npmjs.org/playwright-core/-/playwright-core-${entry.version}.tgz`;
+}
+
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(root, relativePath), "utf8"));
 }
@@ -149,7 +156,11 @@ function checkBoundary() {
   if (fs.existsSync(lockfilePath)) {
     const lockfile = JSON.parse(fs.readFileSync(lockfilePath, "utf8"));
     for (const [packagePath, entry] of Object.entries(lockfile.packages || {})) {
-      addError(errors, !Object.hasOwn(entry, "resolved") || isAllowedWorkspaceLink(entry), `Lockfile contains a registry artifact: ${packagePath}`);
+      addError(
+        errors,
+        !Object.hasOwn(entry, "resolved") || isAllowedWorkspaceLink(entry) || isAllowedReviewDependency(packagePath, entry, pkg),
+        `Lockfile contains an unsupported registry artifact: ${packagePath}`,
+      );
     }
   }
 
@@ -175,6 +186,7 @@ module.exports = {
   checkBoundary,
   hasActiveIgnoreRule,
   hasV3Baseline,
+  isAllowedReviewDependency,
   isAllowedWorkspaceLink,
   isSupportedNodeVersion
 };

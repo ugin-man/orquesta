@@ -1,6 +1,16 @@
 "use strict";
 
+const fs = require("node:fs");
+const path = require("node:path");
+
 const MAX_BODY_BYTES = 1024 * 1024;
+const PUBLIC_ROOT = path.resolve(__dirname, "../public");
+const STATIC_FILES = new Map([
+  ["/", ["index.html", "text/html; charset=utf-8"]],
+  ["/styles.css", ["styles.css", "text/css; charset=utf-8"]],
+  ["/view-model.js", ["view-model.js", "text/javascript; charset=utf-8"]],
+  ["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
+]);
 
 function sendJson(response, statusCode, value) {
   response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -84,6 +94,12 @@ function createApiHandler({ service, origin } = {}) {
           sendJson(response, 200, service.replay());
           return;
         }
+      }
+      const staticFile = request.method === "GET" ? STATIC_FILES.get(url.pathname) : null;
+      if (staticFile) {
+        response.writeHead(200, { "content-type": staticFile[1], "cache-control": "no-store" });
+        response.end(fs.readFileSync(path.join(PUBLIC_ROOT, staticFile[0])));
+        return;
       }
       sendJson(response, 404, { error: "V4_ROUTE_NOT_FOUND", message: "Route not found." });
     } catch (error) {

@@ -8,9 +8,10 @@ const {
   V3_CHECK_BASELINE,
   hasV3Baseline,
   hasActiveIgnoreRule,
+  isAllowedReviewDependency,
   isAllowedWorkspaceLink
 } = require("./phase-boundary-check.js");
-const { probeBrowserVersion } = require("./browser-preflight.js");
+const { probeBrowserDriver, probeBrowserVersion } = require("./browser-preflight.js");
 
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -112,15 +113,65 @@ test("browser preflight rejects non-Chrome, empty, and timed-out probes", () => 
   assert.equal(timedOut.reason, "timeout_or_signal");
 });
 
-test("workspace lockfile has no registry-resolved package artifacts", () => {
+test("browser driver preflight launches an injected Chrome-family runner and captures a page", async () => {
+  const calls = [];
+  const probe = await probeBrowserDriver("C:/tool/chrome.exe", {
+    loadDriver: () => ({
+      chromium: {
+        launch: async ({ executablePath, headless }) => {
+          calls.push({ executablePath, headless });
+          return {
+            version: () => "Chrome/137.0.7151.120",
+            newPage: async () => ({
+              on: () => {},
+              setContent: async () => {},
+              screenshot: async () => Buffer.from("png"),
+            }),
+            close: async () => {},
+          };
+        },
+      },
+    }),
+  });
+  assert.equal(probe.ok, true);
+  assert.equal(probe.version, "Chrome/137.0.7151.120");
+  assert.equal(probe.screenshot_bytes, 3);
+  assert.deepEqual(calls, [{ executablePath: "C:/tool/chrome.exe", headless: true }]);
+
+  const unavailable = await probeBrowserDriver("C:/tool/chrome.exe", { loadDriver: () => { throw new Error("missing"); } });
+  assert.equal(unavailable.ok, false);
+  assert.equal(unavailable.reason, "driver_unavailable");
+});
+
+test("workspace lockfile allows only the pinned review driver outside workspace links", () => {
   const lockfilePath = path.join(root, "package-lock.json");
   assert.equal(fs.existsSync(lockfilePath), true, lockfilePath);
   const lockfile = JSON.parse(fs.readFileSync(lockfilePath, "utf8"));
-  for (const entry of Object.values(lockfile.packages || {})) {
+  const rootEntry = lockfile.packages[""];
+  for (const [packagePath, entry] of Object.entries(lockfile.packages || {})) {
     if (Object.hasOwn(entry, "resolved")) {
-      assert.equal(isAllowedWorkspaceLink(entry), true);
+      assert.equal(isAllowedWorkspaceLink(entry) || isAllowedReviewDependency(packagePath, entry, rootEntry), true, packagePath);
     }
   }
+});
+
+test("review dependency gate accepts only exact dev-only playwright-core evidence", () => {
+  const rootEntry = { devDependencies: { "playwright-core": "1.61.1" } };
+  const valid = {
+    version: "1.61.1",
+    resolved: "https://registry.npmjs.org/playwright-core/-/playwright-core-1.61.1.tgz",
+    integrity: "sha512-evidence",
+    dev: true,
+  };
+  assert.equal(isAllowedReviewDependency("node_modules/playwright-core", valid, rootEntry), true);
+  for (const [packagePath, entry, manifest] of [
+    ["node_modules/playwright", valid, rootEntry],
+    ["node_modules/playwright-core", { ...valid, dev: false }, rootEntry],
+    ["node_modules/playwright-core", { ...valid, integrity: "" }, rootEntry],
+    ["node_modules/playwright-core", { ...valid, version: "1.61.0" }, rootEntry],
+    ["node_modules/playwright-core", { ...valid, resolved: "https://example.invalid/playwright-core.tgz" }, rootEntry],
+    ["node_modules/playwright-core", valid, { devDependencies: { "playwright-core": "^1.61.1" } }],
+  ]) assert.equal(isAllowedReviewDependency(packagePath, entry, manifest), false, packagePath);
 });
 
 test("lockfile links reject external, absolute, traversal, URI, and unknown paths", () => {
