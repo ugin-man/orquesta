@@ -1,0 +1,29 @@
+{
+  "$id": "audition-plan",
+  "type": "object",
+  "required": ["audition_plan_id", "candidate_id", "candidate_version", "candidate_hash", "task_intent_id", "resolution_id", "execution_root", "expected_codex_profile", "permitted_effects", "steps", "expected_evidence", "cleanup_plan", "approval_refs"],
+  "properties": {
+    "audition_plan_id": { "type": "string", "pattern": "^AP-[a-f0-9]{12}$" },
+    "candidate_id": { "type": "string", "pattern": ".+" },
+    "candidate_version": { "type": "string", "pattern": ".+" },
+    "candidate_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "task_intent_id": { "type": "string", "pattern": "^TI-[a-f0-9]{12}$" },
+    "resolution_id": { "type": "string", "pattern": "^RES-[a-f0-9]{12}$" },
+    "execution_root": {
+      "type": "object",
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": { "enum": ["workspace", "temporary"] },
+        "path": { "type": "string", "pattern": ".+" }
+      },
+      "additionalProperties": false
+    },
+    "expected_codex_profile": { "type": "string", "pattern": ".+" },
+    "permitted_effects": { "type": "array", "items": { "type": "string", "pattern": ".+" } },
+    "steps": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": ".+" } },
+    "expected_evidence": { "type": "array", "items": { "type": "string", "pattern": ".+" } },
+    "cleanup_plan": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": ".+" } },
+    "approval_refs": { "type": "array", "items": { "type": "string", "pattern": ".+" } }
+  },
+  "additionalProperties": false
+}

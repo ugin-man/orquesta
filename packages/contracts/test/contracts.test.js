@@ -248,7 +248,7 @@ test("public contract surface is stable", () => {
     "validateContract",
     "validatePhaseApprovalBinding"
   ].sort());
-  assert.deepEqual(SCHEMA_NAMES, Object.keys(fixtures));
+  assert.deepEqual(SCHEMA_NAMES, [...Object.keys(fixtures), ...Object.keys(phase2Contracts)]);
 });
 
 test("every approved schema accepts its fixture and rejects a meaningful invalid value", () => {
@@ -593,4 +593,150 @@ test("validation errors use deterministic code-unit order", () => {
     const result = validateContract("task-intent", { Z: 1, a: 1 }, { schemasDir: schemaDir });
     assert.deepEqual(result.errors.map((error) => error.path), ["$.Z", "$.a"]);
   });
+});
+
+const phase2Contracts = {
+  "live-source-query": {
+    value: {
+      need_id: "NEED-live-source",
+      query_terms: ["json", "validation"],
+      allowed_connector_ids: ["official_docs", "registry"],
+      request_budget: { max_requests_per_need: 8, max_requests_per_connector: 2 },
+      candidate_limit: 3,
+      requested_at: timestamp
+    },
+    invalid: (value) => { value.allowed_connector_ids = ["registry", "registry"]; }
+  },
+  "live-source-result": {
+    value: {
+      connector_id: "official_docs",
+      trust_tier: "official",
+      fetched_at: timestamp,
+      expires_at: "2026-07-15T01:00:00.000Z",
+      status: "success",
+      candidates: [{ candidate_id: "candidate-a", source_ref: "https://example.test/a", source_hash: hash }],
+      source_evidence: [{ source_ref: "https://example.test/a", source_hash: hash }],
+      cache_status: "fresh",
+      redaction_status: "redacted"
+    },
+    invalid: (value) => { value.candidates[0].source_hash = ""; }
+  },
+  "audition-plan": {
+    value: {
+      audition_plan_id: "AP-1234567890ab",
+      candidate_id: "candidate-a",
+      candidate_version: "1.0.0",
+      candidate_hash: hash,
+      task_intent_id: "TI-1234567890ab",
+      resolution_id: "RES-1234567890ab",
+      execution_root: { kind: "temporary", path: "output/v4-phase2/audition" },
+      expected_codex_profile: "phase2-audition",
+      permitted_effects: ["workspace_write"],
+      steps: ["run focused verification"],
+      expected_evidence: ["artifact:audition-result"],
+      cleanup_plan: ["remove temporary files"],
+      approval_refs: ["approval:audition"]
+    },
+    invalid: (value) => { value.unexpected = true; }
+  },
+  "audition-result": {
+    value: {
+      audition_plan_id: "AP-1234567890ab",
+      observed_codex_profile: "phase2-audition",
+      steps: [{ step: "run focused verification", status: "passed" }],
+      side_effects: [],
+      evidence_refs: ["artifact:audition-result"],
+      verdict: "passed",
+      cleanup_evidence: ["cleanup:verified"]
+    },
+    invalid: (value) => { value.observed_codex_profile = ""; }
+  },
+  "install-approval-target": {
+    value: {
+      candidate_id: "candidate-a",
+      candidate_version: "1.0.0",
+      source_hash: hash,
+      dependency_preview_hash: hash,
+      lockfile_preview_hash: laterHash,
+      target_workspace: "packages/codex-adapter",
+      effects: ["dependency_change"],
+      expires_at: "2026-07-15T01:00:00.000Z",
+      review_packet_ref: "artifact:install-review",
+      review_packet_hash: hash
+    },
+    invalid: (value) => { value.review_packet_hash = ""; }
+  },
+  "runtime-evidence": {
+    value: {
+      source: "app_server",
+      correlation_id: "CORR-phase2",
+      event_kind: "turn_started",
+      captured_at: timestamp,
+      thread_id: "thread-phase2",
+      turn_id: "turn-phase2",
+      payload_hash: hash,
+      payload_ref: "artifact:turn-started",
+      redaction_status: "redacted",
+      requested_model: "gpt-5.6-terra",
+      applied_model: "gpt-5.6-terra",
+      actual_model: null
+    },
+    invalid: (value) => { value.actual_model = "gpt-5.6-terra"; value.payload_ref = null; }
+  },
+  "codex-dispatch": {
+    value: {
+      adapter_kind: "app_server",
+      request_status: "dispatch_accepted",
+      thread_id: "thread-phase2",
+      turn_id: "turn-phase2",
+      requested_model: "gpt-5.6-terra",
+      applied_model: "gpt-5.6-terra",
+      evidence_refs: ["artifact:dispatch-accepted"],
+      turn_started_evidence_ref: null
+    },
+    invalid: (value) => { value.request_status = "turn_started"; }
+  }
+};
+
+test("Phase 2 durable evidence contracts accept bounded fixtures and reject semantic violations", () => {
+  const names = Object.keys(phase2Contracts);
+  assert.equal(names.every((name) => SCHEMA_NAMES.includes(name)), true, "Phase 2 schema names must be registered");
+
+  for (const [name, fixture] of Object.entries(phase2Contracts)) {
+    assert.equal(validateContract(name, fixture.value).ok, true, `${name} valid fixture`);
+    const invalid = clone(fixture.value);
+    fixture.invalid(invalid);
+    assert.equal(validateContract(name, invalid).ok, false, `${name} semantic invalid fixture`);
+  }
+});
+
+test("Phase 2 durable evidence contracts enforce fixed limits, timestamp order, and turn-start evidence", () => {
+  const query = clone(phase2Contracts["live-source-query"].value);
+  query.request_budget.max_requests_per_need = 9;
+  assert.equal(validateContract("live-source-query", query).ok, false);
+
+  query.request_budget.max_requests_per_need = 8;
+  query.candidate_limit = 4;
+  assert.equal(validateContract("live-source-query", query).ok, false);
+
+  query.candidate_limit = 3;
+  query.query_terms = ["validation", "json"];
+  assert.equal(validateContract("live-source-query", query).ok, false);
+
+  const result = clone(phase2Contracts["live-source-result"].value);
+  result.expires_at = result.fetched_at;
+  assert.equal(validateContract("live-source-result", result).ok, false);
+
+  const dispatch = clone(phase2Contracts["codex-dispatch"].value);
+  dispatch.request_status = "turn_started";
+  dispatch.turn_started_evidence_ref = "artifact:turn-started";
+  assert.equal(validateContract("codex-dispatch", dispatch).ok, true);
+});
+
+test("Phase 2 durable evidence contracts reject unknown durable fields", () => {
+  for (const [name, fixture] of Object.entries(phase2Contracts)) {
+    const invalid = clone(fixture.value);
+    invalid.unknown_durable_field = true;
+    assert.equal(validateContract(name, invalid).ok, false, name);
+  }
 });

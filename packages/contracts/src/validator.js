@@ -20,7 +20,14 @@ const SCHEMA_NAMES = [
   "event-batch",
   "phase-review",
   "approval-attestation",
-  "execution-plan"
+  "execution-plan",
+  "live-source-query",
+  "live-source-result",
+  "audition-plan",
+  "audition-result",
+  "install-approval-target",
+  "runtime-evidence",
+  "codex-dispatch"
 ];
 const defaultSchemasDir = path.resolve(__dirname, "../schemas");
 
@@ -231,10 +238,105 @@ const EXECUTION_BUDGETS = {
   critical: { max_handoffs: 4, max_independent_reviews: 2, max_correction_batches: 2, max_reports: 2, max_auxiliary_tasks: 0 }
 };
 
+const ACQUISITION_LIMITS = {
+  max_requests_per_need: 8,
+  max_requests_per_connector: 2,
+  max_candidates: 3
+};
+
 function sortedUnique(values) {
   return Array.isArray(values) && values.every((value, index) => (
     typeof value === "string" && (index === 0 || codeUnitCompare(values[index - 1], value) < 0)
   ));
+}
+
+function sortedUniqueBy(values, key) {
+  return Array.isArray(values) && values.every((value, index) => (
+    isPlainObject(value)
+    && typeof value[key] === "string"
+    && (index === 0 || codeUnitCompare(values[index - 1][key], value[key]) < 0)
+  ));
+}
+
+function phase2ArrayErrors(value, fields, recordFields = []) {
+  if (!isPlainObject(value)) return [];
+  const errors = [];
+  for (const field of fields) {
+    if (!sortedUnique(value[field])) {
+      errors.push(schemaError(`$.${field}`, "sorted_unique", "must be sorted with no duplicate entries"));
+    }
+  }
+  for (const [field, key] of recordFields) {
+    if (!sortedUniqueBy(value[field], key)) {
+      errors.push(schemaError(`$.${field}`, "sorted_unique", "must be sorted with no duplicate entries"));
+    }
+  }
+  return errors;
+}
+
+function liveSourceQueryErrors(value) {
+  if (!isPlainObject(value)) return [];
+  const errors = phase2ArrayErrors(value, ["query_terms", "allowed_connector_ids"]);
+  if (!isDeepStrictEqual(value.request_budget, {
+    max_requests_per_need: ACQUISITION_LIMITS.max_requests_per_need,
+    max_requests_per_connector: ACQUISITION_LIMITS.max_requests_per_connector
+  })) {
+    errors.push(schemaError("$.request_budget", "acquisition_budget", "must match the fixed acquisition budget"));
+  }
+  if (value.candidate_limit !== ACQUISITION_LIMITS.max_candidates) {
+    errors.push(schemaError("$.candidate_limit", "acquisition_candidate_limit", "must match the fixed candidate limit"));
+  }
+  return errors;
+}
+
+function liveSourceResultErrors(value) {
+  if (!isPlainObject(value)) return [];
+  const errors = timestampFieldErrors(value, ["fetched_at", "expires_at"]);
+  errors.push(...phase2ArrayErrors(value, [], [["candidates", "candidate_id"], ["source_evidence", "source_ref"]]));
+  if (isValidUtcTimestamp(value.fetched_at) && isValidUtcTimestamp(value.expires_at)
+    && new Date(value.expires_at).getTime() <= new Date(value.fetched_at).getTime()) {
+    errors.push(schemaError("$.expires_at", "source_expiry_order", "must be later than fetched_at"));
+  }
+  return errors;
+}
+
+function auditionPlanErrors(value) {
+  return phase2ArrayErrors(value, ["permitted_effects", "steps", "expected_evidence", "cleanup_plan", "approval_refs"]);
+}
+
+function auditionResultErrors(value) {
+  return phase2ArrayErrors(value, ["side_effects", "evidence_refs", "cleanup_evidence"], [["steps", "step"]]);
+}
+
+function installApprovalTargetErrors(value) {
+  const errors = timestampFieldErrors(value, ["expires_at"]);
+  errors.push(...phase2ArrayErrors(value, ["effects"]));
+  return errors;
+}
+
+function runtimeEvidenceErrors(value) {
+  if (!isPlainObject(value)) return [];
+  const errors = timestampFieldErrors(value, ["captured_at"]);
+  if (value.actual_model !== null && (!value.payload_ref || !value.payload_hash
+    || !["app_server", "approved_hook"].includes(value.source))) {
+    errors.push(schemaError("$.actual_model", "actual_model_evidence", "requires bound App Server or approved-hook payload evidence"));
+  }
+  return errors;
+}
+
+function codexDispatchErrors(value) {
+  if (!isPlainObject(value)) return [];
+  const errors = phase2ArrayErrors(value, ["evidence_refs"]);
+  if (value.request_status === "turn_started" && (!value.turn_id || !value.turn_started_evidence_ref)) {
+    errors.push(schemaError("$.turn_started_evidence_ref", "turn_started_evidence", "is required for turn_started dispatches"));
+  }
+  if (value.request_status !== "turn_started" && value.turn_started_evidence_ref !== null) {
+    errors.push(schemaError("$.turn_started_evidence_ref", "turn_started_evidence", "must be null before turn_started"));
+  }
+  if (value.adapter_kind === "repository_only" && value.request_status === "turn_started") {
+    errors.push(schemaError("$.request_status", "repository_turn_started", "repository_only cannot claim turn_started"));
+  }
+  return errors;
 }
 
 function executionPlanErrors(value) {
@@ -293,6 +395,16 @@ function validateContract(name, value, options = {}) {
     errors.push(...phaseReviewErrors(value));
   }
   if (name === "execution-plan") errors.push(...executionPlanErrors(value));
+  if (name === "live-source-query") {
+    errors.push(...timestampFieldErrors(value, ["requested_at"]));
+    errors.push(...liveSourceQueryErrors(value));
+  }
+  if (name === "live-source-result") errors.push(...liveSourceResultErrors(value));
+  if (name === "audition-plan") errors.push(...auditionPlanErrors(value));
+  if (name === "audition-result") errors.push(...auditionResultErrors(value));
+  if (name === "install-approval-target") errors.push(...installApprovalTargetErrors(value));
+  if (name === "runtime-evidence") errors.push(...runtimeEvidenceErrors(value));
+  if (name === "codex-dispatch") errors.push(...codexDispatchErrors(value));
   return { ok: errors.length === 0, errors: sortErrors(errors) };
 }
 

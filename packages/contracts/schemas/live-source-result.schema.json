@@ -1,0 +1,40 @@
+{
+  "$id": "live-source-result",
+  "type": "object",
+  "required": ["connector_id", "trust_tier", "fetched_at", "expires_at", "status", "candidates", "source_evidence", "cache_status", "redaction_status"],
+  "properties": {
+    "connector_id": { "enum": ["official_docs", "registry", "github", "ui_catalog"] },
+    "trust_tier": { "enum": ["local", "official", "curated", "community", "unknown"] },
+    "fetched_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+    "expires_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+    "status": { "enum": ["success", "empty", "failed"] },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["candidate_id", "source_ref", "source_hash"],
+        "properties": {
+          "candidate_id": { "type": "string", "pattern": ".+" },
+          "source_ref": { "type": "string", "pattern": ".+" },
+          "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "source_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_ref", "source_hash"],
+        "properties": {
+          "source_ref": { "type": "string", "pattern": ".+" },
+          "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "cache_status": { "enum": ["miss", "fresh", "stale"] },
+    "redaction_status": { "enum": ["redacted", "not_required"] }
+  },
+  "additionalProperties": false
+}
