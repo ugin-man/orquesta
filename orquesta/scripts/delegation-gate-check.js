@@ -2,8 +2,8 @@
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
-const { assertContract, canonicalHash } = require("@orquesta/contracts");
 
 const REVIEW_STATES = new Set([
   "active",
@@ -44,6 +44,155 @@ const PHASE15_METRICS = Object.freeze({
   correction_batches: "max_correction_batches",
   reports: "max_reports"
 });
+
+const EXECUTION_PLAN_FIELDS = Object.freeze([
+  "execution_plan_id",
+  "task_intent_id",
+  "policy_version",
+  "lane",
+  "risk_profile",
+  "reason_codes",
+  "routing",
+  "budget",
+  "review_policy",
+  "escalation_triggers",
+  "revision",
+  "supersedes_execution_plan_id"
+]);
+
+const EXECUTION_PLAN_EFFECTS = new Set([
+  "local_read",
+  "workspace_write",
+  "dependency_change",
+  "network_access",
+  "external_write",
+  "public_release",
+  "credential_access",
+  "payment",
+  "destructive_operation",
+  "data_migration",
+  "security_boundary"
+]);
+
+const EXECUTION_PLAN_TRIGGERS = new Set([
+  "acceptance_uncertain",
+  "budget_exhausted",
+  "critical_risk_discovered",
+  "new_risk",
+  "scope_drift",
+  "semantic_finding_not_machine_verifiable",
+  "test_failure"
+]);
+
+function isPlainObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function hasExactFields(value, fields) {
+  return isPlainObject(value)
+    && Object.keys(value).length === fields.length
+    && fields.every((field) => Object.hasOwn(value, field));
+}
+
+function canonicalNormalize(value, stack = new Set()) {
+  if (value === undefined) throw new TypeError("canonical JSON does not allow undefined");
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("canonical JSON requires finite numbers");
+    return value;
+  }
+  if (typeof value !== "object") throw new TypeError(`canonical JSON does not allow ${typeof value}`);
+  if (stack.has(value)) throw new TypeError("canonical JSON does not allow circular references");
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    throw new TypeError("canonical JSON does not allow symbol-keyed objects");
+  }
+
+  stack.add(value);
+  try {
+    if (Array.isArray(value)) {
+      for (const key of Object.getOwnPropertyNames(value)) {
+        if (key === "length") continue;
+        const index = Number(key);
+        if (!Number.isInteger(index) || index < 0 || index >= value.length || String(index) !== key) {
+          throw new TypeError("canonical JSON does not allow non-index array properties");
+        }
+      }
+      const normalized = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.hasOwn(value, index)) throw new TypeError("canonical JSON does not allow sparse arrays");
+        normalized.push(canonicalNormalize(value[index], stack));
+      }
+      return normalized;
+    }
+
+    if (!isPlainObject(value)) throw new TypeError("canonical JSON only allows plain objects");
+    const normalized = Object.create(null);
+    for (const key of Object.keys(value).sort()) normalized[key] = canonicalNormalize(value[key], stack);
+    return normalized;
+  } finally {
+    stack.delete(value);
+  }
+}
+
+function canonicalHash(value) {
+  return crypto.createHash("sha256").update(JSON.stringify(canonicalNormalize(value)), "utf8").digest("hex");
+}
+
+function sortedUniqueStrings(values) {
+  return Array.isArray(values) && values.every((value, index) => (
+    typeof value === "string" && (index === 0 || values[index - 1] < value)
+ ));
+}
+
+function validExecutionPlan(plan) {
+  if (!hasExactFields(plan, EXECUTION_PLAN_FIELDS)
+    || !/^EP-[a-f0-9]{12}$/.test(plan.execution_plan_id)
+    || !/^TI-[a-f0-9]{12}$/.test(plan.task_intent_id)
+    || plan.policy_version !== 1
+    || !Object.hasOwn(PHASE15_BUDGETS, plan.lane)
+    || !Number.isInteger(plan.revision) || plan.revision < 1
+    || (plan.supersedes_execution_plan_id !== null && !/^EP-[a-f0-9]{12}$/.test(plan.supersedes_execution_plan_id))
+    || !Array.isArray(plan.reason_codes) || !plan.reason_codes.every((value) => typeof value === "string" && value.length > 0)
+    || !sortedUniqueStrings(plan.reason_codes)
+    || !Array.isArray(plan.escalation_triggers) || !plan.escalation_triggers.every((value) => EXECUTION_PLAN_TRIGGERS.has(value))
+    || !sortedUniqueStrings(plan.escalation_triggers)) return false;
+
+  const risk = plan.risk_profile;
+  if (!hasExactFields(risk, ["reversibility", "scope", "verification", "uncertainty", "effects", "repeated_failures", "user_review"])
+    || !["easy", "costly", "irreversible"].includes(risk.reversibility)
+    || !["single_boundary", "multiple_boundaries"].includes(risk.scope)
+    || !["deterministic", "mixed", "human_only"].includes(risk.verification)
+    || !["low", "medium", "high"].includes(risk.uncertainty)
+    || !Array.isArray(risk.effects) || risk.effects.length === 0 || !risk.effects.every((value) => EXECUTION_PLAN_EFFECTS.has(value))
+    || !sortedUniqueStrings(risk.effects)
+    || !Number.isInteger(risk.repeated_failures) || risk.repeated_failures < 0
+    || !["default", "strict"].includes(risk.user_review)) return false;
+
+  const routing = plan.routing;
+  const budget = plan.budget;
+  const expectedRouting = plan.lane === "fast"
+    ? { routing_class: "inline_verified", handoff_required: false, specialist_report_required: false }
+    : { routing_class: "specialist_required", handoff_required: true, specialist_report_required: true };
+  const expectedReview = plan.lane === "fast" ? "none"
+    : plan.lane === "standard" ? "independent_once" : "independent_twice";
+  return hasExactFields(routing, ["routing_class", "handoff_required", "specialist_report_required"])
+    && ["inline_verified", "specialist_required"].includes(routing.routing_class)
+    && typeof routing.handoff_required === "boolean"
+    && typeof routing.specialist_report_required === "boolean"
+    && isDeepStrictEqual(routing, expectedRouting)
+    && hasExactFields(budget, ["max_handoffs", "max_independent_reviews", "max_correction_batches", "max_reports", "max_auxiliary_tasks"])
+    && Object.values(budget).every((value) => Number.isInteger(value) && value >= 0)
+    && isDeepStrictEqual(budget, PHASE15_BUDGETS[plan.lane])
+    && ["none", "independent_once", "independent_twice"].includes(plan.review_policy)
+    && plan.review_policy === expectedReview;
+}
+
+function assertExecutionPlanContract(plan) {
+  if (!validExecutionPlan(plan)) throw new TypeError("execution-plan contract validation failed");
+  return plan;
+}
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -177,7 +326,7 @@ function checkTaskPhase15(task, { stateRoot = null } = {}) {
     return { errors, warnings };
   }
   try {
-    assertContract("execution-plan", plan);
+    assertExecutionPlanContract(plan);
   } catch {
     errors.push(taskError(task, "execution_plan contract is invalid"));
     return { errors, warnings };

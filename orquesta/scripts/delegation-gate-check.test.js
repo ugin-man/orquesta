@@ -2,6 +2,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -189,6 +190,38 @@ test("resolves canonical state root with explicit then environment then cwd prec
     assert.throws(() => resolveStateRoot({ argv: ["--state-root", path.join(roots[0], "missing")], env: { ORQUESTA_STATE_ROOT: roots[1] }, cwd: roots[2] }), /tasks\.json/);
   } finally {
     for (const root of roots) fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("installed gate validates Phase 1.5 plans without the monorepo contracts package", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-installed-gate-"));
+  try {
+    const installedRoot = path.join(root, "installed");
+    const installedGate = path.join(installedRoot, "orquesta", "scripts", "delegation-gate-check.js");
+    const stateRoot = path.join(root, "state");
+    fs.mkdirSync(path.dirname(installedGate), { recursive: true });
+    fs.copyFileSync(path.join(__dirname, "delegation-gate-check.js"), installedGate);
+
+    const valid = acceptedPhase15Task("standard", stateRoot);
+    writeTasks(stateRoot, [valid]);
+    const command = [installedGate, "--state-root", stateRoot];
+    const options = {
+      cwd: installedRoot,
+      encoding: "utf8",
+      env: { ...process.env, NODE_PATH: "" }
+    };
+    const success = spawnSync(process.execPath, command, options);
+    assert.equal(success.status, 0, success.stderr);
+    assert.match(success.stdout, /delegation gate check passed/);
+    assert.doesNotMatch(success.stderr, /Cannot find module '@orquesta\/contracts'/);
+
+    valid.execution_plan.extra_field = true;
+    writeTasks(stateRoot, [valid]);
+    const invalid = spawnSync(process.execPath, command, options);
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, /execution_plan contract is invalid/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
