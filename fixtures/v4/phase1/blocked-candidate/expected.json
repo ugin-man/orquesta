@@ -5,6 +5,8 @@
   "highest_raw_score_provider_id": "ui-catalog-unknown-license",
   "highest_raw_score_eligible": false,
   "rejection_gate": "license",
+  "need_count": 2,
+  "candidate_evaluation_count": 4,
   "top_candidate_count": 2,
   "build_candidate_present": true,
   "approval_status": "pending_user",
@@ -14,17 +16,21 @@
   "external_scout_invoked": false,
   "local_inventory_recorded": true,
   "scout_skip_reason": null,
+  "audition_status": "disabled_until_phase2",
   "provider_evidence": [
     { "provider_id": "ui-catalog-unknown-license", "source_uri": "workspace:fixtures/v4/phase1/blocked-candidate/providers.json", "source_type": "fixture", "provider_hash": "584d8d7e3a70b5fa9ed9d32a1fae6785017ec79ba4cbe9deb75817ee97f54433", "evidence_refs": ["workspace:fixtures/v4/phase1/blocked-candidate/providers.json"] }
   ],
   "evaluation_evidence": [
-    { "candidate_id": "build:CN-92295f878411", "axis_values": { "cost": 40, "evidence_strength": 35, "exit_option": 58, "integration_ease": 42, "license_fit": 60, "maintainability": 48, "security": 60, "task_fit": 56 }, "axis_contributions": { "cost": "2.00", "evidence_strength": "5.25", "exit_option": "2.90", "integration_ease": "6.30", "license_fit": "6.00", "maintainability": "4.80", "security": "6.00", "task_fit": "16.80" }, "weighted_sum": 50.05, "candidate_score": 5.05, "uncertainty_penalty": 45, "hard_gates": { "security": "pass", "license": "pass", "runtime": "pass", "accessibility": "pass", "payment": "pass", "login": "pass", "secret": "pass", "external_send": "pass" }, "eligibility": "eligible", "actual_model": null },
-    { "candidate_id": "ui-catalog-unknown-license", "axis_values": { "cost": 100, "evidence_strength": 100, "exit_option": 100, "integration_ease": 100, "license_fit": 100, "maintainability": 100, "security": 100, "task_fit": 100 }, "axis_contributions": { "cost": "5.00", "evidence_strength": "15.00", "exit_option": "5.00", "integration_ease": "15.00", "license_fit": "10.00", "maintainability": "10.00", "security": "10.00", "task_fit": "30.00" }, "weighted_sum": 100, "candidate_score": 100, "uncertainty_penalty": 0, "hard_gates": { "security": "pass", "license": "fail", "runtime": "pass", "accessibility": "pass", "payment": "pass", "login": "pass", "secret": "pass", "external_send": "pass" }, "eligibility": "ineligible", "actual_model": null }
+    { "candidate_id": "build:CN-92295f878411", "need_id": "CN-92295f878411", "axis_values": { "cost": 40, "evidence_strength": 35, "exit_option": 58, "integration_ease": 42, "license_fit": 60, "maintainability": 48, "security": 60, "task_fit": 56 }, "axis_contributions": { "cost": "2.00", "evidence_strength": "5.25", "exit_option": "2.90", "integration_ease": "6.30", "license_fit": "6.00", "maintainability": "4.80", "security": "6.00", "task_fit": "16.80" }, "weighted_sum": 50.05, "candidate_score": 5.05, "uncertainty_penalty": 45, "hard_gates": { "security": "pass", "license": "pass", "runtime": "pass", "accessibility": "pass", "payment": "pass", "login": "pass", "secret": "pass", "external_send": "pass" }, "eligibility": "eligible", "actual_model": null },
+    { "candidate_id": "ui-catalog-unknown-license", "need_id": "CN-92295f878411", "axis_values": { "cost": 100, "evidence_strength": 100, "exit_option": 100, "integration_ease": 100, "license_fit": 100, "maintainability": 100, "security": 100, "task_fit": 100 }, "axis_contributions": { "cost": "5.00", "evidence_strength": "15.00", "exit_option": "5.00", "integration_ease": "15.00", "license_fit": "10.00", "maintainability": "10.00", "security": "10.00", "task_fit": "30.00" }, "weighted_sum": 100, "candidate_score": 100, "uncertainty_penalty": 0, "hard_gates": { "security": "pass", "license": "fail", "runtime": "pass", "accessibility": "pass", "payment": "pass", "login": "pass", "secret": "pass", "external_send": "pass" }, "eligibility": "ineligible", "actual_model": null }
   ],
   "resolution_summaries": [
-    { "mode": "build", "selected_provider_id": "build:CN-55828b9e14e5", "rejected_provider_ids": ["ui-catalog-unknown-license"], "total_cost": 15, "approval_status": "pending_user" },
-    { "mode": "build", "selected_provider_id": "build:CN-92295f878411", "rejected_provider_ids": ["ui-catalog-unknown-license"], "total_cost": 15, "approval_status": "pending_user" }
+    { "resolution_id": "CR-5668e8fc27f6", "need_id": "CN-55828b9e14e5", "mode": "build", "selected_provider_id": "build:CN-55828b9e14e5", "rejected_provider_ids": ["ui-catalog-unknown-license"], "evidence_refs": ["workspace:fixtures/v4/phase1/blocked-candidate/providers.json"], "total_cost": 15, "approval_status": "pending_user" },
+    { "resolution_id": "CR-cf0de6deaa2a", "need_id": "CN-92295f878411", "mode": "build", "selected_provider_id": "build:CN-92295f878411", "rejected_provider_ids": ["ui-catalog-unknown-license"], "evidence_refs": ["workspace:fixtures/v4/phase1/blocked-candidate/providers.json"], "total_cost": 15, "approval_status": "pending_user" }
   ],
+  "adaptation_evidence": [],
+  "build_maintenance_cost": 15,
+  "uncertainty_by_mode": { "adapt": null, "build": 45 },
   "cost_evidence": { "status": "estimated", "selected_candidate_estimate": 15, "resolution_total_cost": 15 },
   "timeline_event_types": ["candidate.evaluated", "capability.graph.compiled", "capability.inventory.refreshed", "capability.need.declared", "capability.provider.discovered", "context.pack.created", "resolution.proposed", "task.intent.created"]
 }

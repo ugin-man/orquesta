@@ -42,23 +42,59 @@ function trustedDraftContextPack({ taskIntent, resolutions }) {
 }
 
 function assertGoldenEvidence(actual, expected, label) {
-  assert.ok(expected && typeof expected === "object" && !Array.isArray(expected), `${label} must contain explicit golden evidence`);
-  assert.ok(Object.keys(expected).length > 0, `${label} must not be empty`);
-  const visit = (value, golden, location) => {
-    if (Array.isArray(golden)) {
-      assert.ok(Array.isArray(value), `${location} must be an array`);
-      assert.equal(value.length, golden.length, `${location} must preserve the golden item count`);
-      golden.forEach((item, index) => visit(value[index], item, `${location}[${index}]`));
-      return;
+  assert.deepEqual(actual, expected, `${label} must exactly match the complete golden review view`);
+}
+
+function snapshotFixtureArtifacts(root) {
+  const snapshot = {};
+  const visit = (directory, relative = "") => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((left, right) => (
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+    ))) {
+      const entryRelative = path.join(relative, entry.name);
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(entryPath, entryRelative);
+      else if (entry.isFile()) snapshot[entryRelative] = fs.readFileSync(entryPath).toString("base64");
     }
-    if (golden && typeof golden === "object") {
-      assert.ok(value && typeof value === "object" && !Array.isArray(value), `${location} must be an object`);
-      for (const [key, nested] of Object.entries(golden)) visit(value[key], nested, `${location}.${key}`);
-      return;
-    }
-    assert.deepEqual(value, golden, `${location} must match the golden value`);
   };
-  visit(actual, expected, label);
+  visit(root);
+  return snapshot;
+}
+
+function withReadFileReplacement(targetPath, replace, callback) {
+  const original = fs.readFileSync;
+  fs.readFileSync = function patchedReadFile(filePath, ...args) {
+    if (typeof filePath === "string" && path.resolve(filePath) === targetPath) {
+      return replace(original.call(fs, filePath, ...args), args);
+    }
+    return original.call(fs, filePath, ...args);
+  };
+  try {
+    return callback();
+  } finally {
+    fs.readFileSync = original;
+  }
+}
+
+function assertFixtureEvidenceStale({ fixtureId, targetPath, replace }) {
+  const { runFixture } = require("../../../scripts/v4/run-fixture");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), `orquesta-v4-${fixtureId}-stale-`));
+  runFixture({ fixtureId, stateRoot: root });
+  const before = snapshotFixtureArtifacts(root);
+  const beforeJournal = fs.readFileSync(path.join(root, "events.jsonl"), "utf8");
+
+  assert.throws(() => withReadFileReplacement(targetPath, replace, () => runFixture({ fixtureId, stateRoot: root })), (error) => {
+    assert.equal(error.code, "FIXTURE_EVIDENCE_STALE");
+    assert.deepEqual(Object.keys(error.details).sort(), ["current_payload_hash", "fixture_id", "stored_payload_hash"]);
+    assert.equal(error.details.fixture_id, fixtureId);
+    assert.match(error.details.stored_payload_hash, /^[a-f0-9]{64}$/);
+    assert.match(error.details.current_payload_hash, /^[a-f0-9]{64}$/);
+    assert.notEqual(error.details.stored_payload_hash, error.details.current_payload_hash);
+    return true;
+  });
+
+  assert.equal(fs.readFileSync(path.join(root, "events.jsonl"), "utf8"), beforeJournal);
+  assert.deepEqual(snapshotFixtureArtifacts(root), before);
 }
 
 test("vertical lifecycle commits through the real EventStore and replay matches after projections are removed", () => {
@@ -145,6 +181,57 @@ test("Task 10 fixtures derive independent golden review evidence from Core and t
     assert.equal(repeated.journal.batch_count, first.journal.batch_count, `${fixtureId} rerun must not append batches`);
     assert.equal(repeated.journal.event_count, first.journal.event_count, `${fixtureId} rerun must not append events`);
   }
+});
+
+test("Task 10 golden rejects a one-key partial expected view", () => {
+  assert.throws(() => assertGoldenEvidence(
+    { fixture_id: "local-reuse", need_count: 2 },
+    { fixture_id: "local-reuse" },
+    "partial golden",
+  ));
+});
+
+test("Task 10 golden rejects an unexpected actual review field", () => {
+  assert.throws(() => assertGoldenEvidence(
+    { fixture_id: "local-reuse", unexpected_actual_field: true },
+    { fixture_id: "local-reuse" },
+    "unexpected golden field",
+  ));
+});
+
+test("Task 10 completed fixture rejects source byte drift before journal mutation", () => {
+  const sourcePath = path.resolve(__dirname, "../../../orquesta/scripts/json-state.js");
+  assertFixtureEvidenceStale({
+    fixtureId: "local-reuse",
+    targetPath: sourcePath,
+    replace: (value) => Buffer.concat([Buffer.from(value), Buffer.from("\n// fixture-source-drift\n")]),
+  });
+});
+
+test("Task 10 completed fixture rejects TaskIntent drift before journal mutation", () => {
+  const taskPath = path.resolve(__dirname, "../../../fixtures/v4/phase1/local-reuse/task-intent.json");
+  assertFixtureEvidenceStale({
+    fixtureId: "local-reuse",
+    targetPath: taskPath,
+    replace: (value) => {
+      const task = JSON.parse(String(value));
+      task.task_intent.desiredOutcome = "A changed current outcome must not reuse old evidence.";
+      return JSON.stringify(task, null, 2);
+    },
+  });
+});
+
+test("Task 10 completed fixture rejects provider candidate metadata drift before journal mutation", () => {
+  const providersPath = path.resolve(__dirname, "../../../fixtures/v4/phase1/local-reuse/providers.json");
+  assertFixtureEvidenceStale({
+    fixtureId: "local-reuse",
+    targetPath: providersPath,
+    replace: (value) => {
+      const providers = JSON.parse(String(value));
+      providers.candidates[0].axes.task_fit.value = 1;
+      return JSON.stringify(providers, null, 2);
+    },
+  });
 });
 
 test("Task 10 fixtures coexist without adding history on an A-B-C-A rerun", () => {

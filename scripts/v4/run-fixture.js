@@ -21,6 +21,13 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+function fixtureError(code, message, details = {}) {
+  const error = new Error(message);
+  error.code = code;
+  error.details = details;
+  return error;
+}
+
 function fixtureDirectory(fixtureId) {
   if (!FIXTURE_IDS.includes(fixtureId)) throw new Error(`Unknown V4 fixture: ${fixtureId}`);
   return path.join(FIXTURES_ROOT, fixtureId);
@@ -60,6 +67,41 @@ function fixtureAuditFacts(input, needId) {
     facts.push({ ...JSON.parse(JSON.stringify(input.build_audit_fact)), candidate_id: `build:${needId}` });
   }
   return facts;
+}
+
+function fixtureInputFingerprint({ task, providers, materializedProviders, rules }) {
+  return canonicalHash({
+    task_intent_fixture: task,
+    provider_catalog: providers,
+    compiler_rules: rules,
+    materialized_provider_sources: materializedProviders
+      .map((provider) => ({
+        provider_id: provider.provider_id,
+        source_uri: provider.source_uri,
+        provider_hash: provider.provider_hash,
+      }))
+      .sort((left, right) => compareText(left.provider_id, right.provider_id) || compareText(left.source_uri, right.source_uri)),
+  });
+}
+
+function fixturePreviewIdentity(fixtureId, inputFingerprint) {
+  return {
+    name: "context-pack.preview",
+    payload_hash: canonicalHash({ fixture_id: fixtureId, fixture_input_fingerprint: inputFingerprint }),
+  };
+}
+
+function assertCompletedFixtureEvidence(fixtureId, completion, inputFingerprint) {
+  if (completion.status !== "complete") return;
+  const expected = fixturePreviewIdentity(fixtureId, inputFingerprint);
+  const stored = completion.context_preview_command_identity;
+  if (!stored || stored.name !== expected.name || stored.payload_hash !== expected.payload_hash) {
+    throw fixtureError("FIXTURE_EVIDENCE_STALE", "Completed fixture evidence does not match current fixture inputs.", {
+      fixture_id: fixtureId,
+      stored_payload_hash: stored?.payload_hash || null,
+      current_payload_hash: expected.payload_hash,
+    });
+  }
 }
 
 function fixtureContextCompiler(providerById) {
@@ -123,12 +165,12 @@ function fixtureCompletion(batches, fixtureId) {
     if (!byId.has(`${prefix}resolution:${need.need_id}`)) missing.push(`resolution:${need.need_id}`);
   }
   const preview = byId.get(`${prefix}context-preview`);
-  const previewed = preview && preview.events.some((event) => event.type === "context.pack.created");
-  if (!previewed) missing.push("context.pack.created");
+  const contextCreated = preview?.events.find((event) => event.type === "context.pack.created");
+  if (!contextCreated) missing.push("context.pack.created");
   if (missing.length > 0) {
     throw new Error(`Fixture ${fixtureId} has partial journal evidence: ${[...new Set(missing)].sort(compareText).join(", ")}`);
   }
-  return { status: "complete" };
+  return { status: "complete", context_preview_command_identity: contextCreated.payload?.command_identity || null };
 }
 
 function reviewView({ fixtureId, state, batches }) {
@@ -228,6 +270,8 @@ function runFixture({ fixtureId, stateRoot } = {}) {
   const providers = materializeProviders(fixture.providers);
   const providerById = new Map(providers.map((provider) => [provider.provider_id, provider]));
   const rules = readJson(path.join(FIXTURES_ROOT, "compiler-rules.json"));
+  const inputFingerprint = fixtureInputFingerprint({ task: fixture.task, providers: fixture.providers, materializedProviders: providers, rules });
+  assertCompletedFixtureEvidence(fixtureId, completion, inputFingerprint);
   const store = createEventStore({
     stateRoot: resolvedStateRoot,
     workspaceId: "v4-phase1-fixtures",
@@ -256,7 +300,11 @@ function runFixture({ fixtureId, stateRoot } = {}) {
         payload: { need_id: need.need_id, candidates: fixture.providers.candidates, audit_facts: fixtureAuditFacts(fixture.providers, need.need_id) },
       });
     }
-    boundary.execute({ command_id: `${prefix}:context-preview`, name: "context-pack.preview", payload: { fixture_id: fixtureId } });
+    boundary.execute({
+      command_id: `${prefix}:context-preview`,
+      name: "context-pack.preview",
+      payload: { fixture_id: fixtureId, fixture_input_fingerprint: inputFingerprint },
+    });
   }
   const replayed = store.replay({ reducers: createProjectors(), initialState: {} });
   const batches = journalBatches(resolvedStateRoot);
