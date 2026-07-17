@@ -696,9 +696,9 @@ async function runAdapterTurn({ adapter, adapterKind, correlationId, workingDire
 }
 
 async function executeLiveCodexTurn({ correlationId, workingDirectory, timeoutMs } = {}) {
-  const totalTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 90000;
+  const totalTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 120000;
   const startedAt = Date.now();
-  const appServerTimeoutMs = Math.min(30000, totalTimeoutMs);
+  const appServerTimeoutMs = Math.min(10000, totalTimeoutMs);
   let child = null;
   const appServer = createAppServerAdapter({
     spawnProcess(command, args, options) {
@@ -798,13 +798,19 @@ async function runLivePhase2Slice({
   });
   const correlationId = `CORR-${canonicalHash({ task_intent_id: intent.task_intent_id, resolution_id: resolution.resolution_id, context_pack_id: lifecycle.current_context_pack_id, source_hash: selectedRecord.source_hash }).slice(0, 12)}`;
   let runtime = null;
+  let runtimeFailure = null;
   const auditionResult = await runAudition({
     plan: auditionPlan,
     roots,
     harness: {
       inspectProfile: async () => ({ status: "available", verified: true, profile_id: profile.profile_id, source: "codex-runtime-request-profile", captured_at: clock(), allowed_roots: [...profile.allowed_roots], effects: [] }),
       run: async () => {
-        runtime = await runtimeExecutor({ correlationId, workingDirectory: auditionRoot, timeoutMs: 90000 });
+        try {
+          runtime = await runtimeExecutor({ correlationId, workingDirectory: auditionRoot, timeoutMs: 120000 });
+        } catch (error) {
+          runtimeFailure = { code: error.code || "PHASE2_RUNTIME_FAILED", message: error.message };
+          throw error;
+        }
         return {
           status: runtime.turn_completed ? "completed" : "failed",
           before_manifest: [],
@@ -818,7 +824,17 @@ async function runLivePhase2Slice({
     evidenceSink: { record: async () => {} }
   });
   if (auditionResult.verdict !== "passed" || !runtime?.turn_completed) {
-    throw phase2Error("PHASE2_LIVE_AUDITION_FAILED", "The authorized live Audition or Codex turn did not complete.");
+    throw phase2Error("PHASE2_LIVE_AUDITION_FAILED", "The authorized live Audition or Codex turn did not complete.", {
+      audition_verdict: auditionResult.verdict,
+      cleanup_evidence: auditionResult.cleanup_evidence,
+      runtime_failure: runtimeFailure,
+      runtime_status: runtime ? {
+        adapter: runtime.adapter,
+        dispatch_accepted: runtime.dispatch_accepted,
+        turn_started: runtime.turn_started,
+        turn_completed: runtime.turn_completed
+      } : null
+    });
   }
 
   const artifactBody = runtime.artifact_content
