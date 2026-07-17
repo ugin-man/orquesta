@@ -138,6 +138,37 @@ test("SDK Audition opts into its verified non-git root and surfaces runtime erro
   assert.equal(unsubscribed, true);
 });
 
+test("SDK runtime result keeps the thread ID observed after dispatch", async () => {
+  let listener;
+  const adapter = {
+    subscribeEvents: ({ listener: value }) => {
+      listener = value;
+      return { subscription: { unsubscribe() {} } };
+    },
+    createThread: async () => ({ ok: true, thread_id: null, thread_handle: "thread-handle" }),
+    startTurn: async ({ correlationId }) => {
+      setImmediate(() => {
+        listener({ type: "dispatch_accepted", correlation_id: correlationId, thread_id: null, turn_id: null });
+        listener({ type: "thread_started", correlation_id: correlationId, thread_id: "thread-observed", turn_id: null });
+        listener({ type: "turn_started", correlation_id: correlationId, thread_id: "thread-observed", turn_id: null });
+        listener({ type: "progress_observed", correlation_id: correlationId, thread_id: "thread-observed", turn_id: null });
+        listener({ type: "turn_completed", correlation_id: correlationId, thread_id: "thread-observed", turn_id: null });
+      });
+      return { ok: true, thread_id: null, turn_id: null, evidence: { dispatch_accepted: true } };
+    },
+    interruptTurn: async () => ({ ok: true })
+  };
+  const result = await runAdapterTurn({
+    adapter,
+    adapterKind: "typescript_sdk",
+    correlationId: "CORR-observed-thread",
+    workingDirectory: "C:\\audition",
+    timeoutMs: 1000
+  });
+  assert.equal(result.thread_id, "thread-observed");
+  assert.equal(result.turn_id, null);
+});
+
 test("live Audition root cleanup uses bounded Windows transient retries only under the OS temp directory", () => {
   const calls = [];
   const owned = path.join(os.tmpdir(), "orquesta-phase2-owned-cleanup");

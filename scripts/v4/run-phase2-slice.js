@@ -692,7 +692,7 @@ async function runAdapterTurn({ adapter, adapterKind, correlationId, workingDire
   const produced = events.find((event) => event.type === "artifact_produced") || null;
   return {
     adapter: adapterKind,
-    thread_id: turn.thread_id || created.thread_id || null,
+    thread_id: completed?.thread_id || started?.thread_id || produced?.thread_id || progress?.thread_id || turn.thread_id || created.thread_id || null,
     turn_id: turn.turn_id || started?.turn_id || null,
     dispatch: turn,
     started,
