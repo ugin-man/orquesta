@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { EventEmitter } = require("node:events");
@@ -576,6 +577,15 @@ function realFsAdapter() {
   };
 }
 
+function removeOwnedTemporaryRoot(target) {
+  const temporaryBase = path.resolve(os.tmpdir());
+  const resolved = path.resolve(target);
+  if (resolved === temporaryBase || !resolved.startsWith(`${temporaryBase}${path.sep}`)) {
+    throw phase2Error("PHASE2_TEMP_ROOT_INVALID", "Refusing to clean an Audition root outside the OS temporary directory.");
+  }
+  fs.rmSync(resolved, { recursive: true, force: true });
+}
+
 async function runAdapterTurn({ adapter, adapterKind, correlationId, workingDirectory, timeoutMs = 180000 } = {}) {
   const observed = waitForRuntime(adapter, correlationId, timeoutMs);
   const threadCorrelation = `${correlationId}:thread`;
@@ -677,11 +687,12 @@ async function runLivePhase2Slice({
   if (!fs.statSync(projectRoot).isDirectory()) throw phase2Error("PHASE2_STATE_ROOT_INVALID", "The canonical project state root is not a directory.");
   fs.mkdirSync(reviewRoot, { recursive: true });
   const journalRoot = fs.mkdtempSync(path.join(reviewRoot, "journal-"));
-  const temporaryRoot = path.join(reviewRoot, "audition-temp");
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-phase2-audition-"));
   const auditionRoot = path.join(temporaryRoot, "live-audition");
-  fs.mkdirSync(auditionRoot, { recursive: true });
+  try {
+    fs.mkdirSync(auditionRoot, { recursive: true });
 
-  const fixtures = loadAdminFixtures();
+    const fixtures = loadAdminFixtures();
   const { store, boundary, projectors } = createBoundary(journalRoot, clock);
   boundary.execute({ command_id: "phase2:task-intent", name: "task-intent.create", payload: fixtures.task.task_intent });
   boundary.execute({ command_id: "phase2:capability-compile", name: "capability.compile", payload: {} });
@@ -772,7 +783,7 @@ async function runLivePhase2Slice({
   recordEvidenceChain({ boundary, lifecycle, correlationId, sourceRefs, runtime, artifact, report, acceptance, fault: null });
   const projected = boundary.replay();
   const replayed = store.replay({ reducers: projectors, initialState: initialProjection() }).state;
-  return {
+    return {
     source_families: sourceFamilies,
     source_evidence: sourceEvidence,
     audited_candidate: { candidate_id: selectedAudit.candidate_id, status: selectedAudit.evaluation.eligibility, evaluation_id: selectedAudit.evaluation.evaluation_id },
@@ -803,7 +814,10 @@ async function runLivePhase2Slice({
       correlation_id: correlationId,
       evidence_count: projected.evidence_by_correlation[correlationId].length
     }
-  };
+    };
+  } finally {
+    removeOwnedTemporaryRoot(temporaryRoot);
+  }
 }
 
 if (require.main === module) {

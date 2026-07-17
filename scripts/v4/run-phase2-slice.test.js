@@ -99,7 +99,7 @@ test("live docs connector binds fetched bytes and rejects a final redirect outsi
 
 test("live slice uses injected network and runtime boundaries without installing a candidate", async () => {
   const projectRoot = temporaryRoot("live-project");
-  const outputRoot = temporaryRoot("live-output");
+  const outputRoot = path.join(projectRoot, "output", "v4-phase2-review");
   const fetchImpl = async (url) => ({
     ok: true,
     status: 200,
