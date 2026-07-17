@@ -171,10 +171,67 @@ test("command boundary exposes only the approved Core command names", () => {
   assert.deepEqual([...COMMAND_NAMES], [
     "task-intent.create", "capability.compile", "execution-plan.create", "execution-plan.escalate", "inventory.refresh-local", "resolution.propose",
     "resolution.approve", "context-pack.preview", "candidate.install.request", "candidate.install.authorize",
-    "phase-review.request", "phase-review.decide",
+    "phase-review.request", "phase-review.decide", "runtime.dispatch.record", "runtime.event.record", "artifact.record", "report.record", "acceptance.record",
   ]);
   const { boundary } = makeBoundary();
   assert.throws(() => boundary.execute({ command_id: "bad", name: "network.install", payload: {} }), { code: "CORE_COMMAND_UNKNOWN" });
+});
+
+test("runtime evidence commands journal one current correlated chain without storing bodies", () => {
+  const { boundary, store } = makeBoundary();
+  boundary.execute({ command_id: "evidence-intent", name: "task-intent.create", payload: makeIntent() });
+  boundary.execute({ command_id: "evidence-compile", name: "capability.compile", payload: {} });
+  const need = boundary.replay().capability_graphs[0].needs[0];
+  boundary.execute({ command_id: "evidence-resolution", name: "resolution.propose", payload: { need_id: need.need_id, candidates: [], audit_facts: [] } });
+  boundary.execute({ command_id: "evidence-context", name: "context-pack.preview", payload: {} });
+  const lifecycle = boundary.replay();
+  const binding = {
+    task_intent_id: lifecycle.current_task_intent_id,
+    resolution_id: lifecycle.resolutions[0].resolution_id,
+    context_pack_id: lifecycle.current_context_pack_id,
+    correlation_id: "CORR-runtime",
+    source_evidence_refs: ["source:fixture"],
+    thread_id: "thread-runtime",
+    turn_id: null,
+  };
+  const dispatch = {
+    command_id: "evidence-dispatch", name: "runtime.dispatch.record",
+    payload: { ...binding, evidence_id: "EVD-dispatch", evidence_hash: "a".repeat(64), request_ref: "request:runtime", body: "must-not-persist" },
+  };
+  assert.equal(boundary.execute(dispatch).status, "committed");
+  assert.equal(boundary.execute(copy(dispatch)).status, "idempotent");
+  assert.equal(boundary.execute({ ...copy(dispatch), command_id: "evidence-dispatch-evidence-retry" }).status, "idempotent");
+  assert.throws(() => boundary.execute({
+    command_id: "evidence-dispatch-conflict", name: "runtime.dispatch.record",
+    payload: { ...dispatch.payload, evidence_hash: "f".repeat(64) },
+  }), { code: "EVIDENCE_ID_CONFLICT" });
+  assert.throws(() => boundary.execute({
+    command_id: "evidence-start-wrong", name: "runtime.event.record",
+    payload: { ...binding, evidence_id: "EVD-start-wrong", evidence_hash: "b".repeat(64), event_kind: "turn_started", turn_id: "turn-runtime", predecessor_evidence_id: "EVD-dispatch", correlation_id: "CORR-wrong" },
+  }), { code: "EVIDENCE_CORRELATION_MISMATCH" });
+  assert.equal(boundary.execute({
+    command_id: "evidence-start", name: "runtime.event.record",
+    payload: { ...binding, evidence_id: "EVD-start", evidence_hash: "b".repeat(64), event_kind: "turn_started", turn_id: "turn-runtime", predecessor_evidence_id: "EVD-dispatch" },
+  }).status, "committed");
+  assert.equal(boundary.execute({
+    command_id: "evidence-artifact", name: "artifact.record",
+    payload: { ...binding, evidence_id: "EVD-artifact", evidence_hash: "c".repeat(64), turn_id: "turn-runtime", predecessor_evidence_id: "EVD-start", artifact_ref: "artifact:runtime", artifact_hash: "c".repeat(64) },
+  }).status, "committed");
+  assert.equal(boundary.execute({
+    command_id: "evidence-report", name: "report.record",
+    payload: { ...binding, evidence_id: "EVD-report", evidence_hash: "d".repeat(64), turn_id: "turn-runtime", predecessor_evidence_id: "EVD-artifact", report_ref: "report:runtime", report_hash: "d".repeat(64) },
+  }).status, "committed");
+  assert.equal(boundary.execute({
+    command_id: "evidence-acceptance", name: "acceptance.record",
+    payload: { ...binding, evidence_id: "EVD-acceptance", evidence_hash: "e".repeat(64), turn_id: "turn-runtime", predecessor_evidence_id: "EVD-report", acceptance_ref: "acceptance:runtime" },
+  }).status, "committed");
+  const state = boundary.replay();
+  assert.equal(state.evidence_by_correlation["CORR-runtime"].length, 5);
+  assert.equal(state.runtime_by_correlation["CORR-runtime"].active_turn.turn_id, "turn-runtime");
+  assert.equal(state.artifacts.some((artifact) => artifact.artifact_ref === "artifact:runtime"), true);
+  assert.equal(state.reports[0].report_ref, "report:runtime");
+  assert.equal(state.acceptances[0].acceptance_ref, "acceptance:runtime");
+  assert.equal(JSON.stringify(store.replay({ reducers: boundary.projectors, initialState: initialProjection() }).state).includes("must-not-persist"), false);
 });
 
 test("Execution Plan commands require lifecycle evidence, journal once, replay, and escalate the current plan", () => {

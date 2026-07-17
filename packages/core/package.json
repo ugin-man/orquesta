@@ -11,6 +11,7 @@
     "@orquesta/scouts": "*",
     "@orquesta/audit": "*",
     "@orquesta/capability-resolver": "*",
-    "@orquesta/context-compiler": "*"
+    "@orquesta/context-compiler": "*",
+    "@orquesta/evidence-fabric": "*"
   }
 }

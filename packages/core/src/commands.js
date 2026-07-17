@@ -9,11 +9,13 @@ const { createPhaseReview, decidePhaseReview, redactAttestation, resolutionAppro
 const { createProjectors, initialProjection } = require("./projectors");
 const { createExecutionPlan, escalateExecutionPlan } = require("./execution-policy");
 const { createInstallApprovalTarget } = require("./install-approval");
+const { correlateEvidence, normalizeEvidence } = require("../../evidence-fabric/src");
 
 const COMMAND_NAMES = Object.freeze([
   "task-intent.create", "capability.compile", "execution-plan.create", "execution-plan.escalate", "inventory.refresh-local", "resolution.propose",
   "resolution.approve", "context-pack.preview", "candidate.install.request", "candidate.install.authorize",
   "phase-review.request", "phase-review.decide",
+  "runtime.dispatch.record", "runtime.event.record", "artifact.record", "report.record", "acceptance.record",
 ]);
 
 function coreError(code, message, details) {
@@ -338,6 +340,36 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
       return resolution;
     });
   }
+  function currentEvidenceBindings(state) {
+    const taskIntent = currentIntent(state);
+    const resolutions = currentResolutions(state);
+    if (!state.current_context_pack_id) {
+      throw coreError("CORE_CONTEXT_PACK_REQUIRED", "A current Context Pack must exist before runtime evidence can be recorded.");
+    }
+    return {
+      current_task_intent_id: taskIntent.task_intent_id,
+      current_resolution_ids: resolutions.map((resolution) => resolution.resolution_id),
+      current_context_pack_id: state.current_context_pack_id,
+    };
+  }
+  function recordEvidence(command, identity, state, replayed, kind) {
+    const evidence = normalizeEvidence({ ...clone(command.payload), kind });
+    const verdict = correlateEvidence({
+      ...currentEvidenceBindings(state),
+      evidence_by_id: state.evidence_by_id || {},
+      evidence_by_correlation: state.evidence_by_correlation || {},
+    }, evidence);
+    if (verdict.status === "idempotent") return { status: "idempotent", sequence: verdict.evidence.sequence || null };
+    const refs = [...new Set([
+      ...evidence.source_evidence_refs,
+      evidence.request_ref, evidence.artifact_ref, evidence.report_ref, evidence.acceptance_ref,
+    ].filter(Boolean))].sort(compareText);
+    const payload = { evidence, responsibility: kind === "acceptance" ? "user" : "orchestrator" };
+    if (kind === "artifact") {
+      payload.artifact = { artifact_ref: evidence.artifact_ref, artifact_hash: evidence.artifact_hash, kind: "runtime_artifact" };
+    }
+    return commit(command, identity, { type: verdict.event_type, payload, evidence_refs: refs }, undefined, replayed);
+  }
   function execute(input) {
     if (!input || typeof input !== "object" || !Object.prototype.hasOwnProperty.call(input, "payload")) {
       throw coreError("CORE_COMMAND_INVALID", "Command requires command_id, name, and payload.");
@@ -535,6 +567,11 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
         evidence_refs: [...provider.evidence_refs, `resolution:${resolution.resolution_id}`, current.target.review_packet_ref, `install_request:${current.request_id}`]
       }, verified.actor, replayed);
     }
+    if (command.name === "runtime.dispatch.record") return recordEvidence(command, identity, state, replayed, "runtime_dispatch");
+    if (command.name === "runtime.event.record") return recordEvidence(command, identity, state, replayed, "runtime_event");
+    if (command.name === "artifact.record") return recordEvidence(command, identity, state, replayed, "artifact");
+    if (command.name === "report.record") return recordEvidence(command, identity, state, replayed, "report");
+    if (command.name === "acceptance.record") return recordEvidence(command, identity, state, replayed, "acceptance");
     if (command.name === "phase-review.request") {
       const packet = state.artifacts.find((item) => item.artifact_ref === command.payload.review_packet_ref);
       if (!packet || packet.kind !== "phase_review_packet" || packet.artifact_hash !== command.payload.review_packet_hash) {

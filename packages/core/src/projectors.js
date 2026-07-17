@@ -16,7 +16,8 @@ function initialProjection() {
     providers: [], inventory: null, candidate_evaluations: [], resolutions: [], artifacts: [], latest_resolution_by_need: {}, resolution_bindings: {},
     context_packs: [], current_context_pack_id: null, current_context_pack_sequence: null,
     execution_plans: [], current_execution_plan_id: null, phase_reviews: [],
-    install_requests: [], current_install_request: null, install_authorizations: [], timeline: [],
+    install_requests: [], current_install_request: null, install_authorizations: [],
+    evidence_by_id: {}, evidence_by_correlation: {}, runtime_by_correlation: {}, reports: [], acceptances: [], timeline: [],
   };
 }
 
@@ -48,6 +49,35 @@ function timeline(state, event, batch) {
 
 function withTimeline(reducer) {
   return (state, event, batch) => reducer(timeline(state, event, batch), event, batch);
+}
+
+const MAX_CORRELATION_EVIDENCE = 32;
+
+function projectEvidence(state, event, batch) {
+  const evidence = event.payload && event.payload.evidence;
+  if (!evidence || typeof evidence !== "object" || typeof evidence.evidence_id !== "string" || typeof evidence.correlation_id !== "string") return state;
+  const stored = { ...clone(evidence), sequence: batch.sequence };
+  const prior = state.evidence_by_correlation[evidence.correlation_id] || [];
+  const chain = [...prior.filter((item) => item.evidence_id !== evidence.evidence_id), stored].slice(-MAX_CORRELATION_EVIDENCE);
+  const runtime = state.runtime_by_correlation[evidence.correlation_id] || { dispatch_evidence_id: null, active_turn: null };
+  let nextRuntime = runtime;
+  if (evidence.kind === "runtime_dispatch") nextRuntime = { dispatch_evidence_id: evidence.evidence_id, active_turn: null };
+  if (evidence.kind === "runtime_event" && evidence.event_kind === "turn_started") {
+    nextRuntime = { ...runtime, active_turn: { evidence_id: evidence.evidence_id, thread_id: evidence.thread_id, turn_id: evidence.turn_id } };
+  }
+  if (evidence.kind === "runtime_event" && evidence.event_kind === "turn_completed") {
+    nextRuntime = { ...runtime, active_turn: null };
+  }
+  return {
+    ...state,
+    evidence_by_id: { ...state.evidence_by_id, [evidence.evidence_id]: stored },
+    evidence_by_correlation: { ...state.evidence_by_correlation, [evidence.correlation_id]: chain },
+    runtime_by_correlation: { ...state.runtime_by_correlation, [evidence.correlation_id]: nextRuntime },
+  };
+}
+
+function withEvidence(reducer) {
+  return withTimeline((state, event, batch) => reducer(projectEvidence(state, event, batch), event, batch));
 }
 
 function createProjectors() {
@@ -126,9 +156,21 @@ function createProjectors() {
         : state.current_install_request,
       install_authorizations: replaceById(state.install_authorizations, event.payload.authorization, "authorization_id"),
     })),
-    "artifact.produced": withTimeline((state, event) => ({
+    "runtime.dispatch.accepted": withEvidence((state) => state),
+    "runtime.turn.started": withEvidence((state) => state),
+    "runtime.progress.observed": withEvidence((state) => state),
+    "runtime.turn.completed": withEvidence((state) => state),
+    "artifact.produced": withEvidence((state, event) => ({
       ...state,
       artifacts: replaceById(state.artifacts, event.payload.artifact, "artifact_ref"),
+    })),
+    "report.produced": withEvidence((state, event) => ({
+      ...state,
+      reports: replaceById(state.reports, event.payload.evidence, "evidence_id"),
+    })),
+    "acceptance.completed": withEvidence((state, event) => ({
+      ...state,
+      acceptances: replaceById(state.acceptances, event.payload.evidence, "evidence_id"),
     })),
     "phase.review.requested": withTimeline((state, event) => ({
       ...state,
