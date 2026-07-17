@@ -2,6 +2,7 @@
 
 const path = require("node:path");
 const { auditionError, clone, compareText, strictDescendant } = require("./plan");
+const { normalizeRoots, recheckAuditionRoots } = require("./roots");
 
 function entries(value) {
   return Array.isArray(value) ? value : value && Array.isArray(value.entries) ? value.entries : null;
@@ -19,8 +20,8 @@ function changed(left, right) {
   return left.type !== right.type || left.hash !== right.hash || left.identity !== right.identity || path.resolve(left.real_path || left.path) !== path.resolve(right.real_path || right.path);
 }
 
-function rejectionReason(plan, item) {
-  const root = path.resolve(plan.audition_root);
+function rejectionReason(rootPath, item) {
+  const root = path.resolve(rootPath);
   const target = path.resolve(item.path);
   const real = path.resolve(item.real_path || item.path);
   if (target === root) return "audition_root_forbidden";
@@ -30,13 +31,25 @@ function rejectionReason(plan, item) {
   return null;
 }
 
-async function verifyAuditionCleanup({ plan, before, after, fsAdapter } = {}) {
+function cleanupPolicy(plan, roots) {
+  if (!plan || !Array.isArray(plan.cleanup_plan)) return null;
+  const rootEntry = plan.cleanup_plan.find((item) => typeof item === "string" && item.startsWith("root:"));
+  const maxEntry = plan.cleanup_plan.find((item) => typeof item === "string" && /^max_paths:\d+$/.test(item));
+  const maxPaths = maxEntry ? Number(maxEntry.slice("max_paths:".length)) : null;
+  if (!rootEntry || !Number.isInteger(maxPaths)) return null;
+  const root = path.resolve(rootEntry.slice("root:".length));
+  return root === roots.audition_root && maxPaths >= 1 && maxPaths <= 128 ? { root, max_paths: maxPaths } : null;
+}
+
+async function verifyAuditionCleanup({ plan, roots, before, after, fsAdapter, verifiedRoots } = {}) {
   const beforeEntries = entries(before);
   const afterEntries = entries(after);
-  if (!plan || !beforeEntries || !afterEntries || !fsAdapter || typeof fsAdapter.inspect !== "function" || typeof fsAdapter.remove !== "function") {
+  if (!plan || !roots || !verifiedRoots || !beforeEntries || !afterEntries || !fsAdapter || typeof fsAdapter.inspect !== "function" || typeof fsAdapter.remove !== "function") {
     throw auditionError("AUDITION_CLEANUP_INVALID", "Cleanup verification requires a plan, two manifests, and an injected filesystem adapter.");
   }
-  if (!plan.cleanup_plan || path.resolve(plan.cleanup_plan.root || "") !== path.resolve(plan.audition_root) || !Number.isInteger(plan.cleanup_plan.max_paths)) {
+  const normalizedRoots = normalizeRoots(plan, roots);
+  const policy = cleanupPolicy(plan, normalizedRoots);
+  if (!policy) {
     throw auditionError("AUDITION_CLEANUP_INVALID", "Cleanup plan is not bound to the Audition root.");
   }
   const beforeByPath = new Map(beforeEntries.map((item) => [path.resolve(item.path), clone(item)]));
@@ -49,7 +62,13 @@ async function verifyAuditionCleanup({ plan, before, after, fsAdapter } = {}) {
   const deleted = sortEntries([...beforeByPath].filter(([key]) => !afterByPath.has(key)).map(([, item]) => item));
   const manifest = { created, modified, deleted };
   const primaryError = after && !Array.isArray(after) && after.primary_error ? clone(after.primary_error) : null;
-  if (created.length > plan.cleanup_plan.max_paths) {
+  if (!await recheckAuditionRoots({ verifiedRoots, fsAdapter })) {
+    return {
+      status: "blocked", primary_error: primaryError, manifest,
+      cleanup: { reason: "root_identity_changed", attempted: [], removed: [], rejected: [], failures: [], residue: created.map((item) => item.path).sort(compareText) }
+    };
+  }
+  if (created.length > policy.max_paths) {
     return {
       status: "blocked", primary_error: primaryError, manifest,
       cleanup: { reason: "cleanup_budget_exceeded", attempted: [], removed: [], rejected: [], failures: [], residue: created.map((item) => item.path) }
@@ -62,7 +81,7 @@ async function verifyAuditionCleanup({ plan, before, after, fsAdapter } = {}) {
     return depth || compareText(left.path, right.path);
   });
   for (const item of candidates) {
-    const reason = rejectionReason(plan, item);
+    const reason = rejectionReason(policy.root, item);
     if (reason) {
       cleanup.rejected.push({ path: item.path, reason });
       cleanup.residue.push(item.path);

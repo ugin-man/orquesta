@@ -9,6 +9,7 @@ const { compareCodexProfile } = require("../src");
 const workspaceRoot = path.resolve("C:/workspace/project");
 const auditionRoot = path.resolve("C:/workspace/temp/audition-1");
 const planned = {
+  profile_id: "phase2-audition",
   allowed_roots: [workspaceRoot, auditionRoot],
   effects: ["dependency_change", "workspace_write"]
 };
@@ -17,20 +18,32 @@ function actual(overrides = {}) {
   return {
     status: "available",
     verified: true,
+    profile_id: "phase2-audition",
     source: "codex-runtime-profile",
     captured_at: "2026-07-17T00:00:00.000Z",
     allowed_roots: [workspaceRoot, auditionRoot],
-    effects: ["workspace_write"],
+    effects: ["dependency_change", "workspace_write"],
     ...overrides
   };
 }
 
-test("accepts an exact or narrower verified Codex profile and records its source and time", () => {
+test("accepts only an exact verified Codex profile and records its source and time", () => {
   const result = compareCodexProfile({ planned, actual: actual() });
   assert.equal(result.status, "compatible");
   assert.deepEqual(result.reasons, []);
   assert.equal(result.observed_profile.source, "codex-runtime-profile");
   assert.equal(result.observed_profile.captured_at, "2026-07-17T00:00:00.000Z");
+});
+
+test("blocks a verified profile missing the dedicated Audition root or a planned effect", () => {
+  for (const profile of [
+    actual({ allowed_roots: [workspaceRoot] }),
+    actual({ effects: ["workspace_write"] })
+  ]) {
+    const result = compareCodexProfile({ planned, actual: profile });
+    assert.equal(result.status, "blocked");
+    assert.ok(result.reasons.length > 0);
+  }
 });
 
 test("blocks missing, unavailable, unverifiable, broader-root, and broader-effect profiles", () => {

@@ -1,7 +1,7 @@
 "use strict";
 
-const crypto = require("node:crypto");
 const path = require("node:path");
+const { assertContract, canonicalHash } = require("@orquesta/contracts");
 
 const EFFECTS = new Set(["dependency_change", "network_access", "workspace_write"]);
 const HASH = /^[a-f0-9]{64}$/;
@@ -89,34 +89,43 @@ function createAuditionPlan(input = {}) {
     throw auditionError("AUDITION_PLAN_INVALID", "Expected profile must bind the exact workspace and Audition roots.");
   }
   const profileEffects = uniqueSortedStrings(expectedProfile.effects, "AUDITION_EFFECT_INVALID", EFFECTS);
-  if (profileEffects.some((effect) => !permittedEffects.includes(effect))) {
-    throw auditionError("AUDITION_EFFECT_INVALID", "Expected profile is broader than permitted effects.");
+  if (stableJson(profileEffects) !== stableJson(permittedEffects)) {
+    throw auditionError("AUDITION_EFFECT_INVALID", "Expected profile must bind the exact permitted effects.");
   }
 
   if (!Array.isArray(input.steps) || !input.steps.length || input.steps.some((step) => !step || !requiredText(step.step_id) || !requiredText(step.action))) {
     throw auditionError("AUDITION_PLAN_INVALID", "Audition plan requires explicit steps.");
   }
+  const steps = uniqueSortedStrings(input.steps.map((step) => step.action), "AUDITION_PLAN_INVALID");
   const expectedEvidence = uniqueSortedStrings(input.expected_evidence, "AUDITION_PLAN_INVALID");
   const approvalRefs = uniqueSortedStrings(input.approval_refs, "AUDITION_PLAN_INVALID");
+  const expectedProfileId = requiredText(expectedProfile.profile_id);
+  if (!expectedProfileId) throw auditionError("AUDITION_PLAN_INVALID", "Audition plan requires a named Codex profile.");
   const cleanup = input.cleanup_plan;
   if (!cleanup || path.resolve(cleanup.root || "") !== auditionRoot || !Number.isInteger(cleanup.max_paths) || cleanup.max_paths < 1 || cleanup.max_paths > 128) {
     throw auditionError("AUDITION_PLAN_INVALID", "Cleanup must bind the dedicated Audition root with a bounded path count.");
   }
 
-  const plan = {
-    binding,
-    workspace_root: workspaceRoot,
-    temporary_root: temporaryRoot,
-    audition_root: auditionRoot,
-    expected_profile: { allowed_roots: profileRoots, effects: profileEffects },
+  const content = {
+    candidate_id: binding.candidate_id,
+    candidate_version: binding.candidate_version,
+    candidate_hash: binding.candidate_source_hash,
+    task_intent_id: binding.task_intent_id,
+    resolution_id: binding.resolution_id,
+    execution_root: { kind: "temporary", path: auditionRoot },
+    expected_codex_profile: expectedProfileId,
     permitted_effects: permittedEffects,
-    steps: clone(input.steps),
+    steps,
     expected_evidence: expectedEvidence,
-    cleanup_plan: { root: auditionRoot, max_paths: cleanup.max_paths },
+    cleanup_plan: [`max_paths:${cleanup.max_paths}`, `root:${auditionRoot}`].sort(compareText),
     approval_refs: approvalRefs
   };
-  plan.plan_id = `AUD-${crypto.createHash("sha256").update(stableJson(plan), "utf8").digest("hex").slice(0, 24)}`;
-  return plan;
+  const plan = { audition_plan_id: `AP-${canonicalHash(content).slice(0, 12)}`, ...content };
+  try {
+    return assertContract("audition-plan", plan);
+  } catch (error) {
+    throw auditionError("AUDITION_PLAN_INVALID", "Audition plan does not satisfy the registered durable contract.", { errors: error.errors || [] });
+  }
 }
 
 module.exports = { auditionError, clone, compareText, createAuditionPlan, stableJson, strictDescendant };
