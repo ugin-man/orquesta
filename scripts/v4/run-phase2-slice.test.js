@@ -7,7 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { createAppServerAdapter } = require("@orquesta/codex-adapter");
 const { FakeAppServerProcess } = require("../../packages/codex-adapter/test/fixtures/fake-app-server");
-const { createLiveNetworkConnectors, runDeterministicPhase2Slice, runLivePhase2Slice } = require("./run-phase2-slice");
+const { createLiveNetworkConnectors, runAdapterTurn, runDeterministicPhase2Slice, runLivePhase2Slice } = require("./run-phase2-slice");
 
 function thread(id) {
   return { cliVersion: "0.144.5", createdAt: 1, cwd: "C:\\phase2", ephemeral: false, id, modelProvider: "openai", preview: "", sessionId: `session-${id}`, source: "appServer", status: "idle", turns: [], updatedAt: 1 };
@@ -95,6 +95,20 @@ test("live docs connector binds fetched bytes and rejects a final redirect outsi
   const second = await run("official docs snapshot two");
   assert.notEqual(first.source_evidence[0].source_hash, second.source_evidence[0].source_hash);
   await assert.rejects(run("outside", "https://outside.example.test/docs"), { code: "SOURCE_REDIRECT_OUTSIDE_ALLOWLIST" });
+});
+
+test("runtime observation unsubscribes immediately when thread creation fails", async () => {
+  let unsubscribed = false;
+  const adapter = {
+    subscribeEvents: () => ({ subscription: { unsubscribe: () => { unsubscribed = true; } } }),
+    createThread: async () => ({ ok: false, status: "unavailable" }),
+    interruptTurn: async () => ({ ok: true })
+  };
+  await assert.rejects(
+    runAdapterTurn({ adapter, adapterKind: "typescript_sdk", correlationId: "CORR-early-failure", workingDirectory: "C:\\phase2", timeoutMs: 50 }),
+    { code: "PHASE2_RUNTIME_UNAVAILABLE" }
+  );
+  assert.equal(unsubscribed, true);
 });
 
 test("live slice uses injected network and runtime boundaries without installing a candidate", async () => {

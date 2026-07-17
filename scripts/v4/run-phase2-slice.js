@@ -282,23 +282,51 @@ function waitForRuntime(adapter, correlationId, timeoutMs = 2000) {
   const events = [];
   let resolveCompletion;
   let rejectCompletion;
+  let settled = false;
   const completion = new Promise((resolve, reject) => {
     resolveCompletion = resolve;
     rejectCompletion = reject;
   });
-  const timer = setTimeout(() => rejectCompletion(phase2Error("PHASE2_RUNTIME_TIMEOUT", "Runtime did not complete the Phase 2 turn.")), timeoutMs);
-  adapter.subscribeEvents({
+  let timer = null;
+  const subscribed = adapter.subscribeEvents({
     correlationId: `${correlationId}:subscription`,
     listener: (event) => {
-      if (event.correlation_id !== correlationId) return;
+      if (settled || event.correlation_id !== correlationId) return;
       events.push(event);
       if (event.type === "turn_completed") {
-        clearTimeout(timer);
+        settled = true;
+        if (timer) clearTimeout(timer);
+        subscribed?.subscription?.unsubscribe?.();
         resolveCompletion(events);
       }
     }
   });
-  return { events, completion };
+  timer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    subscribed?.subscription?.unsubscribe?.();
+    rejectCompletion(phase2Error("PHASE2_RUNTIME_TIMEOUT", "Runtime did not complete the Phase 2 turn."));
+  }, timeoutMs);
+  return {
+    events,
+    completion,
+    cancel() {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      subscribed?.subscription?.unsubscribe?.();
+    }
+  };
+}
+
+function withTimeout(promise, timeoutMs, code, message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(phase2Error(code, message)), Math.max(1, timeoutMs));
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); }
+    );
+  });
 }
 
 function evidenceId(label, value) {
@@ -397,11 +425,18 @@ async function runDeterministicPhase2Slice({ stateRoot, runtimeAdapter, fault = 
 
   const correlationId = `CORR-${canonicalHash({ task_intent_id: intent.task_intent_id, resolution_id: resolution.resolution_id, context_pack_id: lifecycle.current_context_pack_id }).slice(0, 12)}`;
   const observed = waitForRuntime(selectedRuntimeAdapter, correlationId);
-  const created = await selectedRuntimeAdapter.createThread({ correlationId: `${correlationId}:thread`, params: { cwd: "C:\\phase2", sandbox: "workspace-write", approvalPolicy: "on-request" } });
-  if (!created.ok) throw phase2Error("PHASE2_RUNTIME_UNAVAILABLE", "Deterministic App Server thread was unavailable.", { result: created });
-  const dispatch = await selectedRuntimeAdapter.startTurn({ correlationId, threadId: created.thread_id, input: [{ type: "text", text: "Return the Phase 2 fixture marker." }] });
-  if (!dispatch.ok) throw phase2Error("PHASE2_RUNTIME_DISPATCH_FAILED", "Deterministic App Server turn was not accepted.", { result: dispatch });
-  const runtimeEvents = await observed.completion;
+  let created;
+  let dispatch;
+  let runtimeEvents;
+  try {
+    created = await selectedRuntimeAdapter.createThread({ correlationId: `${correlationId}:thread`, params: { cwd: "C:\\phase2", sandbox: "workspace-write", approvalPolicy: "on-request" } });
+    if (!created.ok) throw phase2Error("PHASE2_RUNTIME_UNAVAILABLE", "Deterministic App Server thread was unavailable.", { result: created });
+    dispatch = await selectedRuntimeAdapter.startTurn({ correlationId, threadId: created.thread_id, input: [{ type: "text", text: "Return the Phase 2 fixture marker." }] });
+    if (!dispatch.ok) throw phase2Error("PHASE2_RUNTIME_DISPATCH_FAILED", "Deterministic App Server turn was not accepted.", { result: dispatch });
+    runtimeEvents = await observed.completion;
+  } finally {
+    observed.cancel();
+  }
   const timeline = runtimeEvents.map((event) => event.type).filter((type) => ["dispatch_accepted", "turn_started", "progress_observed", "turn_completed"].includes(type));
   const started = runtimeEvents.find((event) => event.type === "turn_started");
   const progress = runtimeEvents.find((event) => event.type === "progress_observed");
@@ -588,37 +623,55 @@ function removeOwnedTemporaryRoot(target) {
 
 async function runAdapterTurn({ adapter, adapterKind, correlationId, workingDirectory, timeoutMs = 180000 } = {}) {
   const observed = waitForRuntime(adapter, correlationId, timeoutMs);
+  const deadline = Date.now() + timeoutMs;
+  const remaining = () => Math.max(1, deadline - Date.now());
   const threadCorrelation = `${correlationId}:thread`;
-  const created = adapterKind === "app_server"
-    ? await adapter.createThread({
-      correlationId: threadCorrelation,
-      params: { cwd: workingDirectory, sandbox: "read-only", approvalPolicy: "never", ephemeral: true }
-    })
-    : await adapter.createThread({
-      correlationId: threadCorrelation,
-      profile: {
-        workingDirectory,
-        sandboxMode: "read-only",
-        networkAccessEnabled: false,
-        webSearchMode: "disabled",
-        approvalPolicy: "never"
-      }
-    });
-  if (!created.ok) throw phase2Error("PHASE2_RUNTIME_UNAVAILABLE", `${adapterKind} could not create a Codex thread.`, { result: created });
-  const turn = adapterKind === "app_server"
-    ? await adapter.startTurn({
-      correlationId,
-      threadId: created.thread_id,
-      input: [{ type: "text", text: "Return exactly: ORQUESTA_PHASE2_LIVE_OK" }]
-    })
-    : await adapter.startTurn({
-      correlationId,
-      threadHandle: created.thread_handle,
-      threadId: created.thread_id,
-      input: "Return exactly: ORQUESTA_PHASE2_LIVE_OK"
-    });
-  if (!turn.ok) throw phase2Error("PHASE2_RUNTIME_DISPATCH_FAILED", `${adapterKind} did not accept the Codex turn.`, { result: turn });
-  const events = await observed.completion;
+  let created = null;
+  let turn = null;
+  let completedNormally = false;
+  let events;
+  try {
+    created = await withTimeout(adapterKind === "app_server"
+      ? adapter.createThread({
+        correlationId: threadCorrelation,
+        params: { cwd: workingDirectory, sandbox: "read-only", approvalPolicy: "never", ephemeral: true }
+      })
+      : adapter.createThread({
+        correlationId: threadCorrelation,
+        profile: {
+          workingDirectory,
+          sandboxMode: "read-only",
+          networkAccessEnabled: false,
+          webSearchMode: "disabled",
+          approvalPolicy: "never"
+        }
+      }), remaining(), "PHASE2_RUNTIME_TIMEOUT", `${adapterKind} thread creation timed out.`);
+    if (!created.ok) throw phase2Error("PHASE2_RUNTIME_UNAVAILABLE", `${adapterKind} could not create a Codex thread.`, { result: created });
+    turn = await withTimeout(adapterKind === "app_server"
+      ? adapter.startTurn({
+        correlationId,
+        threadId: created.thread_id,
+        input: [{ type: "text", text: "Return exactly: ORQUESTA_PHASE2_LIVE_OK" }]
+      })
+      : adapter.startTurn({
+        correlationId,
+        threadHandle: created.thread_handle,
+        threadId: created.thread_id,
+        input: "Return exactly: ORQUESTA_PHASE2_LIVE_OK"
+      }), remaining(), "PHASE2_RUNTIME_TIMEOUT", `${adapterKind} turn dispatch timed out.`);
+    if (!turn.ok) throw phase2Error("PHASE2_RUNTIME_DISPATCH_FAILED", `${adapterKind} did not accept the Codex turn.`, { result: turn });
+    events = await observed.completion;
+    completedNormally = true;
+  } finally {
+    observed.cancel();
+    if (!completedNormally && turn?.ok) {
+      try {
+        await adapter.interruptTurn(adapterKind === "app_server"
+          ? { correlationId: `${correlationId}:timeout-interrupt`, threadId: turn.thread_id || created?.thread_id, turnId: turn.turn_id }
+          : { correlationId: `${correlationId}:timeout-interrupt`, threadHandle: created?.thread_handle, threadId: created?.thread_id });
+      } catch {}
+    }
+  }
   const timeline = events.map((event) => event.type).filter((type) => ["dispatch_accepted", "thread_started", "turn_started", "progress_observed", "artifact_produced", "turn_completed"].includes(type));
   const started = events.find((event) => event.type === "turn_started") || null;
   const progress = events.find((event) => event.type === "progress_observed") || null;
@@ -643,6 +696,9 @@ async function runAdapterTurn({ adapter, adapterKind, correlationId, workingDire
 }
 
 async function executeLiveCodexTurn({ correlationId, workingDirectory, timeoutMs } = {}) {
+  const totalTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 90000;
+  const startedAt = Date.now();
+  const appServerTimeoutMs = Math.min(30000, totalTimeoutMs);
   let child = null;
   const appServer = createAppServerAdapter({
     spawnProcess(command, args, options) {
@@ -651,12 +707,13 @@ async function executeLiveCodexTurn({ correlationId, workingDirectory, timeoutMs
     }
   });
   try {
-    return await runAdapterTurn({ adapter: appServer, adapterKind: "app_server", correlationId, workingDirectory, timeoutMs });
+    return await runAdapterTurn({ adapter: appServer, adapterKind: "app_server", correlationId, workingDirectory, timeoutMs: appServerTimeoutMs });
   } catch (appServerError) {
     if (child && !child.killed) child.kill();
     const sdk = createSdkAdapter();
     try {
-      const result = await runAdapterTurn({ adapter: sdk, adapterKind: "typescript_sdk", correlationId, workingDirectory, timeoutMs });
+      const remainingTimeoutMs = Math.max(1000, totalTimeoutMs - (Date.now() - startedAt));
+      const result = await runAdapterTurn({ adapter: sdk, adapterKind: "typescript_sdk", correlationId, workingDirectory, timeoutMs: remainingTimeoutMs });
       return { ...result, fallback_from: "app_server", fallback_reason: appServerError.code || "app_server_failed" };
     } catch (sdkError) {
       throw phase2Error("PHASE2_CODEX_RUNTIME_UNAVAILABLE", "Neither App Server nor the SDK completed the live Codex turn.", {
@@ -747,7 +804,7 @@ async function runLivePhase2Slice({
     harness: {
       inspectProfile: async () => ({ status: "available", verified: true, profile_id: profile.profile_id, source: "codex-runtime-request-profile", captured_at: clock(), allowed_roots: [...profile.allowed_roots], effects: [] }),
       run: async () => {
-        runtime = await runtimeExecutor({ correlationId, workingDirectory: auditionRoot, timeoutMs: 180000 });
+        runtime = await runtimeExecutor({ correlationId, workingDirectory: auditionRoot, timeoutMs: 90000 });
         return {
           status: runtime.turn_completed ? "completed" : "failed",
           before_manifest: [],
