@@ -88,6 +88,21 @@ function readPackage(fsAdapter, packageRoot, label) {
   }
 }
 
+function realPackageRoot(fsAdapter, realNodeModulesRoot, packageRoot, label) {
+  let resolved;
+  try {
+    resolved = fsAdapter.realpathSync(packageRoot);
+  } catch (error) {
+    throw new Error(`missing ${label} package root at ${packageRoot}`, {
+      cause: error
+    });
+  }
+  if (!isWithin(realNodeModulesRoot, resolved)) {
+    throw new Error(`${label} package realpath escape detected`);
+  }
+  return resolved;
+}
+
 function resolveBundledCodexRuntime({
   sdkPackageRoot,
   platform = process.platform,
@@ -102,7 +117,22 @@ function resolveBundledCodexRuntime({
   const nodeModulesRoot = findNodeModulesRoot(sdkRoot);
   assertWithin(nodeModulesRoot, sdkRoot, "SDK package path escape detected");
 
-  const sdkPackage = readPackage(fsAdapter, sdkRoot, "@openai/codex-sdk");
+  let realNodeModulesRoot;
+  try {
+    realNodeModulesRoot = fsAdapter.realpathSync(nodeModulesRoot);
+  } catch (error) {
+    throw new Error(`missing node_modules installation boundary at ${nodeModulesRoot}`, {
+      cause: error
+    });
+  }
+  const realSdkRoot = realPackageRoot(
+    fsAdapter,
+    realNodeModulesRoot,
+    sdkRoot,
+    "SDK"
+  );
+
+  const sdkPackage = readPackage(fsAdapter, realSdkRoot, "@openai/codex-sdk");
   if (sdkPackage.name !== "@openai/codex-sdk"
       || sdkPackage.version !== PINNED_CODEX_VERSION) {
     throw new Error(`Codex SDK must be pinned to ${PINNED_CODEX_VERSION}`);
@@ -112,12 +142,17 @@ function resolveBundledCodexRuntime({
   }
 
   const resolvePackageRoot = typeof fsAdapter.resolvePackageRoot === "function"
-    ? (packageName) => path.resolve(fsAdapter.resolvePackageRoot(packageName, sdkRoot))
+    ? (packageName) => path.resolve(fsAdapter.resolvePackageRoot(packageName, realSdkRoot))
     : (packageName) => packagePath(nodeModulesRoot, packageName);
 
   const codexRoot = resolvePackageRoot("@openai/codex");
-  assertWithin(nodeModulesRoot, codexRoot, "Codex package path escape detected");
-  const codexPackage = readPackage(fsAdapter, codexRoot, "@openai/codex");
+  const realCodexRoot = realPackageRoot(
+    fsAdapter,
+    realNodeModulesRoot,
+    codexRoot,
+    "@openai/codex"
+  );
+  const codexPackage = readPackage(fsAdapter, realCodexRoot, "@openai/codex");
   if (codexPackage.name !== "@openai/codex"
       || codexPackage.version !== PINNED_CODEX_VERSION) {
     throw new Error(`Codex package must be pinned to ${PINNED_CODEX_VERSION}`);
@@ -136,8 +171,13 @@ function resolveBundledCodexRuntime({
   }
 
   const runtimeRoot = resolvePackageRoot(target.packageName);
-  assertWithin(nodeModulesRoot, runtimeRoot, "runtime package path escape detected");
-  const runtimePackage = readPackage(fsAdapter, runtimeRoot, target.packageName);
+  const realRuntimeRoot = realPackageRoot(
+    fsAdapter,
+    realNodeModulesRoot,
+    runtimeRoot,
+    "runtime"
+  );
+  const runtimePackage = readPackage(fsAdapter, realRuntimeRoot, target.packageName);
   if (runtimePackage.name !== "@openai/codex"
       || runtimePackage.version !== target.packageVersion) {
     throw new Error(`runtime package must be pinned to ${target.packageVersion}`);
@@ -150,18 +190,16 @@ function resolveBundledCodexRuntime({
   }
 
   const executablePath = path.join(
-    runtimeRoot,
+    realRuntimeRoot,
     "vendor",
     target.targetTriple,
     "bin",
     target.executableName
   );
-  assertWithin(runtimeRoot, executablePath, "runtime executable path escape detected");
+  assertWithin(realRuntimeRoot, executablePath, "runtime executable path escape detected");
 
-  let realRuntimeRoot;
   let realExecutablePath;
   try {
-    realRuntimeRoot = fsAdapter.realpathSync(runtimeRoot);
     realExecutablePath = fsAdapter.realpathSync(executablePath);
   } catch (error) {
     throw new Error(`missing declared runtime executable at ${executablePath}`, {

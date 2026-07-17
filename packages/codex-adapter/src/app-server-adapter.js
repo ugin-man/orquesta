@@ -1,4 +1,6 @@
 const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const schema = require("../protocol/app-server-schema.json");
 const {
@@ -10,6 +12,7 @@ const {
 const { createApprovalRelay } = require("./approval-relay");
 const { createJsonlTransport } = require("./jsonl-transport");
 const { createModelEvidence } = require("./model-evidence");
+const { resolveBundledCodexRuntime } = require("./runtime-path");
 
 const APP_SERVER_CAPABILITIES = Object.freeze({
   createThread: true,
@@ -61,9 +64,18 @@ function validateServerMessage(collection, message, label) {
   return definition;
 }
 
+function findInstalledSdkPackageRoot() {
+  for (const nodeModulesRoot of module.paths) {
+    const candidate = path.join(nodeModulesRoot, "@openai", "codex-sdk");
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  throw new Error("installed @openai/codex-sdk package root was not found");
+}
+
 function createAppServerAdapter({
-  executablePath = null,
-  findExecutable = () => null,
+  runtimeResult = null,
+  resolveRuntime = resolveBundledCodexRuntime,
+  sdkPackageRoot = null,
   spawnProcess = spawn,
   transportFactory = createJsonlTransport,
   onDiagnostic = () => {}
@@ -123,15 +135,22 @@ function createAppServerAdapter({
     });
   }
 
-  function resolveCommand() {
-    if (typeof executablePath === "string" && executablePath.trim() !== "") {
-      return executablePath;
+  function resolveRuntimeResult() {
+    try {
+      const resolved = runtimeResult || resolveRuntime({
+        sdkPackageRoot: sdkPackageRoot || findInstalledSdkPackageRoot()
+      });
+      if (!resolved || typeof resolved !== "object" || Array.isArray(resolved)
+          || typeof resolved.executable_path !== "string"
+          || resolved.executable_path.trim() === "") {
+        throw new Error("bundled runtime result must contain executable_path");
+      }
+      return deepFreeze({ ...resolved });
+    } catch (error) {
+      throw new RuntimeUnavailableError(
+        `pinned bundled Codex runtime is unavailable: ${error.message}`
+      );
     }
-    const found = findExecutable("codex");
-    if (typeof found !== "string" || found.trim() === "") {
-      throw new RuntimeUnavailableError("spawnable Codex executable was not found");
-    }
-    return found;
   }
 
   function handleNotification(message) {
@@ -234,10 +253,10 @@ function createAppServerAdapter({
 
   function startTransport() {
     if (transport) return transport;
-    const command = resolveCommand();
+    const runtime = resolveRuntimeResult();
     let child;
     try {
-      child = spawnProcess(command, ["app-server"], {
+      child = spawnProcess(runtime.executable_path, ["app-server"], {
         shell: false,
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"]
@@ -479,6 +498,7 @@ function createAppServerAdapter({
 module.exports = {
   APP_SERVER_CAPABILITIES,
   createAppServerAdapter,
+  findInstalledSdkPackageRoot,
   requireFields,
   validateRequest,
   validateResponse,

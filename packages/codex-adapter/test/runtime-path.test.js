@@ -174,6 +174,26 @@ test("rejects package resolution that escapes the SDK installation boundary", (t
   );
 });
 
+test("rejects a runtime package root junction or symlink outside real node_modules", (t) => {
+  const fixture = createRuntimeFixture(t);
+  const outsideRuntimeRoot = path.join(fixture.root, "outside-runtime-package");
+  fs.renameSync(fixture.runtimePackageRoot, outsideRuntimeRoot);
+  fs.symlinkSync(
+    outsideRuntimeRoot,
+    fixture.runtimePackageRoot,
+    process.platform === "win32" ? "junction" : "dir"
+  );
+
+  assert.throws(
+    () => resolveBundledCodexRuntime({
+      sdkPackageRoot: fixture.sdkPackageRoot,
+      platform: "win32",
+      arch: "x64"
+    }),
+    /runtime package.*(?:junction|symlink|realpath).*escape/i
+  );
+});
+
 test("rejects a symlink escape from the selected runtime package", (t) => {
   const fixture = createRuntimeFixture(t);
   const outsideExecutable = path.join(fixture.root, "outside", "codex.exe");

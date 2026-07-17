@@ -26,6 +26,19 @@ function makeTurn(id, status = "inProgress") {
   return { id, items: [], status };
 }
 
+function bundledRuntime(executablePath = "C:\\runtime\\codex.exe") {
+  return {
+    sdk_package: "@openai/codex-sdk",
+    sdk_version: "0.144.5",
+    codex_package: "@openai/codex",
+    codex_version: "0.144.5",
+    runtime_package: "@openai/codex-win32-x64",
+    runtime_package_version: "0.144.5-win32-x64",
+    target_triple: "x86_64-pc-windows-msvc",
+    executable_path: executablePath
+  };
+}
+
 function attachSuccessfulServer(process) {
   process.on("clientMessage", (message) => {
     if (message.method === "initialize") {
@@ -79,7 +92,7 @@ function createHarness() {
   const spawnCalls = [];
   attachSuccessfulServer(process);
   const adapter = createAppServerAdapter({
-    executablePath: "C:\\runtime\\codex.exe",
+    runtimeResult: bundledRuntime(),
     spawnProcess(command, args, options) {
       spawnCalls.push({ command, args, options });
       return process;
@@ -121,33 +134,61 @@ test("spawns App Server without a shell and initializes exactly once before thre
   ]);
 });
 
-test("uses the default Codex command only after an injected spawnability lookup", async () => {
-  const unavailable = createAppServerAdapter({
-    findExecutable: () => null,
-    spawnProcess: () => {
-      throw new Error("must not spawn");
-    }
-  });
-  const unavailableResult = await unavailable.createThread({
-    correlationId: "corr-unavailable",
-    params: {}
-  });
-  assert.equal(unavailableResult.ok, false);
-  assert.equal(unavailableResult.status, "unavailable");
-
+test("ignores arbitrary executable and PATH fallbacks and spawns only the bundled resolver result", async () => {
   const process = new FakeAppServerProcess();
   attachSuccessfulServer(process);
   const commands = [];
-  const available = createAppServerAdapter({
-    findExecutable: (command) => command === "codex" ? "C:\\resolved\\codex.exe" : null,
+  const resolverCalls = [];
+  let finderCalls = 0;
+  const adapter = createAppServerAdapter({
+    executablePath: "C:\\Program Files\\WindowsApps\\codex.exe",
+    findExecutable: () => {
+      finderCalls += 1;
+      return "C:\\path\\codex.exe";
+    },
+    sdkPackageRoot: "C:\\sdk-root",
+    resolveRuntime(input) {
+      resolverCalls.push(input);
+      return bundledRuntime("C:\\bundled\\codex.exe");
+    },
     spawnProcess: (command) => {
       commands.push(command);
       return process;
     }
   });
-  const result = await available.createThread({ correlationId: "corr-available", params: {} });
+  const result = await adapter.createThread({ correlationId: "corr-bundled", params: {} });
+
   assert.equal(result.ok, true);
-  assert.deepEqual(commands, ["C:\\resolved\\codex.exe"]);
+  assert.deepEqual(resolverCalls, [{ sdkPackageRoot: "C:\\sdk-root" }]);
+  assert.deepEqual(commands, ["C:\\bundled\\codex.exe"]);
+  assert.equal(finderCalls, 0);
+});
+
+test("returns unavailable without spawning when bundled runtime resolution fails", async () => {
+  const process = new FakeAppServerProcess();
+  attachSuccessfulServer(process);
+  let finderCalls = 0;
+  let spawnCalls = 0;
+  const adapter = createAppServerAdapter({
+    findExecutable: () => {
+      finderCalls += 1;
+      return "C:\\path\\codex.exe";
+    },
+    resolveRuntime() {
+      throw new Error("pinned bundled runtime missing");
+    },
+    spawnProcess: () => {
+      spawnCalls += 1;
+      return process;
+    }
+  });
+
+  const result = await adapter.createThread({ correlationId: "corr-unavailable", params: {} });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "unavailable");
+  assert.match(result.error.message, /pinned bundled runtime missing/i);
+  assert.equal(finderCalls, 0);
+  assert.equal(spawnCalls, 0);
 });
 
 test("separates dispatch acceptance from a matching streamed turn start", async () => {
@@ -363,7 +404,7 @@ test("fails closed when a response does not satisfy the pinned schema", async ()
     }
   });
   const adapter = createAppServerAdapter({
-    executablePath: "C:\\runtime\\codex.exe",
+    runtimeResult: bundledRuntime(),
     spawnProcess: () => process
   });
 
