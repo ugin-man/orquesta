@@ -7,6 +7,7 @@ const {
   createAppServerAdapter,
   createAdapterFailure,
   createJsonlTransport,
+  createSdkAdapter,
   resolveBundledCodexRuntime,
   defineCodexAdapter
 } = require("../src");
@@ -36,6 +37,7 @@ test("package exports the pinned runtime and App Server adapter surface", () => 
   assert.equal(typeof resolveBundledCodexRuntime, "function");
   assert.equal(typeof createJsonlTransport, "function");
   assert.equal(typeof createAppServerAdapter, "function");
+  assert.equal(typeof createSdkAdapter, "function");
 });
 
 test("adapter construction rejects incomplete or non-boolean capability declarations", () => {
