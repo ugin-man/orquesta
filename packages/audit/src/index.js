@@ -2,6 +2,7 @@
 
 const { assertContract, canonicalHash } = require("@orquesta/contracts");
 const { evaluateHardGates, staticFacts } = require("./hard-gates");
+const { reconcileLiveEvidence } = require("./phase2-facts");
 const { WEIGHTS_V1, auditError, scoreCandidate } = require("./score");
 
 const RESPONSIBILITY = Object.freeze({
@@ -66,4 +67,29 @@ function auditCandidate({ candidate, need, axes = candidate && candidate.axes, u
   };
 }
 
-module.exports = { RESPONSIBILITY, WEIGHTS_V1, auditCandidate, evaluateCandidate, scoreCandidate };
+function auditLiveCandidate({ candidate, need, sourceEvidence, policyVersion = "phase2-v1", policy = WEIGHTS_V1 } = {}) {
+  const live = reconcileLiveEvidence({ candidate, sourceEvidence });
+  const audited = auditCandidate({
+    candidate: live.candidate,
+    need,
+    policyVersion,
+    policy,
+  });
+  return {
+    audit_mode: "phase2_source_bound",
+    candidate_id: live.candidate.provider_id,
+    policy_version: policyVersion,
+    static_metadata: { ...live.candidate.static_metadata },
+    unknowns: audited.unknowns,
+    ...(Object.hasOwn(live.candidate, "estimated_total_cost")
+      ? { estimated_total_cost: live.candidate.estimated_total_cost }
+      : {}),
+    facts: audited.facts,
+    fact_provenance: live.fact_provenance,
+    hard_gate_results: audited.hard_gate_results,
+    responsibility: { ...RESPONSIBILITY, audit: "source_bound_metadata_checks_only" },
+    evaluation: audited.evaluation,
+  };
+}
+
+module.exports = { RESPONSIBILITY, WEIGHTS_V1, auditCandidate, auditLiveCandidate, evaluateCandidate, scoreCandidate };

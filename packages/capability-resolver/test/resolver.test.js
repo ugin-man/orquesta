@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { assertContract } = require("@orquesta/contracts");
-const { WEIGHTS_V1 } = require("@orquesta/audit");
+const { WEIGHTS_V1, auditLiveCandidate } = require("@orquesta/audit");
 const { createBuildCandidate, resolveNeed } = require("../src");
 
 const need = {
@@ -457,4 +457,30 @@ test("resolver abandons only an explicitly superseded Need", () => {
   assert.equal(proposal.resolution.mode, "abandon");
   assert.equal(proposal.resolution.selected_provider_id, null);
   assert.equal(proposal.resolution.approval_status, "pending_user");
+});
+
+test("resolver accepts the source-bound live Audit fact without treating self-report as authority", () => {
+  const liveFact = auditLiveCandidate({
+    candidate: candidate("live-source", 80, { license: "forbidden", runtime: "compatible", security: "no_critical_finding" }),
+    need,
+    sourceEvidence: [{
+      source_id: "source:official-license",
+      source_ref: "https://example.test/official/live-source",
+      source_hash: "b".repeat(64),
+      freshness: "fresh",
+      authoritative_fields: ["cost", "license"],
+      facts: { cost: 12, license: "MIT" },
+      unknowns: [],
+    }],
+    policyVersion: "phase2-v1",
+  });
+  const proposal = resolveNeed({
+    need,
+    scoutedCandidates: [candidate("live-source", 80, { license: "forbidden", runtime: "compatible", security: "no_critical_finding" })],
+    auditFacts: [liveFact],
+    policy: WEIGHTS_V1,
+  });
+  assert.equal(proposal.resolution.mode, "reuse");
+  assert.equal(proposal.resolution.selected_provider_id, "live-source");
+  assert.equal(proposal.resolution.total_cost, 12);
 });

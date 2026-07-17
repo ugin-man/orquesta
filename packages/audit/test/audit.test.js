@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { assertContract } = require("@orquesta/contracts");
-const { WEIGHTS_V1, auditCandidate, evaluateCandidate, scoreCandidate } = require("../src");
+const { WEIGHTS_V1, auditCandidate, auditLiveCandidate, evaluateCandidate, scoreCandidate } = require("../src");
 
 const need = {
   need_id: "CN-AUDIT-001",
@@ -47,6 +47,25 @@ function candidate(overrides = {}) {
     },
     axes: axes(),
     uncertainty_penalty: 5,
+    ...overrides,
+  };
+}
+
+function liveSourceEvidence(overrides = {}) {
+  return {
+    source_id: "source:fixture-official",
+    source_ref: "https://example.test/docs/fixture-browser-check",
+    source_hash: "a".repeat(64),
+    freshness: "fresh",
+    authoritative_fields: ["accessibility", "cost", "license", "runtime", "trust"],
+    facts: {
+      accessibility: "met",
+      cost: 17,
+      license: "MIT",
+      runtime: "compatible",
+      trust: "official",
+    },
+    unknowns: ["maintenance"],
     ...overrides,
   };
 }
@@ -157,4 +176,85 @@ test("audit treats the exact license unknown code as a hard license failure with
   });
   assert.equal(otherUnknowns.eligibility, "eligible");
   assert.ok(otherUnknowns.hard_gate_results.every((result) => result.status !== "fail"));
+});
+
+test("live Audit only accepts exact fresh source authority and preserves explicit unknowns", () => {
+  const selfReportedForbidden = candidate({
+    static_metadata: { license: "forbidden", runtime: "compatible", security: "no_critical_finding" },
+  });
+  const untrusted = auditLiveCandidate({
+    candidate: selfReportedForbidden,
+    need,
+    sourceEvidence: [liveSourceEvidence({ authoritative_fields: [] })],
+    policyVersion: "phase2-v1",
+  });
+  assert.equal(untrusted.evaluation.eligibility, "ineligible");
+  assert.equal(untrusted.static_metadata.license, "forbidden");
+
+  const authoritative = auditLiveCandidate({
+    candidate: selfReportedForbidden,
+    need,
+    sourceEvidence: [liveSourceEvidence()],
+    policyVersion: "phase2-v1",
+  });
+  assert.equal(authoritative.audit_mode, "phase2_source_bound");
+  assert.equal(authoritative.static_metadata.license, "MIT");
+  assert.equal(authoritative.estimated_total_cost, 17);
+  assert.equal(authoritative.evaluation.eligibility, "eligible");
+  assert.ok(authoritative.unknowns.includes("maintenance"));
+  assert.deepEqual(authoritative.fact_provenance.find((entry) => entry.field === "license"), {
+    field: "license",
+    source_id: "source:fixture-official",
+    source_ref: "https://example.test/docs/fixture-browser-check",
+    source_hash: "a".repeat(64),
+  });
+
+  const stale = auditLiveCandidate({
+    candidate: selfReportedForbidden,
+    need,
+    sourceEvidence: [liveSourceEvidence({ freshness: "stale" })],
+    policyVersion: "phase2-v1",
+  });
+  assert.equal(stale.static_metadata.license, "forbidden");
+  assert.equal(stale.evaluation.eligibility, "ineligible");
+
+  const licenseUnknown = auditLiveCandidate({
+    candidate: candidate(),
+    need,
+    sourceEvidence: [liveSourceEvidence({ facts: { license: "MIT" }, authoritative_fields: ["license"], unknowns: ["license", "maintenance"] })],
+    policyVersion: "phase2-v1",
+  });
+  assert.equal(licenseUnknown.evaluation.eligibility, "ineligible");
+  assert.ok(licenseUnknown.unknowns.includes("license"));
+  assert.ok(licenseUnknown.unknowns.includes("maintenance"));
+});
+
+test("live Audit keeps Phase 1 hard gates and rejects duplicate source facts deterministically", () => {
+  const blocked = auditLiveCandidate({
+    candidate: candidate({ static_metadata: { license: "MIT", runtime: "compatible", security: "no_critical_finding", payment: true } }),
+    need,
+    sourceEvidence: [liveSourceEvidence({ facts: { license: "MIT" }, authoritative_fields: ["license"], unknowns: ["maintenance", "total_cost"] })],
+    policyVersion: "phase2-v1",
+  });
+  assert.equal(blocked.evaluation.eligibility, "blocked");
+  assert.ok(blocked.unknowns.includes("maintenance"));
+  assert.ok(blocked.unknowns.includes("total_cost"));
+
+  const inaccessible = auditLiveCandidate({
+    candidate: candidate(),
+    need: { ...need, hard_constraints: ["accessibility_required"] },
+    sourceEvidence: [liveSourceEvidence({ facts: { accessibility: "unmet" }, authoritative_fields: ["accessibility"], unknowns: ["maintenance", "total_cost"] })],
+    policyVersion: "phase2-v1",
+  });
+  assert.equal(inaccessible.evaluation.eligibility, "ineligible");
+
+  const first = liveSourceEvidence({ source_id: "source:a", facts: { license: "MIT" }, authoritative_fields: ["license"] });
+  const second = liveSourceEvidence({ source_id: "source:b", facts: { license: "Apache-2.0" }, authoritative_fields: ["license"] });
+  for (const sourceEvidence of [[first, second], [second, first]]) {
+    assert.throws(
+      () => auditLiveCandidate({ candidate: candidate(), need, sourceEvidence, policyVersion: "phase2-v1" }),
+      (error) => error && error.code === "AUDIT_LIVE_FACT_CONFLICT"
+        && JSON.stringify(error.details) === JSON.stringify({ candidate_id: "fixture-browser-check", fields: ["license"] }),
+    );
+  }
 });
