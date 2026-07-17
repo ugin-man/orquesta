@@ -1,0 +1,19 @@
+{
+  "query_terms": [
+    "codex",
+    "development",
+    "tool"
+  ],
+  "allowed_connector_ids": [
+    "github",
+    "official_docs",
+    "registry",
+    "ui_catalog"
+  ],
+  "request_budget": {
+    "max_requests_per_need": 8,
+    "max_requests_per_connector": 2
+  },
+  "candidate_limit": 3,
+  "requested_at": "2026-07-17T00:00:00.000Z"
+}

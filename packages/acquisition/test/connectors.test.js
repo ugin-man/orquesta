@@ -57,6 +57,18 @@ test("four connectors parse injected allowlisted fixtures into bounded source ev
   }
 });
 
+test("official docs connector accepts the current first-party ChatGPT Learn docs origin", async () => {
+  const response = fixture("official-docs");
+  response.url = "https://learn.chatgpt.com/docs";
+  const connector = createOfficialDocsConnector({
+    baseUrl: "https://learn.chatgpt.com/docs",
+    transport: transport(response),
+    clock: () => "2026-07-17T00:00:00.000Z"
+  });
+  const result = await connector.search({ query, budget: { remaining_total: 7, remaining_connector: 1 } });
+  assert.equal(result.status, "success");
+});
+
 test("connectors keep source order stable, dedupe records, and retain missing license as unknown evidence", async () => {
   const response = fixture("ui-catalog");
   response.body = "{\"items\":[{\"id\":\"z\",\"source_uri\":\"https://catalog.example.test/z\"},{\"id\":\"a\",\"source_uri\":\"https://catalog.example.test/a\"},{\"id\":\"a\",\"source_uri\":\"https://catalog.example.test/a\"}]}";

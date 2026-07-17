@@ -1,0 +1,47 @@
+{
+  "task_intent": {
+    "rawRequestRef": "fixture:phase2-admin-ui",
+    "desiredOutcome": "Evaluate existing Codex development assets and prove a bounded execution evidence chain.",
+    "acceptanceCriteria": [
+      "Discover no more than three source-bound candidates.",
+      "Reject one candidate at a static hard gate.",
+      "Complete an approved Audition and a Codex-native turn.",
+      "Persist artifact, report, and acceptance evidence through the Event Journal."
+    ],
+    "constraints": [
+      "Use injected transport in deterministic mode.",
+      "Do not install a candidate.",
+      "Do not claim an actual model without observed runtime evidence."
+    ],
+    "risk": {
+      "impact": "medium",
+      "reversible": true
+    },
+    "authorityBoundary": {
+      "agent_may": [
+        "inspect sources",
+        "run an approved temporary Audition",
+        "run a bounded Codex turn"
+      ],
+      "user_only": [
+        "install a candidate",
+        "publish external changes"
+      ]
+    },
+    "assumptions": [
+      "The fixed Phase 2 fixture clock and transport evidence are authoritative only for deterministic review."
+    ],
+    "status": "compiled"
+  },
+  "capability_need": {
+    "need_id": "NEED-phase2-admin-ui",
+    "description": "Reuse a source-bound Codex development asset before building from scratch.",
+    "kind": "tool",
+    "required_level": "audited candidate with reversible proof",
+    "hard_constraints": [],
+    "dependencies": [],
+    "verification_method": "source audit, Audition, Codex turn, and journal replay",
+    "status": "open",
+    "confidence": 90
+  }
+}

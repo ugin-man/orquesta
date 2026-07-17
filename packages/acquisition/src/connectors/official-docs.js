@@ -7,7 +7,7 @@ function createOfficialDocsConnector({ baseUrl = "https://platform.openai.com/do
     id: "official_docs",
     trustTier: "official",
     baseUrl,
-    allowedOrigins: ["https://platform.openai.com"],
+    allowedOrigins: ["https://learn.chatgpt.com", "https://platform.openai.com"],
     transport,
     clock,
     ttlMs: 24 * 60 * 60 * 1000,
