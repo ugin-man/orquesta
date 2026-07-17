@@ -73,7 +73,6 @@ function findInstalledSdkPackageRoot() {
 }
 
 function createAppServerAdapter({
-  runtimeResult = null,
   resolveRuntime = resolveBundledCodexRuntime,
   sdkPackageRoot = null,
   spawnProcess = spawn,
@@ -137,7 +136,7 @@ function createAppServerAdapter({
 
   function resolveRuntimeResult() {
     try {
-      const resolved = runtimeResult || resolveRuntime({
+      const resolved = resolveRuntime({
         sdkPackageRoot: sdkPackageRoot || findInstalledSdkPackageRoot()
       });
       if (!resolved || typeof resolved !== "object" || Array.isArray(resolved)

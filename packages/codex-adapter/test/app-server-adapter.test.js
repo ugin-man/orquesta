@@ -92,7 +92,7 @@ function createHarness() {
   const spawnCalls = [];
   attachSuccessfulServer(process);
   const adapter = createAppServerAdapter({
-    runtimeResult: bundledRuntime(),
+    resolveRuntime: () => bundledRuntime(),
     spawnProcess(command, args, options) {
       spawnCalls.push({ command, args, options });
       return process;
@@ -134,13 +134,14 @@ test("spawns App Server without a shell and initializes exactly once before thre
   ]);
 });
 
-test("ignores arbitrary executable and PATH fallbacks and spawns only the bundled resolver result", async () => {
+test("ignores direct runtime, executable, and PATH injection and spawns only the resolver result", async () => {
   const process = new FakeAppServerProcess();
   attachSuccessfulServer(process);
   const commands = [];
   const resolverCalls = [];
   let finderCalls = 0;
   const adapter = createAppServerAdapter({
+    runtimeResult: bundledRuntime("C:\\direct\\codex.exe"),
     executablePath: "C:\\Program Files\\WindowsApps\\codex.exe",
     findExecutable: () => {
       finderCalls += 1;
@@ -404,7 +405,7 @@ test("fails closed when a response does not satisfy the pinned schema", async ()
     }
   });
   const adapter = createAppServerAdapter({
-    runtimeResult: bundledRuntime(),
+    resolveRuntime: () => bundledRuntime(),
     spawnProcess: () => process
   });
 
