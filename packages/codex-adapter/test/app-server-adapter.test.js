@@ -263,8 +263,23 @@ test("relays a schema-pinned server approval request and only an explicit respon
   });
   await new Promise((resolve) => setImmediate(resolve));
   const approval = events.find((event) => event.type === "approval_requested");
-  assert.equal(approval.request_id, "approval-1");
-  assert.equal(approval.correlation_id, "corr-turn");
+  assert.deepEqual(approval, {
+    adapter: "app_server",
+    type: "approval_requested",
+    correlation_id: "corr-turn",
+    thread_id: "thread-1",
+    turn_id: "turn-1",
+    request_id: "approval-1",
+    method: "item/fileChange/requestApproval",
+    reason: "[redacted approval reason]",
+    requested_effect: { kind: "file_change", item_id: "item-1" },
+    response_options: ["accept", "acceptForSession", "decline", "cancel"]
+  });
+  assert.equal(
+    process.clientMessages.some((message) => message.id === "approval-1"),
+    false,
+    "receiving an approval request must not auto-respond"
+  );
 
   const outbound = once(process, "clientMessage");
   const response = await adapter.respondToApproval({
@@ -278,6 +293,56 @@ test("relays a schema-pinned server approval request and only an explicit respon
   const [message] = await outbound;
   assert.equal(response.ok, true);
   assert.deepEqual(message, { id: "approval-1", result: { decision: "decline" } });
+});
+
+test("separates recommended, requested, applied, and observed model evidence", async () => {
+  const { adapter, process } = createHarness();
+  const events = [];
+  await adapter.subscribeEvents({ correlationId: "corr-sub", listener: (event) => events.push(event) });
+  const thread = await adapter.createThread({
+    correlationId: "corr-thread",
+    recommendedModel: "recommended-model",
+    requestedModel: "requested-model",
+    params: { model: "requested-model" }
+  });
+  assert.deepEqual(thread.model_evidence, {
+    recommended_model: "recommended-model",
+    requested_model: "requested-model",
+    applied_model: "requested-model",
+    actual_model: null,
+    actual_model_evidence_ref: null
+  });
+
+  await adapter.startTurn({
+    correlationId: "corr-turn",
+    threadId: "thread-1",
+    input: [{ type: "text", text: "hello" }]
+  });
+  process.send({
+    method: "model/rerouted",
+    params: {
+      fromModel: "requested-model",
+      reason: "runtime routing",
+      threadId: "thread-1",
+      toModel: "observed-model",
+      turnId: "turn-1"
+    }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(events.find((event) => event.type === "model_observed"), {
+    adapter: "app_server",
+    type: "model_observed",
+    correlation_id: "corr-turn",
+    thread_id: "thread-1",
+    turn_id: "turn-1",
+    model: "observed-model",
+    source_event: "model/rerouted"
+  });
+  const actual = await adapter.readActualModel({ correlationId: "corr-model" });
+  assert.equal(actual.ok, false);
+  assert.equal(actual.status, "unsupported");
+  assert.equal(actual.evidence.actual_model, null);
 });
 
 test("fails closed when a response does not satisfy the pinned schema", async () => {

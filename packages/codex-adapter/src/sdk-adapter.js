@@ -3,6 +3,7 @@ const {
   deepFreeze,
   defineCodexAdapter
 } = require("./contract");
+const { createModelEvidence } = require("./model-evidence");
 
 const SDK_CAPABILITIES = Object.freeze({
   createThread: true,
@@ -109,16 +110,6 @@ function createSdkAdapter({
         turn_started: false,
         actual_model: null
       }
-    });
-  }
-
-  function modelEvidence({ recommendedModel, requestedModel, appliedModel }) {
-    return deepFreeze({
-      recommended_model: recommendedModel ?? null,
-      requested_model: requestedModel ?? null,
-      applied_model: appliedModel ?? null,
-      actual_model: null,
-      actual_model_evidence_ref: null
     });
   }
 
@@ -232,10 +223,10 @@ function createSdkAdapter({
       return success("createThread", correlationId, {
         thread_id: thread.id || null,
         thread_handle: correlationId,
-        model_evidence: modelEvidence({
-          recommendedModel,
-          requestedModel,
-          appliedModel: options.model
+        model_evidence: createModelEvidence({
+          recommended: recommendedModel,
+          requested: requestedModel,
+          applied: options.model
         })
       });
     }),
@@ -259,10 +250,10 @@ function createSdkAdapter({
       return success("resumeThread", correlationId, {
         thread_id: thread.id || threadId,
         thread_handle: threadId,
-        model_evidence: modelEvidence({
-          recommendedModel,
-          requestedModel,
-          appliedModel: options.model
+        model_evidence: createModelEvidence({
+          recommended: recommendedModel,
+          requested: requestedModel,
+          applied: options.model
         })
       });
     }),

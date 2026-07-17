@@ -7,7 +7,9 @@ const version = require("../protocol/app-server-version.json");
 test("pins the generated App Server v2 lifecycle subset", () => {
   assert.equal(schema.protocol_version, "app-server-v2");
   assert.equal(schema.source.cli_version, "0.144.5");
-  assert.match(schema.source.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(schema.source.canonicalization, "recursive-key-sort-json-v1");
+  assert.match(schema.source.canonical_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(Object.hasOwn(schema.source, "sha256"), false);
   assert.deepEqual(Object.keys(schema.client_requests), [
     "initialize",
     "thread/start",
@@ -68,7 +70,7 @@ test("pins exact turn-start approval methods and decision shapes", () => {
   );
 });
 
-test("pins runtime package, executable hash, and generated schema hash", () => {
+test("pins runtime package, executable hash, and canonical generated schema hash", () => {
   assert.deepEqual(version, {
     cli_version: "0.144.5",
     sdk_package: "@openai/codex-sdk",
@@ -80,8 +82,16 @@ test("pins runtime package, executable hash, and generated schema hash", () => {
     target_triple: "x86_64-pc-windows-msvc",
     executable_sha256: "efdb3540ef74b9909408c8d38da79483454797b36f471e3e004fc2bf2b70e22a",
     schema_source: "codex_app_server_protocol.v2.schemas.json",
-    schema_source_sha256: "fb550b4a19cd0e15e6900e90021867daa608b6730bf3381e3c826758d3c67800",
+    schema_source_canonicalization: "recursive-key-sort-json-v1",
+    schema_source_canonical_sha256: "f76d741a299026cf4a1c75847b41562078d54c6f0aab9faae8781831e73d97d4",
     probe_shell: false
   });
-  assert.equal(schema.source.sha256, version.schema_source_sha256);
+  assert.equal(
+    schema.source.canonicalization,
+    version.schema_source_canonicalization
+  );
+  assert.equal(
+    schema.source.canonical_sha256,
+    version.schema_source_canonical_sha256
+  );
 });

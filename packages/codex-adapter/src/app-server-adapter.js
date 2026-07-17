@@ -7,7 +7,9 @@ const {
   deepFreeze,
   defineCodexAdapter
 } = require("./contract");
+const { createApprovalRelay } = require("./approval-relay");
 const { createJsonlTransport } = require("./jsonl-transport");
+const { createModelEvidence } = require("./model-evidence");
 
 const APP_SERVER_CAPABILITIES = Object.freeze({
   createThread: true,
@@ -69,7 +71,7 @@ function createAppServerAdapter({
   const eventListeners = new Set();
   const activeTurns = new Map();
   const threadCorrelations = new Map();
-  const pendingApprovals = new Map();
+  const approvalRelay = createApprovalRelay();
   let transport = null;
   let initializePromise = null;
 
@@ -160,6 +162,15 @@ function createAppServerAdapter({
           thread_id: params.threadId,
           turn_id: turnId
         });
+      } else if (message.method === "model/rerouted") {
+        emitEvent({
+          type: "model_observed",
+          correlation_id: correlationId,
+          thread_id: params.threadId,
+          turn_id: turnId,
+          model: params.toModel,
+          source_event: message.method
+        });
       } else if (message.method === "item/started" || message.method === "item/completed") {
         emitEvent({
           type: "progress_observed",
@@ -194,32 +205,27 @@ function createAppServerAdapter({
 
   function handleServerRequest(message) {
     try {
-      const definition = validateServerMessage(
-        schema.server_requests,
-        message,
-        "server request"
-      );
+      validateServerMessage(schema.server_requests, message, "server request");
       const correlationId = activeTurns.get(
         turnKey(message.params.threadId, message.params.turnId)
       );
       if (!correlationId) return;
-      const request = deepFreeze({
-        requestId: message.id,
-        method: message.method,
-        threadId: message.params.threadId,
-        turnId: message.params.turnId,
+      const request = approvalRelay.register({
+        message,
         correlationId,
-        responseOptions: [...definition.response_options]
+        threadId: message.params.threadId,
+        turnId: message.params.turnId
       });
-      pendingApprovals.set(message.id, request);
       emitEvent({
         type: "approval_requested",
-        correlation_id: correlationId,
-        thread_id: request.threadId,
-        turn_id: request.turnId,
-        request_id: request.requestId,
+        correlation_id: request.correlation_id,
+        thread_id: request.thread_id,
+        turn_id: request.turn_id,
+        request_id: request.request_id,
         method: request.method,
-        response_options: request.responseOptions
+        reason: request.reason,
+        requested_effect: request.requested_effect,
+        response_options: request.response_options
       });
     } catch (error) {
       transport?.close(error.message);
@@ -239,7 +245,11 @@ function createAppServerAdapter({
     } catch (error) {
       throw new RuntimeUnavailableError(`failed to spawn Codex App Server: ${error.message}`);
     }
-    transport = transportFactory({ process: child, onDiagnostic });
+    transport = transportFactory({
+      process: child,
+      onDiagnostic,
+      onProtocolError: () => approvalRelay.reset()
+    });
     transport.onNotification(handleNotification);
     transport.onServerRequest(handleServerRequest);
     return transport;
@@ -279,7 +289,12 @@ function createAppServerAdapter({
       capabilities: { ...APP_SERVER_CAPABILITIES }
     }),
 
-    createThread: ({ correlationId, params = {} }) => run(
+    createThread: ({
+      correlationId,
+      recommendedModel,
+      requestedModel,
+      params = {}
+    }) => run(
       "createThread",
       correlationId,
       async () => {
@@ -293,12 +308,23 @@ function createAppServerAdapter({
         threadCorrelations.set(result.thread.id, correlationId);
         return success("createThread", correlationId, {
           thread_id: result.thread.id,
-          applied_model: result.model ?? null
+          applied_model: result.model ?? null,
+          model_evidence: createModelEvidence({
+            recommended: recommendedModel,
+            requested: requestedModel ?? params.model,
+            applied: result.model
+          })
         });
       }
     ),
 
-    resumeThread: ({ correlationId, threadId, params = {} }) => run(
+    resumeThread: ({
+      correlationId,
+      threadId,
+      recommendedModel,
+      requestedModel,
+      params = {}
+    }) => run(
       "resumeThread",
       correlationId,
       async () => {
@@ -313,7 +339,12 @@ function createAppServerAdapter({
         threadCorrelations.set(result.thread.id, correlationId);
         return success("resumeThread", correlationId, {
           thread_id: result.thread.id,
-          applied_model: result.model ?? null
+          applied_model: result.model ?? null,
+          model_evidence: createModelEvidence({
+            recommended: recommendedModel,
+            requested: requestedModel ?? params.model,
+            applied: result.model
+          })
         });
       }
     ),
@@ -389,22 +420,15 @@ function createAppServerAdapter({
       turnId,
       decision
     }) => run("respondToApproval", correlationId, async () => {
-      const pending = pendingApprovals.get(requestId);
-      if (!pending
-          || pending.correlationId !== correlationId
-          || pending.method !== method
-          || pending.threadId !== threadId
-          || pending.turnId !== turnId) {
-        throw new Error("approval response does not match a pending request");
-      }
-      const option = typeof decision === "string"
-        ? decision
-        : Object.keys(decision || {})[0];
-      if (!pending.responseOptions.includes(option)) {
-        throw new Error(`approval response option is not allowed: ${option}`);
-      }
-      transport.respond(requestId, { decision });
-      pendingApprovals.delete(requestId);
+      const response = approvalRelay.consume({
+        requestId,
+        method,
+        threadId,
+        turnId,
+        correlationId,
+        decision
+      });
+      transport.respond(response.id, response.result);
       return success("respondToApproval", correlationId, {
         thread_id: threadId,
         turn_id: turnId,

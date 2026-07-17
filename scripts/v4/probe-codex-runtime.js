@@ -1,11 +1,30 @@
 #!/usr/bin/env node
 
 const { spawnSync } = require("node:child_process");
+const { createHash } = require("node:crypto");
+const { readFileSync } = require("node:fs");
 const path = require("node:path");
 
 const {
   resolveBundledCodexRuntime
 } = require("../../packages/codex-adapter/src/runtime-path");
+
+const SCHEMA_SOURCE = "codex_app_server_protocol.v2.schemas.json";
+const SCHEMA_CANONICALIZATION = "recursive-key-sort-json-v1";
+
+function canonicalizeJson(value) {
+  if (Array.isArray(value)) return value.map(canonicalizeJson);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.keys(value).sort().map((key) => [key, canonicalizeJson(value[key])])
+  );
+}
+
+function canonicalJsonSha256(source) {
+  const parsed = JSON.parse(String(source));
+  const canonical = JSON.stringify(canonicalizeJson(parsed));
+  return createHash("sha256").update(canonical, "utf8").digest("hex");
+}
 
 function safeProcessError(result) {
   const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
@@ -21,6 +40,7 @@ function probeCodexRuntime({
   expectVersion,
   schemaOut,
   sdkPackageRoot,
+  readFileSyncImpl = readFileSync,
   resolveRuntime = resolveBundledCodexRuntime,
   spawnSyncImpl = spawnSync
 }) {
@@ -79,7 +99,17 @@ function probeCodexRuntime({
         `App Server schema capture exited with exit code ${schemaResult.status}: ${safeProcessError(schemaResult)}`
       );
     }
+    const schemaSourcePath = path.join(absoluteSchemaOut, SCHEMA_SOURCE);
+    let schemaSource;
+    try {
+      schemaSource = readFileSyncImpl(schemaSourcePath, "utf8");
+    } catch (error) {
+      throw new Error(`App Server schema verification failed: ${error.message}`);
+    }
     result.schema_out = absoluteSchemaOut;
+    result.schema_source = SCHEMA_SOURCE;
+    result.schema_canonicalization = SCHEMA_CANONICALIZATION;
+    result.schema_canonical_sha256 = canonicalJsonSha256(schemaSource);
   }
 
   return Object.freeze(result);
@@ -128,6 +158,10 @@ if (require.main === module) {
 }
 
 module.exports = {
+  SCHEMA_CANONICALIZATION,
+  SCHEMA_SOURCE,
+  canonicalJsonSha256,
+  canonicalizeJson,
   parseArgs,
   parseCliVersion,
   probeCodexRuntime

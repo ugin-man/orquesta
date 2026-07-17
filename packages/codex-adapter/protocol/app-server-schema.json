@@ -3,7 +3,8 @@
   "source": {
     "cli_version": "0.144.5",
     "generated_file": "codex_app_server_protocol.v2.schemas.json",
-    "sha256": "fb550b4a19cd0e15e6900e90021867daa608b6730bf3381e3c826758d3c67800"
+    "canonicalization": "recursive-key-sort-json-v1",
+    "canonical_sha256": "f76d741a299026cf4a1c75847b41562078d54c6f0aab9faae8781831e73d97d4"
   },
   "client_requests": {
     "initialize": {
