@@ -2,6 +2,7 @@
 
 const KINDS = new Set(["runtime_dispatch", "runtime_event", "artifact", "report", "acceptance"]);
 const RUNTIME_EVENTS = new Set(["turn_started", "progress_observed", "turn_completed"]);
+const HASH = /^[a-f0-9]{64}$/;
 
 function evidenceError(code, message, details) {
   const error = new Error(message);
@@ -22,8 +23,20 @@ function optionalText(value, field) {
   return requiredText(value, field);
 }
 
+function requiredHash(value, field) {
+  if (typeof value !== "string" || !HASH.test(value)) {
+    throw evidenceError("EVIDENCE_INVALID", `Evidence requires ${field} as a lowercase SHA-256 hash.`, { field });
+  }
+  return value;
+}
+
+function optionalHash(value, field) {
+  if (value === undefined || value === null) return null;
+  return requiredHash(value, field);
+}
+
 function sortedRefs(value) {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item)) {
+  if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== "string" || !item)) {
     throw evidenceError("EVIDENCE_INVALID", "Evidence requires source_evidence_refs as nonempty strings.", { field: "source_evidence_refs" });
   }
   return [...new Set(value)].sort();
@@ -36,7 +49,7 @@ function normalizeEvidence(input) {
   const normalized = {
     kind: input.kind,
     evidence_id: requiredText(input.evidence_id, "evidence_id"),
-    evidence_hash: requiredText(input.evidence_hash, "evidence_hash"),
+    evidence_hash: requiredHash(input.evidence_hash, "evidence_hash"),
     task_intent_id: requiredText(input.task_intent_id, "task_intent_id"),
     resolution_id: requiredText(input.resolution_id, "resolution_id"),
     context_pack_id: requiredText(input.context_pack_id, "context_pack_id"),
@@ -47,9 +60,9 @@ function normalizeEvidence(input) {
     turn_id: optionalText(input.turn_id, "turn_id"),
     predecessor_evidence_id: optionalText(input.predecessor_evidence_id, "predecessor_evidence_id"),
     artifact_ref: optionalText(input.artifact_ref, "artifact_ref"),
-    artifact_hash: optionalText(input.artifact_hash, "artifact_hash"),
+    artifact_hash: optionalHash(input.artifact_hash, "artifact_hash"),
     report_ref: optionalText(input.report_ref, "report_ref"),
-    report_hash: optionalText(input.report_hash, "report_hash"),
+    report_hash: optionalHash(input.report_hash, "report_hash"),
     acceptance_ref: optionalText(input.acceptance_ref, "acceptance_ref"),
   };
   if (normalized.kind === "runtime_event") {

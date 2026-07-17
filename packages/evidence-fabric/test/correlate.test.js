@@ -135,3 +135,51 @@ test("rejects stale lifecycle binding and dispatches without a request reference
   const missingRequest = evidence("runtime_dispatch", { request_ref: null });
   assert.throws(() => correlateEvidence(state(), missingRequest), { code: "EVIDENCE_REQUEST_REQUIRED" });
 });
+
+test("accepts truthful SDK null turn ids but keeps thread, lifecycle, source, and hash bindings exact", () => {
+  assert.throws(
+    () => normalizeEvidence({
+      kind: "runtime_dispatch", ...bindings(), evidence_id: "EVD-no-source", evidence_hash: hashes.dispatch,
+      source_evidence_refs: [], request_ref: "request:sdk", thread_id: null, turn_id: null,
+    }),
+    { code: "EVIDENCE_INVALID" },
+  );
+  assert.throws(
+    () => normalizeEvidence({
+      kind: "runtime_dispatch", ...bindings(), evidence_id: "EVD-bad-hash", evidence_hash: "not-a-hash",
+      request_ref: "request:sdk", thread_id: null, turn_id: null,
+    }),
+    { code: "EVIDENCE_INVALID" },
+  );
+
+  const dispatch = evidence("runtime_dispatch", { evidence_id: "EVD-sdk-dispatch", thread_id: null, turn_id: null });
+  const afterDispatch = withEvidence(state(), dispatch);
+  const started = evidence("runtime_event", {
+    evidence_id: "EVD-sdk-started", evidence_hash: hashes.started, event_kind: "turn_started",
+    thread_id: "thread-sdk", turn_id: null, predecessor_evidence_id: dispatch.evidence_id,
+  });
+  assert.equal(correlateEvidence(afterDispatch, started).status, "ready");
+
+  const changedSource = evidence("runtime_event", {
+    evidence_id: "EVD-source-swapped", evidence_hash: hashes.started, event_kind: "turn_started",
+    thread_id: "thread-sdk", turn_id: null, predecessor_evidence_id: dispatch.evidence_id,
+    source_evidence_refs: ["source:replacement"],
+  });
+  assert.throws(() => correlateEvidence(afterDispatch, changedSource), { code: "EVIDENCE_SOURCE_MISMATCH" });
+
+  const staleReport = evidence("report", {
+    evidence_id: "EVD-old-report", evidence_hash: hashes.report, predecessor_evidence_id: null,
+    report_ref: "report:old", report_hash: hashes.report,
+  });
+  const stateWithOldReport = withEvidence(state({
+    current_task_intent_id: "TI-current",
+    current_resolution_ids: ["RES-current"],
+    current_context_pack_id: "CP-current",
+  }), staleReport);
+  const acceptance = evidence("acceptance", {
+    ...bindings({ task_intent_id: "TI-current", resolution_id: "RES-current", context_pack_id: "CP-current" }),
+    evidence_id: "EVD-current-acceptance", evidence_hash: hashes.acceptance,
+    predecessor_evidence_id: staleReport.evidence_id, acceptance_ref: "acceptance:current",
+  });
+  assert.throws(() => correlateEvidence(stateWithOldReport, acceptance), { code: "EVIDENCE_BINDING_STALE" });
+});

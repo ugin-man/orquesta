@@ -52,6 +52,33 @@ function withTimeline(reducer) {
 }
 
 const MAX_CORRELATION_EVIDENCE = 32;
+const MAX_EVIDENCE_CORRELATIONS = 128;
+
+function retainEvidenceWindow(evidenceByCorrelation, runtimeByCorrelation) {
+  const retainedIds = Object.entries(evidenceByCorrelation)
+    .filter(([, chain]) => Array.isArray(chain) && chain.length > 0)
+    .sort(([leftId, leftChain], [rightId, rightChain]) => {
+      const sequenceOrder = (rightChain.at(-1).sequence || 0) - (leftChain.at(-1).sequence || 0);
+      return sequenceOrder || compareText(leftId, rightId);
+    })
+    .slice(0, MAX_EVIDENCE_CORRELATIONS)
+    .map(([correlationId]) => correlationId)
+    .sort(compareText);
+  const retainedCorrelations = {};
+  const retainedEvidence = {};
+  const retainedRuntime = {};
+  for (const correlationId of retainedIds) {
+    const chain = evidenceByCorrelation[correlationId];
+    retainedCorrelations[correlationId] = chain;
+    for (const evidence of chain) retainedEvidence[evidence.evidence_id] = evidence;
+    if (runtimeByCorrelation[correlationId]) retainedRuntime[correlationId] = runtimeByCorrelation[correlationId];
+  }
+  return {
+    evidence_by_id: retainedEvidence,
+    evidence_by_correlation: retainedCorrelations,
+    runtime_by_correlation: retainedRuntime,
+  };
+}
 
 function projectEvidence(state, event, batch) {
   const evidence = event.payload && event.payload.evidence;
@@ -68,12 +95,11 @@ function projectEvidence(state, event, batch) {
   if (evidence.kind === "runtime_event" && evidence.event_kind === "turn_completed") {
     nextRuntime = { ...runtime, active_turn: null };
   }
-  return {
-    ...state,
-    evidence_by_id: { ...state.evidence_by_id, [evidence.evidence_id]: stored },
-    evidence_by_correlation: { ...state.evidence_by_correlation, [evidence.correlation_id]: chain },
-    runtime_by_correlation: { ...state.runtime_by_correlation, [evidence.correlation_id]: nextRuntime },
-  };
+  const retained = retainEvidenceWindow(
+    { ...state.evidence_by_correlation, [evidence.correlation_id]: chain },
+    { ...state.runtime_by_correlation, [evidence.correlation_id]: nextRuntime },
+  );
+  return { ...state, ...retained };
 }
 
 function withEvidence(reducer) {

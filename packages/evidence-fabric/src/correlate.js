@@ -16,6 +16,18 @@ function matchingPredecessor(state, evidence, requiredKind, code, message) {
       evidence_id: evidence.evidence_id, predecessor_evidence_id: predecessor.evidence_id,
     });
   }
+  if (predecessor.task_intent_id !== evidence.task_intent_id
+    || predecessor.resolution_id !== evidence.resolution_id
+    || predecessor.context_pack_id !== evidence.context_pack_id) {
+    throw evidenceError("EVIDENCE_BINDING_STALE", "Evidence predecessor must bind the same current lifecycle.", {
+      evidence_id: evidence.evidence_id, predecessor_evidence_id: predecessor.evidence_id,
+    });
+  }
+  if (canonicalHash(predecessor.source_evidence_refs) !== canonicalHash(evidence.source_evidence_refs)) {
+    throw evidenceError("EVIDENCE_SOURCE_MISMATCH", "Evidence predecessor must bind the same source evidence.", {
+      evidence_id: evidence.evidence_id, predecessor_evidence_id: predecessor.evidence_id,
+    });
+  }
   return predecessor;
 }
 
@@ -68,20 +80,27 @@ function correlateEvidence(state, evidence) {
   }
   if (evidence.kind === "runtime_event") {
     const predecessor = matchingPredecessor(state, evidence, evidence.event_kind === "turn_started" ? "runtime_dispatch" : "runtime_event", "EVIDENCE_PREDECESSOR_REQUIRED", "Runtime event requires the previous correlated evidence.");
-    if (!evidence.thread_id || !evidence.turn_id) throw evidenceError("EVIDENCE_INVALID", "Runtime event requires thread_id and turn_id.", { evidence_id: evidence.evidence_id });
+    if (!evidence.thread_id) throw evidenceError("EVIDENCE_INVALID", "Runtime event requires a thread_id; turn_id may remain null when the adapter cannot observe one.", { evidence_id: evidence.evidence_id });
     if (evidence.event_kind === "turn_started" && predecessor.thread_id && predecessor.thread_id !== evidence.thread_id) {
       throw evidenceError("EVIDENCE_CORRELATION_MISMATCH", "Runtime turn must bind the dispatched thread.", { evidence_id: evidence.evidence_id });
+    }
+    if (evidence.event_kind !== "turn_started"
+      && (predecessor.thread_id !== evidence.thread_id || predecessor.turn_id !== evidence.turn_id)) {
+      throw evidenceError("EVIDENCE_CORRELATION_MISMATCH", "Runtime events must remain on the same observed thread and turn.", { evidence_id: evidence.evidence_id });
     }
   }
   if (evidence.kind === "artifact") {
     matchingPredecessor(state, evidence, "runtime_event", "EVIDENCE_PREDECESSOR_REQUIRED", "Artifact evidence requires an active runtime predecessor.");
-    if (!evidence.artifact_ref || !evidence.artifact_hash || !hasActiveTurn(state, evidence)) {
+    if (!evidence.artifact_ref || !evidence.artifact_hash || evidence.artifact_hash !== evidence.evidence_hash || !hasActiveTurn(state, evidence)) {
       throw evidenceError("EVIDENCE_RUNTIME_INACTIVE", "Artifact evidence requires an active correlated runtime turn.", { evidence_id: evidence.evidence_id });
     }
   }
   if (evidence.kind === "report") {
     if (evidence.predecessor_evidence_id) matchingPredecessor(state, evidence, "artifact", "EVIDENCE_REPORT_PREDECESSOR_REQUIRED", "Report evidence requires artifact evidence or an explicit report reference.");
     else if (!evidence.report_ref) throw evidenceError("EVIDENCE_REPORT_PREDECESSOR_REQUIRED", "Report evidence requires artifact evidence or an explicit report reference.", { evidence_id: evidence.evidence_id });
+    if (!evidence.report_hash || evidence.report_hash !== evidence.evidence_hash) {
+      throw evidenceError("EVIDENCE_INVALID", "Report evidence hash must bind the persisted report hash.", { evidence_id: evidence.evidence_id });
+    }
   }
   if (evidence.kind === "acceptance") {
     matchingPredecessor(state, evidence, "report", "EVIDENCE_ACCEPTANCE_EVIDENCE_REQUIRED", "Acceptance evidence requires current report evidence.");

@@ -7,7 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { createEventStore } = require("@orquesta/event-store");
 const { canonicalHash } = require("@orquesta/contracts");
-const { createCommandBoundary, COMMAND_NAMES } = require("../src");
+const { createCommandBoundary, createProjectors, COMMAND_NAMES } = require("../src");
 const { createTaskIntent } = require("../src/task-intent");
 const { initialProjection } = require("../src/projectors");
 
@@ -231,7 +231,53 @@ test("runtime evidence commands journal one current correlated chain without sto
   assert.equal(state.artifacts.some((artifact) => artifact.artifact_ref === "artifact:runtime"), true);
   assert.equal(state.reports[0].report_ref, "report:runtime");
   assert.equal(state.acceptances[0].acceptance_ref, "acceptance:runtime");
+  assert.notEqual(state.timeline.at(-1).responsibility, "user");
   assert.equal(JSON.stringify(store.replay({ reducers: boundary.projectors, initialState: initialProjection() }).state).includes("must-not-persist"), false);
+});
+
+test("runtime evidence projections retain only the bounded current correlation window", () => {
+  const projectors = createProjectors();
+  let state = initialProjection();
+  const correlationId = "CORR-bounded";
+  for (let index = 0; index < 40; index += 1) {
+    const evidence = {
+      kind: index === 0 ? "runtime_dispatch" : "runtime_event",
+      evidence_id: `EVD-bounded-${index}`,
+      evidence_hash: index.toString(16).padStart(64, "0"),
+      task_intent_id: "TI-bounded",
+      resolution_id: "CR-bounded",
+      context_pack_id: "CP-bounded",
+      correlation_id: correlationId,
+      source_evidence_refs: ["source:bounded"],
+      request_ref: index === 0 ? "request:bounded" : null,
+      thread_id: "thread-bounded",
+      turn_id: "turn-bounded",
+      predecessor_evidence_id: index === 0 ? null : `EVD-bounded-${index - 1}`,
+      artifact_ref: null,
+      artifact_hash: null,
+      report_ref: null,
+      report_hash: null,
+      acceptance_ref: null,
+      event_kind: index === 0 ? null : index === 1 ? "turn_started" : "progress_observed",
+    };
+    const type = index === 0 ? "runtime.dispatch.accepted" : index === 1 ? "runtime.turn.started" : "runtime.progress.observed";
+    state = projectors[type](state, {
+      event_id: `event-bounded-${index}`,
+      schema_version: 1,
+      type,
+      payload: { evidence, responsibility: "orchestrator" },
+      evidence_refs: ["source:bounded"],
+    }, {
+      sequence: index + 1,
+      batch_id: `batch-bounded-${index}`,
+      actor: { type: "system", id: "orquesta-core" },
+      correlation_id: correlationId,
+    });
+  }
+  assert.equal(state.evidence_by_correlation[correlationId].length, 32);
+  assert.equal(Object.keys(state.evidence_by_id).length, 32);
+  assert.equal(Object.hasOwn(state.evidence_by_id, "EVD-bounded-0"), false);
+  assert.equal(Object.hasOwn(state.evidence_by_id, "EVD-bounded-39"), true);
 });
 
 test("Execution Plan commands require lifecycle evidence, journal once, replay, and escalate the current plan", () => {

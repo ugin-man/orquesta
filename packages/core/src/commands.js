@@ -364,7 +364,7 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
       ...evidence.source_evidence_refs,
       evidence.request_ref, evidence.artifact_ref, evidence.report_ref, evidence.acceptance_ref,
     ].filter(Boolean))].sort(compareText);
-    const payload = { evidence, responsibility: kind === "acceptance" ? "user" : "orchestrator" };
+    const payload = { evidence, responsibility: "orchestrator" };
     if (kind === "artifact") {
       payload.artifact = { artifact_ref: evidence.artifact_ref, artifact_hash: evidence.artifact_hash, kind: "runtime_artifact" };
     }
