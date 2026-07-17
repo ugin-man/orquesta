@@ -1,0 +1,462 @@
+const { spawn } = require("node:child_process");
+
+const schema = require("../protocol/app-server-schema.json");
+const {
+  CAPABILITY_METHODS,
+  createAdapterFailure,
+  deepFreeze,
+  defineCodexAdapter
+} = require("./contract");
+const { createJsonlTransport } = require("./jsonl-transport");
+
+const APP_SERVER_CAPABILITIES = Object.freeze({
+  createThread: true,
+  resumeThread: true,
+  startTurn: true,
+  steerTurn: true,
+  interruptTurn: true,
+  respondToApproval: true,
+  subscribeEvents: true,
+  readActualModel: false
+});
+
+class RuntimeUnavailableError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "RuntimeUnavailableError";
+  }
+}
+
+function requireFields(value, fields, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`schema validation failed: ${label} must be an object`);
+  }
+  for (const field of fields) {
+    if (!Object.hasOwn(value, field)) {
+      throw new Error(`schema validation failed: ${label} missing ${field}`);
+    }
+  }
+}
+
+function validateRequest(method, params) {
+  const definition = schema.client_requests[method];
+  if (!definition) throw new Error(`schema validation failed: unsupported method ${method}`);
+  requireFields(params, definition.params_required, `${method} params`);
+}
+
+function validateResponse(method, result) {
+  const definition = schema.client_requests[method];
+  requireFields(result, definition.response_required, `${method} response`);
+}
+
+function validateServerMessage(collection, message, label) {
+  const definition = collection[message?.method];
+  if (!definition) throw new Error(`schema validation failed: unsupported ${label} ${message?.method}`);
+  requireFields(message, definition.required, label);
+  if (definition.params_required) {
+    requireFields(message.params, definition.params_required, `${message.method} params`);
+  }
+  return definition;
+}
+
+function createAppServerAdapter({
+  executablePath = null,
+  findExecutable = () => null,
+  spawnProcess = spawn,
+  transportFactory = createJsonlTransport,
+  onDiagnostic = () => {}
+} = {}) {
+  const eventListeners = new Set();
+  const activeTurns = new Map();
+  const threadCorrelations = new Map();
+  const pendingApprovals = new Map();
+  let transport = null;
+  let initializePromise = null;
+
+  function turnKey(threadId, turnId) {
+    return `${threadId}\u0000${turnId}`;
+  }
+
+  function emitEvent(event) {
+    const frozen = deepFreeze({ adapter: "app_server", ...event });
+    for (const listener of eventListeners) {
+      try {
+        listener(frozen);
+      } catch (error) {
+        onDiagnostic({ type: "event_listener_error", message: error.message });
+      }
+    }
+  }
+
+  function success(operation, correlationId, fields = {}) {
+    return deepFreeze({
+      ok: true,
+      status: "completed",
+      adapter: "app_server",
+      operation,
+      correlation_id: correlationId,
+      thread_id: null,
+      turn_id: null,
+      approval_id: null,
+      actual_model: null,
+      ...fields
+    });
+  }
+
+  function failure(operation, correlationId, error, evidence = {}) {
+    const unavailable = error instanceof RuntimeUnavailableError;
+    return createAdapterFailure({
+      adapter: "app_server",
+      status: unavailable ? "unavailable" : "failed",
+      correlationId,
+      operation,
+      code: unavailable ? "runtime_unavailable" : "runtime_failed",
+      message: error.message,
+      evidence: {
+        dispatch_accepted: false,
+        turn_started: false,
+        actual_model: null,
+        ...evidence
+      }
+    });
+  }
+
+  function resolveCommand() {
+    if (typeof executablePath === "string" && executablePath.trim() !== "") {
+      return executablePath;
+    }
+    const found = findExecutable("codex");
+    if (typeof found !== "string" || found.trim() === "") {
+      throw new RuntimeUnavailableError("spawnable Codex executable was not found");
+    }
+    return found;
+  }
+
+  function handleNotification(message) {
+    try {
+      validateServerMessage(schema.server_notifications, message, "server notification");
+      const params = message.params;
+      if (message.method === "thread/started") {
+        const correlationId = threadCorrelations.get(params.thread.id);
+        if (correlationId) {
+          emitEvent({
+            type: "thread_started",
+            correlation_id: correlationId,
+            thread_id: params.thread.id,
+            turn_id: null
+          });
+        }
+        return;
+      }
+
+      const turnId = params.turn?.id || params.turnId;
+      const correlationId = activeTurns.get(turnKey(params.threadId, turnId));
+      if (!correlationId) return;
+
+      if (message.method === "turn/started") {
+        emitEvent({
+          type: "turn_started",
+          correlation_id: correlationId,
+          thread_id: params.threadId,
+          turn_id: turnId
+        });
+      } else if (message.method === "item/started" || message.method === "item/completed") {
+        emitEvent({
+          type: "progress_observed",
+          event_method: message.method,
+          correlation_id: correlationId,
+          thread_id: params.threadId,
+          turn_id: turnId,
+          item_id: params.item?.id || null
+        });
+      } else if (message.method === "turn/completed") {
+        emitEvent({
+          type: "turn_completed",
+          correlation_id: correlationId,
+          thread_id: params.threadId,
+          turn_id: turnId,
+          status: params.turn.status
+        });
+        activeTurns.delete(turnKey(params.threadId, turnId));
+      } else if (message.method === "error") {
+        emitEvent({
+          type: "runtime_error",
+          correlation_id: correlationId,
+          thread_id: params.threadId,
+          turn_id: turnId,
+          will_retry: params.willRetry
+        });
+      }
+    } catch (error) {
+      transport?.close(error.message);
+    }
+  }
+
+  function handleServerRequest(message) {
+    try {
+      const definition = validateServerMessage(
+        schema.server_requests,
+        message,
+        "server request"
+      );
+      const correlationId = activeTurns.get(
+        turnKey(message.params.threadId, message.params.turnId)
+      );
+      if (!correlationId) return;
+      const request = deepFreeze({
+        requestId: message.id,
+        method: message.method,
+        threadId: message.params.threadId,
+        turnId: message.params.turnId,
+        correlationId,
+        responseOptions: [...definition.response_options]
+      });
+      pendingApprovals.set(message.id, request);
+      emitEvent({
+        type: "approval_requested",
+        correlation_id: correlationId,
+        thread_id: request.threadId,
+        turn_id: request.turnId,
+        request_id: request.requestId,
+        method: request.method,
+        response_options: request.responseOptions
+      });
+    } catch (error) {
+      transport?.close(error.message);
+    }
+  }
+
+  function startTransport() {
+    if (transport) return transport;
+    const command = resolveCommand();
+    let child;
+    try {
+      child = spawnProcess(command, ["app-server"], {
+        shell: false,
+        windowsHide: true,
+        stdio: ["pipe", "pipe", "pipe"]
+      });
+    } catch (error) {
+      throw new RuntimeUnavailableError(`failed to spawn Codex App Server: ${error.message}`);
+    }
+    transport = transportFactory({ process: child, onDiagnostic });
+    transport.onNotification(handleNotification);
+    transport.onServerRequest(handleServerRequest);
+    return transport;
+  }
+
+  async function ensureInitialized() {
+    if (!initializePromise) {
+      initializePromise = (async () => {
+        const connection = startTransport();
+        const params = {
+          clientInfo: {
+            name: "orquesta",
+            title: "Orquesta",
+            version: "0.4.0-preview.1"
+          }
+        };
+        validateRequest("initialize", params);
+        const result = await connection.request("initialize", params);
+        validateResponse("initialize", result);
+        connection.notify("initialized");
+        return result;
+      })();
+    }
+    return initializePromise;
+  }
+
+  async function run(operation, correlationId, action) {
+    try {
+      return await action();
+    } catch (error) {
+      return failure(operation, correlationId, error);
+    }
+  }
+
+  const methods = {
+    capabilities: ({ correlationId }) => success("capabilities", correlationId, {
+      capabilities: { ...APP_SERVER_CAPABILITIES }
+    }),
+
+    createThread: ({ correlationId, params = {} }) => run(
+      "createThread",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        validateRequest("thread/start", params);
+        const result = await transport.request("thread/start", params);
+        validateResponse("thread/start", result);
+        if (typeof result.thread?.id !== "string" || result.thread.id === "") {
+          throw new Error("schema validation failed: thread/start response missing thread.id");
+        }
+        threadCorrelations.set(result.thread.id, correlationId);
+        return success("createThread", correlationId, {
+          thread_id: result.thread.id,
+          applied_model: result.model ?? null
+        });
+      }
+    ),
+
+    resumeThread: ({ correlationId, threadId, params = {} }) => run(
+      "resumeThread",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        const requestParams = { ...params, threadId };
+        validateRequest("thread/resume", requestParams);
+        const result = await transport.request("thread/resume", requestParams);
+        validateResponse("thread/resume", result);
+        if (typeof result.thread?.id !== "string" || result.thread.id === "") {
+          throw new Error("schema validation failed: thread/resume response missing thread.id");
+        }
+        threadCorrelations.set(result.thread.id, correlationId);
+        return success("resumeThread", correlationId, {
+          thread_id: result.thread.id,
+          applied_model: result.model ?? null
+        });
+      }
+    ),
+
+    startTurn: ({ correlationId, threadId, input, params = {} }) => run(
+      "startTurn",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        const requestParams = { ...params, input, threadId };
+        validateRequest("turn/start", requestParams);
+        const result = await transport.request("turn/start", requestParams);
+        validateResponse("turn/start", result);
+        if (typeof result.turn?.id !== "string" || result.turn.id === "") {
+          throw new Error("schema validation failed: turn/start response missing turn.id");
+        }
+        activeTurns.set(turnKey(threadId, result.turn.id), correlationId);
+        emitEvent({
+          type: "dispatch_accepted",
+          correlation_id: correlationId,
+          thread_id: threadId,
+          turn_id: result.turn.id
+        });
+        return success("startTurn", correlationId, {
+          thread_id: threadId,
+          turn_id: result.turn.id,
+          evidence: {
+            dispatch_accepted: true,
+            turn_started: false,
+            actual_model: null
+          }
+        });
+      }
+    ),
+
+    steerTurn: ({ correlationId, threadId, turnId, input }) => run(
+      "steerTurn",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        const params = { expectedTurnId: turnId, input, threadId };
+        validateRequest("turn/steer", params);
+        const result = await transport.request("turn/steer", params);
+        validateResponse("turn/steer", result);
+        return success("steerTurn", correlationId, {
+          thread_id: threadId,
+          turn_id: result.turnId
+        });
+      }
+    ),
+
+    interruptTurn: ({ correlationId, threadId, turnId }) => run(
+      "interruptTurn",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        const params = { threadId, turnId };
+        validateRequest("turn/interrupt", params);
+        const result = await transport.request("turn/interrupt", params);
+        validateResponse("turn/interrupt", result);
+        return success("interruptTurn", correlationId, {
+          thread_id: threadId,
+          turn_id: turnId
+        });
+      }
+    ),
+
+    respondToApproval: ({
+      correlationId,
+      requestId,
+      method,
+      threadId,
+      turnId,
+      decision
+    }) => run("respondToApproval", correlationId, async () => {
+      const pending = pendingApprovals.get(requestId);
+      if (!pending
+          || pending.correlationId !== correlationId
+          || pending.method !== method
+          || pending.threadId !== threadId
+          || pending.turnId !== turnId) {
+        throw new Error("approval response does not match a pending request");
+      }
+      const option = typeof decision === "string"
+        ? decision
+        : Object.keys(decision || {})[0];
+      if (!pending.responseOptions.includes(option)) {
+        throw new Error(`approval response option is not allowed: ${option}`);
+      }
+      transport.respond(requestId, { decision });
+      pendingApprovals.delete(requestId);
+      return success("respondToApproval", correlationId, {
+        thread_id: threadId,
+        turn_id: turnId,
+        approval_id: requestId
+      });
+    }),
+
+    subscribeEvents: ({ correlationId, listener }) => {
+      if (typeof listener !== "function") {
+        throw new TypeError("listener must be a function");
+      }
+      eventListeners.add(listener);
+      return success("subscribeEvents", correlationId, {
+        subscription: {
+          unsubscribe: () => eventListeners.delete(listener)
+        }
+      });
+    },
+
+    readActualModel: ({ correlationId }) => createAdapterFailure({
+      adapter: "app_server",
+      status: "unsupported",
+      correlationId,
+      operation: "readActualModel",
+      code: "actual_model_unobserved",
+      message: "No independent runtime model observation is available.",
+      evidence: {
+        dispatch_accepted: false,
+        turn_started: false,
+        actual_model: null
+      }
+    })
+  };
+
+  for (const method of CAPABILITY_METHODS) {
+    if (typeof methods[method] !== "function") {
+      throw new Error(`missing App Server adapter method: ${method}`);
+    }
+  }
+
+  return defineCodexAdapter({
+    adapter: "app_server",
+    capabilities: APP_SERVER_CAPABILITIES,
+    methods
+  });
+}
+
+module.exports = {
+  APP_SERVER_CAPABILITIES,
+  createAppServerAdapter,
+  requireFields,
+  validateRequest,
+  validateResponse,
+  validateServerMessage
+};

@@ -4,7 +4,10 @@ const assert = require("node:assert/strict");
 const {
   CODEX_ADAPTER_METHODS,
   ADAPTER_FAILURE_STATUSES,
+  createAppServerAdapter,
   createAdapterFailure,
+  createJsonlTransport,
+  resolveBundledCodexRuntime,
   defineCodexAdapter
 } = require("../src");
 
@@ -27,6 +30,12 @@ test("CodexAdapter declares the complete stable method surface", () => {
     "rejected",
     "failed"
   ]);
+});
+
+test("package exports the pinned runtime and App Server adapter surface", () => {
+  assert.equal(typeof resolveBundledCodexRuntime, "function");
+  assert.equal(typeof createJsonlTransport, "function");
+  assert.equal(typeof createAppServerAdapter, "function");
 });
 
 test("adapter construction rejects incomplete or non-boolean capability declarations", () => {
