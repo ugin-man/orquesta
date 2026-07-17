@@ -15,7 +15,8 @@ function initialProjection() {
     task_intents: [], current_task_intent_id: null, capability_graphs: [], current_capability_graph_id: null,
     providers: [], inventory: null, candidate_evaluations: [], resolutions: [], artifacts: [], latest_resolution_by_need: {}, resolution_bindings: {},
     context_packs: [], current_context_pack_id: null, current_context_pack_sequence: null,
-    execution_plans: [], current_execution_plan_id: null, phase_reviews: [], timeline: [],
+    execution_plans: [], current_execution_plan_id: null, phase_reviews: [],
+    install_requests: [], current_install_request: null, install_authorizations: [], timeline: [],
   };
 }
 
@@ -109,6 +110,21 @@ function createProjectors() {
       context_packs: replaceById(state.context_packs, event.payload.context_pack, "context_pack_id"),
       current_context_pack_id: event.payload.context_pack.context_pack_id,
       current_context_pack_sequence: batch.sequence,
+    })),
+    "candidate.install.requested": withTimeline((state, event) => ({
+      ...state,
+      install_requests: replaceById(state.install_requests, event.payload.install_request, "request_id"),
+      current_install_request: clone(event.payload.install_request),
+    })),
+    "candidate.install.authorized": withTimeline((state, event) => ({
+      ...state,
+      install_requests: state.install_requests.map((request) => request.request_id === event.payload.authorization.request_id
+        ? { ...request, status: "authorized", authorization_id: event.payload.authorization.authorization_id }
+        : request),
+      current_install_request: state.current_install_request && state.current_install_request.request_id === event.payload.authorization.request_id
+        ? { ...state.current_install_request, status: "authorized", authorization_id: event.payload.authorization.authorization_id }
+        : state.current_install_request,
+      install_authorizations: replaceById(state.install_authorizations, event.payload.authorization, "authorization_id"),
     })),
     "artifact.produced": withTimeline((state, event) => ({
       ...state,

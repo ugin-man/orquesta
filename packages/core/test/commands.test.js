@@ -167,10 +167,11 @@ function prepareLocalProposal(initialProvider = localProvider("local-reuse")) {
   };
 }
 
-test("command boundary exposes only the approved Task 9 command names", () => {
+test("command boundary exposes only the approved Core command names", () => {
   assert.deepEqual([...COMMAND_NAMES], [
     "task-intent.create", "capability.compile", "execution-plan.create", "execution-plan.escalate", "inventory.refresh-local", "resolution.propose",
-    "resolution.approve", "context-pack.preview", "phase-review.request", "phase-review.decide",
+    "resolution.approve", "context-pack.preview", "candidate.install.request", "candidate.install.authorize",
+    "phase-review.request", "phase-review.decide",
   ]);
   const { boundary } = makeBoundary();
   assert.throws(() => boundary.execute({ command_id: "bad", name: "network.install", payload: {} }), { code: "CORE_COMMAND_UNKNOWN" });

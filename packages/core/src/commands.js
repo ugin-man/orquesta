@@ -8,10 +8,12 @@ const { resolveNeed } = require("@orquesta/capability-resolver");
 const { createPhaseReview, decidePhaseReview, redactAttestation, resolutionApprovalTarget } = require("./phase-review");
 const { createProjectors, initialProjection } = require("./projectors");
 const { createExecutionPlan, escalateExecutionPlan } = require("./execution-policy");
+const { createInstallApprovalTarget } = require("./install-approval");
 
 const COMMAND_NAMES = Object.freeze([
   "task-intent.create", "capability.compile", "execution-plan.create", "execution-plan.escalate", "inventory.refresh-local", "resolution.propose",
-  "resolution.approve", "context-pack.preview", "phase-review.request", "phase-review.decide",
+  "resolution.approve", "context-pack.preview", "candidate.install.request", "candidate.install.authorize",
+  "phase-review.request", "phase-review.decide",
 ]);
 
 function coreError(code, message, details) {
@@ -238,6 +240,47 @@ function assertVerifiedAttestation(verified, target) {
   }
 }
 
+function assertInstallResolution(state, target) {
+  const resolution = state.resolutions.find((item) => item.resolution_id === target.resolution_id);
+  if (!resolution) {
+    throw coreError("CORE_INSTALL_RESOLUTION_INVALID", "Install authorization requires an approved Resolution.");
+  }
+  const latest = state.latest_resolution_by_need[resolution.need_id];
+  if (!latest || latest.resolution_id !== resolution.resolution_id || latest.sequence !== target.resolution_revision) {
+    throw coreError("CORE_INSTALL_RESOLUTION_STALE", "Install target is not bound to the current Resolution revision.");
+  }
+  if (resolution.status !== "approved" || resolution.approval_status !== "approved") {
+    throw coreError("CORE_INSTALL_RESOLUTION_INVALID", "Install authorization requires an approved Resolution.");
+  }
+  assertCurrentProposalEvidence(state, resolution);
+  return resolution;
+}
+
+function assertInstallProvider(state, resolution, target) {
+  const provider = state.providers.find((item) => item.provider_id === resolution.selected_provider_id);
+  if (!provider || target.candidate_id !== resolution.selected_provider_id
+    || target.candidate_version !== provider.version || target.source_hash !== provider.provider_hash) {
+    throw coreError("CORE_INSTALL_CANDIDATE_STALE", "Install target candidate evidence does not match the selected provider.");
+  }
+  return provider;
+}
+
+function assertInstallPacket(state, target) {
+  const packet = state.artifacts.find((item) => item.artifact_ref === target.review_packet_ref);
+  if (!packet || packet.kind !== "install_review_packet" || packet.artifact_hash !== target.review_packet_hash) {
+    throw coreError("CORE_INSTALL_PACKET_INVALID", "Install target requires the exact persisted install review packet.");
+  }
+  return packet;
+}
+
+function assertInstallNotExpired(target, referenceTime) {
+  const now = Date.parse(referenceTime || "");
+  const expiry = Date.parse(target.expires_at || "");
+  if (!Number.isFinite(now) || !Number.isFinite(expiry) || expiry <= now) {
+    throw coreError("CORE_INSTALL_TARGET_EXPIRED", "Install target has expired or cannot be compared to the reference time.");
+  }
+}
+
 function createCommandBoundary({ eventStore, rules, collectInventory, verifyUserApproval, compileContextPack, referenceTime } = {}) {
   if (!eventStore || typeof eventStore.commit !== "function" || typeof eventStore.replay !== "function") {
     throw new TypeError("An EventStore is required.");
@@ -300,7 +343,7 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
       throw coreError("CORE_COMMAND_INVALID", "Command requires command_id, name, and payload.");
     }
     const command = snapshotCommand(input);
-    if (!COMMAND_NAMES.includes(command.name)) throw coreError("CORE_COMMAND_UNKNOWN", "Command is not part of the Phase 1 Core boundary.", { name: command.name });
+    if (!COMMAND_NAMES.includes(command.name)) throw coreError("CORE_COMMAND_UNKNOWN", "Command is not part of the Core boundary.", { name: command.name });
     const replayed = replayResult();
     const state = replayed.state;
     const identity = commandIdentity(command);
@@ -431,6 +474,66 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
         resolutions,
       );
       return commit(command, identity, { type: "context.pack.created", payload: { context_pack, responsibility: "orchestrator" }, evidence_refs: [] }, undefined, replayed);
+    }
+    if (command.name === "candidate.install.request") {
+      if (state.current_install_request && state.current_install_request.status === "pending_user") {
+        throw coreError("CORE_INSTALL_REQUEST_ACTIVE", "A pending install target must be resolved before another request.");
+      }
+      const target = createInstallApprovalTarget(clone(command.payload));
+      const resolution = assertInstallResolution(state, target);
+      const provider = assertInstallProvider(state, resolution, target);
+      assertInstallPacket(state, target);
+      assertInstallNotExpired(target, referenceTime);
+      const install_request = {
+        request_id: target.target_id,
+        target,
+        status: "pending_user",
+        requested_at: referenceTime || null
+      };
+      return commit(command, identity, {
+        type: "candidate.install.requested",
+        payload: { install_request, responsibility: "orchestrator" },
+        evidence_refs: [...provider.evidence_refs, `resolution:${resolution.resolution_id}`, target.review_packet_ref]
+      }, undefined, replayed);
+    }
+    if (command.name === "candidate.install.authorize") {
+      const current = state.current_install_request;
+      if (current && current.status === "authorized") {
+        throw coreError("CORE_INSTALL_ALREADY_AUTHORIZED", "Install target is already authorized.");
+      }
+      if (!current || current.status !== "pending_user") {
+        throw coreError("CORE_INSTALL_TARGET_REQUIRED", "A current pending install target is required before authorization.");
+      }
+      if (!command.payload.target || canonicalHash(command.payload.target) !== canonicalHash(current.target)) {
+        throw coreError("CORE_INSTALL_TARGET_STALE", "Authorization must bind the exact persisted install target.");
+      }
+      if (state.install_authorizations.some((item) => item.target_id === current.target.target_id)) {
+        throw coreError("CORE_INSTALL_ALREADY_AUTHORIZED", "Install target is already authorized.");
+      }
+      const resolution = assertInstallResolution(state, current.target);
+      const provider = assertInstallProvider(state, resolution, current.target);
+      assertInstallPacket(state, current.target);
+      assertInstallNotExpired(current.target, referenceTime);
+      if (typeof verifyUserApproval !== "function") throw coreError("CORE_APPROVAL_INVALID", "Approval verification is required.");
+      const verified = assertVerifiedAttestation(
+        verifyUserApproval(clone(command.payload.approval_evidence), clone(current.target)),
+        current.target
+      );
+      const authorization = {
+        authorization_id: `INSTALL-AUTH-${canonicalHash({ target_id: current.target.target_id, attestation: verified.attestation }).slice(0, 24)}`,
+        request_id: current.request_id,
+        target_id: current.target.target_id,
+        target_hash: canonicalHash(current.target),
+        resolution_id: current.target.resolution_id,
+        resolution_revision: current.target.resolution_revision,
+        status: "authorized",
+        attestation: verified.attestation
+      };
+      return commit(command, identity, {
+        type: "candidate.install.authorized",
+        payload: { authorization, responsibility: "user" },
+        evidence_refs: [...provider.evidence_refs, `resolution:${resolution.resolution_id}`, current.target.review_packet_ref, `install_request:${current.request_id}`]
+      }, verified.actor, replayed);
     }
     if (command.name === "phase-review.request") {
       const packet = state.artifacts.find((item) => item.artifact_ref === command.payload.review_packet_ref);
