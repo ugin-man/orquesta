@@ -358,6 +358,7 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
       ...currentEvidenceBindings(state),
       evidence_by_id: state.evidence_by_id || {},
       evidence_by_correlation: state.evidence_by_correlation || {},
+      runtime_by_correlation: state.runtime_by_correlation || {},
     }, evidence);
     if (verdict.status === "idempotent") return { status: "idempotent", sequence: verdict.evidence.sequence || null };
     const refs = [...new Set([

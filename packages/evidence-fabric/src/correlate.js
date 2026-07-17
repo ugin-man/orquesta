@@ -43,6 +43,14 @@ function assertCurrentBindings(state, evidence) {
 }
 
 function hasActiveTurn(state, evidence) {
+  const runtime = state.runtime_by_correlation && state.runtime_by_correlation[evidence.correlation_id];
+  if (runtime) {
+    return runtime.active_turn
+      && runtime.active_turn.thread_id === evidence.thread_id
+      && runtime.active_turn.turn_id === evidence.turn_id
+      ? runtime.active_turn
+      : null;
+  }
   const chain = state.evidence_by_correlation && state.evidence_by_correlation[evidence.correlation_id] || [];
   let active = null;
   for (const item of chain) {

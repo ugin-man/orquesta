@@ -183,3 +183,25 @@ test("accepts truthful SDK null turn ids but keeps thread, lifecycle, source, an
   });
   assert.throws(() => correlateEvidence(stateWithOldReport, acceptance), { code: "EVIDENCE_BINDING_STALE" });
 });
+
+test("uses the bounded runtime projection when turn-start evidence has left the evidence window", () => {
+  const progress = evidence("runtime_event", {
+    evidence_id: "EVD-window-progress", evidence_hash: hashes.started,
+    event_kind: "progress_observed", predecessor_evidence_id: "EVD-prior-progress",
+  });
+  const current = state({
+    evidence_by_id: { [progress.evidence_id]: progress },
+    evidence_by_correlation: { [progress.correlation_id]: [progress] },
+    runtime_by_correlation: {
+      [progress.correlation_id]: {
+        dispatch_evidence_id: "EVD-window-dispatch",
+        active_turn: { evidence_id: "EVD-window-start", thread_id: progress.thread_id, turn_id: progress.turn_id },
+      },
+    },
+  });
+  const artifact = evidence("artifact", {
+    evidence_id: "EVD-window-artifact", evidence_hash: hashes.artifact,
+    predecessor_evidence_id: progress.evidence_id, artifact_ref: "artifact:window", artifact_hash: hashes.artifact,
+  });
+  assert.equal(correlateEvidence(current, artifact).status, "ready");
+});

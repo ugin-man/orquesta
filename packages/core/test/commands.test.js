@@ -280,6 +280,47 @@ test("runtime evidence projections retain only the bounded current correlation w
   assert.equal(Object.hasOwn(state.evidence_by_id, "EVD-bounded-39"), true);
 });
 
+test("artifact recording remains active after turn-start evidence leaves the bounded window", () => {
+  const { boundary } = makeBoundary();
+  boundary.execute({ command_id: "window-intent", name: "task-intent.create", payload: makeIntent() });
+  boundary.execute({ command_id: "window-compile", name: "capability.compile", payload: {} });
+  const need = boundary.replay().capability_graphs[0].needs[0];
+  boundary.execute({ command_id: "window-resolution", name: "resolution.propose", payload: { need_id: need.need_id, candidates: [], audit_facts: [] } });
+  boundary.execute({ command_id: "window-context", name: "context-pack.preview", payload: {} });
+  const lifecycle = boundary.replay();
+  const binding = {
+    task_intent_id: lifecycle.current_task_intent_id,
+    resolution_id: lifecycle.resolutions[0].resolution_id,
+    context_pack_id: lifecycle.current_context_pack_id,
+    correlation_id: "CORR-window-active",
+    source_evidence_refs: ["source:window"],
+    thread_id: "thread-window",
+    turn_id: "turn-window",
+  };
+  boundary.execute({
+    command_id: "window-dispatch", name: "runtime.dispatch.record",
+    payload: { ...binding, evidence_id: "EVD-window-dispatch", evidence_hash: "a".repeat(64), request_ref: "request:window" },
+  });
+  boundary.execute({
+    command_id: "window-start", name: "runtime.event.record",
+    payload: { ...binding, evidence_id: "EVD-window-start", evidence_hash: "b".repeat(64), event_kind: "turn_started", predecessor_evidence_id: "EVD-window-dispatch" },
+  });
+  let predecessor = "EVD-window-start";
+  for (let index = 0; index < 33; index += 1) {
+    const evidenceId = `EVD-window-progress-${index}`;
+    boundary.execute({
+      command_id: `window-progress-${index}`, name: "runtime.event.record",
+      payload: { ...binding, evidence_id: evidenceId, evidence_hash: index.toString(16).padStart(64, "0"), event_kind: "progress_observed", predecessor_evidence_id: predecessor },
+    });
+    predecessor = evidenceId;
+  }
+  assert.equal(Object.hasOwn(boundary.replay().evidence_by_id, "EVD-window-start"), false);
+  assert.equal(boundary.execute({
+    command_id: "window-artifact", name: "artifact.record",
+    payload: { ...binding, evidence_id: "EVD-window-artifact", evidence_hash: "c".repeat(64), predecessor_evidence_id: predecessor, artifact_ref: "artifact:window", artifact_hash: "c".repeat(64) },
+  }).status, "committed");
+});
+
 test("Execution Plan commands require lifecycle evidence, journal once, replay, and escalate the current plan", () => {
   const before = makeBoundary();
   assert.throws(() => before.boundary.execute({
