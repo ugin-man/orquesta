@@ -35,6 +35,18 @@ Resolve the task state from `canonical_state_root`. An explicit `--state-root` w
 
 Legacy tasks without `execution_policy_version: 1` retain the legacy Delegation Gate below.
 
+## Phase 2A and 2B
+
+Phase 2A and 2B reuse the same TaskIntent, Execution Plan, same-task cycles, and canonical state root. Acquisition runs only when local inventory does not already satisfy the Capability Need. It uses fixed request budgets, fixed candidate limits, source expiry, and immutable source hashes. Its cache is derived state.
+
+Audit binds each candidate to its current source record and applies license, security, compatibility, accessibility, and other hard gates before ranking. Audition then binds the chosen candidate to the current Resolution, source hash, workspace, expected Codex profile, permitted effects, evidence list, and cleanup plan. The Codex harness supplies the runtime boundary; Orquesta does not create another sandbox.
+
+Audition approval is not install authorization. Any install request must name the exact candidate, version, source hash, dependency preview, lockfile preview, target workspace, effects, Resolution revision, and review packet. A later change invalidates the authorization. Core records authorization but does not execute an install.
+
+Runtime routing uses App Server, then the TypeScript SDK, then repository-only fallback. Keep dispatch acceptance separate from turn start, and keep progress, artifact, report, and acceptance evidence separate in the Event Journal. Repository-only fallback cannot satisfy a live-turn check. `actual_model` remains null without independent runtime observation evidence.
+
+The Workbench stays review-only. Application or desktop productization is outside Phase 2A and 2B and requires a separate user decision.
+
 ## Delegation Gate
 
 Run this gate after Execution Policy and before Appointment or implementation. The gate is recorded in `.orquesta/state/tasks.json` so it survives context compaction.

@@ -8,6 +8,7 @@ const {
   V3_CHECK_BASELINE,
   hasV3Baseline,
   hasActiveIgnoreRule,
+  isAllowedCodexDependency,
   isAllowedReviewDependency,
   isAllowedWorkspaceLink
 } = require("./phase-boundary-check.js");
@@ -16,15 +17,19 @@ const { probeBrowserDriver, probeBrowserVersion } = require("./browser-preflight
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const workspacePackages = {
-  "apps/workbench": { name: "@orquesta/workbench", dependencies: ["@orquesta/core", "@orquesta/event-store"] },
-  "packages/contracts": { name: "@orquesta/contracts", dependencies: [] },
-  "packages/event-store": { name: "@orquesta/event-store", dependencies: ["@orquesta/contracts"] },
-  "packages/core": { name: "@orquesta/core", dependencies: ["@orquesta/contracts", "@orquesta/event-store", "@orquesta/capability-compiler", "@orquesta/scouts", "@orquesta/audit", "@orquesta/capability-resolver", "@orquesta/context-compiler"] },
-  "packages/capability-compiler": { name: "@orquesta/capability-compiler", dependencies: ["@orquesta/contracts"] },
-  "packages/scouts": { name: "@orquesta/scouts", dependencies: ["@orquesta/contracts"] },
-  "packages/audit": { name: "@orquesta/audit", dependencies: ["@orquesta/contracts"] },
-  "packages/capability-resolver": { name: "@orquesta/capability-resolver", dependencies: ["@orquesta/contracts", "@orquesta/audit"] },
-  "packages/context-compiler": { name: "@orquesta/context-compiler", dependencies: ["@orquesta/contracts"] }
+  "apps/workbench": { name: "@orquesta/workbench", version: "0.4.0-preview.1", dependencies: { "@orquesta/core": "*", "@orquesta/event-store": "*" } },
+  "packages/contracts": { name: "@orquesta/contracts", version: "0.4.0-preview.1", dependencies: {} },
+  "packages/event-store": { name: "@orquesta/event-store", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/core": { name: "@orquesta/core", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*", "@orquesta/event-store": "*", "@orquesta/capability-compiler": "*", "@orquesta/scouts": "*", "@orquesta/audit": "*", "@orquesta/capability-resolver": "*", "@orquesta/context-compiler": "*", "@orquesta/evidence-fabric": "*" } },
+  "packages/capability-compiler": { name: "@orquesta/capability-compiler", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/scouts": { name: "@orquesta/scouts", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/audit": { name: "@orquesta/audit", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/capability-resolver": { name: "@orquesta/capability-resolver", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*", "@orquesta/audit": "*" } },
+  "packages/context-compiler": { name: "@orquesta/context-compiler", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/acquisition": { name: "@orquesta/acquisition", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/audition": { name: "@orquesta/audition", version: "0.4.0-preview.2", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/codex-adapter": { name: "@orquesta/codex-adapter", version: "0.4.0-preview.1", dependencies: { "@openai/codex-sdk": "0.144.5" } },
+  "packages/evidence-fabric": { name: "@orquesta/evidence-fabric", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } }
 };
 
 test("V3 entry points remain unchanged", () => {
@@ -48,12 +53,11 @@ test("V3 entry points remain unchanged", () => {
   }), false, "a reordered V3 check command must fail");
 });
 
-test("Phase 1 exposes only the V4 workbench workspace surface", () => {
+test("Phase 2 extends the Phase 1 workspace without adding an app shell or Phase 3 surface", () => {
   assert.deepEqual(pkg.workspaces, ["apps/*", "packages/*"]);
   assert.equal(pkg.scripts["workbench:v4"], "node apps/workbench/server.js --feature v4");
   for (const blocked of [
     "apps/desktop",
-    "packages/codex-adapter",
     "packages/experience",
     "packages/intent-graph",
     "plugins/orquesta"
@@ -69,12 +73,9 @@ test("workspace manifests are private and use only the fixed workspace dependenc
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
     assert.equal(manifest.name, expected.name);
     assert.equal(manifest.private, true);
-    assert.equal(manifest.version, "0.4.0-preview.1");
+    assert.equal(manifest.version, expected.version);
     assert.equal(manifest.scripts.test, "node --test");
-    assert.deepEqual(Object.keys(manifest.dependencies || {}).sort(), expected.dependencies.sort());
-    for (const dependency of Object.values(manifest.dependencies || {})) {
-      assert.equal(dependency, "*");
-    }
+    assert.deepEqual(manifest.dependencies || {}, expected.dependencies);
   }
 });
 
@@ -150,7 +151,7 @@ test("workspace lockfile allows only the pinned review driver outside workspace 
   const rootEntry = lockfile.packages[""];
   for (const [packagePath, entry] of Object.entries(lockfile.packages || {})) {
     if (Object.hasOwn(entry, "resolved")) {
-      assert.equal(isAllowedWorkspaceLink(entry) || isAllowedReviewDependency(packagePath, entry, rootEntry), true, packagePath);
+      assert.equal(isAllowedWorkspaceLink(entry) || isAllowedReviewDependency(packagePath, entry, rootEntry) || isAllowedCodexDependency(packagePath, entry), true, packagePath);
     }
   }
 });
@@ -172,6 +173,29 @@ test("review dependency gate accepts only exact dev-only playwright-core evidenc
     ["node_modules/playwright-core", { ...valid, resolved: "https://example.invalid/playwright-core.tgz" }, rootEntry],
     ["node_modules/playwright-core", valid, { devDependencies: { "playwright-core": "^1.61.1" } }],
   ]) assert.equal(isAllowedReviewDependency(packagePath, entry, manifest), false, packagePath);
+});
+
+test("Codex dependency gate accepts only the pinned SDK runtime set", () => {
+  const validSdk = {
+    version: "0.144.5",
+    resolved: "https://registry.npmjs.org/@openai/codex-sdk/-/codex-sdk-0.144.5.tgz",
+    integrity: "sha512-evidence",
+  };
+  const validPlatform = {
+    name: "@openai/codex",
+    version: "0.144.5-win32-x64",
+    resolved: "https://registry.npmjs.org/@openai/codex/-/codex-0.144.5-win32-x64.tgz",
+    integrity: "sha512-evidence",
+    optional: true,
+    os: ["win32"],
+    cpu: ["x64"],
+  };
+  assert.equal(isAllowedCodexDependency("node_modules/@openai/codex-sdk", validSdk), true);
+  assert.equal(isAllowedCodexDependency("node_modules/@openai/codex-win32-x64", validPlatform), true);
+  assert.equal(isAllowedCodexDependency("node_modules/@openai/codex-sdk", { ...validSdk, version: "0.145.0" }), false);
+  assert.equal(isAllowedCodexDependency("node_modules/@openai/codex-sdk", { ...validSdk, resolved: "https://example.invalid/codex.tgz" }), false);
+  assert.equal(isAllowedCodexDependency("node_modules/@openai/codex-win32-x64", { ...validPlatform, optional: false }), false);
+  assert.equal(isAllowedCodexDependency("node_modules/unrelated", validSdk), false);
 });
 
 test("lockfile links reject external, absolute, traversal, URI, and unknown paths", () => {

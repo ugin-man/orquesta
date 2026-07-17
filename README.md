@@ -12,13 +12,21 @@ The current dashboard is a mission-control style workspace for that loop: a glas
 
 ## Beta Status
 
-Current beta version: `0.3.0-beta.0`.
+Current preview version: `0.4.0-preview.1`.
 
 This repository is beta-quality. Beta V3 adds a file-backed Control Plane for evidence, capacity, completion review, question observations, incident intake, and model-route recommendations. Product-level thread dispatch and model switching remain optional adapters, not repository promises.
 
 The first GitHub-install bootstrap smoke test passed on 2026-06-22. The skill installed from this repository, initialized a separate project, created the foundation roles, and served the dashboard from a fallback port after detecting a local `4177` port conflict.
 
 Bootstrap smoke and delegation-loop smoke are separate checks. Bootstrap smoke proves setup, project-owned `/api/state`, foundation agents, dashboard rendering, and encoding health. Delegation-loop smoke proves the operating model: a real specialist receives a task, reports back, and the orchestrator records an acceptance decision. Do not treat the dashboard alone as proof of multi-agent operation.
+
+## V4 Phase 2 preview
+
+Phase 2A adds bounded discovery of existing tools from official documentation, registries, GitHub, and approved UI catalogs. Candidates keep source hashes and expiry evidence, pass hard gates before ranking, and run through a source-bound Audition before they can be proposed for use. Audition approval and install authorization are separate; Core does not install a dependency.
+
+Phase 2B adds pinned Codex App Server and SDK adapters, repository-only fallback, explicit approval relay, truthful model evidence, and a bounded Event Journal chain from dispatch through acceptance. The Codex harness remains the runtime safety boundary. Orquesta adds no second sandbox.
+
+This preview has no application shell. The current Workbench remains a Phase 1 review surface. Windows, desktop, web-app, or other productization waits for a separate user decision after the Phase 2A and Phase 2B review.
 
 ## Looking For Collaborators
 

@@ -182,6 +182,16 @@ For an accepted standard or critical task, `handoff_attempts` records the implem
 
 Token coverage is `unknown`, `partial`, or `complete`. Keep `known_total` null and `by_thread` empty when coverage is unknown. Each partial or complete `by_thread` entry has `thread_id`, finite `measured_tokens`, and `evidence_source`; their sum equals `known_total`. Complete coverage additionally lists the same unique thread IDs in `participating_thread_ids`.
 
+## Phase 2A and 2B evidence
+
+Phase 2 source acquisition writes bounded source records with connector ID, canonical source URI, source hash, fetched and expiry timestamps, facts, and explicit unknowns. A derived cache may reuse an unexpired, hash-valid result for the same query and source identity. The derived cache is disposable and is never acceptance evidence by itself.
+
+Audition Plan and Audition Result records bind the current TaskIntent, Resolution, candidate, version or revision, source hash, workspace and temporary roots, expected Codex profile, permitted effects, steps, evidence requirements, approval refs, and cleanup result. Install authorization is a separate event and does not mean an install ran.
+
+The Event Journal is canonical for runtime and acceptance evidence. Every runtime dispatch, runtime event, artifact, report, and acceptance record binds the current TaskIntent, Resolution, Context Pack, correlation ID, nonempty source evidence refs, its own SHA-256 hash, and the required predecessor. Artifact and report bodies remain out of journal state.
+
+Current projections retain at most 32 evidence records per correlation and 128 correlations. `runtime_by_correlation` retains the active turn independently so a long stream does not become inactive when its start event leaves the evidence window. A completed turn clears that active record. `actual_model` is null unless a separate model-observation evidence ref exists.
+
 ## Beta V3 Task Controls
 
 Beta V3 adds controls when a task is staged into the progressive gate. Legacy accepted tasks remain valid without backfilled fields unless they are reopened.

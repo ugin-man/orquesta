@@ -56,19 +56,22 @@ const V3_CHECK_BASELINE = [
   "npm run check:encoding"
 ].join(" && ");
 const workspacePackages = {
-  "apps/workbench": ["@orquesta/core", "@orquesta/event-store"],
-  "packages/contracts": [],
-  "packages/event-store": ["@orquesta/contracts"],
-  "packages/core": ["@orquesta/contracts", "@orquesta/event-store", "@orquesta/capability-compiler", "@orquesta/scouts", "@orquesta/audit", "@orquesta/capability-resolver", "@orquesta/context-compiler"],
-  "packages/capability-compiler": ["@orquesta/contracts"],
-  "packages/scouts": ["@orquesta/contracts"],
-  "packages/audit": ["@orquesta/contracts"],
-  "packages/capability-resolver": ["@orquesta/contracts", "@orquesta/audit"],
-  "packages/context-compiler": ["@orquesta/contracts"]
+  "apps/workbench": { version: "0.4.0-preview.1", dependencies: { "@orquesta/core": "*", "@orquesta/event-store": "*" } },
+  "packages/contracts": { version: "0.4.0-preview.1", dependencies: {} },
+  "packages/event-store": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/core": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*", "@orquesta/event-store": "*", "@orquesta/capability-compiler": "*", "@orquesta/scouts": "*", "@orquesta/audit": "*", "@orquesta/capability-resolver": "*", "@orquesta/context-compiler": "*", "@orquesta/evidence-fabric": "*" } },
+  "packages/capability-compiler": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/scouts": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/audit": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/capability-resolver": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*", "@orquesta/audit": "*" } },
+  "packages/context-compiler": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/acquisition": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/audition": { version: "0.4.0-preview.2", dependencies: { "@orquesta/contracts": "*" } },
+  "packages/codex-adapter": { version: "0.4.0-preview.1", dependencies: { "@openai/codex-sdk": "0.144.5" } },
+  "packages/evidence-fabric": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } }
 };
 const forbiddenDirectories = [
   "apps/desktop",
-  "packages/codex-adapter",
   "packages/experience",
   "packages/intent-graph",
   "plugins/orquesta"
@@ -110,6 +113,48 @@ function isAllowedReviewDependency(packagePath, entry, rootManifest = {}) {
   return entry.resolved === `https://registry.npmjs.org/playwright-core/-/playwright-core-${entry.version}.tgz`;
 }
 
+function hasRegistryIntegrity(entry) {
+  return typeof entry?.integrity === "string" && entry.integrity.startsWith("sha512-") && entry.integrity.length > "sha512-".length;
+}
+
+function isAllowedCodexDependency(packagePath, entry) {
+  const version = "0.144.5";
+  if (!entry || !hasRegistryIntegrity(entry)) return false;
+  if (packagePath === "node_modules/@openai/codex-sdk") {
+    return entry.version === version
+      && entry.resolved === `https://registry.npmjs.org/@openai/codex-sdk/-/codex-sdk-${version}.tgz`
+      && entry.optional !== true;
+  }
+  if (packagePath === "node_modules/@openai/codex") {
+    return entry.version === version
+      && entry.resolved === `https://registry.npmjs.org/@openai/codex/-/codex-${version}.tgz`
+      && entry.optional !== true;
+  }
+  const platforms = {
+    "darwin-arm64": { os: "darwin", cpu: "arm64" },
+    "darwin-x64": { os: "darwin", cpu: "x64" },
+    "linux-arm64": { os: "linux", cpu: "arm64" },
+    "linux-x64": { os: "linux", cpu: "x64" },
+    "win32-arm64": { os: "win32", cpu: "arm64" },
+    "win32-x64": { os: "win32", cpu: "x64" },
+  };
+  const prefix = "node_modules/@openai/codex-";
+  if (!packagePath.startsWith(prefix)) return false;
+  const platform = packagePath.slice(prefix.length);
+  const expected = platforms[platform];
+  return Boolean(expected)
+    && entry.name === "@openai/codex"
+    && entry.version === `${version}-${platform}`
+    && entry.resolved === `https://registry.npmjs.org/@openai/codex/-/codex-${version}-${platform}.tgz`
+    && entry.optional === true
+    && JSON.stringify(entry.os) === JSON.stringify([expected.os])
+    && JSON.stringify(entry.cpu) === JSON.stringify([expected.cpu]);
+}
+
+function normalizeObject(value = {}) {
+  return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
+}
+
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(root, relativePath), "utf8"));
 }
@@ -135,17 +180,15 @@ function checkBoundary() {
   for (const relativePath of forbiddenDirectories) {
     addError(errors, !fs.existsSync(path.join(root, relativePath)), `Forbidden Phase 1 directory exists: ${relativePath}`);
   }
-  for (const [relativePath, expectedDependencies] of Object.entries(workspacePackages)) {
+  for (const [relativePath, expected] of Object.entries(workspacePackages)) {
     const manifestPath = path.join(root, relativePath, "package.json");
     addError(errors, fs.existsSync(manifestPath), `Workspace manifest is missing: ${relativePath}`);
     if (!fs.existsSync(manifestPath)) continue;
     const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-    const dependencies = Object.keys(manifest.dependencies || {}).sort();
     addError(errors, manifest.private === true, `${relativePath} must be private.`);
-    addError(errors, manifest.version === "0.4.0-preview.1", `${relativePath} has an invalid version.`);
+    addError(errors, manifest.version === expected.version, `${relativePath} has an invalid version.`);
     addError(errors, manifest.scripts?.test === "node --test", `${relativePath} has an invalid test command.`);
-    addError(errors, JSON.stringify(dependencies) === JSON.stringify([...expectedDependencies].sort()), `${relativePath} has an invalid dependency graph.`);
-    addError(errors, Object.values(manifest.dependencies || {}).every((version) => version === "*"), `${relativePath} has a non-workspace dependency.`);
+    addError(errors, JSON.stringify(normalizeObject(manifest.dependencies)) === JSON.stringify(normalizeObject(expected.dependencies)), `${relativePath} has an invalid dependency graph.`);
   }
 
   addError(errors, Object.keys(pkg.dependencies || {}).length === 0, "Root package must not have runtime dependencies.");
@@ -158,7 +201,7 @@ function checkBoundary() {
     for (const [packagePath, entry] of Object.entries(lockfile.packages || {})) {
       addError(
         errors,
-        !Object.hasOwn(entry, "resolved") || isAllowedWorkspaceLink(entry) || isAllowedReviewDependency(packagePath, entry, pkg),
+        !Object.hasOwn(entry, "resolved") || isAllowedWorkspaceLink(entry) || isAllowedReviewDependency(packagePath, entry, pkg) || isAllowedCodexDependency(packagePath, entry),
         `Lockfile contains an unsupported registry artifact: ${packagePath}`,
       );
     }
@@ -186,6 +229,7 @@ module.exports = {
   checkBoundary,
   hasActiveIgnoreRule,
   hasV3Baseline,
+  isAllowedCodexDependency,
   isAllowedReviewDependency,
   isAllowedWorkspaceLink,
   isSupportedNodeVersion

@@ -30,6 +30,21 @@ Tasks without `execution_policy_version: 1` remain on the legacy gate. A legacy 
 
 This rule survives context compaction by relying on canonical task state, not chat memory. Record the completed cycles, completion evidence, and token coverage as `unknown`, `partial`, or `complete`; do not claim a total when it is not measured.
 
+## Phase 2A and 2B
+
+Phase 2A and 2B extend the Phase 1.5 task policy with bounded acquisition, source-bound Audit, Codex-harness Audition, Codex-native execution, and one correlated acceptance chain.
+
+The Codex harness is the runtime safety boundary. Orquesta does not add a second sandbox or a second command-approval system. It verifies that the requested Codex profile matches the approved roots and effects, and it stops when that evidence is missing.
+
+- Acquisition queries official docs, registries, GitHub, and approved UI catalogs within fixed request and candidate budgets. Cache files are derived and never replace source evidence.
+- Audit rejects hard-gate failures before scoring. Audition uses an exact candidate, Resolution, source hash, Codex profile, and cleanup plan.
+- install authorization is separate from Audition and binds the candidate, version, source hash, dependency and lockfile previews, workspace, effects, and current review packet. Core has no install-execution command.
+- Runtime order is App Server first, SDK fallback second, and repository-only last. Repository-only can prepare a handoff but cannot satisfy a live-turn acceptance check.
+- Keep dispatch acceptance, turn start, progress, artifact, report, and acceptance as separate evidence. A dispatch response is not proof that a turn started.
+- Keep requested, applied, and observed model evidence separate. `actual_model` stays null unless a runtime observation provides its evidence reference.
+
+The current Workbench remains a Phase 1 review surface. Phase 2A and 2B add no desktop, web, or application shell; productization requires a separate user decision.
+
 ## Startup
 
 When Orquesta is invoked in a repository:
