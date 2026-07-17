@@ -752,6 +752,48 @@ test("live source result binds record trust and freshness to its source evidence
   assert.equal(validateContract("live-source-result", freshnessMismatch).ok, false);
 });
 
+test("live source result requires exactly one source evidence record for every current candidate", () => {
+  const missingEvidence = clone(phase2Contracts["live-source-result"].value);
+  missingEvidence.source_evidence = [];
+  const missingResult = validateContract("live-source-result", missingEvidence);
+  assert.equal(missingResult.ok, false);
+  assert.deepEqual(missingResult.errors.filter((error) => error.code === "source_candidate_evidence_missing").map((error) => error.path), ["$.candidates.candidate-a"]);
+
+  const oneToOne = clone(phase2Contracts["live-source-result"].value);
+  oneToOne.candidates.push({
+    candidate_id: "candidate-b",
+    source_ref: "https://example.test/b",
+    source_hash: laterHash,
+    version: "2.0.0",
+    revision: "rev-b",
+    trust_tier: "official",
+    freshness: "fresh"
+  });
+  oneToOne.source_evidence.push({
+    source_id: "source:official_docs:candidate-b",
+    candidate_id: "candidate-b",
+    source_ref: "https://example.test/b",
+    source_hash: laterHash,
+    freshness: "fresh",
+    authoritative_fields: ["freshness", "license", "trust"],
+    facts: { freshness: "fresh", license: "MIT", trust: "official" },
+    unknowns: ["accessibility", "compatibility", "cost", "maintenance", "security"]
+  });
+  assert.equal(validateContract("live-source-result", oneToOne).ok, true);
+
+  const duplicateCandidate = clone(oneToOne);
+  duplicateCandidate.candidates[1].candidate_id = "candidate-a";
+  const duplicateCandidateResult = validateContract("live-source-result", duplicateCandidate);
+  assert.equal(duplicateCandidateResult.ok, false);
+  assert.ok(duplicateCandidateResult.errors.some((error) => error.path === "$.candidates" && error.code === "sorted_unique"));
+
+  const duplicateEvidence = clone(oneToOne);
+  duplicateEvidence.source_evidence[1].candidate_id = "candidate-a";
+  const duplicateEvidenceResult = validateContract("live-source-result", duplicateEvidence);
+  assert.equal(duplicateEvidenceResult.ok, false);
+  assert.ok(duplicateEvidenceResult.errors.some((error) => error.path === "$.source_evidence" && error.code === "sorted_unique"));
+});
+
 test("Phase 2 durable evidence contracts reject unknown durable fields", () => {
   for (const [name, fixture] of Object.entries(phase2Contracts)) {
     const invalid = clone(fixture.value);

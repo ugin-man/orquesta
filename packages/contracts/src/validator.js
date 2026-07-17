@@ -300,6 +300,14 @@ function liveSourceResultErrors(value) {
   }
   if (!Array.isArray(value.candidates) || !Array.isArray(value.source_evidence)) return errors;
   const records = new Map(value.candidates.map((candidate) => [candidate && candidate.candidate_id, candidate]));
+  const evidenceCandidateIds = new Set(value.source_evidence
+    .filter(isPlainObject)
+    .map((evidence) => evidence.candidate_id));
+  for (const candidate of [...value.candidates].filter(isPlainObject).sort((left, right) => codeUnitCompare(left.candidate_id, right.candidate_id))) {
+    if (!evidenceCandidateIds.has(candidate.candidate_id)) {
+      errors.push(schemaError(`$.candidates.${candidate.candidate_id}`, "source_candidate_evidence_missing", "must have exactly one source evidence record"));
+    }
+  }
   for (const evidence of value.source_evidence) {
     if (!isPlainObject(evidence)) continue;
     const candidate = records.get(evidence.candidate_id);
