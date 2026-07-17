@@ -619,13 +619,18 @@ function realFsAdapter() {
   };
 }
 
-function removeOwnedTemporaryRoot(target) {
+function removeOwnedTemporaryRoot(target, fsImpl = fs) {
   const temporaryBase = path.resolve(os.tmpdir());
   const resolved = path.resolve(target);
   if (resolved === temporaryBase || !resolved.startsWith(`${temporaryBase}${path.sep}`)) {
     throw phase2Error("PHASE2_TEMP_ROOT_INVALID", "Refusing to clean an Audition root outside the OS temporary directory.");
   }
-  fs.rmSync(resolved, { recursive: true, force: true });
+  fsImpl.rmSync(resolved, {
+    recursive: true,
+    force: true,
+    maxRetries: 20,
+    retryDelay: 100
+  });
 }
 
 async function runAdapterTurn({ adapter, adapterKind, correlationId, workingDirectory, timeoutMs = 180000 } = {}) {
@@ -918,6 +923,7 @@ module.exports = {
   createLiveNetworkConnectors,
   executeLiveCodexTurn,
   loadAdminFixtures,
+  removeOwnedTemporaryRoot,
   runAdapterTurn,
   runDeterministicPhase2Slice,
   runLivePhase2Slice

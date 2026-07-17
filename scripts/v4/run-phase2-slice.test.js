@@ -7,7 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { createAppServerAdapter } = require("@orquesta/codex-adapter");
 const { FakeAppServerProcess } = require("../../packages/codex-adapter/test/fixtures/fake-app-server");
-const { createLiveNetworkConnectors, runAdapterTurn, runDeterministicPhase2Slice, runLivePhase2Slice } = require("./run-phase2-slice");
+const { createLiveNetworkConnectors, removeOwnedTemporaryRoot, runAdapterTurn, runDeterministicPhase2Slice, runLivePhase2Slice } = require("./run-phase2-slice");
 
 function thread(id) {
   return { cliVersion: "0.144.5", createdAt: 1, cwd: "C:\\phase2", ephemeral: false, id, modelProvider: "openai", preview: "", sessionId: `session-${id}`, source: "appServer", status: "idle", turns: [], updatedAt: 1 };
@@ -136,6 +136,20 @@ test("SDK Audition opts into its verified non-git root and surfaces runtime erro
   );
   assert.equal(profile.skipGitRepoCheck, true);
   assert.equal(unsubscribed, true);
+});
+
+test("live Audition root cleanup uses bounded Windows transient retries only under the OS temp directory", () => {
+  const calls = [];
+  const owned = path.join(os.tmpdir(), "orquesta-phase2-owned-cleanup");
+  removeOwnedTemporaryRoot(owned, { rmSync: (...args) => calls.push(args) });
+  assert.deepEqual(calls, [[owned, {
+    recursive: true,
+    force: true,
+    maxRetries: 20,
+    retryDelay: 100
+  }]]);
+  assert.throws(() => removeOwnedTemporaryRoot(os.tmpdir(), { rmSync() {} }), { code: "PHASE2_TEMP_ROOT_INVALID" });
+  assert.throws(() => removeOwnedTemporaryRoot(path.resolve(os.tmpdir(), "..", "outside"), { rmSync() {} }), { code: "PHASE2_TEMP_ROOT_INVALID" });
 });
 
 test("live slice uses injected network and runtime boundaries without installing a candidate", async () => {
