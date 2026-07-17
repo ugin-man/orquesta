@@ -14,7 +14,7 @@ function planInput() {
   return {
     task_intent_id: "TI-1234567890ab",
     task_intent_hash: "1".repeat(64),
-    resolution_id: "RES-1234567890ab",
+    resolution_id: "CR-1234567890ab",
     resolution_revision: 7,
     resolution_hash: "2".repeat(64),
     candidate: {

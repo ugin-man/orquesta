@@ -14,7 +14,7 @@ function fixture() {
   const roots = { workspace_root: workspaceRoot, temporary_root: temporaryRoot, audition_root: auditionRoot };
   const plan = createAuditionPlan({
     task_intent_id: "TI-1234567890ab", task_intent_hash: "1".repeat(64),
-    resolution_id: "RES-1234567890ab", resolution_revision: 2, resolution_hash: "2".repeat(64),
+    resolution_id: "CR-1234567890ab", resolution_revision: 2, resolution_hash: "2".repeat(64),
     candidate: { candidate_id: "candidate-runner", version: "1.0.0", source_hash: "3".repeat(64) },
     workspace_root: workspaceRoot, temporary_root: temporaryRoot, audition_root: auditionRoot,
     expected_profile: { profile_id: "phase2-audition", allowed_roots: [workspaceRoot, auditionRoot], effects: ["workspace_write"] },

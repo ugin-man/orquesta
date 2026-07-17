@@ -637,7 +637,7 @@ const phase2Contracts = {
       candidate_version: "1.0.0",
       candidate_hash: hash,
       task_intent_id: "TI-1234567890ab",
-      resolution_id: "RES-1234567890ab",
+      resolution_id: "CR-1234567890ab",
       execution_root: { kind: "temporary", path: "output/v4-phase2/audition" },
       expected_codex_profile: "phase2-audition",
       permitted_effects: ["workspace_write"],

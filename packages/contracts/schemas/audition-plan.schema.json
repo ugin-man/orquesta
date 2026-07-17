@@ -8,7 +8,7 @@
     "candidate_version": { "type": "string", "pattern": ".+" },
     "candidate_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "task_intent_id": { "type": "string", "pattern": "^TI-[a-f0-9]{12}$" },
-    "resolution_id": { "type": "string", "pattern": "^RES-[a-f0-9]{12}$" },
+    "resolution_id": { "type": "string", "pattern": "^CR-[a-f0-9]{12}$" },
     "execution_root": {
       "type": "object",
       "required": ["kind", "path"],
