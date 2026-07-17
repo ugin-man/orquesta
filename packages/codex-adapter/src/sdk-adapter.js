@@ -120,6 +120,7 @@ function createSdkAdapter({
   }
 
   async function pumpEvents({ record, handle, correlationId, events }) {
+    let completedEvent = null;
     try {
       for await (const event of events) {
         const threadId = record.actualThreadId || record.thread.id || null;
@@ -161,15 +162,9 @@ function createSdkAdapter({
             turn_id: null
           });
         } else if (event.type === "turn.completed") {
-          emitEvent({
-            type: "turn_completed",
-            correlation_id: correlationId,
-            thread_id: record.actualThreadId || record.thread.id || null,
-            turn_id: null,
-            usage: event.usage ?? null
-          });
-          activeTurns.delete(handle);
+          completedEvent = event;
         } else if (event.type === "turn.failed" || event.type === "error") {
+          completedEvent = null;
           emitEvent({
             type: "runtime_error",
             correlation_id: correlationId,
@@ -179,6 +174,15 @@ function createSdkAdapter({
           });
           activeTurns.delete(handle);
         }
+      }
+      if (completedEvent) {
+        emitEvent({
+          type: "turn_completed",
+          correlation_id: correlationId,
+          thread_id: record.actualThreadId || record.thread.id || null,
+          turn_id: null,
+          usage: completedEvent.usage ?? null
+        });
       }
     } catch (error) {
       emitEvent({

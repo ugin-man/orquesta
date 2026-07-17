@@ -179,6 +179,36 @@ test("normalizes runStreamed lifecycle and final response artifact without inven
   assert.equal(artifact.content, "final answer");
 });
 
+test("emits turn completion only after the SDK event stream has closed", async () => {
+  const events = collectEvents();
+  let markStreamWaiting;
+  let releaseStream;
+  const streamWaiting = new Promise((resolve) => { markStreamWaiting = resolve; });
+  const streamRelease = new Promise((resolve) => { releaseStream = resolve; });
+  const thread = {
+    id: "thread-stream-close",
+    async runStreamed() {
+      return {
+        events: (async function* () {
+          yield { type: "turn.started" };
+          yield { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1 } };
+          markStreamWaiting();
+          await streamRelease;
+        })()
+      };
+    }
+  };
+  const adapter = createSdkAdapter({ codexFactory: async () => ({ startThread: () => thread }) });
+  adapter.subscribeEvents({ correlationId: "subscription-stream-close", listener: events.listener });
+  const created = await adapter.createThread({ correlationId: "thread-stream-close", profile: {} });
+  await adapter.startTurn({ correlationId: "turn-stream-close", threadHandle: created.thread_handle, input: "test" });
+  await streamWaiting;
+  assert.equal(events.some((event) => event.type === "turn_completed"), false);
+  releaseStream();
+  const completed = await waitForEvent(events, "turn_completed");
+  assert.deepEqual(completed.usage, { input_tokens: 1, output_tokens: 1 });
+});
+
 test("interrupts only an adapter-owned active SDK turn", async () => {
   let capturedSignal;
   let release;
