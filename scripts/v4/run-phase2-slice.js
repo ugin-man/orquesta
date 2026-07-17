@@ -298,6 +298,13 @@ function waitForRuntime(adapter, correlationId, timeoutMs = 2000) {
         if (timer) clearTimeout(timer);
         subscribed?.subscription?.unsubscribe?.();
         resolveCompletion(events);
+      } else if (event.type === "runtime_error") {
+        settled = true;
+        if (timer) clearTimeout(timer);
+        subscribed?.subscription?.unsubscribe?.();
+        rejectCompletion(phase2Error("PHASE2_RUNTIME_ERROR", "Runtime failed the Phase 2 turn.", {
+          runtime_message: event.message || "Runtime failed without a message."
+        }));
       }
     }
   });
@@ -640,6 +647,7 @@ async function runAdapterTurn({ adapter, adapterKind, correlationId, workingDire
         correlationId: threadCorrelation,
         profile: {
           workingDirectory,
+          skipGitRepoCheck: true,
           sandboxMode: "read-only",
           networkAccessEnabled: false,
           webSearchMode: "disabled",

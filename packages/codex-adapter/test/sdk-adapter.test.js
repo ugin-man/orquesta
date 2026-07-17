@@ -34,6 +34,7 @@ test("maps only approved SDK ThreadOptions", () => {
     model: "gpt-5",
     sandboxMode: "workspace-write",
     workingDirectory: "C:\\repo",
+    skipGitRepoCheck: true,
     networkAccessEnabled: true,
     webSearchMode: "live",
     approvalPolicy: "on-request",
@@ -42,6 +43,7 @@ test("maps only approved SDK ThreadOptions", () => {
     model: "gpt-5",
     sandboxMode: "workspace-write",
     workingDirectory: "C:\\repo",
+    skipGitRepoCheck: true,
     networkAccessEnabled: true,
     webSearchMode: "live",
     approvalPolicy: "on-request"
@@ -71,6 +73,7 @@ test("starts a new SDK thread with a caller-owned handle and truthful model evid
       model: "requested-model",
       sandboxMode: "workspace-write",
       workingDirectory: "C:\\repo",
+      skipGitRepoCheck: true,
       networkAccessEnabled: false,
       webSearchMode: "cached",
       approvalPolicy: "on-request"
@@ -92,6 +95,7 @@ test("starts a new SDK thread with a caller-owned handle and truthful model evid
     model: "requested-model",
     sandboxMode: "workspace-write",
     workingDirectory: "C:\\repo",
+    skipGitRepoCheck: true,
     networkAccessEnabled: false,
     webSearchMode: "cached",
     approvalPolicy: "on-request"

@@ -20,6 +20,7 @@ const THREAD_OPTION_FIELDS = Object.freeze([
   "model",
   "sandboxMode",
   "workingDirectory",
+  "skipGitRepoCheck",
   "networkAccessEnabled",
   "webSearchMode",
   "approvalPolicy"

@@ -111,6 +111,33 @@ test("runtime observation unsubscribes immediately when thread creation fails", 
   assert.equal(unsubscribed, true);
 });
 
+test("SDK Audition opts into its verified non-git root and surfaces runtime errors without waiting for timeout", async () => {
+  let listener;
+  let profile;
+  let unsubscribed = false;
+  const adapter = {
+    subscribeEvents: ({ listener: value }) => {
+      listener = value;
+      return { subscription: { unsubscribe: () => { unsubscribed = true; } } };
+    },
+    createThread: async (input) => {
+      profile = input.profile;
+      return { ok: true, thread_id: null, thread_handle: "CORR-runtime-error:thread" };
+    },
+    startTurn: async ({ correlationId }) => {
+      queueMicrotask(() => listener({ type: "runtime_error", correlation_id: correlationId, message: "not a git repository" }));
+      return { ok: true, thread_id: null, turn_id: null, evidence: { dispatch_accepted: true } };
+    },
+    interruptTurn: async () => ({ ok: true })
+  };
+  await assert.rejects(
+    runAdapterTurn({ adapter, adapterKind: "typescript_sdk", correlationId: "CORR-runtime-error", workingDirectory: "C:\\audition", timeoutMs: 1000 }),
+    (error) => error?.code === "PHASE2_RUNTIME_ERROR" && error?.details?.runtime_message === "not a git repository"
+  );
+  assert.equal(profile.skipGitRepoCheck, true);
+  assert.equal(unsubscribed, true);
+});
+
 test("live slice uses injected network and runtime boundaries without installing a candidate", async () => {
   const projectRoot = temporaryRoot("live-project");
   const outputRoot = path.join(projectRoot, "output", "v4-phase2-review");

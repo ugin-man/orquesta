@@ -24,6 +24,8 @@ A direct SDK diagnostic turn completed and returned `ORQUESTA_PHASE2_LIVE_OK` wi
 
 Therefore live Phase 2 status is currently `not_ready`. No ready review packet is written. The deterministic implementation is testable, but it must not be described as a completed end-to-end live acceptance until the integrated runtime path produces the correlated packet.
 
+The post-run diagnosis found that the integrated SDK fallback used a verified dedicated Audition root that was intentionally outside Git, while the SDK profile did not opt into that non-Git root. It also waited for the full timeout after an SDK `runtime_error`. The correction now passes `skipGitRepoCheck` only with that dedicated read-only Audition profile and surfaces runtime errors immediately. This correction has deterministic coverage but has not been relabeled as live proof.
+
 Generated failed-run journals under `output/v4-phase2-review/` are diagnostic output and are not release artifacts.
 
 ## Runtime boundaries
