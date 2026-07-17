@@ -2,17 +2,18 @@
 
 const { auditError } = require("./score");
 
-const SOURCE_FIELDS = new Set([
+const SOURCE_DOMAINS = Object.freeze([
   "license",
   "maintenance",
   "security",
-  "runtime",
   "compatibility",
   "accessibility",
   "cost",
   "trust",
   "freshness",
 ]);
+
+const SOURCE_FIELDS = new Set([...SOURCE_DOMAINS, "runtime"]);
 
 const STATIC_FIELD_FOR = Object.freeze({
   compatibility: "runtime",
@@ -34,7 +35,7 @@ function sourceField(field) {
   if (typeof field !== "string" || !SOURCE_FIELDS.has(field)) {
     throw liveError("AUDIT_LIVE_FACT_INVALID", "Live source authority names an unsupported field.", { field });
   }
-  return field;
+  return field === "runtime" ? "compatibility" : field;
 }
 
 function assertEvidence(entry) {
@@ -59,7 +60,9 @@ function assertEvidence(entry) {
 }
 
 function codeForSourceField(field) {
-  return field === "cost" ? "total_cost" : field;
+  if (field === "cost") return "total_cost";
+  if (field === "compatibility") return "runtime";
+  return field;
 }
 
 function reconcileLiveEvidence({ candidate, sourceEvidence }) {
@@ -69,6 +72,11 @@ function reconcileLiveEvidence({ candidate, sourceEvidence }) {
   }
   if (!Array.isArray(sourceEvidence)) {
     throw liveError("AUDIT_LIVE_EVIDENCE_INVALID", "Live Audit requires a sourceEvidence array.");
+  }
+
+  if (typeof candidate.source_ref !== "string" || !candidate.source_ref
+    || typeof candidate.source_hash !== "string" || !/^[a-f0-9]{64}$/.test(candidate.source_hash)) {
+    throw liveError("AUDIT_LIVE_EVIDENCE_UNBOUND", "Live Audit requires the candidate source ref and hash.", { candidate_id: candidate.provider_id });
   }
 
   const sortedEvidence = sourceEvidence.map(assertEvidence).slice().sort((left, right) => (
@@ -84,20 +92,36 @@ function reconcileLiveEvidence({ candidate, sourceEvidence }) {
     : []);
   const provenance = [];
   const seenAuthority = new Set();
+  const domainEvidence = Object.fromEntries(SOURCE_DOMAINS.map((field) => [field, "unknown"]));
   let estimatedTotalCost = Object.hasOwn(candidate, "estimated_total_cost")
     ? candidate.estimated_total_cost
     : undefined;
 
   for (const evidence of sortedEvidence) {
+    if (evidence.source_ref !== candidate.source_ref || evidence.source_hash !== candidate.source_hash) {
+      throw liveError("AUDIT_LIVE_EVIDENCE_UNBOUND", "Live Audit evidence must exactly bind the candidate source ref and hash.", {
+        candidate_id: candidate.provider_id,
+        source_ref: evidence.source_ref,
+        source_hash: evidence.source_hash,
+      });
+    }
     if (evidence.freshness !== "fresh") {
       unknowns.add("freshness");
       continue;
     }
 
-    for (const unknown of evidence.unknowns) unknowns.add(unknown);
+    for (const rawUnknown of evidence.unknowns) {
+      const field = rawUnknown === "total_cost" ? "cost" : sourceField(rawUnknown);
+      if (domainEvidence[field] !== "fact") domainEvidence[field] = "unknown";
+      unknowns.add(codeForSourceField(field));
+    }
+    const explicitUnknowns = new Set(evidence.unknowns.map((rawUnknown) => (
+      rawUnknown === "total_cost" ? "cost" : sourceField(rawUnknown)
+    )));
     for (const rawField of evidence.authoritative_fields) {
       const field = sourceField(rawField);
-      if (!Object.hasOwn(evidence.facts, field)) continue;
+      const factKey = Object.hasOwn(evidence.facts, rawField) ? rawField : field;
+      if (!Object.hasOwn(evidence.facts, factKey)) continue;
       if (seenAuthority.has(field)) {
         throw liveError(
           "AUDIT_LIVE_FACT_CONFLICT",
@@ -106,7 +130,8 @@ function reconcileLiveEvidence({ candidate, sourceEvidence }) {
         );
       }
       seenAuthority.add(field);
-      const value = evidence.facts[field];
+      domainEvidence[field] = explicitUnknowns.has(field) ? "unknown" : "fact";
+      const value = evidence.facts[factKey];
       if (field === "cost") {
         if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
           throw liveError("AUDIT_LIVE_FACT_INVALID", "Live source cost must be a finite nonnegative number.", { field });
@@ -116,6 +141,7 @@ function reconcileLiveEvidence({ candidate, sourceEvidence }) {
       } else if (field !== "freshness") {
         staticMetadata[STATIC_FIELD_FOR[field] || field] = value;
       }
+      if (!explicitUnknowns.has(field)) unknowns.delete(codeForSourceField(field));
       provenance.push({
         field,
         source_id: evidence.source_id,
@@ -125,8 +151,9 @@ function reconcileLiveEvidence({ candidate, sourceEvidence }) {
     }
   }
 
-  if (!Object.hasOwn(staticMetadata, "maintenance")) unknowns.add("maintenance");
-  if (estimatedTotalCost === undefined) unknowns.add("total_cost");
+  for (const field of SOURCE_DOMAINS) {
+    if (domainEvidence[field] !== "fact") unknowns.add(codeForSourceField(field));
+  }
   const reconciledCandidate = {
     ...candidate,
     static_metadata: staticMetadata,
@@ -136,6 +163,7 @@ function reconcileLiveEvidence({ candidate, sourceEvidence }) {
   return {
     candidate: reconciledCandidate,
     fact_provenance: provenance.sort((left, right) => compareText(left.field, right.field)),
+    domain_evidence: domainEvidence,
   };
 }
 

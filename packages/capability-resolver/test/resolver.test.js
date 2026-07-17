@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { assertContract } = require("@orquesta/contracts");
 const { WEIGHTS_V1, auditLiveCandidate } = require("@orquesta/audit");
+const { createOfficialDocsConnector, toAuditLiveCandidateInput } = require("../../acquisition/src");
 const { createBuildCandidate, resolveNeed } = require("../src");
 
 const need = {
@@ -36,6 +37,8 @@ function candidate(providerId, value, staticMetadata, resolutionMode = "reuse", 
     provider_id: providerId,
     provider_type: "fixture",
     source_uri: `fixture:${providerId}`,
+    source_ref: `https://example.test/official/${providerId}`,
+    source_hash: "b".repeat(64),
     capabilities: ["browser verification evidence"],
     trust_tier: "local",
     availability: "available",
@@ -482,5 +485,60 @@ test("resolver accepts the source-bound live Audit fact without treating self-re
   });
   assert.equal(proposal.resolution.mode, "reuse");
   assert.equal(proposal.resolution.selected_provider_id, "live-source");
+  assert.equal(proposal.resolution.total_cost, 12);
+});
+
+test("real connector evidence converts deterministically into source-bound Audit input before Resolver selection", async () => {
+  const connector = createOfficialDocsConnector({
+    baseUrl: "https://platform.openai.com/docs",
+    transport: {
+      async request() {
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify({
+            items: [{
+              id: "source-bound",
+              source_uri: "https://platform.openai.com/docs/source-bound",
+              version: "1.0.0",
+              license: "MIT",
+              maintenance: "maintained",
+              security: "no_critical_finding",
+              compatibility: "compatible",
+              accessibility: "met",
+              cost: 12,
+            }],
+          }),
+          captured_at: "2026-07-16T00:00:00.000Z",
+        };
+      },
+    },
+    clock: () => "2026-07-16T00:00:00.000Z",
+  });
+  const sourceResult = await connector.search({
+    query: {
+      need_id: need.need_id,
+      query_terms: ["source-bound"],
+      allowed_connector_ids: ["official_docs"],
+      request_budget: { max_requests_per_need: 8, max_requests_per_connector: 2 },
+      candidate_limit: 3,
+      requested_at: "2026-07-16T00:00:00.000Z",
+    },
+  });
+  const discovered = sourceResult.candidates[0];
+  const input = toAuditLiveCandidateInput({
+    sourceResult,
+    candidate: candidate(discovered.candidate_id, 80, { license: "forbidden", runtime: "incompatible", security: "critical" }, "reuse", {
+      source_uri: discovered.source_ref,
+      source_ref: discovered.source_ref,
+      source_hash: discovered.source_hash,
+      evidence_refs: [discovered.source_ref],
+    }),
+  });
+  const audited = auditLiveCandidate({ ...input, need, policyVersion: "phase2-v1" });
+  const proposal = resolveNeed({ need, scoutedCandidates: [input.candidate], auditFacts: [audited], policy: WEIGHTS_V1 });
+
+  assert.equal(audited.static_metadata.license, "MIT");
+  assert.equal(proposal.resolution.selected_provider_id, "official_docs:source-bound");
   assert.equal(proposal.resolution.total_cost, 12);
 });

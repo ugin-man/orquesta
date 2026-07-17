@@ -614,8 +614,17 @@ const phase2Contracts = {
       fetched_at: timestamp,
       expires_at: "2026-07-15T01:00:00.000Z",
       status: "success",
-      candidates: [{ candidate_id: "candidate-a", source_ref: "https://example.test/a", source_hash: hash }],
-      source_evidence: [{ source_ref: "https://example.test/a", source_hash: hash }],
+      candidates: [{ candidate_id: "candidate-a", source_ref: "https://example.test/a", source_hash: hash, version: "1.0.0", revision: null, trust_tier: "official", freshness: "fresh" }],
+      source_evidence: [{
+        source_id: "source:official_docs:candidate-a",
+        candidate_id: "candidate-a",
+        source_ref: "https://example.test/a",
+        source_hash: hash,
+        freshness: "fresh",
+        authoritative_fields: ["freshness", "license", "trust"],
+        facts: { freshness: "fresh", license: "MIT", trust: "official" },
+        unknowns: ["accessibility", "compatibility", "cost", "maintenance", "security"],
+      }],
       cache_status: "fresh",
       redaction_status: "redacted"
     },
@@ -731,6 +740,16 @@ test("Phase 2 durable evidence contracts enforce fixed limits, timestamp order, 
   dispatch.request_status = "turn_started";
   dispatch.turn_started_evidence_ref = "artifact:turn-started";
   assert.equal(validateContract("codex-dispatch", dispatch).ok, true);
+});
+
+test("live source result binds record trust and freshness to its source evidence", () => {
+  const trustMismatch = clone(phase2Contracts["live-source-result"].value);
+  trustMismatch.candidates[0].trust_tier = "community";
+  assert.equal(validateContract("live-source-result", trustMismatch).ok, false);
+
+  const freshnessMismatch = clone(phase2Contracts["live-source-result"].value);
+  freshnessMismatch.candidates[0].freshness = "stale";
+  assert.equal(validateContract("live-source-result", freshnessMismatch).ok, false);
 });
 
 test("Phase 2 durable evidence contracts reject unknown durable fields", () => {

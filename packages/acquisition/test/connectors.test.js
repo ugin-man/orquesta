@@ -90,3 +90,28 @@ test("connectors classify bounded transport failures without direct network or c
   const source = fs.readFileSync(path.resolve(__dirname, "../src/normalize.js"), "utf8");
   assert.equal(/child_process|https?\.request|\bfetch\s*\(/.test(source), false);
 });
+
+test("GitHub keeps configured-owner trust per record in a mixed response", async () => {
+  const connector = createGitHubConnector({
+    baseUrl: "https://api.github.com",
+    configuredOwners: ["openai"],
+    transport: transport({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({
+        items: [
+          { id: "openai-codex", source_uri: "https://github.com/openai/codex", revision: "openai-revision", license: "Apache-2.0" },
+          { id: "community-tool", source_uri: "https://github.com/community/tool", revision: "community-revision", license: "MIT" },
+        ],
+      }),
+      captured_at: "2026-07-16T00:00:00.000Z",
+    }),
+    clock: () => "2026-07-16T00:00:00.000Z",
+  });
+
+  const output = await connector.search({ query });
+  assert.deepEqual(output.candidates.map((entry) => [entry.candidate_id, entry.trust_tier]), [
+    ["github:community-tool", "community"],
+    ["github:openai-codex", "curated"],
+  ]);
+});

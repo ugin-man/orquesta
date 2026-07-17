@@ -12,11 +12,15 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["candidate_id", "source_ref", "source_hash"],
+        "required": ["candidate_id", "source_ref", "source_hash", "version", "revision", "trust_tier", "freshness"],
         "properties": {
           "candidate_id": { "type": "string", "pattern": ".+" },
           "source_ref": { "type": "string", "pattern": ".+" },
-          "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "version": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "const": null }] },
+          "revision": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "const": null }] },
+          "trust_tier": { "enum": ["local", "official", "curated", "community", "unknown"] },
+          "freshness": { "enum": ["fresh", "stale"] }
         },
         "additionalProperties": false
       }
@@ -25,10 +29,30 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["source_ref", "source_hash"],
+        "required": ["source_id", "candidate_id", "source_ref", "source_hash", "freshness", "authoritative_fields", "facts", "unknowns"],
         "properties": {
+          "source_id": { "type": "string", "pattern": ".+" },
+          "candidate_id": { "type": "string", "pattern": ".+" },
           "source_ref": { "type": "string", "pattern": ".+" },
-          "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "freshness": { "enum": ["fresh", "stale"] },
+          "authoritative_fields": {
+            "type": "array",
+            "items": { "enum": ["license", "maintenance", "security", "compatibility", "accessibility", "cost", "trust", "freshness"] }
+          },
+          "facts": {
+            "type": "object",
+            "properties": {
+              "license": {}, "maintenance": {}, "security": {}, "compatibility": {},
+              "accessibility": {}, "cost": { "type": "number", "minimum": 0 },
+              "trust": {}, "freshness": {}
+            },
+            "additionalProperties": false
+          },
+          "unknowns": {
+            "type": "array",
+            "items": { "enum": ["license", "maintenance", "security", "compatibility", "accessibility", "cost", "trust", "freshness"] }
+          }
         },
         "additionalProperties": false
       }

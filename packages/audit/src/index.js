@@ -86,6 +86,7 @@ function auditLiveCandidate({ candidate, need, sourceEvidence, policyVersion = "
       : {}),
     facts: audited.facts,
     fact_provenance: live.fact_provenance,
+    domain_evidence: live.domain_evidence,
     hard_gate_results: audited.hard_gate_results,
     responsibility: { ...RESPONSIBILITY, audit: "source_bound_metadata_checks_only" },
     evaluation: audited.evaluation,

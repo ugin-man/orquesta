@@ -291,11 +291,44 @@ function liveSourceQueryErrors(value) {
 
 function liveSourceResultErrors(value) {
   if (!isPlainObject(value)) return [];
+  const domains = ["license", "maintenance", "security", "compatibility", "accessibility", "cost", "trust", "freshness"];
   const errors = timestampFieldErrors(value, ["fetched_at", "expires_at"]);
-  errors.push(...phase2ArrayErrors(value, [], [["candidates", "candidate_id"], ["source_evidence", "source_ref"]]));
+  errors.push(...phase2ArrayErrors(value, [], [["candidates", "candidate_id"], ["source_evidence", "candidate_id"]]));
   if (isValidUtcTimestamp(value.fetched_at) && isValidUtcTimestamp(value.expires_at)
     && new Date(value.expires_at).getTime() <= new Date(value.fetched_at).getTime()) {
     errors.push(schemaError("$.expires_at", "source_expiry_order", "must be later than fetched_at"));
+  }
+  if (!Array.isArray(value.candidates) || !Array.isArray(value.source_evidence)) return errors;
+  const records = new Map(value.candidates.map((candidate) => [candidate && candidate.candidate_id, candidate]));
+  for (const evidence of value.source_evidence) {
+    if (!isPlainObject(evidence)) continue;
+    const candidate = records.get(evidence.candidate_id);
+    if (!candidate || candidate.source_ref !== evidence.source_ref || candidate.source_hash !== evidence.source_hash) {
+      errors.push(schemaError("$.source_evidence", "source_candidate_binding", "must bind one current candidate source ref and hash"));
+      continue;
+    }
+    if (!isPlainObject(evidence.facts)
+      || candidate.trust_tier !== evidence.facts.trust
+      || candidate.freshness !== evidence.freshness
+      || candidate.freshness !== evidence.facts.freshness) {
+      errors.push(schemaError(`$.source_evidence.${evidence.candidate_id}`, "source_record_binding", "must bind the candidate trust and freshness evidence"));
+    }
+    if (!sortedUnique(evidence.authoritative_fields) || !sortedUnique(evidence.unknowns)) {
+      errors.push(schemaError(`$.source_evidence.${evidence.candidate_id}`, "sorted_unique", "authority and unknown fields must be sorted with no duplicates"));
+    }
+    const facts = isPlainObject(evidence.facts) ? Object.keys(evidence.facts).sort(codeUnitCompare) : [];
+    const authorities = Array.isArray(evidence.authoritative_fields) ? evidence.authoritative_fields : [];
+    if (!isDeepStrictEqual(facts, authorities)) {
+      errors.push(schemaError(`$.source_evidence.${evidence.candidate_id}.facts`, "source_fact_authority", "must exactly match authoritative fields"));
+    }
+    const unknowns = Array.isArray(evidence.unknowns) ? evidence.unknowns : [];
+    for (const domain of domains) {
+      const coverage = Number(authorities.includes(domain)) + Number(unknowns.includes(domain));
+      if (coverage !== 1) {
+        errors.push(schemaError(`$.source_evidence.${evidence.candidate_id}`, "source_domain_coverage", "must record every source domain as exactly fact or unknown"));
+        break;
+      }
+    }
   }
   return errors;
 }

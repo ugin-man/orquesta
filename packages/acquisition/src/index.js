@@ -8,6 +8,7 @@ const { createOfficialDocsConnector } = require("./connectors/official-docs");
 const { createRegistryConnector } = require("./connectors/registry");
 const { createGitHubConnector } = require("./connectors/github");
 const { createUiCatalogConnector } = require("./connectors/ui-catalog");
+const { toAuditLiveCandidateInput } = require("./normalize");
 
 module.exports = {
   ACQUISITION_LIMITS,
@@ -17,5 +18,6 @@ module.exports = {
   createOfficialDocsConnector,
   createRegistryConnector,
   createGitHubConnector,
-  createUiCatalogConnector
+  createUiCatalogConnector,
+  toAuditLiveCandidateInput
 };

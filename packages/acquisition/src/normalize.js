@@ -4,6 +4,7 @@ const { assertContract, canonicalHash } = require("@orquesta/contracts");
 const { createLiveSourceConnector } = require("./connector");
 
 const MAX_BODY_BYTES = 1024 * 1024;
+const SOURCE_DOMAINS = Object.freeze(["license", "maintenance", "security", "compatibility", "accessibility", "cost", "trust", "freshness"]);
 
 function sourceError(code, message, details = {}) {
   const error = new Error(`${code}: ${message}`);
@@ -44,7 +45,16 @@ function expiresAt(fetchedAt, ttlMs) {
   return new Date(value + ttlMs).toISOString();
 }
 
-function normalizeRecords({ connectorId, trustTier, response, allowedOrigins, clock, ttlMs }) {
+function itemFacts(item, trustTier) {
+  const facts = { trust: trustTier, freshness: "fresh" };
+  for (const field of ["license", "maintenance", "security", "compatibility", "accessibility", "cost"]) {
+    if (Object.hasOwn(item, field)) facts[field] = item[field];
+  }
+  if (!Object.hasOwn(facts, "compatibility") && Object.hasOwn(item, "runtime")) facts.compatibility = item.runtime;
+  return facts;
+}
+
+function normalizeRecords({ connectorId, trustTier, trustTierForItem, response, allowedOrigins, clock, ttlMs }) {
   const fetchedAt = response.captured_at || clock();
   if (response.status === 404) {
     return assertContract("live-source-result", {
@@ -78,12 +88,31 @@ function normalizeRecords({ connectorId, trustTier, response, allowedOrigins, cl
   for (const item of payload.items) {
     if (!item || typeof item.id !== "string" || !item.id || typeof item.source_uri !== "string") continue;
     const sourceRef = canonicalSourceUri(item.source_uri, allowedOrigins);
-    const candidate = { candidate_id: `${connectorId}:${item.id}`, source_ref: sourceRef, source_hash: responseHash };
+    const candidateId = `${connectorId}:${item.id}`;
+    const recordTrustTier = trustTierForItem ? trustTierForItem(item, sourceRef) : trustTier;
+    const facts = itemFacts(item, recordTrustTier);
+    const authoritativeFields = Object.keys(facts).sort();
+    const unknowns = SOURCE_DOMAINS.filter((field) => !Object.hasOwn(facts, field)).sort();
+    const candidate = {
+      candidate_id: candidateId,
+      source_ref: sourceRef,
+      source_hash: responseHash,
+      version: typeof item.version === "string" && item.version ? item.version : null,
+      revision: typeof item.revision === "string" && item.revision ? item.revision : null,
+      trust_tier: recordTrustTier,
+      freshness: "fresh",
+    };
     candidates.set(candidate.candidate_id, candidate);
-    evidence.set(sourceRef, { source_ref: sourceRef, source_hash: responseHash });
-    if (typeof item.license === "string" && item.license) {
-      evidence.set(`${sourceRef}#license`, { source_ref: `${sourceRef}#license`, source_hash: responseHash });
-    }
+    evidence.set(candidateId, {
+      source_id: `source:${connectorId}:${item.id}`,
+      candidate_id: candidateId,
+      source_ref: sourceRef,
+      source_hash: responseHash,
+      freshness: "fresh",
+      authoritative_fields: authoritativeFields,
+      facts,
+      unknowns,
+    });
   }
   return assertContract("live-source-result", {
     connector_id: connectorId,
@@ -92,13 +121,13 @@ function normalizeRecords({ connectorId, trustTier, response, allowedOrigins, cl
     expires_at: expiresAt(fetchedAt, ttlMs),
     status: candidates.size > 0 ? "success" : "empty",
     candidates: [...candidates.values()].sort((left, right) => left.candidate_id < right.candidate_id ? -1 : left.candidate_id > right.candidate_id ? 1 : 0),
-    source_evidence: [...evidence.values()].sort((left, right) => left.source_ref < right.source_ref ? -1 : left.source_ref > right.source_ref ? 1 : 0),
+    source_evidence: [...evidence.values()].sort((left, right) => left.candidate_id < right.candidate_id ? -1 : left.candidate_id > right.candidate_id ? 1 : 0),
     cache_status: "miss",
     redaction_status: "redacted"
   });
 }
 
-function createJsonConnector({ id, trustTier, baseUrl, allowedOrigins, transport, clock, ttlMs }) {
+function createJsonConnector({ id, trustTier, trustTierForItem, baseUrl, allowedOrigins, transport, clock, ttlMs, cacheConfig }) {
   const base = parseUrl(baseUrl);
   const origins = new Set(allowedOrigins || [base.origin]);
   if (!origins.has(base.origin)) throw sourceError("SOURCE_REDIRECT_OUTSIDE_ALLOWLIST", "Connector base URL is outside its allowlist.");
@@ -107,13 +136,27 @@ function createJsonConnector({ id, trustTier, baseUrl, allowedOrigins, transport
     id,
     trustTier,
     transport,
+    cacheConfig: cacheConfig || { source_uri: base.toString(), trust_policy: trustTier, parser_version: "json-v1" },
     async search({ query, transport: injectedTransport }) {
       const requestUrl = new URL(base.toString());
       requestUrl.searchParams.set("q", query.query_terms.join(" "));
       const response = await injectedTransport.request({ method: "GET", url: requestUrl.toString(), headers: {}, body: null, timeout_ms: 5000 });
-      return normalizeRecords({ connectorId: id, trustTier, response, allowedOrigins: origins, clock, ttlMs });
+      return normalizeRecords({ connectorId: id, trustTier, trustTierForItem, response, allowedOrigins: origins, clock, ttlMs });
     }
   });
 }
 
-module.exports = { MAX_BODY_BYTES, createJsonConnector, sourceError };
+function toAuditLiveCandidateInput({ sourceResult, candidate } = {}) {
+  const validResult = assertContract("live-source-result", sourceResult);
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) || typeof candidate.provider_id !== "string") {
+    throw sourceError("ACQUISITION_AUDIT_BINDING_INVALID", "Audit conversion requires a candidate provider ID.");
+  }
+  const record = validResult.candidates.find((entry) => entry.candidate_id === candidate.provider_id);
+  const evidence = validResult.source_evidence.find((entry) => entry.candidate_id === candidate.provider_id);
+  if (!record || !evidence || candidate.source_ref !== record.source_ref || candidate.source_hash !== record.source_hash) {
+    throw sourceError("ACQUISITION_AUDIT_BINDING_INVALID", "Audit conversion requires an exact discovered source ref and hash.", { candidate_id: candidate.provider_id });
+  }
+  return Object.freeze({ candidate: { ...candidate }, sourceEvidence: [{ ...evidence }] });
+}
+
+module.exports = { MAX_BODY_BYTES, createJsonConnector, sourceError, toAuditLiveCandidateInput };

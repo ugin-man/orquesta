@@ -34,7 +34,9 @@ function candidate(overrides = {}) {
   return {
     provider_id: "fixture-browser-check",
     provider_type: "fixture",
-    source_uri: "fixture:browser-check",
+    source_uri: "https://example.test/docs/fixture-browser-check",
+    source_ref: "https://example.test/docs/fixture-browser-check",
+    source_hash: "a".repeat(64),
     capabilities: ["browser verification evidence"],
     trust_tier: "local",
     availability: "available",
@@ -257,4 +259,66 @@ test("live Audit keeps Phase 1 hard gates and rejects duplicate source facts det
         && JSON.stringify(error.details) === JSON.stringify({ candidate_id: "fixture-browser-check", fields: ["license"] }),
     );
   }
+});
+
+test("live Audit rejects authority evidence that is not bound to the candidate source ref and hash", () => {
+  assert.throws(
+    () => auditLiveCandidate({
+      candidate: candidate(),
+      need,
+      sourceEvidence: [liveSourceEvidence({ source_ref: "https://example.test/other", source_hash: "b".repeat(64) })],
+      policyVersion: "phase2-v1",
+    }),
+    (error) => error && error.code === "AUDIT_LIVE_EVIDENCE_UNBOUND",
+  );
+});
+
+test("live Audit canonicalizes runtime aliases and records every evidence domain as fact or unknown", () => {
+  const first = liveSourceEvidence({
+    source_id: "source:runtime",
+    authoritative_fields: ["runtime"],
+    facts: { runtime: "compatible" },
+    unknowns: [],
+  });
+  const second = liveSourceEvidence({
+    source_id: "source:compatibility",
+    authoritative_fields: ["compatibility"],
+    facts: { compatibility: "incompatible" },
+    unknowns: [],
+  });
+  assert.throws(
+    () => auditLiveCandidate({ candidate: candidate(), need, sourceEvidence: [first, second], policyVersion: "phase2-v1" }),
+    (error) => error && error.code === "AUDIT_LIVE_FACT_CONFLICT"
+      && JSON.stringify(error.details) === JSON.stringify({ candidate_id: "fixture-browser-check", fields: ["compatibility"] }),
+  );
+
+  const complete = auditLiveCandidate({
+    candidate: candidate({ static_metadata: {} }),
+    need,
+    sourceEvidence: [liveSourceEvidence({
+      authoritative_fields: ["accessibility", "compatibility", "cost", "freshness", "license", "maintenance", "security", "trust"],
+      facts: {
+        accessibility: "met",
+        compatibility: "compatible",
+        cost: 3,
+        freshness: "fresh",
+        license: "MIT",
+        maintenance: "maintained",
+        security: "no_critical_finding",
+        trust: "official",
+      },
+      unknowns: [],
+    })],
+    policyVersion: "phase2-v1",
+  });
+  assert.deepEqual(complete.domain_evidence, {
+    accessibility: "fact",
+    compatibility: "fact",
+    cost: "fact",
+    freshness: "fact",
+    license: "fact",
+    maintenance: "fact",
+    security: "fact",
+    trust: "fact",
+  });
 });
