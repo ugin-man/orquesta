@@ -16,7 +16,7 @@ import type { Locale } from '../features/i18n/messages';
 import { MapViewport } from '../features/map/MapViewport';
 import { NowCardStack } from '../features/now/NowCardStack';
 import { NowListOverlay } from '../features/now/NowListOverlay';
-import { AdvancedOperations } from '../features/operations/AdvancedOperations';
+import { V4Operations } from '../features/operations/V4Operations';
 import { ProjectRoute } from '../features/project/ProjectRoute';
 import { ProjectStatusCard } from '../features/project/ProjectStatusCard';
 import { ProjectSwitcher } from '../features/project/ProjectSwitcher';
@@ -34,6 +34,8 @@ export type OpenOverlay =
   | { kind: 'operations' }
   | { kind: 'now-list' }
   | null;
+
+type MapSelection = { kind: 'agent'; agentId: string } | { kind: 'task'; taskId: string } | null;
 
 function queryFixture(): FixtureId | null {
   if (typeof window === 'undefined') return null;
@@ -78,6 +80,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [snapshot, setSnapshot] = useState<OrquestaUiSnapshot | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<OpenOverlay>(null);
+  const [mapSelection, setMapSelection] = useState<MapSelection>(null);
   const [draft, setDraft] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('orchestrator');
   const [sending, setSending] = useState(false);
@@ -131,6 +134,8 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     const projectId = snapshot?.project.id ?? null;
     if (!projectId || projectId === 'no-project' || draftProjectId.current === projectId) return;
     draftProjectId.current = projectId;
+    setMapSelection(null);
+    setOverlay(null);
     setAttachments([]);
     setDirectSendFailure(null);
     setMessages([]);
@@ -147,6 +152,11 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   }, [draft]);
 
   const closeOverlay = useCallback(() => setOverlay(null), []);
+  const clearMapSelection = useCallback(() => {
+    setMapSelection(null);
+    setOverlay(null);
+  }, []);
+  const getRuntimeInfo = useCallback((input: { probe: boolean }) => bridge.getRuntimeInfo(input), [bridge]);
   const openProjects = async () => {
     try {
       setProjects(await bridge.listProjects());
@@ -295,8 +305,14 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const selectedAgent = overlay?.kind === 'agent' ? snapshot.agents.find((agent) => agent.id === overlay.agentId) ?? null : null;
   const selectedTask = overlay?.kind === 'task' ? snapshot.tasks.find((task) => task.id === overlay.taskId) ?? null : null;
   const selectedAgentTask = selectedAgent?.currentTaskId ? snapshot.tasks.find((task) => task.id === selectedAgent.currentTaskId) ?? null : null;
-  const selectAgent = (agentId: string) => setOverlay({ kind: 'agent', agentId });
-  const selectTask = (taskId: string) => setOverlay({ kind: 'task', taskId });
+  const selectAgent = (agentId: string) => {
+    setMapSelection({ kind: 'agent', agentId });
+    setOverlay({ kind: 'agent', agentId });
+  };
+  const selectTask = (taskId: string) => {
+    setMapSelection({ kind: 'task', taskId });
+    setOverlay({ kind: 'task', taskId });
+  };
 
   return (
     <main className={`desktop-shell project-${snapshot.project.status}`} role="application" aria-label="Orquesta Desktop">
@@ -308,12 +324,12 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
 
       <MapViewport
         snapshot={snapshot}
-        selectedAgentId={selectedAgent?.id ?? null}
-        selectedTaskId={selectedTask?.id ?? null}
+        selectedAgentId={mapSelection?.kind === 'agent' ? mapSelection.agentId : null}
+        selectedTaskId={mapSelection?.kind === 'task' ? mapSelection.taskId : null}
         reducedMotion={reducedMotion}
         onSelectAgent={selectAgent}
         onSelectTask={selectTask}
-        onClearSelection={closeOverlay}
+        onClearSelection={clearMapSelection}
         onOpenTeam={() => void openTeam()}
       />
 
@@ -366,8 +382,8 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
         <ToastStack toasts={toasts} onDismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} />
       </div>
 
-      {selectedAgent ? <AgentDetail agent={selectedAgent} task={selectedAgentTask} onOpenTask={selectTask} onClose={closeOverlay} /> : null}
-      {selectedTask ? <TaskDetail task={selectedTask} agents={snapshot.agents} onClose={closeOverlay} /> : null}
+      {selectedAgent ? <AgentDetail agent={selectedAgent} task={selectedAgentTask} onOpenTask={selectTask} onClose={clearMapSelection} /> : null}
+      {selectedTask ? <TaskDetail task={selectedTask} agents={snapshot.agents} onClose={clearMapSelection} /> : null}
       {overlay?.kind === 'project-route' ? <ProjectRoute project={snapshot.project} phases={snapshot.phases} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'project-switcher' ? <ProjectSwitcher projects={projects} currentProjectId={snapshot.project.id} onSwitch={(id) => bridge.switchProject(id)} onOpenProject={() => bridge.requestOpenProject()} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'conversation' ? (
@@ -394,7 +410,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           onClose={closeOverlay}
         />
       ) : null}
-      {overlay?.kind === 'operations' ? <AdvancedOperations onClose={closeOverlay} /> : null}
+      {overlay?.kind === 'operations' ? <V4Operations operations={snapshot.v4Operations} getRuntimeInfo={getRuntimeInfo} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'now-list' ? <NowListOverlay agents={snapshot.agents} tasks={snapshot.tasks} onOpenTask={selectTask} onClose={closeOverlay} /> : null}
     </main>
   );

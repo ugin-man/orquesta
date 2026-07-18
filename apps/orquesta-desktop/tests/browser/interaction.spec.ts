@@ -148,8 +148,78 @@ test('opens route, conversation, operations, and returns with Escape', async ({ 
   await page.keyboard.press('Escape');
   await page.locator('.project-status__summary').click();
   await page.getByRole('button', { name: 'Open operations' }).click();
-  await expect(page.getByRole('dialog', { name: 'Advanced Operations' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Operations' })).toBeVisible();
 });
+
+test('restores the exact map camera and selected agent after closing Operations', async ({ page }) => {
+  await openFixture(page, 'active-project');
+  const world = page.locator('.map-world');
+  const analyst = page.locator('[data-agent-id="analyst"]');
+  await analyst.click();
+  await expect(analyst).toHaveClass(/is-selected/);
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  const zoomBefore = await world.getAttribute('data-zoom');
+  const positionBefore = await analyst.boundingBox();
+
+  await page.locator('.project-status__summary').click();
+  await page.getByRole('button', { name: 'Open operations' }).click();
+  await page.getByRole('button', { name: 'Close Operations' }).click();
+
+  await expect(page.getByRole('dialog', { name: 'Operations' })).toHaveCount(0);
+  await expect(analyst).toHaveClass(/is-selected/);
+  expect(await world.getAttribute('data-zoom')).toBe(zoomBefore);
+  const positionAfter = await analyst.boundingBox();
+  expect(Math.abs((positionAfter?.x ?? 0) - (positionBefore?.x ?? 0))).toBeLessThan(0.5);
+  expect(Math.abs((positionAfter?.y ?? 0) - (positionBefore?.y ?? 0))).toBeLessThan(0.5);
+});
+
+for (const viewport of [{ width: 1366, height: 768 }, { width: 1440, height: 900 }]) {
+  test(`keeps V4 Operations bounded and keyboard-accessible at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await openFixture(page, 'active-project', viewport);
+    await page.locator('.project-status__summary').click();
+    await page.getByRole('button', { name: 'Open operations' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Operations' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('tab')).toHaveCount(4);
+
+    const bounds = await page.evaluate(() => {
+      const overlay = document.querySelector<HTMLElement>('.operations-overlay');
+      const panel = document.querySelector<HTMLElement>('.operations-panel__scroll');
+      if (!overlay || !panel) throw new Error('Operations layout missing');
+      const box = overlay.getBoundingClientRect();
+      return {
+        bodyOverflow: getComputedStyle(document.body).overflow,
+        panelOverflow: getComputedStyle(panel).overflowY,
+        box: { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      };
+    });
+    expect(bounds.bodyOverflow).toBe('hidden');
+    expect(bounds.panelOverflow).toBe('auto');
+    expect(bounds.box.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.box.top).toBeGreaterThanOrEqual(0);
+    expect(bounds.box.right).toBeLessThanOrEqual(bounds.viewport.width);
+    expect(bounds.box.bottom).toBeLessThanOrEqual(bounds.viewport.height);
+
+    const capability = dialog.getByRole('tab', { name: 'Capability' });
+    await capability.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(dialog.getByRole('tab', { name: 'Acquisition' })).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(dialog.getByRole('tab', { name: 'Evidence' })).toBeFocused();
+    await expect(dialog.locator('.operations-runtime-card').getByText('unavailable')).toBeVisible();
+    for (const tabName of ['Capability', 'Acquisition', 'Audit', 'Evidence']) {
+      await dialog.getByRole('tab', { name: tabName }).click();
+      const overflow = await dialog.getByRole('tabpanel').evaluate((panel) => ({
+        horizontal: panel.scrollWidth - panel.clientWidth,
+        document: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+      }));
+      expect(overflow.horizontal).toBeLessThanOrEqual(0);
+      expect(overflow.document).toBe(0);
+    }
+  });
+}
 
 
 test('keeps map controls clear of the user node and team action clear of the composer', async ({ page }) => {
@@ -202,4 +272,16 @@ test('has no serious accessibility violations or browser errors in the standard 
   const results = await new AxeBuilder({ page }).disableRules(['region']).analyze();
   expect(results.violations.filter((item) => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
   expect(browserErrors).toEqual([]);
+});
+
+test('has no serious accessibility violations in every V4 Operations panel', async ({ page }) => {
+  await openFixture(page, 'active-project');
+  await page.locator('.project-status__summary').click();
+  await page.getByRole('button', { name: 'Open operations' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Operations' });
+  for (const tabName of ['Capability', 'Acquisition', 'Audit', 'Evidence']) {
+    await dialog.getByRole('tab', { name: tabName }).click();
+    const results = await new AxeBuilder({ page }).include('.operations-overlay').disableRules(['region']).analyze();
+    expect(results.violations.filter((item) => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
+  }
 });

@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
@@ -13,22 +14,28 @@ const variants = [
   { label: '200pct-1366x768', scale: 2, width: 1366, height: 768 }
 ] as const;
 
-async function launchVariant(variant: typeof variants[number]): Promise<{ desktop: ElectronApplication; window: Page }> {
-  const desktop = await electron.launch({
-    args: ['--force-prefers-reduced-motion=reduce', '--lang=en-US', '.'],
-    cwd: appRoot,
-    env: { ...process.env, ORQUESTA_E2E: '1', ORQUESTA_E2E_FIXTURE: 'large-roster' }
-  });
-  const window = await desktop.firstWindow();
-  const session = await window.context().newCDPSession(window);
-  await session.send('Emulation.setDeviceMetricsOverride', {
-    width: variant.width,
-    height: variant.height,
-    deviceScaleFactor: variant.scale,
-    mobile: false
-  });
-  await expect(window.getByRole('application', { name: 'Orquesta Desktop' })).toBeVisible();
-  return { desktop, window };
+async function launchVariant(variant: typeof variants[number]): Promise<{ desktop: ElectronApplication; window: Page; userData: string }> {
+  const userData = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-map-user-'));
+  try {
+    const desktop = await electron.launch({
+      args: [`--user-data-dir=${userData}`, '--force-prefers-reduced-motion=reduce', '--lang=en-US', '.'],
+      cwd: appRoot,
+      env: { ...process.env, ORQUESTA_E2E: '1', ORQUESTA_E2E_FIXTURE: 'large-roster' }
+    });
+    const window = await desktop.firstWindow();
+    const session = await window.context().newCDPSession(window);
+    await session.send('Emulation.setDeviceMetricsOverride', {
+      width: variant.width,
+      height: variant.height,
+      deviceScaleFactor: variant.scale,
+      mobile: false
+    });
+    await expect(window.getByRole('application', { name: 'Orquesta Desktop' })).toBeVisible();
+    return { desktop, window, userData };
+  } catch (error) {
+    await rm(userData, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 async function startLongTaskObserver(window: Page) {
@@ -47,7 +54,7 @@ test('keeps the complete hierarchy crisp and responsive in Electron', async () =
   const results: Array<{ label: string; width: number; height: number; requestedScale: number; actualScale: number; agentCount: number; overlapCount: number; maxLongTaskMs: number }> = [];
 
   for (const variant of variants) {
-    const { desktop, window } = await launchVariant(variant);
+    const { desktop, window, userData } = await launchVariant(variant);
     try {
       await expect(window.locator('[data-node-kind="agent"]')).toHaveCount(35);
       expect(await window.locator('.map-edge--base').count()).toBeGreaterThanOrEqual(35);
@@ -107,6 +114,7 @@ test('keeps the complete hierarchy crisp and responsive in Electron', async () =
       });
     } finally {
       await desktop.close();
+      await rm(userData, { recursive: true, force: true });
     }
   }
 

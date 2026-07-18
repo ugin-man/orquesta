@@ -20,3 +20,27 @@ test('active Home at 1366 × 768 keeps the desktop composition intact', async ({
   await saveReviewCapture(page, 'renderer-active-1366x768.png');
   await expect(page).toHaveScreenshot('home-active-1366x768.png');
 });
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1366, height: 768 }]) {
+  test(`V4 Operations at ${viewport.width} × ${viewport.height} stays inside the desktop composition`, async ({ page }) => {
+    await openFixture(page, 'active-project', viewport);
+    await page.locator('.project-status__summary').click();
+    await page.getByRole('button', { name: 'Open operations' }).click();
+    await page.getByRole('dialog', { name: 'Operations' }).waitFor();
+    await saveReviewCapture(page, `operations-${viewport.width}x${viewport.height}.png`);
+    await expect(page).toHaveScreenshot(`operations-${viewport.width}x${viewport.height}.png`);
+  });
+}
+
+for (const tabName of ['Acquisition', 'Audit', 'Evidence']) {
+  test(`${tabName} view keeps the V4 Operations visual hierarchy`, async ({ page }) => {
+    await openFixture(page, 'active-project', { width: 1440, height: 900 });
+    await page.locator('.project-status__summary').click();
+    await page.getByRole('button', { name: 'Open operations' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Operations' });
+    await dialog.getByRole('tab', { name: tabName }).click();
+    const filename = `operations-${tabName.toLowerCase()}-1440x900.png`;
+    await saveReviewCapture(page, filename);
+    await expect(page).toHaveScreenshot(filename);
+  });
+}

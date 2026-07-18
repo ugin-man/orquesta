@@ -783,35 +783,35 @@
 - Modify: `apps/orquesta-desktop/src/renderer/features/i18n/messages.ts`
 - Modify: `apps/orquesta-desktop/src/renderer/styles/global.css`
 
-- [ ] Add failing UI tests for all four tabs at 1366x768 and 1440x900. Require panel-local scrolling, no document/body overflow, keyboard tab navigation, Japanese/English labels, empty V4 state, and unavailable/recovery-limitation state.
+- [x] Add failing UI tests for all four tabs at 1366x768 and 1440x900. Require panel-local scrolling, no document/body overflow, keyboard tab navigation, Japanese/English labels, empty V4 state, and unavailable/recovery-limitation state.
 
-- [ ] Run the focused test and confirm the components are missing:
+- [x] Run the focused test and confirm the components are missing:
 
   ```powershell
   npm run test:desktop-unit --prefix apps/orquesta-desktop -- v4-operations.test.tsx
   ```
 
-- [ ] Implement the four read-only panels:
+- [x] Implement the four read-only panels:
 
   - Capability: task intent, needs, graph, chosen resolution;
   - Acquisition: providers, evaluations, install request/authorization state;
   - Audit: command identity, responsibility, scout skip reason, sequence;
   - Evidence: correlation chains, runtime dispatch/turn state, report and acceptance evidence.
 
-- [ ] Fetch `RuntimeInfoUi` with `probe: false` when Operations opens and show adapter, pinned versions, target, health, and integrity status in the Evidence panel. The initial `not_started` state must not start Codex merely to populate the panel; add an explicit Refresh runtime status button which calls `probe: true` and is the only metadata action in this otherwise read-only overlay.
+- [x] Fetch `RuntimeInfoUi` with `probe: false` when Operations opens and show adapter, pinned versions, target, health, and integrity status in the Evidence panel. The initial `not_started` state must not start Codex merely to populate the panel; add an explicit Refresh runtime status button which calls `probe: true` and is the only metadata action in this otherwise read-only overlay.
 
-- [ ] Keep language control in the Operations overlay. Do not add action buttons for install, approval, or recovery until a later design explicitly defines those mutations.
+- [x] Keep language control in the Operations overlay. Do not add action buttons for install, approval, or recovery until a later design explicitly defines those mutations.
 
-- [ ] Preserve the home map geometry. The overlay may cover the workspace while open, but closing it must restore the exact map viewport and selected agent/task.
+- [x] Preserve the home map geometry. The overlay may cover the workspace while open, but closing it must restore the exact map viewport and selected agent/task.
 
-- [ ] Run accessibility, visual, browser, and Electron smoke tests:
+- [x] Run accessibility, visual, browser, and Electron smoke tests:
 
   ```powershell
   npm run check --prefix apps/orquesta-desktop
   npm run test:desktop-smoke --prefix apps/orquesta-desktop
   ```
 
-- [ ] Commit:
+- [x] Commit:
 
   ```powershell
   git add apps/orquesta-desktop/src apps/orquesta-desktop/tests/unit/v4-operations.test.tsx
