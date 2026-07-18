@@ -1,4 +1,5 @@
 import type { ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
+import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 
 export interface RuntimeModelEvidence {
   recommendedModel: string | null;
@@ -44,12 +45,35 @@ export interface RuntimeInfoRequest {
   probe: boolean;
 }
 
+export interface RepositorySelectRequest {
+  type: 'repository.select';
+  correlationId: string;
+  projectId: string;
+  rootPath: string;
+}
+
+export interface RepositorySnapshotRequest {
+  type: 'repository.get-snapshot';
+  correlationId: string;
+}
+
+export interface RepositoryCloseRequest {
+  type: 'repository.close';
+  correlationId: string;
+}
+
+export type CoreDispatchRequest = RuntimeSendRequest | RuntimeConversationRequest | RuntimeInfoRequest
+  | RepositorySelectRequest | RepositorySnapshotRequest | RepositoryCloseRequest;
+
 export type CoreRequest =
   | { type: 'core.shutdown' }
   | { type: 'core.ping'; correlationId: string }
   | RuntimeSendRequest
   | RuntimeConversationRequest
-  | RuntimeInfoRequest;
+  | RuntimeInfoRequest
+  | RepositorySelectRequest
+  | RepositorySnapshotRequest
+  | RepositoryCloseRequest;
 
 export type CoreEvent =
   | { type: 'core.ready'; version: 1 }
@@ -59,6 +83,8 @@ export type CoreEvent =
   | { type: 'runtime.conversation.result'; correlationId: string; page: ConversationPage }
   | { type: 'runtime.info.result'; correlationId: string; info: RuntimeInfoUi }
   | { type: 'runtime.notification'; notification: RuntimeNotification }
+  | { type: 'repository.snapshot.result'; correlationId: string; snapshot: OrquestaUiSnapshot }
+  | { type: 'repository.snapshot.changed'; snapshot: OrquestaUiSnapshot }
   | { type: 'core.stopped' };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -104,6 +130,19 @@ function isRuntimeInfo(value: unknown): value is RuntimeInfoUi {
     && ['verified', 'unverified', 'failed'].includes(String(value.integrity));
 }
 
+function isRepositorySnapshot(value: unknown): value is OrquestaUiSnapshot {
+  if (!isRecord(value) || !isRecord(value.project)) return false;
+  return isSafeId(value.project.id)
+    && isBoundedText(value.project.title, 1_024)
+    && (value.project.rootPathLabel === null || isBoundedText(value.project.rootPathLabel, 32_768))
+    && ['ready', 'working', 'blocked', 'offline', 'unknown'].includes(String(value.project.status))
+    && Array.isArray(value.agents)
+    && Array.isArray(value.tasks)
+    && Array.isArray(value.attention)
+    && Array.isArray(value.phases)
+    && Array.isArray(value.recentEvents);
+}
+
 export function isCoreRequest(value: unknown): value is CoreRequest {
   if (!isRecord(value)) return false;
   if (value.type === 'core.shutdown') return true;
@@ -120,6 +159,12 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
   }
   if (value.type === 'runtime.info') {
     return isCorrelationId(value.correlationId) && typeof value.probe === 'boolean';
+  }
+  if (value.type === 'repository.select') {
+    return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768);
+  }
+  if (value.type === 'repository.get-snapshot' || value.type === 'repository.close') {
+    return isCorrelationId(value.correlationId);
   }
   return false;
 }
@@ -149,5 +194,9 @@ export function isCoreEvent(value: unknown): value is CoreEvent {
       && (notification.targetAgentId === null || isSafeId(notification.targetAgentId))
       && isModelEvidence(notification.modelEvidence));
   }
+  if (value.type === 'repository.snapshot.result') {
+    return isCorrelationId(value.correlationId) && isRepositorySnapshot(value.snapshot);
+  }
+  if (value.type === 'repository.snapshot.changed') return isRepositorySnapshot(value.snapshot);
   return value.type === 'core.stopped';
 }

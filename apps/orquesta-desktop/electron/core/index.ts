@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { DesktopCodexService } from './desktop-codex-service';
 import { handleCoreRequest } from './handler';
-import type { CoreEvent, RuntimeConversationRequest, RuntimeInfoRequest, RuntimeSendRequest } from './protocol';
+import type { CoreDispatchRequest, CoreEvent } from './protocol';
+import { RepositoryRuntime } from './repository-runtime';
 
 const parentPort = process.parentPort;
 
@@ -20,20 +21,30 @@ const runtime = new DesktopCodexService({
   appRoot,
   resourcesPath
 });
+const repository = new RepositoryRuntime();
 const send = (event: CoreEvent) => parentPort.postMessage(event);
 runtime.subscribe((notification) => send({ type: 'runtime.notification', notification }));
+repository.subscribe((snapshot) => send({ type: 'repository.snapshot.changed', snapshot }));
 
 const stop = () => {
-  void runtime.shutdown().finally(() => {
+  void Promise.all([runtime.shutdown(), repository.stop()]).finally(() => {
     send({ type: 'core.stopped' });
     setImmediate(() => process.exit(0));
   });
 };
 
-const dispatch = (request: RuntimeSendRequest | RuntimeConversationRequest | RuntimeInfoRequest) => {
+const dispatch = (request: CoreDispatchRequest) => {
   void (async () => {
     try {
-      if (request.type === 'runtime.send') {
+      if (request.type === 'repository.select') {
+        const snapshot = await repository.select(request);
+        send({ type: 'repository.snapshot.result', correlationId: request.correlationId, snapshot });
+      } else if (request.type === 'repository.get-snapshot') {
+        const snapshot = await repository.refresh();
+        send({ type: 'repository.snapshot.result', correlationId: request.correlationId, snapshot });
+      } else if (request.type === 'repository.close') {
+        await repository.stop();
+      } else if (request.type === 'runtime.send') {
         const result = await runtime.sendMessage({
           ...request,
           recommendedModel: request.recommendedModel ?? null,

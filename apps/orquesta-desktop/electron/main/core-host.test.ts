@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, test, vi } from 'vitest';
+import { fixtureCatalog } from '../../src/fixtures';
 import { CoreHost, type CoreChildProcess } from './core-host';
 
 class FakeCoreChild extends EventEmitter implements CoreChildProcess {
@@ -109,6 +110,26 @@ describe('CoreHost', () => {
 
     await expect(pending).resolves.toEqual({ items: [], nextCursor: null });
     expect(listener).toHaveBeenCalledWith(notification);
+  });
+
+  test('starts lazily for repository selection and forwards Core snapshot changes', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    const listener = vi.fn();
+    host.subscribeRepository(listener);
+
+    const pending = host.selectRepository('repo-1', 'C:\\repo');
+    expect(host.status()).toBe('starting');
+    child.emit('message', { type: 'core.ready', version: 1 });
+    await Promise.resolve();
+    const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(request).toMatchObject({ type: 'repository.select', projectId: 'repo-1', rootPath: 'C:\\repo' });
+    const snapshot = fixtureCatalog['active-project'].snapshot;
+    child.emit('message', { type: 'repository.snapshot.result', correlationId: request.correlationId, snapshot });
+    await expect(pending).resolves.toEqual(snapshot);
+
+    child.emit('message', { type: 'repository.snapshot.changed', snapshot });
+    expect(listener).toHaveBeenCalledWith(snapshot);
   });
 
   test('requests a clean shutdown and kills after the bounded timeout', async () => {

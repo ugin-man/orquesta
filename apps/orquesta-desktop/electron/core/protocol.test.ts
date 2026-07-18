@@ -49,4 +49,23 @@ describe('Core protocol validation', () => {
       type: 'runtime.dispatch.accepted', correlationId: 'send-1', threadId: 'thread-1', turnId: 'turn-1', actualModel: 'inferred'
     })).toBe(false);
   });
+
+  test('accepts only bounded repository selection and lifecycle requests', () => {
+    expect(isCoreRequest({ type: 'repository.select', correlationId: 'select-1', projectId: 'repo-1', rootPath: 'C:\\repo' })).toBe(true);
+    expect(isCoreRequest({ type: 'repository.get-snapshot', correlationId: 'snapshot-1' })).toBe(true);
+    expect(isCoreRequest({ type: 'repository.close', correlationId: 'close-1' })).toBe(true);
+    expect(isCoreRequest({ type: 'repository.select', correlationId: 'select-1', projectId: '../escape', rootPath: 'C:\\repo' })).toBe(false);
+    expect(isCoreRequest({ type: 'repository.select', correlationId: 'select-1', projectId: 'repo-1', rootPath: 'x'.repeat(32_769) })).toBe(false);
+  });
+
+  test('accepts repository snapshot result and changed events only with a projected snapshot', () => {
+    const snapshot = {
+      project: { id: 'repo-1', title: 'repo', rootPathLabel: 'C:\\repo', status: 'ready' },
+      agents: [], tasks: [], attention: [], phases: [], recentEvents: []
+    };
+    expect(isCoreEvent({ type: 'repository.snapshot.result', correlationId: 'snapshot-1', snapshot })).toBe(true);
+    expect(isCoreEvent({ type: 'repository.snapshot.changed', snapshot })).toBe(true);
+    expect(isCoreEvent({ type: 'repository.snapshot.result', correlationId: '', snapshot })).toBe(false);
+    expect(isCoreEvent({ type: 'repository.snapshot.changed', snapshot: { project: { id: '../escape' } } })).toBe(false);
+  });
 });

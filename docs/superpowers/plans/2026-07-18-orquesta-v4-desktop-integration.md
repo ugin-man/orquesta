@@ -398,7 +398,7 @@
 - Modify: `apps/orquesta-desktop/electron/core/handler.ts`
 - Modify: `apps/orquesta-desktop/electron/core/protocol.ts`
 
-- [ ] Add failing protocol tests for:
+- [x] Add failing protocol tests for:
 
   ```ts
   { type: 'repository.select', correlationId, projectId, rootPath }
@@ -410,23 +410,23 @@
 
   Validate project IDs and bounded paths with the existing guards.
 
-- [ ] Add failing repository-runtime tests proving that Core reads `.orquesta/state`, watches `.orquesta/state`, `.orquesta/vision`, `.orquesta/failures`, and `.orquesta/v4`, debounces changes, retains the last snapshot as offline on read failure, and closes all watchers on project switch/shutdown.
+- [x] Add failing repository-runtime tests proving that Core reads `.orquesta/state`, watches `.orquesta/state`, `.orquesta/vision`, `.orquesta/failures`, and `.orquesta/v4`, debounces changes, retains the last snapshot as offline on read failure, and closes all watchers on project switch/shutdown.
 
-- [ ] Add a failing Main-boundary test which rejects imports of `repository-reader`, `@orquesta/core`, or `@orquesta/event-store` from `electron/main`.
+- [x] Add a failing Main-boundary test which rejects imports of `repository-reader`, `@orquesta/core`, or `@orquesta/event-store` from `electron/main`.
 
-- [ ] Run the focused tests and confirm they fail before moving behavior:
+- [x] Run the focused tests and confirm they fail before moving behavior:
 
   ```powershell
   npm run test:desktop-unit --prefix apps/orquesta-desktop -- repository-runtime.test.ts project-registry.test.ts repository-service.test.ts core-host.test.ts protocol.test.ts
   ```
 
-- [ ] Move the pure reader unchanged first and rerun its existing tests from Core. Then extract only app-owned registry persistence, recent-project selection, directory choice, and coordinator-thread ID into `project-registry.ts`.
+- [x] Move the pure reader unchanged first and rerun its existing tests from Core. Then extract only app-owned registry persistence, recent-project selection, directory choice, and coordinator-thread ID into `project-registry.ts`.
 
-- [ ] Implement `RepositoryRuntime` in Core. `RepositoryService` in Main chooses/selects a root and asks `CoreHost` to project it; it never opens product state files itself. `CoreHost` forwards snapshot result/change events to existing IPC subscribers.
+- [x] Implement `RepositoryRuntime` in Core. `RepositoryService` in Main chooses/selects a root and asks `CoreHost` to project it; it never opens product state files itself. `CoreHost` forwards snapshot result/change events to existing IPC subscribers.
 
-- [ ] Preserve lazy Core startup: no selected project keeps Core stopped; selecting a project starts Core. Runtime initialization remains lazy inside Core until the user sends, reads conversation, or opens runtime metadata.
+- [x] Preserve lazy Core startup: no selected project keeps Core stopped; selecting a project starts Core. Runtime initialization remains lazy inside Core until the user sends, reads conversation, or opens runtime metadata.
 
-- [ ] Run unit and Electron repository integration tests:
+- [x] Run unit and Electron repository integration tests:
 
   ```powershell
   npm run test:desktop-unit --prefix apps/orquesta-desktop
@@ -436,7 +436,7 @@
   Pop-Location
   ```
 
-- [ ] Commit:
+- [x] Commit:
 
   ```powershell
   git add apps/orquesta-desktop/electron/core apps/orquesta-desktop/electron/main

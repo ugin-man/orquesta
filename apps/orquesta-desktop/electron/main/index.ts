@@ -77,6 +77,7 @@ if (!hasSingleInstanceLock) {
     if (process.env.ORQUESTA_E2E !== '1') splashWindow = createSplashWindow();
     repositories = new RepositoryService({
       registryPath: path.join(app.getPath('userData'), 'repositories.json'),
+      coreHost,
       initialRootPath: process.env.ORQUESTA_E2E === '1' ? process.env.ORQUESTA_E2E_PROJECT_ROOT : null,
       chooseDirectory: async () => {
         const options = { title: 'Open Orquesta project', properties: ['openDirectory' as const] };

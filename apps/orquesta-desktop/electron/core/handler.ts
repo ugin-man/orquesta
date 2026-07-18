@@ -1,9 +1,9 @@
-import type { CoreEvent, RuntimeConversationRequest, RuntimeInfoRequest, RuntimeSendRequest } from './protocol';
+import type { CoreDispatchRequest, CoreEvent } from './protocol';
 import { isCoreRequest } from './protocol';
 
 export interface CoreRequestHandlers {
   send(event: CoreEvent): void;
-  dispatch(request: RuntimeSendRequest | RuntimeConversationRequest | RuntimeInfoRequest): void;
+  dispatch(request: CoreDispatchRequest): void;
   stop(): void;
 }
 
@@ -13,7 +13,7 @@ export function handleCoreRequest(message: unknown, handlers: CoreRequestHandler
     handlers.send({ type: 'core.pong', correlationId: message.correlationId });
     return true;
   }
-  if (message.type === 'runtime.send' || message.type === 'runtime.conversation' || message.type === 'runtime.info') {
+  if (message.type !== 'core.shutdown') {
     handlers.dispatch(message);
     return true;
   }
