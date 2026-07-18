@@ -111,8 +111,8 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
   left: 0;
   top: 0;
   transform-origin: 0 0;
-  will-change: transform;
 }
+.map-viewport.is-dragging .map-world { will-change: transform; }
 .map-geometry { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .map-boundary { fill: none; stroke: #aaa398; stroke-width: 1; stroke-dasharray: 2.2 4.6; opacity: .68; }
 .map-orchestrator-ring { fill: none; stroke: #b7b0a5; stroke-width: 1; stroke-dasharray: 2 4; opacity: .52; }
@@ -128,7 +128,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
   stroke-linecap: round;
   stroke-dasharray: 1 22;
   vector-effect: non-scaling-stroke;
-  animation: edge-flow 1.8s linear infinite;
+  animation: edge-flow 1.8s linear 3;
 }
 .map-user-node, .agent-node {
   position: absolute;
@@ -170,7 +170,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .agent-node__status { display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-top: 12px; }
 .agent-node__status em { color: #45423d; font-size: 10px; font-style: normal; }
 .agent-node--orchestrator .agent-node__status { display: none; }
-.agent-node--motion .agent-node__icon { animation: node-breathe 3.2s ease-in-out infinite; }
+.agent-node--motion .agent-node__icon { animation: node-breathe 3.2s ease-in-out 2; }
 .agent-node--compact { width: 118px; }
 .agent-node--compact .agent-node__icon { width: 45px; height: 45px; }
 .agent-node--compact .agent-node__copy strong { font-size: 9px; }
@@ -561,7 +561,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .overlay-list__item small, .overlay-list__item div > span, .overlay-list__item > span { color: var(--ink-muted); font-size: 8px; }
 
 @keyframes edge-flow { to { stroke-dashoffset: -23; } }
-@keyframes node-breathe { 0%, 100% { box-shadow: 0 6px 14px rgba(42,36,29,.10), inset 0 0 0 5px rgba(255,255,255,.34); } 50% { box-shadow: 0 8px 21px rgba(42,36,29,.16), 0 0 0 4px rgba(20,20,20,.035), inset 0 0 0 5px rgba(255,255,255,.34); } }
+@keyframes node-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
 @keyframes toast-in { from { opacity: 0; transform: translateY(7px); } }
 @keyframes overlay-in { from { opacity: 0; transform: translateY(6px); } }
 @keyframes fade-in { from { opacity: 0; } }
