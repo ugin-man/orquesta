@@ -1,0 +1,13 @@
+{
+  "acceptance_id": "phase2-admin-ui",
+  "checks": [
+    "candidate_limit_three",
+    "one_hard_gate_rejection",
+    "audition_passed_and_clean",
+    "dispatch_precedes_turn_start",
+    "artifact_and_report_hashed",
+    "journal_replay_equivalent",
+    "actual_model_truthful"
+  ],
+  "review_status": "ready_for_user_review"
+}

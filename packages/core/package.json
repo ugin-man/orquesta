@@ -1,0 +1,17 @@
+{
+  "name": "@orquesta/core",
+  "version": "0.4.0-preview.1",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": { "test": "node --test" },
+  "dependencies": {
+    "@orquesta/contracts": "*",
+    "@orquesta/event-store": "*",
+    "@orquesta/capability-compiler": "*",
+    "@orquesta/scouts": "*",
+    "@orquesta/audit": "*",
+    "@orquesta/capability-resolver": "*",
+    "@orquesta/context-compiler": "*",
+    "@orquesta/evidence-fabric": "*"
+  }
+}

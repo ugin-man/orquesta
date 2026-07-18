@@ -1,0 +1,64 @@
+{
+  "fixture_id": "local-reuse",
+  "proposed_mode": "reuse",
+  "proposed_provider_id": "repo-json-state-helper",
+  "highest_raw_score_provider_id": "repo-json-state-helper",
+  "highest_raw_score_eligible": true,
+  "rejection_gate": null,
+  "need_count": 2,
+  "candidate_evaluation_count": 4,
+  "top_candidate_count": 2,
+  "build_candidate_present": true,
+  "approval_status": "pending_user",
+  "context_pack_status": "draft",
+  "required_reading": ["orquesta/scripts/json-state.js"],
+  "scout_invoked": false,
+  "external_scout_invoked": false,
+  "local_inventory_recorded": true,
+  "scout_skip_reason": "local_inventory_satisfied_need",
+  "audition_status": "disabled_until_phase2",
+  "provider_evidence": [
+    {
+      "provider_id": "repo-json-state-helper",
+      "source_uri": "workspace:orquesta/scripts/json-state.js",
+      "source_type": "repository",
+      "provider_hash": "ecef661132f1109a7460115b14f8838479a63a66b55df3825129b4a3540ff0cc",
+      "evidence_refs": ["workspace:orquesta/scripts/json-state.js"]
+    }
+  ],
+  "evaluation_evidence": [
+    {
+      "candidate_id": "build:CN-92295f878411",
+      "need_id": "CN-92295f878411",
+      "axis_values": { "cost": 0, "evidence_strength": 0, "exit_option": 0, "integration_ease": 0, "license_fit": 0, "maintainability": 0, "security": 0, "task_fit": 0 },
+      "axis_contributions": { "cost": "0.00", "evidence_strength": "0.00", "exit_option": "0.00", "integration_ease": "0.00", "license_fit": "0.00", "maintainability": "0.00", "security": "0.00", "task_fit": "0.00" },
+      "weighted_sum": 0,
+      "candidate_score": 0,
+      "uncertainty_penalty": 100,
+      "hard_gates": { "security": "pass", "license": "pass", "runtime": "pass", "accessibility": "pass", "payment": "pass", "login": "pass", "secret": "pass", "external_send": "pass" },
+      "eligibility": "eligible",
+      "actual_model": null
+    },
+    {
+      "candidate_id": "repo-json-state-helper",
+      "need_id": "CN-92295f878411",
+      "axis_values": { "cost": 95, "evidence_strength": 88, "exit_option": 90, "integration_ease": 92, "license_fit": 90, "maintainability": 88, "security": 84, "task_fit": 94 },
+      "axis_contributions": { "cost": "4.75", "evidence_strength": "13.20", "exit_option": "4.50", "integration_ease": "13.80", "license_fit": "9.00", "maintainability": "8.80", "security": "8.40", "task_fit": "28.20" },
+      "weighted_sum": 90.65,
+      "candidate_score": 86.65,
+      "uncertainty_penalty": 4,
+      "hard_gates": { "security": "pass", "license": "pass", "runtime": "pass", "accessibility": "pass", "payment": "pass", "login": "pass", "secret": "pass", "external_send": "pass" },
+      "eligibility": "eligible",
+      "actual_model": null
+    }
+  ],
+  "resolution_summaries": [
+    { "resolution_id": "CR-94ecc0d9c690", "need_id": "CN-55828b9e14e5", "mode": "reuse", "selected_provider_id": "repo-json-state-helper", "rejected_provider_ids": [], "evidence_refs": ["workspace:orquesta/scripts/json-state.js"], "total_cost": 1, "approval_status": "pending_user" },
+    { "resolution_id": "CR-4b13e0e713e5", "need_id": "CN-92295f878411", "mode": "reuse", "selected_provider_id": "repo-json-state-helper", "rejected_provider_ids": [], "evidence_refs": ["workspace:orquesta/scripts/json-state.js"], "total_cost": 1, "approval_status": "pending_user" }
+  ],
+  "adaptation_evidence": [],
+  "build_maintenance_cost": null,
+  "uncertainty_by_mode": { "adapt": null, "build": 100 },
+  "cost_evidence": { "status": "estimated", "selected_candidate_estimate": 1, "resolution_total_cost": 1 },
+  "timeline_event_types": ["candidate.evaluated", "capability.graph.compiled", "capability.inventory.refreshed", "capability.need.declared", "capability.provider.discovered", "context.pack.created", "resolution.proposed", "task.intent.created"]
+}

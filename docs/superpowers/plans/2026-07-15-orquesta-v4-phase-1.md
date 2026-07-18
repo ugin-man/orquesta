@@ -20,7 +20,7 @@
 - `build`をすべてのNeedの比較候補に入れる。hard gate失敗候補はscoreが高くても選択可能にしない。
 - Context Compiler v1の入力は`TaskIntent + approved/proposed Resolution + agent contract`だけとする。`packages/intent-graph`を作らず、Intent Graphをimportしない。
 - Phase Reviewの`approved`は、ユーザーの明示的な決定だけで生成する。テスト合格や時間経過で自動承認しない。
-- HTTP bodyの`actor.type`をユーザー証拠として信用しない。Workbenchのsame-origin session、一回限りchallenge、対象revision、手入力confirmationをサーバー側で検証し、actorとattestationをサーバーが生成する。これはOS本人認証ではないため`local_interaction_unverified_identity`と表示する。
+- Phase 1 Workbenchは閲覧、local fixture読込、replayだけを扱い、Resolution決定やPhase承認を書き込まない。最終採用とPhase承認は、対象packetとjournal revisionを表示した上でCodexの統括タスクへ戻り、ユーザーの明示発言として記録する。Workbench内に独自session、challenge、CSRF token、identity proofを作らない。
 - EventStoreの破損・競合はfail-closedにする。自動切り捨て、自動lock奪取、競合revisionの自動選択をしない。
 - 各taskはRED、GREEN、対象check、commitの順で終える。別taskの未完成コードを同じcommitへ混ぜない。
 - browser smokeが実行できない場合、DOM unit testで代用して「browser確認済み」とは書かない。Phase 1 reviewをblockする。
@@ -32,10 +32,10 @@ apps/
   workbench/
     package.json
     server.js
-    src/{api.js,service.js,state-view.js,approval-session.js}
+    src/{api.js,service.js,state-view.js}
     public/{index.html,styles.css,app.js,view-model.js}
     scripts/{browser-smoke.js,review-capture.js}
-    test/{api.test.js,approval-session.test.js,view-model.test.js,static-assets.test.js}
+    test/{api.test.js,view-model.test.js,static-assets.test.js}
 packages/
   contracts/
     package.json
@@ -1183,9 +1183,9 @@ const COMMANDS_V1 = [
 test:
 
 - unknown commandは拒否
-- `resolution.approve`は注入された`verifyUserApproval()`がserver-minted approval evidenceを検証した場合だけ成功
-- `phase-review.decide`で`approved`を記録できるのは、review packet hashとcurrent revisionへbindされた未使用approval evidenceがある場合だけ
-- request payloadの`actor: { type: "user" }`は、trusted approval evidenceがなければ拒否
+- `resolution.approve`は注入された`verifyUserApproval()`がsession-bound challengeを一回だけ取り出し、current targetと完全一致を確認した場合だけ成功
+- `phase-review.decide`でuser decisionを記録できるのは、decision、review packet hash、current revisionへ発行時からbindされた未使用challengeがある場合だけ
+- request payloadの`actor: { type: "user" }`、session ID、attestationは、trusted adapter由来でなければ拒否
 - check failureが1件でもあれば`phase-review.request`不可
 - `phase-review.request`は存在するreview packet ref/hash、build ref、check結果を必須にし、temp testではpacket artifactとhashを先にseedする
 - product file変更、network、install、Codex dispatchに対応するcommandが存在しない
@@ -1232,7 +1232,7 @@ Reducerはevent payloadを受けるpure functionとし、filesystem、clock、ra
 
 `resolution.approve`は対象proposalがcurrent revisionであり、candidateがhard gate passであることを再確認する。`ask`と`abandon`もユーザー決定として記録できる。approval前はContext Packを`draft`としてpreviewできるが、specialist handoff用`ready`へしない。
 
-approval commandのactorはrequest bodyから受けない。command handlerへ注入した`verifyUserApproval(evidence, target)`が、target ID、candidate ID、current revision、未使用nonce、server signatureを検証した場合だけ、server-derived actorをeventへ書く。eventへsecretや生tokenを保存せず、challenge ID、token hash、source、identity assuranceを保存する。
+approval commandのactorはrequest bodyから受けない。command handlerへ注入したtrusted `verifyUserApproval(evidence, target)`がcurrent targetとredacted evidenceを検証した場合だけ、server-derived actorをeventへ書けるcontractを保持する。Task 9では注入adapterをtest fixtureだけで検証し、Phase 1 Workbenchからこのcommandを呼ばない。実際のPhase 1は`phase.review.requested`と`ready_for_user_review`で止まり、ユーザー判断はCodexの統括タスクで受け取る。
 
 Phase Review state transitionは次だけを許す。
 
@@ -1245,7 +1245,7 @@ changes_requested -> ready_for_user_review
 
 `approved`以降の再変更は新しいreview cycleを作り、過去eventを上書きしない。
 
-projectorはserver検証済みのredacted approval attestationをeventから再生するが、process-local HMACをreplay時に再検証しない。生HMAC tokenはjournalへ入らず、token hashと検証済みprovenanceだけがcanonical eventになる。
+projectorはtrusted adapterが入口で検証したredacted approval attestationだけをeventから再生する。`token_hash`は相関用fingerprintであり、OS identityや暗号学的な本人性の証明には使わない。Phase 1 Workbenchはapproval eventを生成しない。
 
 - [ ] **Step 5: Run one vertical temp-store integration**
 
@@ -1397,6 +1397,8 @@ git commit -m "test(v4): add Phase 1 capability fixtures"
 
 **Depends on:** Task 10
 
+**Codex safety boundary:** Task 11はlocal fixtureの閲覧、読込、replayだけを扱い、Resolution決定、Phase承認、command実行、install、web search、Codex dispatch、Auditionを持たない。OS権限、filesystem sandbox、network、credential、runtime approvalはCodex harnessへ任せ、Workbenchへ第二のsandbox、firewall、credential vault、command risk parser、独自identity layerを追加しない。POSTはfixtureをtemp/local stateへ再生するためだけに使う。最終採用とPhase承認はCodexの統括タスクでユーザーの明示発言として扱う。
+
 **Files:**
 
 - Modify: `apps/workbench/package.json`
@@ -1404,9 +1406,7 @@ git commit -m "test(v4): add Phase 1 capability fixtures"
 - Create: `apps/workbench/src/api.js`
 - Create: `apps/workbench/src/service.js`
 - Create: `apps/workbench/src/state-view.js`
-- Create: `apps/workbench/src/approval-session.js`
 - Create: `apps/workbench/test/api.test.js`
-- Create: `apps/workbench/test/approval-session.test.js`
 
 - [ ] **Step 1: Write RED feature flag and route tests**
 
@@ -1430,18 +1430,15 @@ route tests:
 - `POST /api/v4/fixtures/local-reuse/load`
 - `POST /api/v4/fixtures/adapt-vs-build/load`
 - `POST /api/v4/fixtures/blocked-candidate/load`
-- `POST /api/v4/approvals/challenge`
-- `POST /api/v4/resolutions/:id/decision`
 - `POST /api/v4/replay`
-- `POST /api/v4/phase-review/decision`
 - path traversal、未知fixture、1 MiB超body、invalid JSONは4xx
-- `/api/v4/install`、`/dispatch`、`/web-search`は404
+- `/api/v4/install`、`/dispatch`、`/web-search`、`/approvals`、`/decision`は404
 
 ```powershell
-npm test --workspace @orquesta/workbench -- --test-name-pattern="api|approval session"
+npm test --workspace @orquesta/workbench -- --test-name-pattern="api"
 ```
 
-Expected RED: `server.js`、API module、approval sessionが未作成のためmodule importでfailする。
+Expected RED: `server.js`とAPI moduleが未作成のためmodule importでfailする。
 
 - [ ] **Step 2: Bind only to loopback and a separate port range**
 
@@ -1470,49 +1467,18 @@ defaultは`127.0.0.1:4181`、競合時は既存`orquesta/scripts/dashboard-port-
     "no Codex dispatch",
     "Audition disabled until Phase 2",
     "actual model unavailable",
-    "approval attests to a local Workbench interaction, not OS identity"
+    "final adoption and phase approval happen in the Codex task"
   ]
 }
 ```
 
 raw file本文、SKILL本文、MCP command/env、secret、absolute home pathを返さない。
 
-- [ ] **Step 4: Mint user attestation server-side**
+- [ ] **Step 4: Keep adoption and Phase approval outside the Workbench API**
 
-`approval-session.js`はprocess起動時のrandom secret、HttpOnly/SameSite=Strict session cookie、same-origin/CSRF check、一回限りchallengeを使う。challengeはtarget ID、candidate ID、journal revision、10分以内のexpiryへbindする。bodyのactorは拒否し、成功時だけHMAC付きの短命approval evidenceをcoreへ渡す。
+Workbench stateは各Resolutionを`pending_user`、Context Packを`draft`のまま表示する。`/api/v4/approvals/*`、`/api/v4/resolutions/*/decision`、`/api/v4/phase-review/decision`はすべて404にし、HTTPからユーザー決定を書き込めないことをtestする。画面は最終採用とPhase承認をCodexの統括タスクで行うことを明記する。Coreのapproval commandは後続統合用contractとして残すが、Phase 1 Workbenchからは呼ばない。
 
-Nodeの`fetch`はcookie jarを持たないため、`approval-session.test.js`に`Set-Cookie`を保存し、次requestへ`Cookie`、`Origin`、CSRF tokenを明示して送るtest helperを置く。browserの暗黙挙動へ依存しない。
-
-Resolution decision bodyは次だけを受ける。
-
-```json
-{
-  "decision": "approved",
-  "candidate_id": "provider-or-build-id",
-  "challenge_id": "CHALLENGE-001",
-  "confirmation": "Approve resolution RES-001 at revision 12"
-}
-```
-
-serverは検証後に次を生成する。
-
-```js
-{
-  actor: { type: "user", id: "local-workbench-user" },
-  approval_evidence: {
-    source: "local_workbench_confirmation",
-    challenge_id: "CHALLENGE-001",
-    target_revision: 12,
-    token_hash: "64-lowercase-hex",
-    captured_at: "2026-07-15T00:00:00.000Z",
-    identity_assurance: "local_interaction_unverified_identity"
-  }
-}
-```
-
-Phase Review approvalは`confirmation: "Phase 1 approved"`の完全一致に加え、challengeを`phase-1`、current revision、review packet hashへbindする。reuse済みnonce、期限切れ、別candidate、別revision、actor入りbody、Origin不一致をAPI testで拒否する。testはtemp stateだけを使い、実projectのPhase Reviewをapproveしない。
-
-challenge stateは`active -> in_flight -> consumed`だけを許す。同じchallengeのparallel submitでは最初のrequestだけが`in_flight`を取る。EventStore commit成功後に`consumed`へし、commit失敗時はrevisionが変わっていない場合だけ`active`へ戻す。server restartでmemory challengeはすべて失効する。parallel double submit、commit failure retry、restart、expiryの各testでapproval eventが最大1件であることを確認する。
+POSTはexact Origin、`application/json`、1 MiB上限を要求する。これはlocalhostのfixture stateを別siteや誤requestから書き換えないための小さいHTTP境界であり、OS identity、Codex sandbox、credential保護を代替しない。
 
 - [ ] **Step 5: GREEN and commit**
 
@@ -1530,7 +1496,7 @@ node apps/workbench/server.js --feature v4 --port 0
 Expected output: `Orquesta V4 Workbench: http://127.0.0.1:<port>/`。
 
 ```powershell
-git add apps/workbench/package.json apps/workbench/server.js apps/workbench/src apps/workbench/test/api.test.js apps/workbench/test/approval-session.test.js
+git add apps/workbench/package.json apps/workbench/server.js apps/workbench/src apps/workbench/test/api.test.js
 git commit -m "feat(v4): expose the local Workbench API"
 ```
 
@@ -1606,17 +1572,17 @@ Orchestrator: proposal and evidence reconciliation
 User: adoption and phase approval
 Codex runtime evidence: unavailable
 Actual model: unknown / null
-Approval identity: local interaction only; OS user identity is not verified
+Approval path: return to the Codex orchestrator task
 ```
 
 dispatch、実行、Auditionが動いたように見える動詞やspinnerを使わない。
 
-- [ ] **Step 4: Implement accessible approval controls**
+- [ ] **Step 4: Implement an accessible read-only review flow**
 
-- hard gate fail候補のApprove buttonはdisabledで理由を関連付ける
-- user decisionはconfirmation dialog後にPOSTする
-- phase approvalはexact phrase入力を要求する
-- keyboardでfixture切替、candidate比較、timeline展開、approvalまで操作できる
+- hard gate fail候補は棄却理由を常時表示し、採用可能に見せない
+- Resolutionは`pending_user`、Context Packは`draft`と表示する
+- final adoptionとPhase approvalはCodexの統括タスクへ戻ると明記する
+- keyboardでfixture切替、candidate比較、timeline展開、replayまで操作できる
 - scoreを色だけで表現しない
 - 360pxと1440pxで横scrollなし。ただし比較表内の明示scroll containerは可
 
@@ -1636,7 +1602,7 @@ node scripts/v4/browser-preflight.js --require-driver
 
 ```text
 load local-reuse -> confirm reuse above build -> open Context Pack
-load adapt-vs-build -> inspect score breakdown -> approve adapt in temp store
+load adapt-vs-build -> inspect score breakdown -> confirm pending_user remains read-only
 load blocked-candidate -> confirm top raw score is disabled by license gate
 trigger replay -> confirm before/after projection hash equality
 collect console errors and page errors -> both zero
@@ -1757,7 +1723,7 @@ output/v4-phase1-review/recovery-report.json
 
 `phase-1-review.md`は5分手順、三fixtureの期待点、採用/棄却、既知gap、Phase 2で増える機能、停止条件の評価を自然な日本語で書く。未実装を将来計画と明記する。
 
-`approval_assurance`は`local_ui_attestation_not_os_identity`とし、same-origin、challenge、nonce、revision/hash bindingで防ぐ範囲と、OS user identityまでは証明しない範囲をknown gapへ明記する。
+`approval_assurance`は`explicit_user_decision_in_codex_orchestrator_task`とし、Workbenchが承認を書き込まず、packet path、artifact hash、journal revisionを表示してCodexの統括タスクへ戻る境界を明記する。Codex task上のユーザー発言をOS identity proofとは呼ばず、HMAC、独自sandbox、独自challengeを安全性の根拠にしない。
 
 `tested_node_versions`には実際にfull gateを通したversionだけを書く。Node 20実体で実行していない場合、`engines >=20`はAPI compatibility targetでありNode 20 runtime verificationは未完了、とknown gapへ残す。
 
@@ -1828,7 +1794,7 @@ orchestratorは次を別々に確認する。
 | V3 remains working | Unchanged `npm run check` |
 | Real browser has no console/page errors | Independent browser smoke |
 | No install/network/product change before approval | Scout no-network tests and command allowlist |
-| Phase approval is user-only | Core/API Phase Review tests |
+| Phase approval is user-only | Core Phase Review tests, review packet, Codex user checkpoint |
 
 ## Stop Conditions Before User Review
 

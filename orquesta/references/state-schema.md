@@ -117,6 +117,81 @@ Report review decisions:
 
 The dashboard endpoint `POST /api/reports/review` performs this file-backed synchronization. It does not message specialist threads by itself; the orchestrator still owns any follow-up handoff.
 
+## Phase 1.5 Execution Policy
+
+Tasks without `execution_policy_version` remain compatible with the legacy Delegation Gate. A Phase 1.5 task has one canonical Execution Plan and records implementation, review, correction, and QA as same-task `execution_cycles`. Its `canonical_state_root` is the only state root used for routing and acceptance; a product worktree snapshot is not evidence.
+
+```json
+{
+  "execution_policy_version": 1,
+  "canonical_state_root": "C:\\project",
+  "execution_plan": {
+    "execution_plan_id": "EP-06b6cf27e77f",
+    "task_intent_id": "TI-4c2eea2b9e6d",
+    "policy_version": 1,
+    "lane": "standard",
+    "risk_profile": {
+      "reversibility": "easy",
+      "scope": "multiple_boundaries",
+      "verification": "deterministic",
+      "uncertainty": "low",
+      "effects": ["workspace_write"],
+      "repeated_failures": 0,
+      "user_review": "default"
+    },
+    "reason_codes": ["multiple_boundaries"],
+    "routing": {
+      "routing_class": "specialist_required",
+      "handoff_required": true,
+      "specialist_report_required": true
+    },
+    "budget": {
+      "max_handoffs": 2,
+      "max_independent_reviews": 1,
+      "max_correction_batches": 1,
+      "max_reports": 1,
+      "max_auxiliary_tasks": 0
+    },
+    "review_policy": "independent_once",
+    "escalation_triggers": ["budget_exhausted", "critical_risk_discovered", "scope_drift", "semantic_finding_not_machine_verifiable"],
+    "revision": 1,
+    "supersedes_execution_plan_id": null
+  },
+  "execution_cycles": [
+    {"cycle_id": "implementation-1", "kind": "implementation", "owner_agent_id": "implementation-001", "status": "completed", "evidence_refs": ["commit:abc"]},
+    {"cycle_id": "review-1", "kind": "review", "owner_agent_id": "protocol-architect-001", "status": "accepted", "findings": {"critical": 0, "important": 0, "minor": 0}, "evidence_refs": [".orquesta/reports/T001-review.md"]}
+  ],
+  "completion_evidence": [
+    {"kind": "test", "ref": "npm run check:v4:phase15", "status": "passed"}
+  ],
+  "execution_metrics": {
+    "wall_time_ms": 1000,
+    "agent_turns": 2,
+    "handoffs": 1,
+    "independent_reviews": 1,
+    "correction_batches": 0,
+    "reports": 1,
+      "token_usage": {"coverage": "unknown", "known_total": null, "by_thread": []}
+  }
+}
+```
+
+`fast` is the normal `inline_verified` route with no handoff or review report. `standard` uses one owner and one independent review. `critical` allows up to two independent reviews and optional QA. Do not create `R`, `F`, or `RR` auxiliary task IDs; append the cycle to the parent task. `escalation_triggers` records the actual automatic triggers for the current lane: fast uses `acceptance_uncertain`, `new_risk`, `scope_drift`, and `test_failure`; standard uses `budget_exhausted`, `critical_risk_discovered`, `scope_drift`, and `semantic_finding_not_machine_verifiable`; critical has no automatic escalation trigger.
+
+For an accepted standard or critical task, `handoff_attempts` records the implementation and review `cycle_id` with its owner. The accepted review cycle's `evidence_refs` contains the same `specialist_report_path`. Critical acceptance uses the existing task-level `user_approval_evidence` object with `status: "approved"`, `source`, and `scope`.
+
+Token coverage is `unknown`, `partial`, or `complete`. Keep `known_total` null and `by_thread` empty when coverage is unknown. Each partial or complete `by_thread` entry has `thread_id`, finite `measured_tokens`, and `evidence_source`; their sum equals `known_total`. Complete coverage additionally lists the same unique thread IDs in `participating_thread_ids`.
+
+## Phase 2A and 2B evidence
+
+Phase 2 source acquisition writes bounded source records with connector ID, canonical source URI, source hash, fetched and expiry timestamps, facts, and explicit unknowns. A derived cache may reuse an unexpired, hash-valid result for the same query and source identity. The derived cache is disposable and is never acceptance evidence by itself.
+
+Audition Plan and Audition Result records bind the current TaskIntent, Resolution, candidate, version or revision, source hash, workspace and temporary roots, expected Codex profile, permitted effects, steps, evidence requirements, approval refs, and cleanup result. Install authorization is a separate event and does not mean an install ran.
+
+The Event Journal is canonical for runtime and acceptance evidence. Every runtime dispatch, runtime event, artifact, report, and acceptance record binds the current TaskIntent, Resolution, Context Pack, correlation ID, nonempty source evidence refs, its own SHA-256 hash, and the required predecessor. Artifact and report bodies remain out of journal state.
+
+Current projections retain at most 32 evidence records per correlation and 128 correlations. `runtime_by_correlation` retains the active turn independently so a long stream does not become inactive when its start event leaves the evidence window. A completed turn clears that active record. `actual_model` is null unless a separate model-observation evidence ref exists.
+
 ## Beta V3 Task Controls
 
 Beta V3 adds controls when a task is staged into the progressive gate. Legacy accepted tasks remain valid without backfilled fields unless they are reopened.

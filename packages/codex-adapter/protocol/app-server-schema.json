@@ -1,0 +1,97 @@
+{
+  "protocol_version": "app-server-v2",
+  "source": {
+    "cli_version": "0.144.5",
+    "generated_file": "codex_app_server_protocol.v2.schemas.json",
+    "canonicalization": "recursive-key-sort-json-v1",
+    "canonical_sha256": "f76d741a299026cf4a1c75847b41562078d54c6f0aab9faae8781831e73d97d4"
+  },
+  "client_requests": {
+    "initialize": {
+      "required": ["id", "method", "params"],
+      "params_required": ["clientInfo"],
+      "response_required": ["codexHome", "platformFamily", "platformOs", "userAgent"]
+    },
+    "thread/start": {
+      "required": ["id", "method", "params"],
+      "params_required": [],
+      "response_required": ["approvalPolicy", "approvalsReviewer", "cwd", "model", "modelProvider", "sandbox", "thread"]
+    },
+    "thread/resume": {
+      "required": ["id", "method", "params"],
+      "params_required": ["threadId"],
+      "response_required": ["approvalPolicy", "approvalsReviewer", "cwd", "model", "modelProvider", "sandbox", "thread"]
+    },
+    "turn/start": {
+      "required": ["id", "method", "params"],
+      "params_required": ["input", "threadId"],
+      "response_required": ["turn"]
+    },
+    "turn/steer": {
+      "required": ["id", "method", "params"],
+      "params_required": ["expectedTurnId", "input", "threadId"],
+      "response_required": ["turnId"]
+    },
+    "turn/interrupt": {
+      "required": ["id", "method", "params"],
+      "params_required": ["threadId", "turnId"],
+      "response_required": []
+    }
+  },
+  "client_notifications": {
+    "initialized": {
+      "required": ["method"]
+    }
+  },
+  "server_notifications": {
+    "thread/started": {
+      "required": ["method", "params"],
+      "params_required": ["thread"]
+    },
+    "turn/started": {
+      "required": ["method", "params"],
+      "params_required": ["threadId", "turn"]
+    },
+    "item/started": {
+      "required": ["method", "params"],
+      "params_required": ["item", "startedAtMs", "threadId", "turnId"]
+    },
+    "item/completed": {
+      "required": ["method", "params"],
+      "params_required": ["completedAtMs", "item", "threadId", "turnId"]
+    },
+    "turn/completed": {
+      "required": ["method", "params"],
+      "params_required": ["threadId", "turn"]
+    },
+    "model/rerouted": {
+      "required": ["method", "params"],
+      "params_required": ["fromModel", "reason", "threadId", "toModel", "turnId"]
+    },
+    "error": {
+      "required": ["method", "params"],
+      "params_required": ["error", "threadId", "turnId", "willRetry"]
+    }
+  },
+  "server_requests": {
+    "item/commandExecution/requestApproval": {
+      "required": ["id", "method", "params"],
+      "params_required": ["itemId", "startedAtMs", "threadId", "turnId"],
+      "response_field": "decision",
+      "response_options": [
+        "accept",
+        "acceptForSession",
+        "acceptWithExecpolicyAmendment",
+        "applyNetworkPolicyAmendment",
+        "decline",
+        "cancel"
+      ]
+    },
+    "item/fileChange/requestApproval": {
+      "required": ["id", "method", "params"],
+      "params_required": ["itemId", "startedAtMs", "threadId", "turnId"],
+      "response_field": "decision",
+      "response_options": ["accept", "acceptForSession", "decline", "cancel"]
+    }
+  }
+}

@@ -21,9 +21,35 @@ Coordinate long-lived specialist Codex threads without making the orchestrator a
    - Classify work as `bootstrap`, `persistent_role`, `bounded_task`, `review`, `standby`, or `direct_specialist_refinement`.
    - Reuse existing agents before creating new ones.
 
+## Execution Policy
+
+After Classification, create one deterministic Execution Plan for a Phase 1.5 task before Appointment. Use the enumerated risk profile to classify `fast`, `standard`, or `critical`; do not score free prose.
+
+- `fast` uses `inline_verified`, has no handoff or independent review, and needs deterministic completion evidence.
+- `standard` uses one owner handoff and one independent review. One correction batch is allowed on the same task.
+- `critical` uses one owner, up to two independent reviews, up to two correction batches, and optional QA.
+- Store implementation, review, correction, and QA as `execution_cycles` on the same task. `R`, `F`, and `RR` auxiliary task entries are invalid for a Phase 1.5 parent.
+- Escalate an insufficient lane on the same TaskIntent. Do not automatically downgrade a lane.
+
+Resolve the task state from `canonical_state_root`. An explicit `--state-root` wins over `ORQUESTA_STATE_ROOT`, which wins over the current directory. The resolved root must contain `.orquesta/state/tasks.json`.
+
+Legacy tasks without `execution_policy_version: 1` retain the legacy Delegation Gate below.
+
+## Phase 2A and 2B
+
+Phase 2A and 2B reuse the same TaskIntent, Execution Plan, same-task cycles, and canonical state root. Acquisition runs only when local inventory does not already satisfy the Capability Need. It uses fixed request budgets, fixed candidate limits, source expiry, and immutable source hashes. Its cache is derived state.
+
+Audit binds each candidate to its current source record and applies license, security, compatibility, accessibility, and other hard gates before ranking. Audition then binds the chosen candidate to the current Resolution, source hash, workspace, expected Codex profile, permitted effects, evidence list, and cleanup plan. The Codex harness supplies the runtime boundary; Orquesta does not create another sandbox.
+
+Audition approval is not install authorization. Any install request must name the exact candidate, version, source hash, dependency preview, lockfile preview, target workspace, effects, Resolution revision, and review packet. A later change invalidates the authorization. Core records authorization but does not execute an install.
+
+Runtime routing uses App Server, then the TypeScript SDK, then repository-only fallback. Keep dispatch acceptance separate from turn start, and keep progress, artifact, report, and acceptance evidence separate in the Event Journal. Repository-only fallback cannot satisfy a live-turn check. `actual_model` remains null without independent runtime observation evidence.
+
+The Workbench stays review-only. Application or desktop productization is outside Phase 2A and 2B and requires a separate user decision.
+
 ## Delegation Gate
 
-Run this gate after Classification and before Appointment or implementation. The gate is mandatory for specialist-domain work and must be recorded in `.orquesta/state/tasks.json` so it survives context compaction.
+Run this gate after Execution Policy and before Appointment or implementation. The gate is recorded in `.orquesta/state/tasks.json` so it survives context compaction.
 
 Use `routing_class`:
 
@@ -32,7 +58,7 @@ Use `routing_class`:
 - `direct_exception`: specialist-domain work the orchestrator is doing directly for a narrow approved reason.
 - `blocked`: work that cannot be routed safely yet.
 
-For `specialist_required` tasks:
+For legacy `specialist_required` tasks:
 
 1. Set `handoff_required: true`.
 2. Set `specialist_report_required: true` unless the task is explicitly report-free and low risk.
@@ -41,14 +67,16 @@ For `specialist_required` tasks:
 5. Do not accept the task until `specialist_report_path`, `report`, or a specialist report artifact is present and reviewed.
 6. Set `routing_gate_status: "passed"` only after the handoff evidence exists.
 
-For `direct_exception` tasks:
+For legacy `direct_exception` tasks:
 
 1. Record `direct_exception_reason`.
 2. Set `routing_gate_status: "bypassed_with_reason"`.
 3. Record `bypass_review_owner` when a later specialist review is useful.
 4. Keep the scope to orchestration bookkeeping, tiny state or report updates, emergency unblockers, or explicit user instruction.
 
-If a specialist exists and the task touches that lane, the short rule is: no handoff, no implementation; no report, no acceptance. Direct exceptions must be visible in task state rather than remembered from chat.
+For Phase 1.5 tasks, validate the Execution Plan contract and canonical ID, lane routing flags, exact budget, completed `execution_cycles`, completion evidence, and honest token coverage. `unknown` token coverage has `known_total: null`; `partial` and `complete` coverage retain unique `thread_id`, measured token values, and an evidence source. `complete` also records the full participating thread set. Accepted standard and critical tasks require a completed implementation cycle, an independent accepted review whose handoff and report reference that review cycle, and Critical and Important counts at zero. Accepted critical tasks also retain the existing approved `user_approval_evidence` record.
+
+For legacy `specialist_required` work, the short rule is: no handoff, no implementation; no report, no acceptance. Phase 1.5 fast work is instead `inline_verified` with no handoff or report; standard and critical use the lane-specific review rules above. Direct exceptions must be visible in task state rather than remembered from chat.
 
 ## Bootstrap Loop
 

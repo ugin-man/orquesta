@@ -16,16 +16,34 @@ Always preserve this split:
 - Specialist thread: domain work, required reading, direct user refinement, report back.
 - User: intent, taste, approval, final priority.
 
-## Delegation Gate
+## Execution Policy and Delegation Gate
 
-Specialist-domain work must pass a file-backed delegation gate before implementation or acceptance. If a task touches an appointed specialist lane such as implementation, dashboard UX, docs, protocol, bootstrap QA, vision interpretation, failure triage, or user liaison work, the orchestrator must do one of two things:
+Classify a Phase 1.5 task once into `fast`, `standard`, or `critical` before implementation. Store the deterministic Execution Plan in canonical `.orquesta/state/tasks.json`, then run the Delegation Gate against that task's `canonical_state_root`, not a worktree snapshot.
 
-1. Send a handoff to the appropriate specialist, record the task in `.orquesta/state/tasks.json` with `routing_class: "specialist_required"`, `handoff_required: true`, `handoff_sent_at`, `specialist_report_required: true`, and wait for `specialist_report_path` or an equivalent report artifact before acceptance.
-2. Record an explicit direct-work exception in `.orquesta/state/tasks.json` with `routing_class: "direct_exception"`, `direct_exception_reason`, `routing_gate_status: "bypassed_with_reason"`, and `bypass_review_owner`.
+- `fast` uses `inline_verified`: one owner or orchestrator, deterministic checks, no handoff and no review report. It is a normal Phase 1.5 route, not a legacy direct exception.
+- `standard` uses one implementation owner and one independent review.
+- `critical` uses one owner, up to two independent reviews, and optional QA when the semantic risk requires it.
+- Review, correction, and QA are `execution_cycles` on the same task. Do not create `R`, `F`, or `RR` auxiliary task entries for a Phase 1.5 task.
+- If the lane budget or meaning-level verification is no longer sufficient, escalate the same Execution Plan. Do not silently downgrade it.
 
-Direct-work exceptions are narrow: orchestration bookkeeping, tiny state or report updates, emergency unblockers, or explicit user instruction. They are not a way for the orchestrator to absorb specialist implementation quietly.
+Tasks without `execution_policy_version: 1` remain on the legacy gate. A legacy `direct_exception` still requires `direct_exception_reason` and is only for a genuine emergency or narrow orchestration work; it is not the normal fast route.
 
-This rule survives context compaction by relying on `.orquesta/state/tasks.json`, not chat memory. If the state lacks a handoff, report, or direct exception for specialist-domain work, the work is not ready for acceptance.
+This rule survives context compaction by relying on canonical task state, not chat memory. Record the completed cycles, completion evidence, and token coverage as `unknown`, `partial`, or `complete`; do not claim a total when it is not measured.
+
+## Phase 2A and 2B
+
+Phase 2A and 2B extend the Phase 1.5 task policy with bounded acquisition, source-bound Audit, Codex-harness Audition, Codex-native execution, and one correlated acceptance chain.
+
+The Codex harness is the runtime safety boundary. Orquesta does not add a second sandbox or a second command-approval system. It verifies that the requested Codex profile matches the approved roots and effects, and it stops when that evidence is missing.
+
+- Acquisition queries official docs, registries, GitHub, and approved UI catalogs within fixed request and candidate budgets. Cache files are derived and never replace source evidence.
+- Audit rejects hard-gate failures before scoring. Audition uses an exact candidate, Resolution, source hash, Codex profile, and cleanup plan.
+- install authorization is separate from Audition and binds the candidate, version, source hash, dependency and lockfile previews, workspace, effects, and current review packet. Core has no install-execution command.
+- Runtime order is App Server first, SDK fallback second, and repository-only last. Repository-only can prepare a handoff but cannot satisfy a live-turn acceptance check.
+- Keep dispatch acceptance, turn start, progress, artifact, report, and acceptance as separate evidence. A dispatch response is not proof that a turn started.
+- Keep requested, applied, and observed model evidence separate. `actual_model` stays null unless a runtime observation provides its evidence reference.
+
+The current Workbench remains a Phase 1 review surface. Phase 2A and 2B add no desktop, web, or application shell; productization requires a separate user decision.
 
 ## Startup
 

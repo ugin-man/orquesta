@@ -1,0 +1,13 @@
+{
+  "fixture_id": "blocked-candidate",
+  "task_intent": {
+    "rawRequestRef": "fixture:blocked-candidate",
+    "desiredOutcome": "Build a UI catalog review for the local admin workbench.",
+    "acceptanceCriteria": ["Verify browser evidence while keeping unknown-license evidence explicit."],
+    "constraints": [],
+    "risk": { "impact": "medium", "reversible": true },
+    "authorityBoundary": { "agent_may": ["propose"], "user_only": ["approve"] },
+    "assumptions": [],
+    "status": "compiled"
+  }
+}

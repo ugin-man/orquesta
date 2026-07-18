@@ -1,0 +1,12 @@
+{
+  "$id": "capability-provider",
+  "type": "object",
+  "required": ["provider_id", "provider_type", "source_uri", "capabilities", "trust_tier", "availability", "version", "last_verified_at", "evidence_refs"],
+  "properties": {
+    "provider_id": { "type": "string", "pattern": ".+" }, "provider_type": { "type": "string", "pattern": ".+" }, "source_uri": { "type": "string", "pattern": ".+" },
+    "capabilities": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": ".+" } },
+    "trust_tier": { "enum": ["unverified", "local", "verified", "trusted"] }, "availability": { "enum": ["available", "unavailable", "blocked", "unknown"] },
+    "version": { "type": "string", "pattern": ".+" }, "last_verified_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" }, "evidence_refs": { "type": "array", "items": { "type": "string", "pattern": ".+" } }
+  },
+  "additionalProperties": false
+}

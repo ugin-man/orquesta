@@ -1,0 +1,6 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": "{\"items\":[{\"id\":\"openai-codex\",\"source_uri\":\"https://platform.openai.com/docs/codex?utm=fixture\",\"version\":\"0.144.5\",\"license\":\"MIT\"}]}",
+  "captured_at": "2026-07-16T00:00:00.000Z"
+}

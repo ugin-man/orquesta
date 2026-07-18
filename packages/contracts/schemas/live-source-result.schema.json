@@ -1,0 +1,64 @@
+{
+  "$id": "live-source-result",
+  "type": "object",
+  "required": ["connector_id", "trust_tier", "fetched_at", "expires_at", "status", "candidates", "source_evidence", "cache_status", "redaction_status"],
+  "properties": {
+    "connector_id": { "enum": ["official_docs", "registry", "github", "ui_catalog"] },
+    "trust_tier": { "enum": ["local", "official", "curated", "community", "unknown"] },
+    "fetched_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+    "expires_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+    "status": { "enum": ["success", "empty", "failed"] },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["candidate_id", "source_ref", "source_hash", "version", "revision", "trust_tier", "freshness"],
+        "properties": {
+          "candidate_id": { "type": "string", "pattern": ".+" },
+          "source_ref": { "type": "string", "pattern": ".+" },
+          "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "version": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "const": null }] },
+          "revision": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "const": null }] },
+          "trust_tier": { "enum": ["local", "official", "curated", "community", "unknown"] },
+          "freshness": { "enum": ["fresh", "stale"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "source_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_id", "candidate_id", "source_ref", "source_hash", "freshness", "authoritative_fields", "facts", "unknowns"],
+        "properties": {
+          "source_id": { "type": "string", "pattern": ".+" },
+          "candidate_id": { "type": "string", "pattern": ".+" },
+          "source_ref": { "type": "string", "pattern": ".+" },
+          "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "freshness": { "enum": ["fresh", "stale"] },
+          "authoritative_fields": {
+            "type": "array",
+            "items": { "enum": ["license", "maintenance", "security", "compatibility", "accessibility", "cost", "trust", "freshness"] }
+          },
+          "facts": {
+            "type": "object",
+            "properties": {
+              "license": {}, "maintenance": {}, "security": {}, "compatibility": {},
+              "accessibility": {}, "cost": { "type": "number", "minimum": 0 },
+              "trust": {}, "freshness": {}
+            },
+            "additionalProperties": false
+          },
+          "unknowns": {
+            "type": "array",
+            "items": { "enum": ["license", "maintenance", "security", "compatibility", "accessibility", "cost", "trust", "freshness"] }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "cache_status": { "enum": ["miss", "fresh", "stale"] },
+    "redaction_status": { "enum": ["redacted", "not_required"] }
+  },
+  "additionalProperties": false
+}

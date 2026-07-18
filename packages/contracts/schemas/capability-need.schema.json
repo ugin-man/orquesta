@@ -1,0 +1,12 @@
+{
+  "$id": "capability-need",
+  "type": "object",
+  "required": ["need_id", "description", "kind", "required_level", "hard_constraints", "dependencies", "verification_method", "status", "confidence"],
+  "properties": {
+    "need_id": { "type": "string", "pattern": ".+" }, "description": { "type": "string", "pattern": ".+" },
+    "kind": { "enum": ["code", "tool", "knowledge", "data", "permission", "runtime", "service", "asset", "human_judgment", "evidence"] },
+    "required_level": { "type": "string", "pattern": ".+" }, "hard_constraints": { "type": "array" }, "dependencies": { "type": "array" },
+    "verification_method": { "type": "string", "pattern": ".+" }, "status": { "enum": ["open", "satisfied", "blocked", "superseded"] }, "confidence": { "type": "number", "minimum": 0, "maximum": 100 }
+  },
+  "additionalProperties": false
+}

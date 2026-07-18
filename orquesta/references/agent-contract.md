@@ -64,6 +64,17 @@ For staged-in `specialist_required` and medium/high-risk work, include a valid `
 
 Keep `recommended_model`, `requested_model`, `applied_model`, and `actual_model` separate. A requested override is not an applied model, and no actual-model value may be claimed without independent evidence. In repository-only mode, record `adapter: "repository_only"`, `applied_model: null`, and `actual_model: null` unless later evidence proves otherwise.
 
+## Phase 2 runtime contract
+
+For Phase 2 work, a specialist receives only the current TaskIntent, Resolution, Context Pack, source evidence, permitted effects, and acceptance checks needed for that role. It must not load unrelated specialist context.
+
+- Acquisition and Audit return source refs, hashes, freshness, facts, and explicit unknowns.
+- Audition runs through the approved Codex profile and returns preflight, step, side-effect, and cleanup evidence. It does not imply install authorization.
+- The App Server adapter is primary when its pinned bundled runtime is available. The SDK is the live fallback. repository-only mode can draft a handoff but cannot claim a started or completed turn.
+- A runtime report distinguishes dispatch acceptance, turn start, progress, completion, artifact, and acceptance. It never treats dispatch as started work.
+- `actual_model` remains null unless a model-observation event or an approved observation hook supplies the evidence reference. Requested or applied configuration is not enough.
+- Large response bodies stay outside the Event Journal. Store refs, hashes, correlation IDs, and bounded current projections instead.
+
 When a task needs user capability evidence, state the exact evidence gap and stop the affected verification. Ask `user-liaison` for a narrow procedure only when visual review, tacit judgment, credentialed judgment, or direct user experience is the stronger source. Do not use this route as a generic request for the user to do specialist work.
 
 ## Done Signal

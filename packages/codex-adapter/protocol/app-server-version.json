@@ -1,0 +1,15 @@
+{
+  "cli_version": "0.144.5",
+  "sdk_package": "@openai/codex-sdk",
+  "sdk_version": "0.144.5",
+  "codex_package": "@openai/codex",
+  "codex_version": "0.144.5",
+  "runtime_package": "@openai/codex-win32-x64",
+  "runtime_package_version": "0.144.5-win32-x64",
+  "target_triple": "x86_64-pc-windows-msvc",
+  "executable_sha256": "efdb3540ef74b9909408c8d38da79483454797b36f471e3e004fc2bf2b70e22a",
+  "schema_source": "codex_app_server_protocol.v2.schemas.json",
+  "schema_source_canonicalization": "recursive-key-sort-json-v1",
+  "schema_source_canonical_sha256": "f76d741a299026cf4a1c75847b41562078d54c6f0aab9faae8781831e73d97d4",
+  "probe_shell": false
+}

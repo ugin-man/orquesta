@@ -1,0 +1,31 @@
+{
+  "resolution_revision": 1,
+  "expected_profile": {
+    "profile_id": "phase2-audition",
+    "effects": [
+      "workspace_write"
+    ]
+  },
+  "permitted_effects": [
+    "workspace_write"
+  ],
+  "steps": [
+    {
+      "step_id": "inspect",
+      "action": "inspect the already available candidate"
+    },
+    {
+      "step_id": "exercise",
+      "action": "exercise the candidate without installing it"
+    }
+  ],
+  "expected_evidence": [
+    "source-bound-audit",
+    "codex-runtime-profile",
+    "cleanup:clean"
+  ],
+  "cleanup_max_paths": 8,
+  "approval_refs": [
+    "user-goal:phase2-through-2B"
+  ]
+}

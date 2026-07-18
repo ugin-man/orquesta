@@ -1,0 +1,14 @@
+{
+  "name": "@orquesta/workbench",
+  "version": "0.4.0-preview.1",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test",
+    "start": "node server.js --feature v4"
+  },
+  "dependencies": {
+    "@orquesta/core": "*",
+    "@orquesta/event-store": "*"
+  }
+}

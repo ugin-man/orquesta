@@ -1,0 +1,6 @@
+{
+  "status": 200,
+  "headers": {},
+  "body": "{\"items\":[{\"id\":\"codex-repo\",\"source_uri\":\"https://github.com/openai/codex\",\"revision\":\"abc123\",\"license\":\"Apache-2.0\"}]}",
+  "captured_at": "2026-07-16T00:00:00.000Z"
+}

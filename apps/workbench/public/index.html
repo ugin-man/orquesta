@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orquesta V4 Workbench</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">PHASE 1 · LOCAL EVIDENCE</p>
+      <h1>Orquesta V4 Workbench</h1>
+    </div>
+    <div class="journal-status" id="journal-status" data-testid="journal-status" aria-live="polite">0 batches · 0 events</div>
+  </header>
+
+  <main>
+    <nav class="fixture-tabs" aria-label="検証シナリオ" id="fixture-tabs" data-testid="fixture-tabs"></nav>
+
+    <section class="empty" id="empty-state" data-testid="empty-state">
+      <p>既存資産を再利用するか、適応するか、作るか。</p>
+      <h2>シナリオを選ぶと、判断までの証拠を6段階で再生します。</h2>
+      <p class="muted">外部探索、install、Codex dispatch、Audition、承認書込みは行いません。</p>
+    </section>
+
+    <section class="workspace" id="workspace" data-testid="workspace" hidden>
+      <header class="decision-band">
+        <div>
+          <p class="eyebrow" id="outcome-eyebrow"></p>
+          <h2 id="outcome-title"></h2>
+          <p id="outcome-summary"></p>
+        </div>
+        <div class="mode" id="decision-mode" data-testid="decision-mode"></div>
+      </header>
+
+      <ol class="review-flow" aria-label="Phase 1 review flow">
+        <li class="step panel" data-testid="step-task-intent">
+          <div class="step-number">01</div>
+          <div class="step-body">
+            <div class="panel-heading"><div><p class="eyebrow">TASK INTENT</p><h3>何を判断するか</h3></div><span id="phase-id"></span></div>
+            <p id="task-intent-summary"></p>
+          </div>
+        </li>
+
+        <li class="step panel" data-testid="step-capability-graph">
+          <div class="step-number">02</div>
+          <div class="step-body">
+            <div class="panel-heading"><div><p class="eyebrow">CAPABILITY GRAPH</p><h3>必要能力</h3></div><span id="need-count"></span></div>
+            <div class="need-grid" id="need-list"></div>
+          </div>
+        </li>
+
+        <li class="step panel" data-testid="step-candidates">
+          <div class="step-number">03</div>
+          <div class="step-body">
+            <div class="panel-heading"><div><p class="eyebrow">CANDIDATE COMPARISON</p><h3>候補、8軸、hard gate</h3></div><span>scoreだけで決めない</span></div>
+            <div class="candidate-grid" id="candidate-grid" data-testid="candidate-comparison"></div>
+          </div>
+        </li>
+
+        <li class="step panel" data-testid="step-resolution">
+          <div class="step-number">04</div>
+          <div class="step-body">
+            <div class="panel-heading"><div><p class="eyebrow">RESOLUTION</p><h3>提案と棄却理由</h3></div><span class="pending" id="approval-status"></span></div>
+            <div class="resolution-grid">
+              <div><span>PROPOSED</span><strong id="decision-provider"></strong></div>
+              <div><span>COST EVIDENCE</span><strong id="decision-cost"></strong></div>
+              <div><span>RAW LEADER</span><strong id="raw-leader"></strong></div>
+              <div><span>REJECTION GATE</span><strong id="rejection-gate"></strong></div>
+            </div>
+            <p class="codex-checkpoint">この画面は提案を書き換えません。最終採用とPhase承認は、レビューpacketを見たあとCodexの統括タスクで行います。</p>
+          </div>
+        </li>
+
+        <li class="step panel" data-testid="step-context-pack">
+          <div class="step-number">05</div>
+          <div class="step-body">
+            <div class="panel-heading"><div><p class="eyebrow">CONTEXT PACK</p><h3>専門家へ渡す最小文脈</h3></div><span id="context-status"></span></div>
+            <div class="context-grid">
+              <div><span>REQUIRED READING</span><ul id="required-reading"></ul></div>
+              <div><span>INTENT GRAPH</span><strong>disabled in Phase 1</strong></div>
+              <div><span>ACTUAL MODEL</span><strong>unavailable</strong></div>
+              <div><span>AUDITION</span><strong id="audition-status"></strong></div>
+            </div>
+          </div>
+        </li>
+
+        <li class="step panel" data-testid="step-timeline">
+          <div class="step-number">06</div>
+          <div class="step-body">
+            <div class="panel-heading">
+              <div><p class="eyebrow">EVENT TIMELINE</p><h3>証拠をreplayする</h3></div>
+              <button id="replay-button" data-testid="replay-button" type="button">再生し直す</button>
+            </div>
+            <div class="timeline" id="timeline"></div>
+            <div class="evidence-grid">
+              <div><h4>Provider evidence</h4><ul id="provider-evidence"></ul></div>
+              <div><h4>Phase 1 limitations</h4><ul id="limitations"></ul></div>
+            </div>
+          </div>
+        </li>
+      </ol>
+
+      <p class="boundary">READ-ONLY REVIEW · LOCAL FIXTURES · NO INSTALL · NO EXTERNAL SEARCH · NO CODEX DISPATCH · NO AUDITION</p>
+    </section>
+
+    <p class="error-banner" id="error-banner" role="alert" hidden></p>
+  </main>
+
+  <script src="/view-model.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

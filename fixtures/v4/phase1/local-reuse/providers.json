@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "provider_id": "repo-json-state-helper",
+      "provider_type": "repository_file",
+      "source_uri": "workspace:orquesta/scripts/json-state.js",
+      "source_type": "repository",
+      "capabilities": ["utf8_json_state"],
+      "trust_tier": "local",
+      "availability": "available",
+      "version": "repository",
+      "last_verified_at": "2026-07-16T00:00:00.000Z",
+      "evidence_refs": ["workspace:orquesta/scripts/json-state.js"]
+    }
+  ],
+  "conflicts": [],
+  "candidates": [
+    {
+      "provider_id": "repo-json-state-helper",
+      "provider_type": "repository_file",
+      "source_uri": "workspace:orquesta/scripts/json-state.js",
+      "source_type": "repository",
+      "resolution_mode": "reuse",
+      "static_metadata": { "license": "MIT", "runtime": "compatible", "security": "reviewed" },
+      "axes": {
+        "task_fit": { "value": 94, "reason": "The existing helper handles JSON state safely." },
+        "integration_ease": { "value": 92, "reason": "It is already in the repository." },
+        "evidence_strength": { "value": 88, "reason": "The source is directly inspectable." },
+        "maintainability": { "value": 88, "reason": "It is a shared helper." },
+        "security": { "value": 84, "reason": "The fixture records reviewed local metadata." },
+        "license_fit": { "value": 90, "reason": "The local repository license metadata is recorded." },
+        "exit_option": { "value": 90, "reason": "The helper can be replaced independently." },
+        "cost": { "value": 95, "reason": "estimated_total_cost=1" }
+      },
+      "uncertainty_penalty": 4,
+      "unknowns": [],
+      "estimated_total_cost": 1
+    }
+  ],
+  "audit_facts": []
+}

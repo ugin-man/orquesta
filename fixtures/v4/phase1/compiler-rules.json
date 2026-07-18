@@ -1,0 +1,25 @@
+{
+  "catalog_version": 1,
+  "rules": [
+    {
+      "rule_id": "ui-browser-evidence-v1",
+      "match": {
+        "any_terms": ["ui", "画面", "workbench"],
+        "acceptance_terms": ["browser", "ブラウザ"]
+      },
+      "emits": [
+        {
+          "kind": "asset",
+          "description": "再利用可能なUI構成要素",
+          "verification_method": "候補のsource pathを確認する"
+        },
+        {
+          "kind": "evidence",
+          "description": "実ブラウザ操作証拠",
+          "verification_method": "console errorなしでfixture完走を記録する",
+          "depends_on_emit": [0]
+        }
+      ]
+    }
+  ]
+}

@@ -29,12 +29,14 @@
 **Files:**
 
 - Create: `scripts/v4/desktop-workspace-boundary.test.js`
+- Modify: `scripts/v4/phase-boundary-check.js`
+- Modify: `scripts/v4/phase-boundary-check.test.js`
 - Modify: `package.json`
 - Modify: `package-lock.json`
 - Modify: `docs/superpowers/specs/2026-07-15-orquesta-v4-design.md`
 - Verify: `docs/superpowers/specs/2026-07-18-orquesta-v4-desktop-integration-design.md`
 
-- [ ] Record the pre-merge commits and merge V4 without squashing:
+- [x] Record the pre-merge commits and merge V4 without squashing:
 
   ```powershell
   git rev-parse HEAD
@@ -44,24 +46,26 @@
 
   Expected conflict: only `docs/superpowers/specs/2026-07-15-orquesta-v4-design.md`.
 
-- [ ] Resolve the V4 design conflict by retaining the Phase 2-refined V4 text, including its original Desktop exclusion, then add one short note that the separately approved Desktop phase is governed by `docs/superpowers/specs/2026-07-18-orquesta-v4-desktop-integration-design.md`. Do not rewrite Phase 2A/2B as if Desktop had already been included.
+- [x] Resolve the V4 design conflict by retaining the Phase 2-refined V4 text, including its original Desktop exclusion, then add one short note that the separately approved Desktop phase is governed by `docs/superpowers/specs/2026-07-18-orquesta-v4-desktop-integration-design.md`. Do not rewrite Phase 2A/2B as if Desktop had already been included.
 
-- [ ] Add the failing workspace-boundary test. It must parse root `package.json` and assert the exact workspace list:
+- [x] Add the failing workspace-boundary test. It must parse root `package.json` and assert the exact workspace list:
 
   ```js
   assert.deepEqual(packageJson.workspaces, ["apps/workbench", "packages/*"]);
   assert.equal(fs.existsSync(path.join(root, "apps/orquesta-desktop/package-lock.json")), true);
   ```
 
-- [ ] Run the test and confirm it fails because V4 currently uses `apps/*`:
+- [x] Run the test and confirm it fails because V4 currently uses `apps/*`:
 
   ```powershell
   node --test scripts/v4/desktop-workspace-boundary.test.js
   ```
 
-- [ ] Change root `workspaces` to exactly `apps/workbench` and `packages/*`, run `npm install` at the repository root, and keep `apps/orquesta-desktop/package-lock.json` untouched in this task.
+- [x] Change root `workspaces` to exactly `apps/workbench` and `packages/*`, run `npm install` at the repository root, and keep `apps/orquesta-desktop/package-lock.json` untouched in this task.
 
-- [ ] Run the focused and merged baselines:
+- [x] Update the existing Phase 1 boundary checker and its test to accept the exact workspace list above while still rejecting `apps/desktop`, Phase 3 packages, and plugin surfaces. Assert that `apps/orquesta-desktop` exists but has no root lockfile workspace link.
+
+- [x] Run the focused and merged baselines:
 
   ```powershell
   node --test scripts/v4/desktop-workspace-boundary.test.js
@@ -71,7 +75,7 @@
   npm test --prefix apps/orquesta-desktop
   ```
 
-- [ ] Commit:
+- [x] Commit:
 
   ```powershell
   git add package.json package-lock.json scripts/v4/desktop-workspace-boundary.test.js docs/superpowers/specs/2026-07-15-orquesta-v4-design.md

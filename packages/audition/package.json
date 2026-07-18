@@ -1,0 +1,12 @@
+{
+  "name": "@orquesta/audition",
+  "version": "0.4.0-preview.2",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@orquesta/contracts": "*"
+  }
+}

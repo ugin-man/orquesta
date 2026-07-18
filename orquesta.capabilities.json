@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "provider_id": "repo-json-state-helper",
+      "provider_type": "repository_code",
+      "source_ref": "orquesta/scripts/json-state.js",
+      "capabilities": [
+        "atomic JSON write",
+        "UTF-8 state persistence"
+      ],
+      "trust_tier": "local",
+      "license": "MIT"
+    }
+  ]
+}
