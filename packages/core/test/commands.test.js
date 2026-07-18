@@ -28,6 +28,76 @@ function copy(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function liveSourceQuery() {
+  return {
+    need_id: "NEED-live-source",
+    query_terms: ["codex", "desktop"],
+    allowed_connector_ids: ["official_docs", "registry"],
+    request_budget: { max_requests_per_need: 8, max_requests_per_connector: 2 },
+    candidate_limit: 3,
+    requested_at: "2026-07-16T07:30:00.000Z",
+  };
+}
+
+function liveSourceResult() {
+  return {
+    connector_id: "official_docs",
+    trust_tier: "official",
+    fetched_at: "2026-07-16T07:30:00.000Z",
+    expires_at: "2026-07-16T08:30:00.000Z",
+    status: "success",
+    candidates: [{
+      candidate_id: "candidate-a",
+      source_ref: "https://example.test/a",
+      source_hash: "a".repeat(64),
+      version: "1.0.0",
+      revision: null,
+      trust_tier: "official",
+      freshness: "fresh",
+    }],
+    source_evidence: [{
+      source_id: "source:official_docs:candidate-a",
+      candidate_id: "candidate-a",
+      source_ref: "https://example.test/a",
+      source_hash: "a".repeat(64),
+      freshness: "fresh",
+      authoritative_fields: ["freshness", "license", "trust"],
+      facts: { freshness: "fresh", license: "MIT", trust: "official" },
+      unknowns: ["accessibility", "compatibility", "cost", "maintenance", "security"],
+    }],
+    cache_status: "fresh",
+    redaction_status: "redacted",
+  };
+}
+
+function candidateEvaluation() {
+  return {
+    evaluation_id: "EVAL-candidate-a",
+    need_id: "NEED-live-source",
+    candidate_id: "candidate-a",
+    policy_version: "1",
+    axes: axes(90),
+    uncertainty_penalty: 2,
+    weighted_sum: 90,
+    candidate_score: 88,
+    hard_gate_results: [{ gate: "license", status: "pass", reason: "MIT" }],
+    eligibility: "eligible",
+    actual_model: null,
+  };
+}
+
+function auditionResult() {
+  return {
+    audition_plan_id: "AP-1234567890ab",
+    observed_codex_profile: "phase2-audition",
+    steps: [{ step: "run focused verification", status: "passed" }],
+    side_effects: [],
+    evidence_refs: ["artifact:audition-result"],
+    verdict: "passed",
+    cleanup_evidence: ["cleanup:verified"],
+  };
+}
+
 function selectedCandidate(providerId = "local-reuse") {
   return {
     provider_id: providerId, provider_type: "package", resolution_mode: "reuse", evidence_refs: [`workspace:package.json#${providerId}`],
@@ -171,10 +241,68 @@ test("command boundary exposes only the approved Core command names", () => {
   assert.deepEqual([...COMMAND_NAMES], [
     "task-intent.create", "capability.compile", "execution-plan.create", "execution-plan.escalate", "inventory.refresh-local", "resolution.propose",
     "resolution.approve", "context-pack.preview", "candidate.install.request", "candidate.install.authorize",
+    "acquisition.snapshot.record", "candidate.audit.record", "candidate.audition.record",
     "phase-review.request", "phase-review.decide", "runtime.dispatch.record", "runtime.event.record", "artifact.record", "report.record", "acceptance.record",
   ]);
   const { boundary } = makeBoundary();
   assert.throws(() => boundary.execute({ command_id: "bad", name: "network.install", payload: {} }), { code: "CORE_COMMAND_UNKNOWN" });
+});
+
+test("Phase 2 record commands persist only validated bounded summaries", () => {
+  const { boundary, stateRoot } = makeBoundary();
+  const query = liveSourceQuery();
+  const sourceResult = liveSourceResult();
+  boundary.execute({
+    command_id: "phase2-acquisition",
+    name: "acquisition.snapshot.record",
+    payload: {
+      query,
+      source_results: [sourceResult],
+      budget: { consumed_total: 1, remaining_total: 7, per_connector: { official_docs: 1 } },
+    },
+  });
+  boundary.execute({ command_id: "phase2-audit", name: "candidate.audit.record", payload: candidateEvaluation() });
+  boundary.execute({ command_id: "phase2-audition", name: "candidate.audition.record", payload: auditionResult() });
+
+  const state = boundary.replay();
+  assert.equal(state.acquisition_snapshots.length, 1);
+  assert.equal(state.acquisition_snapshots[0].query_id, `LSQ-${canonicalHash(query).slice(0, 12)}`);
+  assert.deepEqual(state.acquisition_snapshots[0].source_results, [sourceResult]);
+  assert.deepEqual(state.audit_evaluations, [{ ...candidateEvaluation(), sequence: 2 }]);
+  assert.deepEqual(state.audition_results, [{ ...auditionResult(), sequence: 3 }]);
+
+  const journal = fs.readFileSync(path.join(stateRoot, "events.jsonl"), "utf8");
+  assert.equal(journal.includes("downloaded_body"), false);
+  assert.equal(journal.includes("approval_token"), false);
+  assert.equal(journal.includes("environment"), false);
+});
+
+test("Phase 2 acquisition recording rejects invalid contracts and inconsistent budgets", () => {
+  const { boundary } = makeBoundary();
+  const query = liveSourceQuery();
+  assert.throws(() => boundary.execute({
+    command_id: "bad-source",
+    name: "acquisition.snapshot.record",
+    payload: {
+      query,
+      source_results: [{ ...liveSourceResult(), connector_id: "untrusted" }],
+      budget: { consumed_total: 1, remaining_total: 7, per_connector: { official_docs: 1 } },
+    },
+  }));
+  assert.throws(() => boundary.execute({
+    command_id: "bad-budget",
+    name: "acquisition.snapshot.record",
+    payload: {
+      query,
+      source_results: [liveSourceResult()],
+      budget: { consumed_total: 9, remaining_total: 0, per_connector: { official_docs: 3 } },
+    },
+  }), { code: "CORE_ACQUISITION_BUDGET_INVALID" });
+  assert.throws(() => boundary.execute({
+    command_id: "bad-audit",
+    name: "candidate.audit.record",
+    payload: { ...candidateEvaluation(), actual_model: "invented" },
+  }));
 });
 
 test("runtime evidence commands journal one current correlated chain without storing bodies", () => {

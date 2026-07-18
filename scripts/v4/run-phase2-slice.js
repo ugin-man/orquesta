@@ -405,6 +405,37 @@ function recordEvidenceChain({ boundary, lifecycle, correlationId, sourceRefs, r
   });
 }
 
+function recordAcquisitionAndAudits({ boundary, query, acquisition, audits }) {
+  const queryId = `LSQ-${canonicalHash(query).slice(0, 12)}`;
+  boundary.execute({
+    command_id: `phase2:acquisition:${queryId}`,
+    name: "acquisition.snapshot.record",
+    payload: {
+      query,
+      source_results: acquisition.source_results,
+      budget: acquisition.budget,
+    },
+  });
+  for (const audit of [...audits].sort((left, right) => (
+    left.evaluation.evaluation_id < right.evaluation.evaluation_id ? -1
+      : left.evaluation.evaluation_id > right.evaluation.evaluation_id ? 1 : 0
+  ))) {
+    boundary.execute({
+      command_id: `phase2:audit:${audit.evaluation.evaluation_id}`,
+      name: "candidate.audit.record",
+      payload: audit.evaluation,
+    });
+  }
+}
+
+function recordAuditionResult(boundary, result) {
+  boundary.execute({
+    command_id: `phase2:audition:${result.audition_plan_id}`,
+    name: "candidate.audition.record",
+    payload: result,
+  });
+}
+
 async function runDeterministicPhase2Slice({ stateRoot, runtimeAdapter, fault = null } = {}) {
   if (typeof stateRoot !== "string" || !stateRoot) throw new TypeError("A stateRoot is required.");
   const selectedRuntimeAdapter = runtimeAdapter || createDeterministicRuntimeAdapter();
@@ -428,7 +459,9 @@ async function runDeterministicPhase2Slice({ stateRoot, runtimeAdapter, fault = 
   const audits = auditCandidates(acquisition, fixtures.task.capability_need);
   const eligible = audits.find((item) => item.evaluation.eligibility === "eligible");
   if (!eligible) throw phase2Error("PHASE2_ELIGIBLE_CANDIDATE_MISSING", "Deterministic slice produced no eligible candidate.");
+  recordAcquisitionAndAudits({ boundary, query, acquisition, audits });
   const audition = await runApprovedAudition({ stateRoot: resolvedStateRoot, intent, resolution, candidate: eligible, policy: fixtures.auditionPolicy });
+  recordAuditionResult(boundary, audition.result);
 
   const correlationId = `CORR-${canonicalHash({ task_intent_id: intent.task_intent_id, resolution_id: resolution.resolution_id, context_pack_id: lifecycle.current_context_pack_id }).slice(0, 12)}`;
   const observed = waitForRuntime(selectedRuntimeAdapter, correlationId);
@@ -791,6 +824,7 @@ async function runLivePhase2Slice({
     || audits.find((item) => item.evaluation.eligibility === "eligible");
   if (!selectedAudit) throw phase2Error("PHASE2_ELIGIBLE_CANDIDATE_MISSING", "No live audited candidate passed the hard gates.");
   const selectedRecord = acquisition.candidates.find((item) => item.candidate_id === selectedAudit.candidate_id);
+  recordAcquisitionAndAudits({ boundary, query, acquisition, audits });
 
   const roots = { workspace_root: projectRoot, temporary_root: temporaryRoot, audition_root: auditionRoot };
   const profile = { profile_id: "phase2-audition-read-only", allowed_roots: [projectRoot, auditionRoot], effects: [] };
@@ -849,6 +883,7 @@ async function runLivePhase2Slice({
       } : null
     });
   }
+  recordAuditionResult(boundary, auditionResult);
 
   const artifactBody = runtime.artifact_content
     ? { kind: "final_response", content: runtime.artifact_content }

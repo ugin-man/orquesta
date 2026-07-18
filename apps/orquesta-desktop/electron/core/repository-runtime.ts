@@ -1,9 +1,10 @@
 import { watch, type FSWatcher } from 'node:fs';
 import path from 'node:path';
-import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import { emptyV4OperationsSnapshot, type OrquestaUiSnapshot, type V4OperationsSnapshot } from '../../src/contracts/orquesta-ui';
 import type { AttentionUiItem } from '../../src/contracts/orquesta-ui';
 import type { RuntimeApprovalRequest } from './protocol';
 import { readRepositorySnapshot } from './repository-reader';
+import { projectV4Operations } from './v4-operations-projection';
 
 interface CloseableWatcher {
   close(): void;
@@ -11,6 +12,7 @@ interface CloseableWatcher {
 
 export interface RepositoryRuntimeOptions {
   readSnapshot?: (rootPath: string) => Promise<OrquestaUiSnapshot>;
+  readV4Operations?: (rootPath: string) => Promise<V4OperationsSnapshot>;
   watchDirectory?: (directory: string, onChange: () => void) => CloseableWatcher;
   debounceMs?: number;
 }
@@ -41,6 +43,7 @@ function offlineSnapshot(snapshot: OrquestaUiSnapshot, reason: string): Orquesta
 
 export class RepositoryRuntime {
   readonly #readSnapshot: (rootPath: string) => Promise<OrquestaUiSnapshot>;
+  readonly #readV4Operations: (rootPath: string) => Promise<V4OperationsSnapshot>;
   readonly #watchDirectory: (directory: string, onChange: () => void) => CloseableWatcher;
   readonly #debounceMs: number;
   readonly #listeners = new Set<(snapshot: OrquestaUiSnapshot) => void>();
@@ -55,6 +58,7 @@ export class RepositoryRuntime {
 
   constructor(options: RepositoryRuntimeOptions = {}) {
     this.#readSnapshot = options.readSnapshot ?? ((rootPath) => readRepositorySnapshot(rootPath));
+    this.#readV4Operations = options.readV4Operations ?? projectV4Operations;
     this.#watchDirectory = options.watchDirectory ?? defaultWatchDirectory;
     this.#debounceMs = options.debounceMs ?? 180;
   }
@@ -67,12 +71,12 @@ export class RepositoryRuntime {
   async select(input: { projectId: string; rootPath: string }): Promise<OrquestaUiSnapshot> {
     this.#closeWatchers();
     this.#clearRefreshTimer();
-    const next = await this.#readSnapshot(input.rootPath);
+    const next = await this.#projectSnapshot(input.rootPath);
     this.#projectId = next.project.id;
     this.#snapshot = this.#withRuntimeApprovals(next);
     this.#rootPath = next.project.rootPathLabel ?? input.rootPath;
     this.#startWatching(this.#rootPath);
-    return structuredClone(next);
+    return structuredClone(this.#snapshot);
   }
 
   getSnapshot(): OrquestaUiSnapshot {
@@ -122,7 +126,7 @@ export class RepositoryRuntime {
   async refresh(): Promise<OrquestaUiSnapshot> {
     if (!this.#rootPath || !this.#snapshot) throw new Error('No Orquesta repository is selected');
     try {
-      this.#snapshot = this.#withRuntimeApprovals(await this.#readSnapshot(this.#rootPath));
+      this.#snapshot = this.#withRuntimeApprovals(await this.#projectSnapshot(this.#rootPath));
     } catch (error) {
       this.#snapshot = offlineSnapshot(this.#snapshot, error instanceof Error ? error.message : String(error));
     }
@@ -153,6 +157,18 @@ export class RepositoryRuntime {
         // Optional canonical directories can be absent in a minimum project.
       }
     }
+  }
+
+  async #projectSnapshot(rootPath: string): Promise<OrquestaUiSnapshot> {
+    const snapshot = await this.#readSnapshot(rootPath);
+    let v4Operations: V4OperationsSnapshot;
+    try {
+      v4Operations = await this.#readV4Operations(rootPath);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      v4Operations = emptyV4OperationsSnapshot(`V4 journal unavailable · ${reason.slice(0, 160)}`);
+    }
+    return { ...snapshot, v4Operations };
   }
 
   #scheduleRefresh(): void {

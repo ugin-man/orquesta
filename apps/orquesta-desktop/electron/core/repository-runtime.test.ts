@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import { emptyV4OperationsSnapshot } from '../../src/contracts/orquesta-ui';
 import { RepositoryRuntime } from './repository-runtime';
 
 afterEach(() => vi.useRealTimers());
@@ -47,11 +48,51 @@ function snapshot(id: string, rootPath: string): OrquestaUiSnapshot {
     tasks: [],
     attention: [],
     phases: [],
-    recentEvents: []
+    recentEvents: [],
+    v4Operations: emptyV4OperationsSnapshot()
   };
 }
 
 describe('RepositoryRuntime', () => {
+  test('merges canonical V4 operations on selection and refresh without changing the base snapshot', async () => {
+    const first = snapshot('repo-first', 'C:\\first');
+    const readSnapshot = vi.fn(async () => first);
+    const readV4Operations = vi.fn(async () => ({
+      ...emptyV4OperationsSnapshot(),
+      available: true,
+      revision: 12,
+      limitation: null,
+    }));
+    const runtime = new RepositoryRuntime({
+      readSnapshot,
+      readV4Operations,
+      watchDirectory: vi.fn(() => ({ close: vi.fn() })),
+    });
+
+    const selected = await runtime.select({ projectId: 'repo-first', rootPath: 'C:\\first' });
+    expect(selected).toMatchObject({ project: { id: 'repo-first', status: 'ready' }, v4Operations: { available: true, revision: 12 } });
+    await runtime.refresh();
+    expect(readSnapshot).toHaveBeenCalledTimes(2);
+    expect(readV4Operations).toHaveBeenCalledTimes(2);
+    expect(readV4Operations).toHaveBeenLastCalledWith('C:\\first');
+  });
+
+  test('keeps valid repository state online when only the V4 journal is unavailable', async () => {
+    const first = snapshot('repo-first', 'C:\\first');
+    const runtime = new RepositoryRuntime({
+      readSnapshot: vi.fn(async () => first),
+      readV4Operations: vi.fn(async () => emptyV4OperationsSnapshot('V4 journal recovery required')),
+      watchDirectory: vi.fn(() => ({ close: vi.fn() })),
+    });
+
+    const selected = await runtime.select({ projectId: 'repo-first', rootPath: 'C:\\first' });
+    expect(selected).toMatchObject({
+      project: { status: 'ready' },
+      agents: [{ id: 'orchestrator', status: 'standby' }],
+      v4Operations: { available: false, limitation: 'V4 journal recovery required' },
+    });
+  });
+
   test('watches all projection directories and closes every watcher on switch and shutdown', async () => {
     const first = snapshot('repo-first', 'C:\\first');
     const second = snapshot('repo-second', 'C:\\second');

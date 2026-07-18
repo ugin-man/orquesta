@@ -1,5 +1,5 @@
 import type { FixtureDefinition } from './types';
-import { agent, attention, observedAt, phase, task } from './helpers';
+import { agent, attention, fixtureV4Operations, observedAt, phase, task } from './helpers';
 
 export const unknownEvidenceFixture: FixtureDefinition = {
   snapshot: {
@@ -20,7 +20,8 @@ export const unknownEvidenceFixture: FixtureDefinition = {
     ],
     attention: [attention({ id: 'U-A1', type: 'direction', title: 'Runtime evidence pending', summary: 'Dispatch was accepted, but no turn-start event has been observed.', sourceAgentId: 'orchestrator', taskId: 'U12', priority: 'low', primaryActionLabel: 'Inspect' })],
     phases: [phase({ id: 'phase-plan', title: 'Planning', summary: 'Prepare migration route', status: 'current', ownerAgentIds: ['planner'], itemCount: 4, completedItemCount: 0 })],
-    recentEvents: []
+    recentEvents: [],
+    v4Operations: fixtureV4Operations
   },
   conversations: { orchestrator: [] },
   attentionHistory: [],

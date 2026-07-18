@@ -17,6 +17,7 @@ function initialProjection() {
     context_packs: [], current_context_pack_id: null, current_context_pack_sequence: null,
     execution_plans: [], current_execution_plan_id: null, phase_reviews: [],
     install_requests: [], current_install_request: null, install_authorizations: [],
+    acquisition_snapshots: [], audit_evaluations: [], audition_results: [],
     evidence_by_id: {}, evidence_by_correlation: {}, runtime_by_correlation: {}, reports: [], acceptances: [], timeline: [],
   };
 }
@@ -25,6 +26,18 @@ function replaceById(items, value, field) {
   const next = items.filter((item) => item[field] !== value[field]);
   next.push(clone(value));
   return next.sort((left, right) => compareText(String(left[field]), String(right[field])));
+}
+
+const MAX_OPERATION_RECORDS = 128;
+
+function replaceBoundedById(items, value, field, sequence) {
+  const stored = { ...clone(value), sequence };
+  return items
+    .filter((item) => item[field] !== stored[field])
+    .concat(stored)
+    .sort((left, right) => (left.sequence || 0) - (right.sequence || 0)
+      || compareText(String(left[field]), String(right[field])))
+    .slice(-MAX_OPERATION_RECORDS);
 }
 
 function timeline(state, event, batch) {
@@ -181,6 +194,33 @@ function createProjectors() {
         ? { ...state.current_install_request, status: "authorized", authorization_id: event.payload.authorization.authorization_id }
         : state.current_install_request,
       install_authorizations: replaceById(state.install_authorizations, event.payload.authorization, "authorization_id"),
+    })),
+    "acquisition.snapshot.recorded": withTimeline((state, event, batch) => ({
+      ...state,
+      acquisition_snapshots: replaceBoundedById(
+        state.acquisition_snapshots,
+        event.payload.acquisition_snapshot,
+        "query_id",
+        batch.sequence,
+      ),
+    })),
+    "candidate.audit.recorded": withTimeline((state, event, batch) => ({
+      ...state,
+      audit_evaluations: replaceBoundedById(
+        state.audit_evaluations,
+        event.payload.evaluation,
+        "evaluation_id",
+        batch.sequence,
+      ),
+    })),
+    "candidate.audition.recorded": withTimeline((state, event, batch) => ({
+      ...state,
+      audition_results: replaceBoundedById(
+        state.audition_results,
+        event.payload.audition_result,
+        "audition_plan_id",
+        batch.sequence,
+      ),
     })),
     "runtime.dispatch.accepted": withEvidence((state) => state),
     "runtime.turn.started": withEvidence((state) => state),

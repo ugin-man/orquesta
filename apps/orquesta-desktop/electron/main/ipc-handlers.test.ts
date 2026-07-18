@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { emptyV4OperationsSnapshot } from '../../src/contracts/orquesta-ui';
 import { DESKTOP_IPC } from '../shared/host-contract';
 import { registerDesktopIpc } from './ipc-handlers';
 
@@ -26,7 +27,10 @@ describe('registerDesktopIpc', () => {
       respondRuntimeApproval: vi.fn(async () => ({ correlationId: 'approval-1' })),
       listAttentionHistory: vi.fn(async () => [])
     };
-    const snapshot = { project: { id: 'repo-1' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [] };
+    const snapshot = {
+      project: { id: 'repo-1' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [],
+      v4Operations: emptyV4OperationsSnapshot()
+    };
     const repositories = {
       getSnapshot: vi.fn(async () => snapshot),
       listProjects: vi.fn(async () => [{ id: 'repo-1' }]),

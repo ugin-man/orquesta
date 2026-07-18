@@ -1,6 +1,7 @@
-import type { AgentUiModel, AttentionUiItem, ProjectPhaseUiModel, TaskUiModel } from '../contracts/orquesta-ui';
+import { emptyV4OperationsSnapshot, type AgentUiModel, type AttentionUiItem, type ProjectPhaseUiModel, type TaskUiModel } from '../contracts/orquesta-ui';
 
 export const observedAt = '2026-07-17T13:28:00.000Z';
+export const fixtureV4Operations = emptyV4OperationsSnapshot('Fixture has no canonical V4 journal');
 
 export function agent(input: Partial<AgentUiModel> & Pick<AgentUiModel, 'id' | 'displayName' | 'role' | 'roleSummary' | 'iconKey'>): AgentUiModel {
   return {

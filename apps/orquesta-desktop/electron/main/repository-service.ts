@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
-import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import { emptyV4OperationsSnapshot, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import { ProjectRegistry, projectIdForRoot } from './project-registry';
 
 export interface RepositoryProjectionHost {
@@ -45,7 +45,8 @@ function emptySnapshot(): OrquestaUiSnapshot {
     tasks: [],
     attention: [],
     phases: [],
-    recentEvents: []
+    recentEvents: [],
+    v4Operations: emptyV4OperationsSnapshot()
   };
 }
 

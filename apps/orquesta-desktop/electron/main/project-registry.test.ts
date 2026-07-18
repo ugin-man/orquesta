@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import { emptyV4OperationsSnapshot, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import { ProjectRegistry } from './project-registry';
 
 const temporaryRoots: string[] = [];
@@ -31,7 +31,8 @@ function snapshot(id: string, title: string, rootPath: string): OrquestaUiSnapsh
     tasks: [],
     attention: [],
     phases: [],
-    recentEvents: []
+    recentEvents: [],
+    v4Operations: emptyV4OperationsSnapshot()
   };
 }
 

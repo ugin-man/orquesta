@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type {
+import { emptyV4OperationsSnapshot, type
   AgentUiModel,
   AgentUiStatus,
   AttentionUiItem,
@@ -425,7 +425,8 @@ export function projectSnapshotFromDocuments({ rootPath, documents, now = new Da
     tasks,
     attention,
     phases,
-    recentEvents
+    recentEvents,
+    v4Operations: emptyV4OperationsSnapshot()
   };
 }
 

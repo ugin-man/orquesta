@@ -1,5 +1,5 @@
 import type { ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
-import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import { isV4OperationsSnapshot, type AttentionUiItem, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 
 export interface RuntimeModelEvidence {
   recommendedModel: string | null;
@@ -169,7 +169,8 @@ function isRepositorySnapshot(value: unknown): value is OrquestaUiSnapshot {
     && Array.isArray(value.tasks)
     && Array.isArray(value.attention)
     && Array.isArray(value.phases)
-    && Array.isArray(value.recentEvents);
+    && Array.isArray(value.recentEvents)
+    && isV4OperationsSnapshot(value.v4Operations);
 }
 
 export function isCoreRequest(value: unknown): value is CoreRequest {

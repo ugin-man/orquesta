@@ -14,6 +14,7 @@ const { correlateEvidence, normalizeEvidence } = require("../../evidence-fabric/
 const COMMAND_NAMES = Object.freeze([
   "task-intent.create", "capability.compile", "execution-plan.create", "execution-plan.escalate", "inventory.refresh-local", "resolution.propose",
   "resolution.approve", "context-pack.preview", "candidate.install.request", "candidate.install.authorize",
+  "acquisition.snapshot.record", "candidate.audit.record", "candidate.audition.record",
   "phase-review.request", "phase-review.decide",
   "runtime.dispatch.record", "runtime.event.record", "artifact.record", "report.record", "acceptance.record",
 ]);
@@ -281,6 +282,60 @@ function assertInstallNotExpired(target, referenceTime) {
   if (!Number.isFinite(now) || !Number.isFinite(expiry) || expiry <= now) {
     throw coreError("CORE_INSTALL_TARGET_EXPIRED", "Install target has expired or cannot be compared to the reference time.");
   }
+}
+
+function validateAcquisitionBudget(query, budget) {
+  const invalid = (reason) => {
+    throw coreError("CORE_ACQUISITION_BUDGET_INVALID", "Acquisition budget does not match the validated query limits.", { reason });
+  };
+  if (!budget || typeof budget !== "object" || Array.isArray(budget)) invalid("budget_shape");
+  const { consumed_total: consumed, remaining_total: remaining, per_connector: perConnector } = budget;
+  const maximum = query.request_budget.max_requests_per_need;
+  const perConnectorMaximum = query.request_budget.max_requests_per_connector;
+  if (!Number.isInteger(consumed) || consumed < 0 || consumed > maximum) invalid("consumed_total");
+  if (!Number.isInteger(remaining) || remaining !== maximum - consumed) invalid("remaining_total");
+  if (!perConnector || typeof perConnector !== "object" || Array.isArray(perConnector)) invalid("per_connector_shape");
+  const allowed = new Set(query.allowed_connector_ids);
+  let connectorTotal = 0;
+  for (const [connectorId, count] of Object.entries(perConnector)) {
+    if (!allowed.has(connectorId)) invalid("connector_not_allowed");
+    if (!Number.isInteger(count) || count < 0 || count > perConnectorMaximum) invalid("per_connector_limit");
+    connectorTotal += count;
+  }
+  if (connectorTotal !== consumed) invalid("connector_total");
+  return {
+    consumed_total: consumed,
+    remaining_total: remaining,
+    per_connector: Object.fromEntries(Object.entries(perConnector).sort(([left], [right]) => compareText(left, right))),
+  };
+}
+
+function acquisitionSnapshot(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw coreError("CORE_ACQUISITION_SNAPSHOT_INVALID", "Acquisition snapshot requires query, source_results, and budget.");
+  }
+  const query = clone(assertContract("live-source-query", payload.query));
+  if (!Array.isArray(payload.source_results)) {
+    throw coreError("CORE_ACQUISITION_SNAPSHOT_INVALID", "Acquisition source results must be an array.");
+  }
+  const sourceResults = payload.source_results.map((result) => clone(assertContract("live-source-result", result)));
+  const allowed = new Set(query.allowed_connector_ids);
+  const connectors = new Set();
+  for (const result of sourceResults) {
+    if (!allowed.has(result.connector_id)) {
+      throw coreError("CORE_ACQUISITION_SOURCE_INVALID", "Acquisition source result is not allowed by the query.", { connector_id: result.connector_id });
+    }
+    if (connectors.has(result.connector_id)) {
+      throw coreError("CORE_ACQUISITION_SOURCE_INVALID", "Acquisition source results must contain at most one summary per connector.", { connector_id: result.connector_id });
+    }
+    connectors.add(result.connector_id);
+  }
+  return {
+    query_id: `LSQ-${canonicalHash(query).slice(0, 12)}`,
+    query,
+    source_results: sourceResults.sort((left, right) => compareText(left.connector_id, right.connector_id)),
+    budget: validateAcquisitionBudget(query, payload.budget),
+  };
 }
 
 function createCommandBoundary({ eventStore, rules, collectInventory, verifyUserApproval, compileContextPack, referenceTime } = {}) {
@@ -567,6 +622,31 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
         payload: { authorization, responsibility: "user" },
         evidence_refs: [...provider.evidence_refs, `resolution:${resolution.resolution_id}`, current.target.review_packet_ref, `install_request:${current.request_id}`]
       }, verified.actor, replayed);
+    }
+    if (command.name === "acquisition.snapshot.record") {
+      const snapshot = acquisitionSnapshot(command.payload);
+      const refs = snapshot.source_results.flatMap((result) => result.source_evidence.map((evidence) => `${evidence.source_ref}#${evidence.source_hash}`));
+      return commit(command, identity, {
+        type: "acquisition.snapshot.recorded",
+        payload: { acquisition_snapshot: snapshot, responsibility: "scout" },
+        evidence_refs: [...new Set(refs)].sort(compareText),
+      }, undefined, replayed);
+    }
+    if (command.name === "candidate.audit.record") {
+      const evaluation = clone(assertContract("candidate-evaluation", command.payload));
+      return commit(command, identity, {
+        type: "candidate.audit.recorded",
+        payload: { evaluation, responsibility: "static_audit", responsibility_boundary: { ...RESPONSIBILITY } },
+        evidence_refs: [],
+      }, undefined, replayed);
+    }
+    if (command.name === "candidate.audition.record") {
+      const audition_result = clone(assertContract("audition-result", command.payload));
+      return commit(command, identity, {
+        type: "candidate.audition.recorded",
+        payload: { audition_result, responsibility: "audition" },
+        evidence_refs: [...new Set(audition_result.evidence_refs)].sort(compareText),
+      }, undefined, replayed);
     }
     if (command.name === "runtime.dispatch.record") return recordEvidence(command, identity, state, replayed, "runtime_dispatch");
     if (command.name === "runtime.event.record") return recordEvidence(command, identity, state, replayed, "runtime_event");

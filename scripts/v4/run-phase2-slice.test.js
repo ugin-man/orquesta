@@ -6,6 +6,8 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createAppServerAdapter } = require("@orquesta/codex-adapter");
+const { createEventStore } = require("@orquesta/event-store");
+const { createProjectors, initialProjection } = require("../../packages/core/src");
 const { FakeAppServerProcess } = require("../../packages/codex-adapter/test/fixtures/fake-app-server");
 const { createLiveNetworkConnectors, removeOwnedTemporaryRoot, runAdapterTurn, runDeterministicPhase2Slice, runLivePhase2Slice } = require("./run-phase2-slice");
 
@@ -60,6 +62,21 @@ test("deterministic Phase 2 slice proves stable acquisition, Audition, runtime, 
   assert.equal(first.journal.evidence_count, 7);
   assert.equal(first.review_packet.status, "ready_for_user_review");
   assert.equal(first.repository_fallback.live_turn_eligible, false);
+});
+
+test("deterministic Phase 2 details survive a fresh EventStore replay", async () => {
+  const stateRoot = temporaryRoot("operational-replay");
+  const result = await runDeterministicPhase2Slice({ stateRoot, runtimeAdapter: fakeAppServer() });
+  const reopened = createEventStore({ stateRoot, workspaceId: "v4-phase2-slice" });
+  const replayed = reopened.replay({ reducers: createProjectors(), initialState: initialProjection() }).state;
+
+  assert.equal(replayed.acquisition_snapshots.length, 1);
+  assert.equal(replayed.acquisition_snapshots[0].query_id, result.stable_ids.source_query_id);
+  assert.equal(replayed.acquisition_snapshots[0].source_results.length, result.acquisition.connector_ids.length);
+  assert.equal(replayed.audit_evaluations.length, result.acquisition.candidate_count);
+  assert.ok(replayed.audit_evaluations.some((item) => item.candidate_id === result.audit.selected_candidate_id));
+  assert.equal(replayed.audition_results.length, 1);
+  assert.equal(replayed.audition_results[0].audition_plan_id, result.stable_ids.audition_plan_id);
 });
 
 test("deterministic slice rejects a turn start without a matching accepted dispatch", async () => {

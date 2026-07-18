@@ -586,7 +586,7 @@
 - Modify: `apps/orquesta-desktop/electron/core/protocol.ts`
 - Modify: `apps/orquesta-desktop/src/contracts/orquesta-ui.ts`
 
-- [ ] First add failing Core tests for three canonical record commands which are missing today:
+- [x] First add failing Core tests for three canonical record commands which are missing today:
 
   ```text
   acquisition.snapshot.record -> acquisition.snapshot.recorded
@@ -596,18 +596,18 @@
 
   `acquisition.snapshot.record` accepts `{ query, source_results, budget }`. The command boundary validates `query` as `live-source-query`, every source result as `live-source-result`, and the numeric budget fields against the query's maximum. It derives `query_id` as `LSQ-${canonicalHash(query).slice(0, 12)}`. The other two commands validate the existing `candidate-evaluation` and `audition-result` contracts. Persist only those validated summaries plus command identity, responsibility, correlation, and evidence refs; do not persist downloaded bodies, approval tokens, environment values, or unbounded process output.
 
-- [ ] Add failing projector tests requiring `acquisition_snapshots`, `audit_evaluations`, and `audition_results` in `initialProjection()`, deterministic replacement by `query_id`/`evaluation_id`/`audition_plan_id`, and timeline entries for the three events. Retention is bounded to the latest 128 entries of each kind, sorted by sequence then stable ID.
+- [x] Add failing projector tests requiring `acquisition_snapshots`, `audit_evaluations`, and `audition_results` in `initialProjection()`, deterministic replacement by `query_id`/`evaluation_id`/`audition_plan_id`, and timeline entries for the three events. Retention is bounded to the latest 128 entries of each kind, sorted by sequence then stable ID.
 
-- [ ] Update `run-phase2-slice.js` to record each validated source result, each candidate evaluation, and the authorized audition result before runtime dispatch. Extend `run-phase2-slice.test.js` to prove replay equivalence and that Phase 2 details survive a new process replay rather than existing only in the function return value.
+- [x] Update `run-phase2-slice.js` to record each validated source result, each candidate evaluation, and the authorized audition result before runtime dispatch. Extend `run-phase2-slice.test.js` to prove replay equivalence and that Phase 2 details survive a new process replay rather than existing only in the function return value.
 
-- [ ] Run the new Core and Phase 2 tests and confirm they fail before command/projector implementation, then pass after the minimal implementation:
+- [x] Run the new Core and Phase 2 tests and confirm they fail before command/projector implementation, then pass after the minimal implementation:
 
   ```powershell
   node --test packages/core/test/commands.test.js packages/core/test/projectors.test.js scripts/v4/run-phase2-slice.test.js
   npm run check:v4:phase2
   ```
 
-- [ ] Define and test these bounded read-only Desktop DTOs; use nullable fields when the canonical source does not provide a value and never pass raw V4 objects to Renderer:
+- [x] Define and test these bounded read-only Desktop DTOs; use nullable fields when the canonical source does not provide a value and never pass raw V4 objects to Renderer:
 
   ```ts
   export interface V4TaskIntentUi {
@@ -738,19 +738,19 @@
   }
   ```
 
-- [ ] Add failing tests using real V4 fixture journals for empty, Phase 1, Phase 1.5, and Phase 2 state. Assert deterministic ordering, latest-resolution selection, bounded evidence chains, and `available: false` when `.orquesta/v4/events.jsonl` is absent.
+- [x] Add failing tests using real V4 fixture journals for empty, Phase 1, Phase 1.5, and Phase 2 state. Assert deterministic ordering, latest-resolution selection, bounded evidence chains, and `available: false` when `.orquesta/v4/events.jsonl` is absent.
 
-- [ ] Run the projection test and confirm the module is missing:
+- [x] Run the projection test and confirm the module is missing:
 
   ```powershell
   npm run test:desktop-unit --prefix apps/orquesta-desktop -- v4-operations-projection.test.ts
   ```
 
-- [ ] Implement projection by calling `createEventStore({ stateRoot: path.join(root, '.orquesta', 'v4'), reducers: createProjectors(), initialState: initialProjection() }).replay()`. Map the returned V4 projection into the DTOs above. Limit timeline to 500 newest entries, evidence items to 32 per correlation, and displayed correlations to 128. Do not import Workbench `state-view.js`; it is fixture-navigation UI, not the canonical projection.
+- [x] Implement projection by calling `createEventStore({ stateRoot: path.join(root, '.orquesta', 'v4'), reducers: createProjectors(), initialState: initialProjection() }).replay()`. Map the returned V4 projection into the DTOs above. Limit timeline to 500 newest entries, evidence items to 32 per correlation, and displayed correlations to 128. Do not import Workbench `state-view.js`; it is fixture-navigation UI, not the canonical projection.
 
-- [ ] Merge the V4 operations snapshot into `OrquestaUiSnapshot` and refresh it on `.orquesta/v4` changes. A malformed/recovery-blocked journal must preserve the previous base snapshot, set V4 `available: false`, and expose a concise limitation; it must not crash Core.
+- [x] Merge the V4 operations snapshot into `OrquestaUiSnapshot` and refresh it on `.orquesta/v4` changes. A malformed/recovery-blocked journal must preserve the previous base snapshot, set V4 `available: false`, and expose a concise limitation; it must not crash Core.
 
-- [ ] Run the V4 and Desktop projection suites:
+- [x] Run the V4 and Desktop projection suites:
 
   ```powershell
   npm run check:v4:phase1
@@ -759,7 +759,7 @@
   npm run test:desktop-unit --prefix apps/orquesta-desktop
   ```
 
-- [ ] Commit:
+- [x] Commit:
 
   ```powershell
   git add packages/core scripts/v4/run-phase2-slice.js scripts/v4/run-phase2-slice.test.js apps/orquesta-desktop/electron/core apps/orquesta-desktop/src/contracts/orquesta-ui.ts

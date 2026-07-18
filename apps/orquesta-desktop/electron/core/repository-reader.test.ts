@@ -117,6 +117,7 @@ describe('repository reader', () => {
     const snapshot = await readRepositorySnapshot(root, { now: new Date('2026-07-18T11:00:00.000Z') });
 
     expect(snapshot.agents).toHaveLength(3);
+    expect(snapshot.v4Operations).toMatchObject({ available: false, revision: 0 });
     expect(await readFile(path.join(state, 'agents.json'), 'utf8')).toBe(agentsText);
     expect(await readFile(path.join(state, 'tasks.json'), 'utf8')).toBe(tasksText);
   });

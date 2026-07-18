@@ -1,5 +1,5 @@
 import type { FixtureDefinition } from './types';
-import { agent, observedAt, phase } from './helpers';
+import { agent, fixtureV4Operations, observedAt, phase } from './helpers';
 
 const agents = [
   agent({ id: 'orchestrator', displayName: 'Orchestrator', role: 'Orchestrator', roleSummary: 'Multi-Agent Coordinator', iconKey: 'network', assignedByAgentId: 'user' }),
@@ -28,7 +28,8 @@ export const wideRosterFixture: FixtureDefinition = {
     tasks: [],
     attention: [],
     phases: [phase({ id: 'wide-phase', title: 'Capacity validation', summary: 'Keep eighty agents visible', status: 'current', ownerAgentIds: ['orchestrator'], itemCount: agents.length })],
-    recentEvents: []
+    recentEvents: [],
+    v4Operations: fixtureV4Operations
   },
   conversations: { orchestrator: [] }, attentionHistory: [], agentProposals: [], lastOpenedAt: observedAt
 };

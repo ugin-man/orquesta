@@ -78,6 +78,10 @@ describe('RepositoryService', () => {
       registryPath: path.join(temporary, 'repositories.json'), coreHost: projection.host, chooseDirectory
     });
     await service.initialize();
+    await expect(service.getSnapshot()).resolves.toMatchObject({
+      project: { id: 'no-project' },
+      v4Operations: { available: false, revision: 0 }
+    });
 
     await expect(service.openProject()).resolves.toMatchObject({ status: 'rejected' });
     await expect(service.openProject()).resolves.toMatchObject({ status: 'accepted' });

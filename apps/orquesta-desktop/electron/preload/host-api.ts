@@ -1,5 +1,5 @@
 import type { ComposerAttachment, ConversationMessage, ConversationPage, ProjectSummary, RuntimeInfoUi, UiActionResult } from '../../src/contracts/bridge';
-import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import { isV4OperationsSnapshot, type AttentionUiItem, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
 import type { DesktopHostApi, DesktopHostInfo } from '../shared/host-contract';
 import { DESKTOP_IPC } from '../shared/host-contract';
@@ -21,6 +21,7 @@ function isRepositorySnapshot(value: unknown): value is OrquestaUiSnapshot {
     project && typeof project.id === 'string' && typeof project.title === 'string'
     && Array.isArray(snapshot.agents) && Array.isArray(snapshot.tasks)
     && Array.isArray(snapshot.attention) && Array.isArray(snapshot.phases) && Array.isArray(snapshot.recentEvents)
+    && isV4OperationsSnapshot(snapshot.v4Operations)
   );
 }
 

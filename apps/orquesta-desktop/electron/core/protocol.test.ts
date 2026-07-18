@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { emptyV4OperationsSnapshot } from '../../src/contracts/orquesta-ui';
 import { isCoreEvent, isCoreRequest } from './protocol';
 
 describe('Core protocol validation', () => {
@@ -61,11 +62,15 @@ describe('Core protocol validation', () => {
   test('accepts repository snapshot result and changed events only with a projected snapshot', () => {
     const snapshot = {
       project: { id: 'repo-1', title: 'repo', rootPathLabel: 'C:\\repo', status: 'ready' },
-      agents: [], tasks: [], attention: [], phases: [], recentEvents: []
+      agents: [], tasks: [], attention: [], phases: [], recentEvents: [], v4Operations: emptyV4OperationsSnapshot()
     };
     expect(isCoreEvent({ type: 'repository.snapshot.result', correlationId: 'snapshot-1', snapshot })).toBe(true);
     expect(isCoreEvent({ type: 'repository.snapshot.changed', snapshot })).toBe(true);
     expect(isCoreEvent({ type: 'repository.snapshot.result', correlationId: '', snapshot })).toBe(false);
+    expect(isCoreEvent({ type: 'repository.snapshot.changed', snapshot: { ...snapshot, v4Operations: undefined } })).toBe(false);
+    expect(isCoreEvent({
+      type: 'repository.snapshot.changed', snapshot: { ...snapshot, v4Operations: { ...snapshot.v4Operations, evidenceChains: 'raw' } }
+    })).toBe(false);
     expect(isCoreEvent({ type: 'repository.snapshot.changed', snapshot: { project: { id: '../escape' } } })).toBe(false);
   });
 

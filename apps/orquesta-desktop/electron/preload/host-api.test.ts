@@ -1,10 +1,11 @@
 import { describe, expect, test, vi } from 'vitest';
+import { emptyV4OperationsSnapshot } from '../../src/contracts/orquesta-ui';
 import { DESKTOP_IPC } from '../shared/host-contract';
 import { createDesktopHostApi } from './host-api';
 
 describe('createDesktopHostApi', () => {
   test('exposes bounded methods instead of raw IPC', async () => {
-    const snapshot = { project: { id: 'repo-1', title: 'Repo' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [] };
+    const snapshot = { project: { id: 'repo-1', title: 'Repo' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [], v4Operations: emptyV4OperationsSnapshot() };
     const invoke = vi.fn(async (channel: string, input?: unknown) => {
       if (channel === DESKTOP_IPC.getHostInfo) return { platform: 'win32', coreStatus: 'ready' };
       if (channel === DESKTOP_IPC.getRepositorySnapshot) return snapshot;
@@ -82,5 +83,15 @@ describe('createDesktopHostApi', () => {
     const invoke = vi.fn(async () => ({ status: 'ready', adapter: 'app_server', executablePath: 'C:\\secret\\codex.exe' }));
     const api = createDesktopHostApi(invoke, vi.fn());
     await expect(api.getRuntimeInfo({ probe: true })).rejects.toThrow('runtime information');
+  });
+
+  test('rejects repository snapshots that omit or corrupt the bounded V4 projection', async () => {
+    const missing = { project: { id: 'repo-1', title: 'Repo' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [] };
+    const missingApi = createDesktopHostApi(vi.fn(async () => missing), vi.fn());
+    await expect(missingApi.getRepositorySnapshot()).rejects.toThrow('repository snapshot');
+
+    const malformed = { ...missing, v4Operations: { ...emptyV4OperationsSnapshot(), auditTimeline: {} } };
+    const malformedApi = createDesktopHostApi(vi.fn(async () => malformed), vi.fn());
+    await expect(malformedApi.getRepositorySnapshot()).rejects.toThrow('repository snapshot');
   });
 });
