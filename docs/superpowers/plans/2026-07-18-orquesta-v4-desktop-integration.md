@@ -301,8 +301,11 @@
 - Modify: `apps/orquesta-desktop/electron/preload/host-api.test.ts`
 - Modify: `apps/orquesta-desktop/src/contracts/bridge.ts`
 - Modify: `apps/orquesta-desktop/src/bridges/desktop-repository-bridge.ts`
+- Modify: `apps/orquesta-desktop/src/bridges/mock-bridge.ts`
+- Modify: `apps/orquesta-desktop/tests/unit/desktop-repository-bridge.test.ts`
+- Modify: `apps/orquesta-desktop/tests/unit/mock-bridge.test.ts`
 
-- [ ] Add failing service tests with an injected canonical adapter double. Require `DesktopCodexService` to:
+- [x] Add failing service tests with an injected canonical adapter double. Require `DesktopCodexService` to:
 
   - create or resume the saved coordinator thread;
   - wrap non-orchestrator text in `<orquesta_target agent_id="…">` without exposing the wrapper in history;
@@ -311,17 +314,17 @@
   - return `recommendedModel`, `requestedModel`, and `appliedModel` separately while `actualModel` stays `null` until `model_observed`;
   - invoke adapter `shutdown()` once.
 
-- [ ] Add a failing source-boundary test which scans `apps/orquesta-desktop/electron` and rejects `ORQUESTA_CODEX_PATH`, `WindowsApps`, `where.exe`, `shell: true`, and imports of the three deleted runtime modules.
+- [x] Add a failing source-boundary test which scans `apps/orquesta-desktop/electron` and rejects `ORQUESTA_CODEX_PATH`, `WindowsApps`, `where.exe`, `shell: true`, and imports of the three deleted runtime modules.
 
-- [ ] Run focused tests and confirm the missing service/boundary failures:
+- [x] Run focused tests and confirm the missing service/boundary failures:
 
   ```powershell
   npm run test:desktop-unit --prefix apps/orquesta-desktop -- desktop-codex-service.test.ts handler.test.ts protocol.test.ts
   ```
 
-- [ ] Implement `DesktopCodexService` with `createAppServerAdapter({ sdkPackageRoot })`. The SDK root comes only from `resolveDesktopSdkPackageRoot()` and the adapter resolves the executable inside that pinned installation.
+- [x] Implement `DesktopCodexService` with `createAppServerAdapter({ sdkPackageRoot })`. The SDK root comes only from `resolveDesktopSdkPackageRoot()` and the adapter resolves the executable inside that pinned installation.
 
-- [ ] Before creating the packaged adapter, call `verifyDesktopRuntimeIntegrity()` once and cache only the successful result for that Core process. Add typed `runtime.info` Core request/result and `getRuntimeInfo({ probe: boolean })` host/Preload/Renderer bridge methods returning this non-secret DTO:
+- [x] Before creating the packaged adapter, call `verifyDesktopRuntimeIntegrity()` once and cache only the successful result for that Core process. Add typed `runtime.info` Core request/result and `getRuntimeInfo({ probe: boolean })` host/Preload/Renderer bridge methods returning this non-secret DTO:
 
   ```ts
   export interface RuntimeInfoUi {
@@ -340,7 +343,7 @@
 
   Do not include `codexHome`, executable paths, usernames, environment values, or tokens.
 
-- [ ] Map canonical adapter events into Core protocol events. Use these exact distinctions:
+- [x] Map canonical adapter events into Core protocol events. Use these exact distinctions:
 
   ```ts
   type RuntimeModelEvidence = {
@@ -354,25 +357,25 @@
 
   `model_observed` may set `actualModel` and `actualModelEvidence: 'proven'`; no other event may do so.
 
-- [ ] On canonical `turn_completed`, read the completed thread once, project the newest agent message, emit `agent_message`, then emit the completed state. Add tests proving the UI never invents an agent reply from a progress item and does not duplicate the same message when history is opened later.
+- [x] On canonical `turn_completed`, read the completed thread once, project the newest agent message, emit `agent_message`, then emit the completed state. Add tests proving the UI never invents an agent reply from a progress item and does not duplicate the same message when history is opened later.
 
-- [ ] Update Core handler/index lifecycle and delete the duplicate client/runtime/executable modules and their tests. The product must have one protocol validator, one approval relay, and one runtime resolver after this commit.
+- [x] Update Core handler/index lifecycle and delete the duplicate client/runtime/executable modules and their tests. The product must have one protocol validator, one approval relay, and one runtime resolver after this commit.
 
-- [ ] Verify focused, full Desktop, and adapter tests:
+- [x] Verify focused, full Desktop, and adapter tests:
 
   ```powershell
   npm run test:desktop-unit --prefix apps/orquesta-desktop
   npm test --prefix apps/orquesta-desktop
   npm test --workspace @orquesta/codex-adapter
-  rg -n "ORQUESTA_CODEX_PATH|WindowsApps|where\.exe|shell:\s*true|app-server-client|codex-executable|codex-runtime" apps/orquesta-desktop/electron
+  rg -n "ORQUESTA_CODEX_PATH|WindowsApps|where\.exe|shell:\s*true|from\s+['\"].*/(?:app-server-client|codex-executable|codex-runtime)['\"]" apps/orquesta-desktop/electron -g "!*.test.ts"
   ```
 
-  Expected `rg` result: no production matches; only the boundary test may contain the forbidden strings.
+  Expected `rg` result: no production matches. The boundary test itself contains the forbidden strings and is excluded from this command. Legitimate packaged resource paths named `codex-runtime` are not forbidden; only imports of the deleted duplicate module are.
 
-- [ ] Commit:
+- [x] Commit:
 
   ```powershell
-  git add apps/orquesta-desktop/electron/core apps/orquesta-desktop/electron/main apps/orquesta-desktop/electron/shared apps/orquesta-desktop/electron/preload apps/orquesta-desktop/src/contracts/bridge.ts apps/orquesta-desktop/src/bridges/desktop-repository-bridge.ts
+  git add apps/orquesta-desktop/electron/core apps/orquesta-desktop/electron/main apps/orquesta-desktop/electron/shared apps/orquesta-desktop/electron/preload apps/orquesta-desktop/src/contracts/bridge.ts apps/orquesta-desktop/src/bridges/desktop-repository-bridge.ts apps/orquesta-desktop/src/bridges/mock-bridge.ts apps/orquesta-desktop/tests/unit/desktop-repository-bridge.test.ts apps/orquesta-desktop/tests/unit/mock-bridge.test.ts docs/superpowers/plans/2026-07-18-orquesta-v4-desktop-integration.md
   git commit -m "refactor: use canonical Codex adapter in desktop core"
   ```
 

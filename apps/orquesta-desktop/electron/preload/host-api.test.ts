@@ -12,6 +12,11 @@ describe('createDesktopHostApi', () => {
       if (channel === DESKTOP_IPC.switchRepository || channel === DESKTOP_IPC.openRepository) return { status: 'accepted', correlationId: 'action-1' };
       if (channel === DESKTOP_IPC.sendMessage) return { status: 'accepted', correlationId: 'send-1' };
       if (channel === DESKTOP_IPC.listConversation) return { items: [], nextCursor: null };
+      if (channel === DESKTOP_IPC.getRuntimeInfo) return {
+        status: 'not_started', adapter: 'app_server', sdkVersion: '0.144.5', codexVersion: '0.144.5',
+        runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
+        platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified'
+      };
       if (channel === DESKTOP_IPC.selectImageAttachments) return [];
       return input;
     });
@@ -31,6 +36,7 @@ describe('createDesktopHostApi', () => {
     await expect(api.selectImageAttachments()).resolves.toEqual([]);
     await expect(api.sendMessage({ targetAgentId: 'orchestrator', text: 'Continue.', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted' });
     await expect(api.listConversation({ targetAgentId: 'orchestrator', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
+    await expect(api.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
     const listener = vi.fn();
     const unsubscribe = api.subscribeRepository(listener);
     for (const notify of listeners) notify(snapshot);
@@ -45,7 +51,8 @@ describe('createDesktopHostApi', () => {
       [DESKTOP_IPC.openRepository],
       [DESKTOP_IPC.selectImageAttachments],
       [DESKTOP_IPC.sendMessage, { targetAgentId: 'orchestrator', text: 'Continue.', attachmentIds: [], selectedContextIds: [] }],
-      [DESKTOP_IPC.listConversation, { targetAgentId: 'orchestrator', limit: 20 }]
+      [DESKTOP_IPC.listConversation, { targetAgentId: 'orchestrator', limit: 20 }],
+      [DESKTOP_IPC.getRuntimeInfo, { probe: false }]
     ]);
     expect(api).not.toHaveProperty('invoke');
     expect(api).not.toHaveProperty('send');
@@ -57,5 +64,11 @@ describe('createDesktopHostApi', () => {
 
     await expect(api.pingCore('')).rejects.toThrow('correlationId');
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  test('rejects malformed runtime metadata before it reaches the renderer', async () => {
+    const invoke = vi.fn(async () => ({ status: 'ready', adapter: 'app_server', executablePath: 'C:\\secret\\codex.exe' }));
+    const api = createDesktopHostApi(invoke, vi.fn());
+    await expect(api.getRuntimeInfo({ probe: true })).rejects.toThrow('runtime information');
   });
 });

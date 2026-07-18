@@ -1,4 +1,4 @@
-import type { ComposerAttachment, ConversationPage, ConversationQuery, ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
+import type { ComposerAttachment, ConversationPage, ConversationQuery, ProjectSummary, RuntimeInfoUi, UiActionResult } from '../../src/contracts/bridge';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
 
@@ -20,6 +20,7 @@ export interface DesktopHostApi {
   subscribeRepository(listener: (snapshot: OrquestaUiSnapshot) => void): () => void;
   sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult>;
   listConversation(input: ConversationQuery): Promise<ConversationPage>;
+  getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
   subscribeRuntime(listener: (notification: RuntimeNotification) => void): () => void;
 }
 
@@ -34,5 +35,6 @@ export const DESKTOP_IPC = {
   repositoryChanged: 'orquesta.desktop.repository.changed',
   sendMessage: 'orquesta.desktop.runtime.send-message',
   listConversation: 'orquesta.desktop.runtime.list-conversation',
+  getRuntimeInfo: 'orquesta.desktop.runtime.get-info',
   runtimeChanged: 'orquesta.desktop.runtime.changed'
 } as const;

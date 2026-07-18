@@ -7,6 +7,7 @@ describe('DesktopRepositoryBridge', () => {
   test('adapts repository reads and runtime messages through the bounded host API', async () => {
     const snapshot = fixtureCatalog['active-project'].snapshot;
     const subscription: { listener: ((next: typeof snapshot) => void) | null } = { listener: null };
+    const runtimeSubscription: { listener: Parameters<DesktopHostApi['subscribeRuntime']>[0] | null } = { listener: null };
     const host = {
       getRepositorySnapshot: vi.fn(async () => snapshot),
       listRepositories: vi.fn(async () => []),
@@ -16,7 +17,12 @@ describe('DesktopRepositoryBridge', () => {
       subscribeRepository: vi.fn((listener: (next: typeof snapshot) => void) => { subscription.listener = listener; return () => { subscription.listener = null; }; }),
       sendMessage: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'send-1' })),
       listConversation: vi.fn(async () => ({ items: [], nextCursor: null })),
-      subscribeRuntime: vi.fn(() => () => undefined),
+      getRuntimeInfo: vi.fn(async () => ({
+        status: 'not_started' as const, adapter: 'app_server' as const, sdkVersion: '0.144.5', codexVersion: '0.144.5',
+        runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
+        platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified' as const
+      })),
+      subscribeRuntime: vi.fn((listener) => { runtimeSubscription.listener = listener; return () => { runtimeSubscription.listener = null; }; }),
       getHostInfo: vi.fn(),
       pingCore: vi.fn()
     } satisfies DesktopHostApi;
@@ -27,10 +33,23 @@ describe('DesktopRepositoryBridge', () => {
     const unsubscribe = bridge.subscribe(listener);
     subscription.listener?.(snapshot);
     expect(listener).toHaveBeenCalledWith({ type: 'snapshot_changed', snapshot });
+    runtimeSubscription.listener?.({
+      kind: 'model_observed', threadId: 'thread-1', turnId: 'turn-1',
+      targetAgentId: 'orchestrator', text: null,
+      modelEvidence: {
+        recommendedModel: null, requestedModel: null, appliedModel: null,
+        actualModel: 'gpt-5.6-codex', actualModelEvidence: 'proven'
+      }
+    });
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'toast', toast: expect.objectContaining({ title: 'Codex model observed' })
+    }));
     unsubscribe();
+    expect(runtimeSubscription.listener).toBeNull();
     await expect(bridge.switchProject('repo-1')).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.requestOpenProject()).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.sendMessage({ targetAgentId: 'orchestrator', text: 'hello', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.resolveAttentionItem({ id: 'A1', resolution: 'done' })).resolves.toMatchObject({ status: 'unsupported' });
+    await expect(bridge.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
   });
 });

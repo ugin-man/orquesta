@@ -32,4 +32,12 @@ describe('handleCoreRequest', () => {
     expect(handlers.dispatch).toHaveBeenCalledWith(request);
     expect(handleCoreRequest({ ...request, rootPath: '' }, handlers)).toBe(false);
   });
+
+  test('dispatches a typed non-secret runtime information request', () => {
+    const handlers = { send: vi.fn(), stop: vi.fn(), dispatch: vi.fn() };
+    const request = { type: 'runtime.info', correlationId: 'info-1', probe: false } as const;
+    expect(handleCoreRequest(request, handlers)).toBe(true);
+    expect(handlers.dispatch).toHaveBeenCalledWith(request);
+    expect(handleCoreRequest({ ...request, probe: 'yes' }, handlers)).toBe(false);
+  });
 });

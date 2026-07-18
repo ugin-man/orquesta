@@ -1,4 +1,4 @@
-import type { ComposerAttachment, ConversationMessage, ConversationPage, ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
+import type { ComposerAttachment, ConversationMessage, ConversationPage, ProjectSummary, RuntimeInfoUi, UiActionResult } from '../../src/contracts/bridge';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
 import type { DesktopHostApi, DesktopHostInfo } from '../shared/host-contract';
@@ -70,9 +70,27 @@ function isConversationPage(value: unknown): value is ConversationPage {
 function isRuntimeNotification(value: unknown): value is RuntimeNotification {
   if (!value || typeof value !== 'object') return false;
   const notification = value as Record<string, unknown>;
-  return ['turn_started', 'turn_completed', 'turn_failed', 'agent_message'].includes(String(notification.kind))
+  const evidence = notification.modelEvidence && typeof notification.modelEvidence === 'object'
+    ? notification.modelEvidence as Record<string, unknown>
+    : null;
+  return ['turn_started', 'turn_completed', 'turn_failed', 'agent_message', 'model_observed'].includes(String(notification.kind))
     && safeId(notification.threadId) && (notification.turnId === null || safeId(notification.turnId))
-    && (notification.text === null || typeof notification.text === 'string');
+    && (notification.text === null || typeof notification.text === 'string')
+    && (notification.targetAgentId === null || safeId(notification.targetAgentId))
+    && Boolean(evidence && ['proven', 'reported', 'inferred', 'unknown'].includes(String(evidence.actualModelEvidence)));
+}
+
+function nullableString(value: unknown): boolean {
+  return value === null || typeof value === 'string';
+}
+
+function isRuntimeInfo(value: unknown): value is RuntimeInfoUi {
+  if (!value || typeof value !== 'object') return false;
+  const info = value as Record<string, unknown>;
+  return ['not_started', 'ready', 'unavailable'].includes(String(info.status)) && info.adapter === 'app_server'
+    && nullableString(info.sdkVersion) && nullableString(info.codexVersion) && nullableString(info.runtimeVersion)
+    && nullableString(info.targetTriple) && nullableString(info.platformFamily) && nullableString(info.platformOs)
+    && nullableString(info.userAgent) && ['verified', 'unverified', 'failed'].includes(String(info.integrity));
 }
 
 export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe): DesktopHostApi {
@@ -143,6 +161,12 @@ export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe)
       const page = await invoke(DESKTOP_IPC.listConversation, { ...input, limit });
       if (!isConversationPage(page)) throw new Error('Desktop host returned an invalid conversation page');
       return page;
+    },
+    async getRuntimeInfo(input) {
+      if (!input || typeof input.probe !== 'boolean') throw new Error('Runtime probe must be boolean');
+      const info = await invoke(DESKTOP_IPC.getRuntimeInfo, input);
+      if (!isRuntimeInfo(info)) throw new Error('Desktop host returned invalid runtime information');
+      return info;
     },
     subscribeRuntime(listener) {
       return subscribe(DESKTOP_IPC.runtimeChanged, (payload) => {

@@ -18,4 +18,35 @@ describe('Core protocol validation', () => {
     expect(isCoreRequest({ type: 'core.ping', correlationId: '' })).toBe(false);
     expect(isCoreRequest({ type: 'core.execute', command: 'whoami' })).toBe(false);
   });
+
+  test('accepts only typed runtime information requests and results', () => {
+    expect(isCoreRequest({ type: 'runtime.info', correlationId: 'info-1', probe: false })).toBe(true);
+    expect(isCoreRequest({ type: 'runtime.info', correlationId: 'info-1', probe: 'yes' })).toBe(false);
+    expect(isCoreEvent({
+      type: 'runtime.info.result',
+      correlationId: 'info-1',
+      info: {
+        status: 'not_started', adapter: 'app_server', sdkVersion: '0.144.5', codexVersion: '0.144.5',
+        runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
+        platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified'
+      }
+    })).toBe(true);
+  });
+
+  test('requires separated model evidence on dispatch and runtime notifications', () => {
+    const modelEvidence = {
+      recommendedModel: null, requestedModel: 'requested', appliedModel: 'requested', actualModel: null,
+      actualModelEvidence: 'unknown'
+    };
+    expect(isCoreEvent({
+      type: 'runtime.dispatch.accepted', correlationId: 'send-1', threadId: 'thread-1', turnId: 'turn-1', modelEvidence
+    })).toBe(true);
+    expect(isCoreEvent({
+      type: 'runtime.notification',
+      notification: { kind: 'turn_started', threadId: 'thread-1', turnId: 'turn-1', text: null, targetAgentId: null, modelEvidence }
+    })).toBe(true);
+    expect(isCoreEvent({
+      type: 'runtime.dispatch.accepted', correlationId: 'send-1', threadId: 'thread-1', turnId: 'turn-1', actualModel: 'inferred'
+    })).toBe(false);
+  });
 });

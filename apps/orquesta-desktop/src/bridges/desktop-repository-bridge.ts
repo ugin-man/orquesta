@@ -37,7 +37,8 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
       const tone = notification.kind === 'turn_failed' ? 'danger' : notification.kind === 'turn_completed' ? 'success' : 'neutral';
       const title = notification.kind === 'turn_started' ? 'Codex turn started'
         : notification.kind === 'turn_completed' ? 'Codex turn completed'
-          : notification.kind === 'turn_failed' ? 'Codex turn failed' : 'Coordinator replied';
+          : notification.kind === 'turn_failed' ? 'Codex turn failed'
+            : notification.kind === 'model_observed' ? 'Codex model observed' : 'Coordinator replied';
       listener({
         type: 'toast',
         toast: {
@@ -64,6 +65,10 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
 
   listConversation(input: ConversationQuery): Promise<ConversationPage> {
     return this.host.listConversation(input);
+  }
+
+  getRuntimeInfo(input: { probe: boolean }) {
+    return this.host.getRuntimeInfo(input);
   }
 
   listProjects(): Promise<ProjectSummary[]> {

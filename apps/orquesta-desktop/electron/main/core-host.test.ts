@@ -62,9 +62,32 @@ describe('CoreHost', () => {
 
     const pending = host.sendMessage({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null, targetAgentId: 'orchestrator', text: 'Continue.', localImagePaths: [] });
     const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
-    child.emit('message', { type: 'runtime.dispatch.accepted', correlationId: request.correlationId, threadId: 'thread-1', turnId: 'turn-1', actualModel: 'gpt-current' });
+    const modelEvidence = {
+      recommendedModel: null, requestedModel: 'requested', appliedModel: 'requested', actualModel: null,
+      actualModelEvidence: 'unknown'
+    };
+    child.emit('message', { type: 'runtime.dispatch.accepted', correlationId: request.correlationId, threadId: 'thread-1', turnId: 'turn-1', modelEvidence });
 
-    await expect(pending).resolves.toEqual({ correlationId: request.correlationId, threadId: 'thread-1', turnId: 'turn-1', actualModel: 'gpt-current' });
+    await expect(pending).resolves.toEqual({ correlationId: request.correlationId, threadId: 'thread-1', turnId: 'turn-1', modelEvidence });
+  });
+
+  test('returns typed runtime information without exposing the Core request channel', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+
+    const pending = host.getRuntimeInfo({ probe: false });
+    const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(request).toMatchObject({ type: 'runtime.info', probe: false });
+    const info = {
+      status: 'not_started' as const, adapter: 'app_server' as const, sdkVersion: '0.144.5', codexVersion: '0.144.5',
+      runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
+      platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified' as const
+    };
+    child.emit('message', { type: 'runtime.info.result', correlationId: request.correlationId, info });
+
+    await expect(pending).resolves.toEqual(info);
   });
 
   test('forwards bounded runtime notifications and conversation pages', async () => {
@@ -78,10 +101,14 @@ describe('CoreHost', () => {
     const pending = host.listConversation({ threadId: 'thread-1', targetAgentId: 'orchestrator', limit: 20 });
     const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
     child.emit('message', { type: 'runtime.conversation.result', correlationId: request.correlationId, page: { items: [], nextCursor: null } });
-    child.emit('message', { type: 'runtime.notification', notification: { kind: 'turn_started', threadId: 'thread-1', turnId: 'turn-1', text: null } });
+    const notification = {
+      kind: 'turn_started' as const, threadId: 'thread-1', turnId: 'turn-1', text: null, targetAgentId: null,
+      modelEvidence: { recommendedModel: null, requestedModel: null, appliedModel: null, actualModel: null, actualModelEvidence: 'unknown' as const }
+    };
+    child.emit('message', { type: 'runtime.notification', notification });
 
     await expect(pending).resolves.toEqual({ items: [], nextCursor: null });
-    expect(listener).toHaveBeenCalledWith({ kind: 'turn_started', threadId: 'thread-1', turnId: 'turn-1', text: null });
+    expect(listener).toHaveBeenCalledWith(notification);
   });
 
   test('requests a clean shutdown and kills after the bounded timeout', async () => {

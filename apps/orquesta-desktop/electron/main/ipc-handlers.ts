@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ConversationPage, ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
+import type { ConversationPage, ProjectSummary, RuntimeInfoUi, UiActionResult } from '../../src/contracts/bridge';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { CoreHostStatus } from './core-host';
 import { DESKTOP_IPC, type CoreStatus } from '../shared/host-contract';
@@ -11,8 +11,9 @@ export interface IpcMainLike {
 export interface CoreController {
   status(): CoreHostStatus;
   ping(correlationId: string): Promise<{ correlationId: string }>;
-  sendMessage(input: { projectId: string; rootPath: string; threadId: string | null; targetAgentId: string; text: string; localImagePaths: string[] }): Promise<{ correlationId: string; threadId: string; turnId: string; actualModel: string | null }>;
+  sendMessage(input: { projectId: string; rootPath: string; threadId: string | null; targetAgentId: string; text: string; localImagePaths: string[] }): Promise<{ correlationId: string; threadId: string; turnId: string; modelEvidence: import('../core/protocol').RuntimeModelEvidence }>;
   listConversation(input: { threadId: string; targetAgentId: string; limit: number }): Promise<ConversationPage>;
+  getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
 }
 
 export interface AttachmentController {
@@ -70,6 +71,13 @@ function readConversationInput(input: unknown): { targetAgentId: string; limit: 
   return { targetAgentId: value.targetAgentId, limit };
 }
 
+function readRuntimeInfoInput(input: unknown): { probe: boolean } {
+  if (!input || typeof input !== 'object' || typeof (input as Record<string, unknown>).probe !== 'boolean') {
+    throw new Error('probe must be boolean');
+  }
+  return { probe: (input as Record<string, unknown>).probe as boolean };
+}
+
 export function registerDesktopIpc(ipcMain: IpcMainLike, coreHost: CoreController, repositories: RepositoryController, attachments: AttachmentController): void {
   ipcMain.handle(DESKTOP_IPC.getHostInfo, async () => ({
     platform: 'win32' as const,
@@ -104,4 +112,5 @@ export function registerDesktopIpc(ipcMain: IpcMainLike, coreHost: CoreControlle
     if (!context?.threadId) return { items: [], nextCursor: null } satisfies ConversationPage;
     return coreHost.listConversation({ threadId: context.threadId, ...query });
   });
+  ipcMain.handle(DESKTOP_IPC.getRuntimeInfo, async (_event, input) => coreHost.getRuntimeInfo(readRuntimeInfoInput(input)));
 }

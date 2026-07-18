@@ -25,6 +25,19 @@ export interface ConversationPage {
   nextCursor: string | null;
 }
 
+export interface RuntimeInfoUi {
+  status: 'not_started' | 'ready' | 'unavailable';
+  adapter: 'app_server';
+  sdkVersion: string | null;
+  codexVersion: string | null;
+  runtimeVersion: string | null;
+  targetTriple: string | null;
+  platformFamily: string | null;
+  platformOs: string | null;
+  userAgent: string | null;
+  integrity: 'verified' | 'unverified' | 'failed';
+}
+
 export interface AttentionResolutionInput {
   id: string;
   resolution: string;
@@ -74,6 +87,7 @@ export interface OrquestaRendererBridge {
   openAttentionItem(id: string): Promise<UiActionResult>;
   resolveAttentionItem(input: AttentionResolutionInput): Promise<UiActionResult>;
   listConversation(input: ConversationQuery): Promise<ConversationPage>;
+  getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
   listProjects(): Promise<ProjectSummary[]>;
   switchProject(projectId: string): Promise<UiActionResult>;
   requestOpenProject(): Promise<UiActionResult>;

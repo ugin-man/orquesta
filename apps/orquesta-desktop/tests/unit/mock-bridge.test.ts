@@ -2,6 +2,11 @@ import { describe, expect, test, vi } from 'vitest';
 import { MockOrquestaBridge } from '../../src/bridges/mock-bridge';
 
 describe('MockOrquestaBridge', () => {
+  test('reports prototype runtime metadata without claiming a live runtime', async () => {
+    const bridge = new MockOrquestaBridge('active-project');
+    await expect(bridge.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'unavailable', integrity: 'unverified' });
+  });
+
   test('accepts a prototype message without claiming completion', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const result = await bridge.sendMessage({ targetAgentId: 'orchestrator', text: 'Keep the bridge clean.', attachmentIds: [], selectedContextIds: [] });

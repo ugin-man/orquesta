@@ -13,8 +13,16 @@ describe('registerDesktopIpc', () => {
     const coreHost = {
       status: vi.fn(() => 'ready' as const),
       ping: vi.fn(async (correlationId: string) => ({ correlationId })),
-      sendMessage: vi.fn(async () => ({ correlationId: 'send-1', threadId: 'thread-1', turnId: 'turn-1', actualModel: 'gpt-current' })),
-      listConversation: vi.fn(async () => ({ items: [], nextCursor: null }))
+      sendMessage: vi.fn(async () => ({
+        correlationId: 'send-1', threadId: 'thread-1', turnId: 'turn-1',
+        modelEvidence: { recommendedModel: null, requestedModel: null, appliedModel: null, actualModel: null, actualModelEvidence: 'unknown' as const }
+      })),
+      listConversation: vi.fn(async () => ({ items: [], nextCursor: null })),
+      getRuntimeInfo: vi.fn(async () => ({
+        status: 'not_started' as const, adapter: 'app_server' as const, sdkVersion: '0.144.5', codexVersion: '0.144.5',
+        runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
+        platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified' as const
+      }))
     };
     const snapshot = { project: { id: 'repo-1' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [] };
     const repositories = {
@@ -38,7 +46,8 @@ describe('registerDesktopIpc', () => {
       DESKTOP_IPC.openRepository,
       DESKTOP_IPC.selectImageAttachments,
       DESKTOP_IPC.sendMessage,
-      DESKTOP_IPC.listConversation
+      DESKTOP_IPC.listConversation,
+      DESKTOP_IPC.getRuntimeInfo
     ]);
     await expect(handlers.get(DESKTOP_IPC.getHostInfo)?.({})).resolves.toEqual({
       platform: 'win32',
@@ -54,6 +63,8 @@ describe('registerDesktopIpc', () => {
     await expect(handlers.get(DESKTOP_IPC.sendMessage)?.({}, { targetAgentId: 'orchestrator', text: 'Continue.', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted', correlationId: 'send-1' });
     expect(coreHost.sendMessage).toHaveBeenCalledWith({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-1', targetAgentId: 'orchestrator', text: 'Continue.', localImagePaths: [] });
     await expect(handlers.get(DESKTOP_IPC.listConversation)?.({}, { targetAgentId: 'orchestrator', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
+    await expect(handlers.get(DESKTOP_IPC.getRuntimeInfo)?.({}, { probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
+    expect(coreHost.getRuntimeInfo).toHaveBeenCalledWith({ probe: false });
   });
 
   test('rejects malformed ping input without reaching Core', async () => {
@@ -63,7 +74,7 @@ describe('registerDesktopIpc', () => {
         handlers.set(channel, handler);
       }
     };
-    const coreHost = { status: () => 'ready' as const, ping: vi.fn(), sendMessage: vi.fn(), listConversation: vi.fn() };
+    const coreHost = { status: () => 'ready' as const, ping: vi.fn(), sendMessage: vi.fn(), listConversation: vi.fn(), getRuntimeInfo: vi.fn() };
     const repositories = {
       getSnapshot: vi.fn(), listProjects: vi.fn(), switchProject: vi.fn(), openProject: vi.fn(),
       getCurrentRuntimeContext: vi.fn(), setCoordinatorThread: vi.fn()
@@ -76,5 +87,7 @@ describe('registerDesktopIpc', () => {
     expect(repositories.switchProject).not.toHaveBeenCalled();
     await expect(handlers.get(DESKTOP_IPC.sendMessage)?.({}, { targetAgentId: '../bad', text: 'x', attachmentIds: [], selectedContextIds: [] })).rejects.toThrow('targetAgentId');
     expect(coreHost.sendMessage).not.toHaveBeenCalled();
+    await expect(handlers.get(DESKTOP_IPC.getRuntimeInfo)?.({}, { probe: 'yes' })).rejects.toThrow('probe');
+    expect(coreHost.getRuntimeInfo).not.toHaveBeenCalled();
   });
 });

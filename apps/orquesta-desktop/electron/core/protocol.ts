@@ -1,4 +1,21 @@
-import type { ConversationPage } from '../../src/contracts/bridge';
+import type { ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
+
+export interface RuntimeModelEvidence {
+  recommendedModel: string | null;
+  requestedModel: string | null;
+  appliedModel: string | null;
+  actualModel: string | null;
+  actualModelEvidence: 'proven' | 'reported' | 'inferred' | 'unknown';
+}
+
+export interface RuntimeNotification {
+  kind: 'turn_started' | 'turn_completed' | 'turn_failed' | 'agent_message' | 'model_observed';
+  threadId: string;
+  turnId: string | null;
+  text: string | null;
+  targetAgentId: string | null;
+  modelEvidence: RuntimeModelEvidence;
+}
 
 export interface RuntimeSendRequest {
   type: 'runtime.send';
@@ -9,6 +26,8 @@ export interface RuntimeSendRequest {
   targetAgentId: string;
   text: string;
   localImagePaths: string[];
+  recommendedModel?: string | null;
+  requestedModel?: string | null;
 }
 
 export interface RuntimeConversationRequest {
@@ -19,25 +38,26 @@ export interface RuntimeConversationRequest {
   limit: number;
 }
 
-export interface RuntimeNotification {
-  kind: 'turn_started' | 'turn_completed' | 'turn_failed' | 'agent_message';
-  threadId: string;
-  turnId: string | null;
-  text: string | null;
+export interface RuntimeInfoRequest {
+  type: 'runtime.info';
+  correlationId: string;
+  probe: boolean;
 }
 
 export type CoreRequest =
   | { type: 'core.shutdown' }
   | { type: 'core.ping'; correlationId: string }
   | RuntimeSendRequest
-  | RuntimeConversationRequest;
+  | RuntimeConversationRequest
+  | RuntimeInfoRequest;
 
 export type CoreEvent =
   | { type: 'core.ready'; version: 1 }
   | { type: 'core.pong'; correlationId: string }
-  | { type: 'runtime.dispatch.accepted'; correlationId: string; threadId: string; turnId: string; actualModel: string | null }
+  | { type: 'runtime.dispatch.accepted'; correlationId: string; threadId: string; turnId: string; modelEvidence: RuntimeModelEvidence }
   | { type: 'runtime.request.failed'; correlationId: string; reason: string; retryable: boolean }
   | { type: 'runtime.conversation.result'; correlationId: string; page: ConversationPage }
+  | { type: 'runtime.info.result'; correlationId: string; info: RuntimeInfoUi }
   | { type: 'runtime.notification'; notification: RuntimeNotification }
   | { type: 'core.stopped' };
 
@@ -57,6 +77,33 @@ function isBoundedText(value: unknown, maximum: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= maximum;
 }
 
+function isNullableBoundedText(value: unknown, maximum: number): value is string | null {
+  return value === null || (typeof value === 'string' && value.trim().length > 0 && value.length <= maximum);
+}
+
+function isModelEvidence(value: unknown): value is RuntimeModelEvidence {
+  if (!isRecord(value)) return false;
+  return isNullableBoundedText(value.recommendedModel, 256)
+    && isNullableBoundedText(value.requestedModel, 256)
+    && isNullableBoundedText(value.appliedModel, 256)
+    && isNullableBoundedText(value.actualModel, 256)
+    && ['proven', 'reported', 'inferred', 'unknown'].includes(String(value.actualModelEvidence));
+}
+
+function isRuntimeInfo(value: unknown): value is RuntimeInfoUi {
+  if (!isRecord(value)) return false;
+  return ['not_started', 'ready', 'unavailable'].includes(String(value.status))
+    && value.adapter === 'app_server'
+    && isNullableBoundedText(value.sdkVersion, 128)
+    && isNullableBoundedText(value.codexVersion, 128)
+    && isNullableBoundedText(value.runtimeVersion, 128)
+    && isNullableBoundedText(value.targetTriple, 256)
+    && isNullableBoundedText(value.platformFamily, 128)
+    && isNullableBoundedText(value.platformOs, 128)
+    && isNullableBoundedText(value.userAgent, 512)
+    && ['verified', 'unverified', 'failed'].includes(String(value.integrity));
+}
+
 export function isCoreRequest(value: unknown): value is CoreRequest {
   if (!isRecord(value)) return false;
   if (value.type === 'core.shutdown') return true;
@@ -71,6 +118,9 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     return isCorrelationId(value.correlationId) && isSafeId(value.threadId) && isSafeId(value.targetAgentId)
       && typeof value.limit === 'number' && Number.isInteger(value.limit) && value.limit >= 1 && value.limit <= 200;
   }
+  if (value.type === 'runtime.info') {
+    return isCorrelationId(value.correlationId) && typeof value.probe === 'boolean';
+  }
   return false;
 }
 
@@ -80,7 +130,7 @@ export function isCoreEvent(value: unknown): value is CoreEvent {
   if (value.type === 'core.pong') return isCorrelationId(value.correlationId);
   if (value.type === 'runtime.dispatch.accepted') {
     return isCorrelationId(value.correlationId) && isSafeId(value.threadId) && isSafeId(value.turnId)
-      && (value.actualModel === null || isBoundedText(value.actualModel, 256));
+      && isModelEvidence(value.modelEvidence);
   }
   if (value.type === 'runtime.request.failed') {
     return isCorrelationId(value.correlationId) && isBoundedText(value.reason, 4_096) && typeof value.retryable === 'boolean';
@@ -88,11 +138,16 @@ export function isCoreEvent(value: unknown): value is CoreEvent {
   if (value.type === 'runtime.conversation.result') {
     return isCorrelationId(value.correlationId) && isRecord(value.page) && Array.isArray(value.page.items);
   }
+  if (value.type === 'runtime.info.result') {
+    return isCorrelationId(value.correlationId) && isRuntimeInfo(value.info);
+  }
   if (value.type === 'runtime.notification') {
     const notification = isRecord(value.notification) ? value.notification : null;
-    return Boolean(notification && ['turn_started', 'turn_completed', 'turn_failed', 'agent_message'].includes(String(notification.kind))
+    return Boolean(notification && ['turn_started', 'turn_completed', 'turn_failed', 'agent_message', 'model_observed'].includes(String(notification.kind))
       && isSafeId(notification.threadId) && (notification.turnId === null || isSafeId(notification.turnId))
-      && (notification.text === null || typeof notification.text === 'string'));
+      && (notification.text === null || typeof notification.text === 'string')
+      && (notification.targetAgentId === null || isSafeId(notification.targetAgentId))
+      && isModelEvidence(notification.modelEvidence));
   }
   return value.type === 'core.stopped';
 }

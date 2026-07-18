@@ -114,6 +114,21 @@ export class MockOrquestaBridge implements OrquestaRendererBridge {
     return { items: items.slice(-limit), nextCursor: null };
   }
 
+  async getRuntimeInfo(_input: { probe: boolean }) {
+    return {
+      status: 'unavailable' as const,
+      adapter: 'app_server' as const,
+      sdkVersion: null,
+      codexVersion: null,
+      runtimeVersion: null,
+      targetTriple: null,
+      platformFamily: null,
+      platformOs: null,
+      userAgent: null,
+      integrity: 'unverified' as const
+    };
+  }
+
   async listProjects(): Promise<ProjectSummary[]> {
     return fixtureKeys.map((key) => {
       const fixture = fixtureCatalog[key];
