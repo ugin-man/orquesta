@@ -2,6 +2,7 @@
 .orquesta/
 .codex/
 .worktrees/
+.runtime-staging/
 
 node_modules/
 npm-debug.log*

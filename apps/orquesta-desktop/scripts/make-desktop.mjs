@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 
+import { prepareCodexRuntime } from './prepare-codex-runtime.mjs';
+
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDirectory, '..');
 const temporaryOut = await mkdtemp(path.join(os.tmpdir(), 'orquesta-forge-'));
@@ -27,6 +29,7 @@ function runForgeMake() {
 }
 
 try {
+  await prepareCodexRuntime({ appRoot, stagingRoot: path.join(appRoot, '.runtime-staging') });
   await runForgeMake();
   const temporaryPackageDirectory = path.join(temporaryOut, 'Orquesta-win32-x64');
   const temporaryMakeDirectory = path.join(temporaryOut, 'make');

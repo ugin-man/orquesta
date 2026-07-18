@@ -90,6 +90,8 @@
 
 - Modify: `apps/orquesta-desktop/package.json`
 - Modify: `apps/orquesta-desktop/package-lock.json`
+- Modify: `apps/orquesta-desktop/scripts/lockfile-policy.mjs`
+- Modify: `apps/orquesta-desktop/scripts/lockfile-policy.test.mjs`
 - Modify: `.gitignore`
 - Create: `apps/orquesta-desktop/scripts/prepare-codex-runtime.mjs`
 - Create: `apps/orquesta-desktop/scripts/prepare-codex-runtime.test.mjs`
@@ -100,7 +102,7 @@
 - Modify: `apps/orquesta-desktop/forge.config.cjs`
 - Modify: `apps/orquesta-desktop/scripts/make-desktop.mjs`
 
-- [ ] Add failing tests which require `prepareCodexRuntime()` to copy only these package directories into `.runtime-staging/codex-runtime/node_modules/@openai/` and reject any version mismatch:
+- [x] Add failing tests which require `prepareCodexRuntime()` to copy only these package directories into `.runtime-staging/codex-runtime/node_modules/@openai/` and reject any version mismatch:
 
   ```text
   codex-sdk                 0.144.5
@@ -110,7 +112,7 @@
 
   The test must also assert that a fourth sibling package is not copied and that the returned SDK root ends with `node_modules\@openai\codex-sdk`.
 
-- [ ] Add failing `runtime-location.test.ts` cases for both locations:
+- [x] Add failing `runtime-location.test.ts` cases for both locations:
 
   ```ts
   resolveDesktopSdkPackageRoot({ packaged: false, appRoot: 'C:\\app', resourcesPath: 'ignored' })
@@ -120,14 +122,14 @@
   // C:\Program Files\Orquesta\resources\codex-runtime\node_modules\@openai\codex-sdk
   ```
 
-- [ ] Run both focused tests and confirm the missing module/function failures:
+- [x] Run both focused tests and confirm the missing module/function failures:
 
   ```powershell
   node --test apps/orquesta-desktop/scripts/prepare-codex-runtime.test.mjs
   npm run test:desktop-unit --prefix apps/orquesta-desktop -- runtime-location.test.ts
   ```
 
-- [ ] Add these exact Desktop dependencies, then run `npm install` inside `apps/orquesta-desktop`:
+- [x] Add these exact Desktop dependencies, then run `npm install` inside `apps/orquesta-desktop`:
 
   ```json
   {
@@ -138,15 +140,15 @@
   }
   ```
 
-- [ ] Implement `prepare-codex-runtime.mjs` with `fs.cp`, strict `package.json` name/version checks, a clean staging-directory replacement, and an exported `prepareCodexRuntime({ appRoot, stagingRoot })`. It must never resolve from global npm locations.
+- [x] Implement `prepare-codex-runtime.mjs` with `fs.cp`, strict `package.json` name/version checks, a clean staging-directory replacement, and an exported `prepareCodexRuntime({ appRoot, stagingRoot })`. It must never resolve from global npm locations.
 
-- [ ] During staging, verify that Desktop `package-lock.json` has registry `resolved` and `integrity` fields for all three OpenAI packages. Write `runtime-manifest.json` containing the exact package names/versions plus relative path, byte length, and SHA-256 for each copied `package.json` and the selected `codex.exe`. Add failing tamper tests, then implement `verifyDesktopRuntimeIntegrity()` to compare the packaged files to that manifest immediately before the first App Server spawn. This detects install/copy corruption; the final docs must still state that an unsigned package cannot resist an attacker who can modify both application and manifest.
+- [x] During staging, verify that Desktop `package-lock.json` has registry `resolved` and `integrity` fields for all three OpenAI packages. Write `runtime-manifest.json` containing the exact package names/versions plus relative path, byte length, and SHA-256 for each copied `package.json` and the selected `codex.exe`. Add failing tamper tests, then implement `verifyDesktopRuntimeIntegrity()` to compare the packaged files to that manifest immediately before the first App Server spawn. This detects install/copy corruption; the final docs must still state that an unsigned package cannot resist an attacker who can modify both application and manifest.
 
-- [ ] Implement `resolveDesktopSdkPackageRoot()` as a pure path function. It returns the development root under Desktop `node_modules`, or the packaged root under `process.resourcesPath/codex-runtime/node_modules`.
+- [x] Implement `resolveDesktopSdkPackageRoot()` as a pure path function. It returns the development root under Desktop `node_modules`, or the packaged root under `process.resourcesPath/codex-runtime/node_modules`.
 
-- [ ] Add `.runtime-staging/` to `.gitignore`. Add Forge `extraResource` for `.runtime-staging/codex-runtime` with destination `codex-runtime`. Invoke staging immediately before Forge in `make-desktop.mjs`; do not invoke it from `build`, `build:host`, or renderer tests.
+- [x] Add `.runtime-staging/` to `.gitignore`. Add Forge `extraResource` for `.runtime-staging/codex-runtime` with destination `codex-runtime`. Invoke staging immediately before Forge in `make-desktop.mjs`; do not invoke it from `build`, `build:host`, or renderer tests.
 
-- [ ] Verify exact installation and focused tests:
+- [x] Verify exact installation and focused tests:
 
   ```powershell
   npm ls --prefix apps/orquesta-desktop @orquesta/codex-adapter @openai/codex-sdk @openai/codex @openai/codex-win32-x64
@@ -155,7 +157,7 @@
   npm run validate:lockfile --prefix apps/orquesta-desktop
   ```
 
-- [ ] Commit:
+- [x] Commit:
 
   ```powershell
   git add .gitignore apps/orquesta-desktop/package.json apps/orquesta-desktop/package-lock.json apps/orquesta-desktop/scripts/prepare-codex-runtime.mjs apps/orquesta-desktop/scripts/prepare-codex-runtime.test.mjs apps/orquesta-desktop/electron/core/runtime-location.ts apps/orquesta-desktop/electron/core/runtime-location.test.ts apps/orquesta-desktop/electron/core/runtime-integrity.ts apps/orquesta-desktop/electron/core/runtime-integrity.test.ts apps/orquesta-desktop/forge.config.cjs apps/orquesta-desktop/scripts/make-desktop.mjs

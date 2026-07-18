@@ -8,6 +8,7 @@ module.exports = {
     name: 'Orquesta',
     executableName: 'Orquesta',
     icon: require('node:path').join(__dirname, 'assets', 'orquesta.ico'),
+    extraResource: [require('node:path').join(__dirname, '.runtime-staging', 'codex-runtime')],
     ignore: createPackageIgnore(__dirname),
     prune: false,
     afterComplete: [

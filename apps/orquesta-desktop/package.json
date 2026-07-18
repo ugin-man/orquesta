@@ -25,7 +25,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "test:desktop-unit": "vitest run electron --config vitest.config.ts",
-    "test:desktop-scripts": "node scripts/desktop-paths.test.mjs && node scripts/package-policy.test.mjs && node scripts/package-locales.test.mjs && node scripts/desktop-metrics.test.mjs && node scripts/lockfile-policy.test.mjs && node scripts/app-icon.test.mjs",
+    "test:desktop-scripts": "node --test scripts/prepare-codex-runtime.test.mjs && node scripts/desktop-paths.test.mjs && node scripts/package-policy.test.mjs && node scripts/package-locales.test.mjs && node scripts/desktop-metrics.test.mjs && node scripts/lockfile-policy.test.mjs && node scripts/app-icon.test.mjs",
     "test:desktop-smoke": "npm run build:desktop && playwright test --config=playwright.electron.config.ts",
     "test:browser": "npm run build && playwright test",
     "check": "npm run test && npm run build && playwright test && playwright test --config=playwright.visual.config.ts",
@@ -34,6 +34,10 @@
     "validate:lockfile": "node scripts/validate-lockfile.mjs"
   },
   "dependencies": {
+    "@openai/codex": "0.144.5",
+    "@openai/codex-sdk": "0.144.5",
+    "@openai/codex-win32-x64": "npm:@openai/codex@0.144.5-win32-x64",
+    "@orquesta/codex-adapter": "file:../../packages/codex-adapter",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
