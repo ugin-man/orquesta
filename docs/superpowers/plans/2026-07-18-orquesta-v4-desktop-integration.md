@@ -241,7 +241,7 @@
 - Modify: `packages/codex-adapter/test/jsonl-transport.test.js`
 - Modify: `packages/codex-adapter/test/app-server-adapter.test.js`
 
-- [ ] Add failing transport tests for all shutdown paths:
+- [x] Add failing transport tests for all shutdown paths:
 
   - `shutdown()` ends stdin and resolves when the child emits `exit`.
   - pending requests reject with `App Server transport shut down`.
@@ -249,27 +249,27 @@
   - two concurrent `shutdown()` calls share one promise and kill at most once.
   - a protocol failure followed by `shutdown()` still ends or kills the child.
 
-- [ ] Run the focused test and confirm `shutdown` is absent:
+- [x] Run the focused test and confirm `shutdown` is absent:
 
   ```powershell
   node --test packages/codex-adapter/test/jsonl-transport.test.js
   ```
 
-- [ ] Implement `shutdown({ timeoutMs = 1500 } = {})` on the transport. Register the exit listener before calling `stdin.end()`, reject pending requests once, and call `process.kill()` only if the exit timeout expires. Keep `close(reason)` as the immediate protocol-failure path.
+- [x] Implement `shutdown({ timeoutMs = 1500 } = {})` on the transport. Register the exit listener before calling `stdin.end()`, reject pending requests once, and call `process.kill()` only if the exit timeout expires. Keep `close(reason)` as the immediate protocol-failure path.
 
-- [ ] Store the resolved runtime and initialize response in App Server adapter state. Wire adapter `shutdown` to `approvalRelay.reset()`, clear turn/thread maps and listeners, await `transport.shutdown()`, then null all transport/runtime initialization state so a later operation can restart cleanly.
+- [x] Store the resolved runtime and initialize response in App Server adapter state. Wire adapter `shutdown` to `approvalRelay.reset()`, clear turn/thread maps and listeners, await `transport.shutdown()`, then null all transport/runtime initialization state so a later operation can restart cleanly.
 
-- [ ] Run the adapter suite twice to catch leaked process/listener state:
+- [x] Run the adapter suite twice to catch leaked process/listener state:
 
   ```powershell
   npm test --workspace @orquesta/codex-adapter
   npm test --workspace @orquesta/codex-adapter
   ```
 
-- [ ] Commit:
+- [x] Commit:
 
   ```powershell
-  git add packages/codex-adapter/src/jsonl-transport.js packages/codex-adapter/src/app-server-adapter.js packages/codex-adapter/test/jsonl-transport.test.js packages/codex-adapter/test/app-server-adapter.test.js
+  git add packages/codex-adapter/src/jsonl-transport.js packages/codex-adapter/src/app-server-adapter.js packages/codex-adapter/test/jsonl-transport.test.js packages/codex-adapter/test/app-server-adapter.test.js docs/superpowers/plans/2026-07-18-orquesta-v4-desktop-integration.md
   git commit -m "fix: shut down Codex App Server cleanly"
   ```
 

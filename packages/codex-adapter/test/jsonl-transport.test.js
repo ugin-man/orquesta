@@ -9,6 +9,22 @@ function nextTurn() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+function createShutdownProcess({ exitOnEnd = true, exitOnKill = true } = {}) {
+  const process = new FakeAppServerProcess();
+  process.endObserved = false;
+  process.killCalls = 0;
+  process.stdin.once("finish", () => {
+    process.endObserved = true;
+    if (exitOnEnd) process.exit(0);
+  });
+  process.kill = () => {
+    process.killCalls += 1;
+    if (exitOnKill) process.exit(null, "SIGTERM");
+    return true;
+  };
+  return process;
+}
+
 test("parses partial and multiple JSONL notifications without merging lines", async () => {
   const process = new FakeAppServerProcess();
   const notifications = [];
@@ -136,4 +152,57 @@ test("keeps notifications and server requests separate and writes explicit respo
   transport.respond("approval-1", { decision: "decline" });
   const [response] = await outbound;
   assert.deepEqual(response, { id: "approval-1", result: { decision: "decline" } });
+});
+
+test("graceful shutdown ends stdin and resolves on child exit without killing", async () => {
+  const process = createShutdownProcess();
+  const transport = createJsonlTransport({ process });
+
+  await transport.shutdown({ timeoutMs: 100 });
+  assert.equal(process.endObserved, true);
+  assert.equal(process.stdin.writableEnded, true);
+  assert.equal(process.killCalls, 0);
+});
+
+test("shutdown rejects every pending request with the shutdown reason", async () => {
+  const process = createShutdownProcess();
+  const transport = createJsonlTransport({ process });
+  const first = transport.request("initialize", {});
+  const second = transport.request("thread/read", { threadId: "thread-1" });
+
+  const shutdown = transport.shutdown({ timeoutMs: 100 });
+  await assert.rejects(first, /App Server transport shut down/);
+  await assert.rejects(second, /App Server transport shut down/);
+  await shutdown;
+});
+
+test("shutdown kills a child which does not exit before the supplied timeout", async () => {
+  const process = createShutdownProcess({ exitOnEnd: false, exitOnKill: false });
+  const transport = createJsonlTransport({ process });
+
+  await transport.shutdown({ timeoutMs: 5 });
+  assert.equal(process.endObserved, true);
+  assert.equal(process.killCalls, 1);
+});
+
+test("concurrent shutdown calls share one promise and kill at most once", async () => {
+  const process = createShutdownProcess({ exitOnEnd: false });
+  const transport = createJsonlTransport({ process });
+
+  const first = transport.shutdown({ timeoutMs: 5 });
+  const second = transport.shutdown({ timeoutMs: 5 });
+  assert.equal(first, second);
+  await Promise.all([first, second]);
+  assert.equal(process.killCalls, 1);
+});
+
+test("shutdown still ends or kills the child after a protocol failure", async () => {
+  const process = createShutdownProcess({ exitOnEnd: false });
+  const transport = createJsonlTransport({ process });
+  process.sendRaw(Buffer.from("{invalid-json}\n", "utf8"));
+  await nextTurn();
+
+  await transport.shutdown({ timeoutMs: 5 });
+  assert.equal(process.endObserved, true);
+  assert.equal(process.killCalls, 1);
 });

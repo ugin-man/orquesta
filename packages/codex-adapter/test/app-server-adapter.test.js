@@ -213,6 +213,34 @@ test("shutdown completes without resolving or spawning a runtime when never star
   assert.equal(spawnCalls, 0);
 });
 
+test("shutdown drains the current transport and a later operation starts cleanly", async () => {
+  const processes = [];
+  const adapter = createAppServerAdapter({
+    resolveRuntime: () => bundledRuntime(),
+    spawnProcess: () => {
+      const process = new FakeAppServerProcess();
+      process.kill = () => {
+        process.exit(null, "SIGTERM");
+        return true;
+      };
+      process.stdin.once("finish", () => process.exit(0));
+      attachSuccessfulServer(process);
+      processes.push(process);
+      return process;
+    }
+  });
+
+  await adapter.createThread({ correlationId: "corr-first", params: {} });
+  const shutdown = await adapter.shutdown({ correlationId: "corr-shutdown" });
+  assert.equal(shutdown.ok, true);
+  assert.equal(processes[0].stdin.writableEnded, true);
+
+  const restarted = await adapter.createThread({ correlationId: "corr-second", params: {} });
+  assert.equal(restarted.ok, true);
+  assert.equal(processes.length, 2);
+  assert.equal(processes[1].clientMessages.filter((message) => message.method === "initialize").length, 1);
+});
+
 test("ignores direct runtime, executable, and PATH injection and spawns only the resolver result", async () => {
   const process = new FakeAppServerProcess();
   attachSuccessfulServer(process);

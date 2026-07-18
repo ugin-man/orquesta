@@ -89,6 +89,7 @@ function createAppServerAdapter({
   const approvalRelay = createApprovalRelay();
   let transport = null;
   let initializePromise = null;
+  let initializeResult = null;
   let resolvedRuntime = null;
 
   function turnKey(threadId, turnId) {
@@ -295,7 +296,8 @@ function createAppServerAdapter({
         const result = await connection.request("initialize", params);
         validateResponse("initialize", result);
         connection.notify("initialized");
-        return result;
+        initializeResult = deepFreeze({ ...result });
+        return initializeResult;
       })();
     }
     return initializePromise;
@@ -526,17 +528,24 @@ function createAppServerAdapter({
       }
     ),
 
-    shutdown: ({ correlationId }) => {
-      transport?.close("App Server adapter shut down");
+    shutdown: ({ correlationId }) => run("shutdown", correlationId, async () => {
+      const connection = transport;
       approvalRelay.reset();
       activeTurns.clear();
       threadCorrelations.clear();
       eventListeners.clear();
-      transport = null;
-      initializePromise = null;
-      resolvedRuntime = null;
+      try {
+        await connection?.shutdown();
+      } finally {
+        if (transport === connection) {
+          transport = null;
+          initializePromise = null;
+          initializeResult = null;
+          resolvedRuntime = null;
+        }
+      }
       return success("shutdown", correlationId);
-    }
+    })
   };
 
   for (const method of CAPABILITY_METHODS) {

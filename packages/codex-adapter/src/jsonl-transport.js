@@ -29,6 +29,8 @@ function createJsonlTransport({
   let nextId = 1;
   let inputBuffer = Buffer.alloc(0);
   let closedError = null;
+  let processExited = false;
+  let shutdownPromise = null;
   const pending = new Map();
   const settledIds = new Set();
   const settledOrder = [];
@@ -154,6 +156,7 @@ function createJsonlTransport({
     fail(new Error(`App Server process error: ${error.message}`, { cause: error }));
   });
   process.on("exit", (code, signal) => {
+    processExited = true;
     const suffix = signal ? ` signal ${signal}` : ` code ${code}`;
     fail(new Error(`App Server process exited with${suffix}`));
   });
@@ -200,6 +203,61 @@ function createJsonlTransport({
     },
     close(reason = "transport closed") {
       fail(new Error(reason));
+    },
+    shutdown({ timeoutMs = 1500 } = {}) {
+      if (shutdownPromise) return shutdownPromise;
+      if (!Number.isInteger(timeoutMs) || timeoutMs < 0) {
+        return Promise.reject(new TypeError("shutdown timeoutMs must be a non-negative integer"));
+      }
+
+      if (!closedError) {
+        closedError = new Error("App Server transport shut down");
+        rejectPending(closedError);
+      }
+
+      shutdownPromise = new Promise((resolve) => {
+        let settled = false;
+        let timer = null;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (timer) clearTimeout(timer);
+          process.off("exit", handleExit);
+          resolve();
+        };
+        const handleExit = () => finish();
+
+        if (!processExited) process.once("exit", handleExit);
+        try {
+          if (!process.stdin.writableEnded && !process.stdin.destroyed) {
+            process.stdin.end();
+          }
+        } catch (error) {
+          onDiagnostic(Object.freeze({
+            type: "shutdown_stdin_error",
+            message: String(error?.message || error).slice(0, 1000)
+          }));
+        }
+
+        if (processExited) {
+          finish();
+          return;
+        }
+        timer = setTimeout(() => {
+          if (!processExited && typeof process.kill === "function") {
+            try {
+              process.kill();
+            } catch (error) {
+              onDiagnostic(Object.freeze({
+                type: "shutdown_kill_error",
+                message: String(error?.message || error).slice(0, 1000)
+              }));
+            }
+          }
+          finish();
+        }, timeoutMs);
+      });
+      return shutdownPromise;
     }
   });
 }
