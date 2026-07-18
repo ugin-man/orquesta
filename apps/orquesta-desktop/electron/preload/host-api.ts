@@ -180,6 +180,14 @@ export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe)
       if (!isRuntimeInfo(info)) throw new Error('Desktop host returned invalid runtime information');
       return info;
     },
+    async openCodexDraft(input) {
+      if (!safeId(input.targetAgentId) || typeof input.text !== 'string' || !input.text.trim() || input.text.length > 65_536) {
+        throw new Error('Codex draft input is invalid');
+      }
+      const action = await invoke(DESKTOP_IPC.openCodexDraft, { targetAgentId: input.targetAgentId, text: input.text.trim() });
+      if (!isActionResult(action)) throw new Error('Desktop host returned an invalid Codex draft result');
+      return action;
+    },
     async respondRuntimeApproval(input) {
       if (!safeId(input.id) || typeof input.decision !== 'string' || !input.decision.trim() || input.decision.length > 128) {
         throw new Error('Runtime approval response is invalid');

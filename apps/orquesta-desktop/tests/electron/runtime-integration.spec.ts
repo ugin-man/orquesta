@@ -27,7 +27,6 @@ test('sends a composer instruction to a Codex App Server thread and reads its hi
       ...process.env,
       ORQUESTA_E2E: '1',
       ORQUESTA_E2E_PROJECT_ROOT: root,
-      ORQUESTA_CODEX_PATH: process.execPath,
       ORQUESTA_E2E_CODEX_SCRIPT: fakeAppServer
     }
   });
@@ -45,6 +44,25 @@ test('sends a composer instruction to a Codex App Server thread and reads its hi
     await expect(history).toBeVisible();
     await expect(history.getByText('Continue from desktop.')).toBeVisible();
     await expect(history.getByText('Fake coordinator accepted the desktop instruction.')).toBeVisible();
+    await history.getByRole('button', { name: 'Close' }).click();
+
+    await composer.fill('REQUEST_APPROVAL');
+    await window.getByRole('button', { name: 'Send message' }).click();
+    await expect(window.getByRole('button', { name: 'decline' })).toBeVisible();
+    await window.getByRole('button', { name: 'decline' }).click();
+    await expect(window.getByText('Fake approval resolved with decline.')).toBeVisible();
+
+    await composer.fill('FAIL_TURN');
+    await window.getByRole('button', { name: 'Send message' }).click();
+    await expect(composer).toHaveValue('');
+    await expect(window.getByText('Codex turn failed', { exact: true })).toBeVisible();
+    await expect(window.getByText(/Thread thread-e2e · turn turn-e2e-/)).toBeVisible();
+
+    await composer.fill('REJECT_DISPATCH');
+    await window.getByRole('button', { name: 'Send message' }).click();
+    await expect(composer).toHaveValue('REJECT_DISPATCH');
+    await expect(window.getByRole('button', { name: 'Retry direct send' })).toBeVisible();
+    await expect(window.getByRole('button', { name: 'Open as unsent draft in Codex' })).toBeVisible();
   } finally {
     await desktop.close();
     await Promise.all([rm(root, { recursive: true, force: true }), rm(userData, { recursive: true, force: true })]);

@@ -8,6 +8,7 @@ function createPackageIgnore(appRoot) {
     if (resolved === normalizedRoot) return false;
 
     const portablePath = resolved.replaceAll(path.sep, '/');
+    if (/\/dist-electron\/core-e2e\.cjs(?:\.map)?$/.test(portablePath)) return true;
     if (portablePath.endsWith('/package.json')) return false;
     if (/\/(?:dist|dist-electron)(?:\/|$)/.test(portablePath)) return false;
     return true;

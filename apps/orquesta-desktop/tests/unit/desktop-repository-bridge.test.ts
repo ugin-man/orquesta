@@ -24,6 +24,7 @@ describe('DesktopRepositoryBridge', () => {
       })),
       respondRuntimeApproval: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'approval-1' })),
       listAttentionHistory: vi.fn(async () => []),
+      openCodexDraft: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'draft-1' })),
       subscribeRuntime: vi.fn((listener) => { runtimeSubscription.listener = listener; return () => { runtimeSubscription.listener = null; }; }),
       getHostInfo: vi.fn(),
       pingCore: vi.fn()
@@ -57,5 +58,6 @@ describe('DesktopRepositoryBridge', () => {
     await expect(bridge.resolveAttentionItem({ kind: 'repository_action', id: 'A1', resolution: 'done' })).resolves.toMatchObject({ status: 'unsupported' });
     expect(host.respondRuntimeApproval).toHaveBeenCalledTimes(1);
     await expect(bridge.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
+    await expect(bridge.openCodexDraft({ targetAgentId: 'orchestrator', text: 'Draft.' })).resolves.toMatchObject({ status: 'accepted' });
   });
 });

@@ -20,6 +20,7 @@ export interface RuntimeNotification {
 
 export interface RuntimeApprovalRequest {
   projectId: string;
+  correlationId: string;
   requestId: string;
   method: string;
   threadId: string;
@@ -46,6 +47,7 @@ export interface RuntimeConversationRequest {
   correlationId: string;
   threadId: string;
   targetAgentId: string;
+  cursor?: string | null;
   limit: number;
 }
 
@@ -182,6 +184,7 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
   }
   if (value.type === 'runtime.conversation') {
     return isCorrelationId(value.correlationId) && isSafeId(value.threadId) && isSafeId(value.targetAgentId)
+      && (value.cursor === undefined || value.cursor === null || (typeof value.cursor === 'string' && /^before:\d+$/u.test(value.cursor)))
       && typeof value.limit === 'number' && Number.isInteger(value.limit) && value.limit >= 1 && value.limit <= 200;
   }
   if (value.type === 'runtime.info') {

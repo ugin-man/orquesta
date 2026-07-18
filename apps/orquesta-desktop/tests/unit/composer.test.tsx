@@ -15,6 +15,7 @@ function renderComposer(onSend = vi.fn()) {
         value="Run acceptance checks"
         targetAgentId="orchestrator"
         error={null}
+        directSendFailure={null}
         attachments={[]}
         canAttach={false}
         onTargetChange={() => undefined}
@@ -23,6 +24,8 @@ function renderComposer(onSend = vi.fn()) {
         onOpenHistory={() => undefined}
         onSelectAttachments={() => undefined}
         onRemoveAttachment={() => undefined}
+        onRetryDirect={() => undefined}
+        onOpenCodexDraft={() => undefined}
       />
     </I18nProvider>
   );
@@ -46,5 +49,40 @@ describe('CommandComposer', () => {
     const onSend = renderComposer();
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', shiftKey: true });
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('offers retry and an explicitly unsent Codex draft after direct dispatch fails', () => {
+    const agents = fixtureCatalog['active-project'].snapshot.agents;
+    const onRetryDirect = vi.fn();
+    const onOpenCodexDraft = vi.fn();
+    render(
+      <I18nProvider initialLocale="en">
+        <CommandComposer
+          agents={agents}
+          online
+          sending={false}
+          value="Keep this draft"
+          targetAgentId="orchestrator"
+          error={null}
+          directSendFailure="Codex runtime is unavailable. Message was not sent."
+          attachments={[]}
+          canAttach={false}
+          onTargetChange={() => undefined}
+          onChange={() => undefined}
+          onSend={() => undefined}
+          onOpenHistory={() => undefined}
+          onSelectAttachments={() => undefined}
+          onRemoveAttachment={() => undefined}
+          onRetryDirect={onRetryDirect}
+          onOpenCodexDraft={onOpenCodexDraft}
+        />
+      </I18nProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry direct send' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open as unsent draft in Codex' }));
+    expect(onRetryDirect).toHaveBeenCalledOnce();
+    expect(onOpenCodexDraft).toHaveBeenCalledOnce();
+    expect(screen.getByDisplayValue('Keep this draft')).toBeInTheDocument();
   });
 });

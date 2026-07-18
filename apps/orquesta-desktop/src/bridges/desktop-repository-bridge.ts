@@ -39,11 +39,16 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
         : notification.kind === 'turn_completed' ? 'Codex turn completed'
           : notification.kind === 'turn_failed' ? 'Codex turn failed'
             : notification.kind === 'model_observed' ? 'Codex model observed' : 'Coordinator replied';
+      const runtimeLocation = notification.kind === 'turn_failed'
+        ? ` Thread ${notification.threadId}${notification.turnId ? ` · turn ${notification.turnId}` : ''}.`
+        : '';
       listener({
         type: 'toast',
         toast: {
           id: `${notification.kind}-${notification.turnId ?? notification.threadId}-${Date.now()}`,
-          tone, title, message: notification.text ?? (notification.kind === 'turn_started' ? 'The coordinator accepted the instruction.' : title),
+          tone,
+          title,
+          message: `${notification.text ?? (notification.kind === 'turn_started' ? 'The coordinator accepted the instruction.' : title)}${runtimeLocation}`,
           taskId: null, createdAt: new Date().toISOString()
         }
       });
@@ -72,6 +77,10 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
 
   getRuntimeInfo(input: { probe: boolean }) {
     return this.host.getRuntimeInfo(input);
+  }
+
+  openCodexDraft(input: { targetAgentId: string; text: string }): Promise<UiActionResult> {
+    return this.host.openCodexDraft(input);
   }
 
   listProjects(): Promise<ProjectSummary[]> {

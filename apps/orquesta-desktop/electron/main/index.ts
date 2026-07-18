@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, utilityProcess } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } from 'electron';
 import squirrelStartup from 'electron-squirrel-startup';
 import { CoreHost } from './core-host';
 import { registerDesktopIpc } from './ipc-handlers';
@@ -11,7 +11,9 @@ import { AttachmentService } from './attachment-service';
 if (squirrelStartup) app.quit();
 
 const preloadPath = path.join(__dirname, 'preload.cjs');
-const coreEntryPath = path.join(__dirname, 'core.cjs');
+const coreEntryPath = process.env.ORQUESTA_E2E === '1' && !app.isPackaged
+  ? path.join(__dirname, 'core-e2e.cjs')
+  : path.join(__dirname, 'core.cjs');
 const coreHost = new CoreHost({
   coreEntryPath,
   fork: (entryPath) => utilityProcess.fork(entryPath, [], { serviceName: 'Orquesta Core' })
@@ -97,7 +99,9 @@ if (!hasSingleInstanceLock) {
         return selection.canceled ? [] : selection.filePaths;
       }
     });
-    registerDesktopIpc(ipcMain, coreHost, repositories, attachments);
+    registerDesktopIpc(ipcMain, coreHost, repositories, attachments, {
+      openExternal: (url) => shell.openExternal(url)
+    });
     mainWindow = createMainWindow();
     repositories.subscribe((snapshot) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DESKTOP_IPC.repositoryChanged, snapshot);

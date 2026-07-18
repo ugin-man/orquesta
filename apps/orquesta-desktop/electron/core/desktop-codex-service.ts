@@ -138,6 +138,23 @@ function projectConversation(thread: UnknownRecord, fallback: Date): Conversatio
           createdAt: isoFromSeconds(turn.completedAt ?? turn.startedAt, fallback),
           evidenceLabel: 'Codex thread history'
         });
+      } else if (item.type === 'systemMessage') {
+        const content = Array.isArray(item.content) ? item.content.flatMap((entry) => record(entry) ?? []) : [];
+        const text = nonEmptyString(item.text) ?? content
+          .filter((entry) => entry.type === 'text')
+          .map((entry) => nonEmptyString(entry.text) ?? '')
+          .join('\n')
+          .trim();
+        if (!text) continue;
+        messages.push({
+          id: nonEmptyString(item.id) ?? `system-${messages.length}`,
+          role: 'system',
+          targetAgentId,
+          authorLabel: 'System',
+          text,
+          createdAt: isoFromSeconds(turn.completedAt ?? turn.startedAt, fallback),
+          evidenceLabel: 'Codex thread history'
+        });
       }
     }
   }
@@ -290,8 +307,12 @@ export class DesktopCodexService {
     correlationId: string;
     threadId: string;
     targetAgentId: string;
+    cursor?: string | null;
     limit: number;
   }): Promise<ConversationPage> {
+    if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 200) {
+      throw new Error('Conversation limit must be an integer from 1 to 200');
+    }
     const adapter = await this.adapter();
     const result = requireSuccessfulResult(await adapter.readThread({
       correlationId: input.correlationId,
@@ -306,10 +327,15 @@ export class DesktopCodexService {
     for (const message of messages) {
       if (message.role === 'agent') this.seenAgentMessages.add(`${input.threadId}:${message.id}`);
     }
-    return {
-      items: messages.slice(-Math.max(1, Math.min(input.limit, 200))),
-      nextCursor: null
-    };
+    let end = messages.length;
+    if (input.cursor) {
+      const match = /^before:(\d+)$/u.exec(input.cursor);
+      if (!match) throw new Error('Conversation cursor is invalid');
+      end = Number(match[1]);
+      if (!Number.isSafeInteger(end) || end < 0 || end > messages.length) throw new Error('Conversation cursor is invalid');
+    }
+    const start = Math.max(0, end - input.limit);
+    return { items: messages.slice(start, end), nextCursor: start > 0 ? `before:${start}` : null };
   }
 
   async getRuntimeInfo({ probe }: { probe: boolean }): Promise<RuntimeInfoUi> {
@@ -360,7 +386,7 @@ export class DesktopCodexService {
     }
     const adapter = await this.adapter();
     requireSuccessfulResult(await adapter.respondToApproval({
-      correlationId: input.correlationId,
+      correlationId: approval.correlationId,
       requestId: approval.requestId,
       method: approval.method,
       threadId: approval.threadId,
@@ -382,15 +408,17 @@ export class DesktopCodexService {
     const turnId = nullableString(event.turn_id);
     if (type === 'approval_requested') {
       const projectId = this.projectByThread.get(threadId);
+      const correlationId = nonEmptyString(event.correlation_id);
       const requestId = nonEmptyString(event.request_id);
       const method = nonEmptyString(event.method);
       const responseOptions = Array.isArray(event.response_options)
         ? event.response_options.flatMap((option) => nonEmptyString(option) ?? [])
         : [];
-      if (!projectId || !turnId || !requestId || !method || responseOptions.length === 0 || responseOptions.length > 16) return;
+      if (!projectId || !correlationId || !turnId || !requestId || !method || responseOptions.length === 0 || responseOptions.length > 16) return;
       if (this.pendingApprovals.has(requestId)) return;
       const approval: RuntimeApprovalRequest = {
         projectId,
+        correlationId,
         requestId,
         method,
         threadId,

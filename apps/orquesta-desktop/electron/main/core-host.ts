@@ -115,7 +115,7 @@ export class CoreHost {
     });
   }
 
-  listConversation(input: { threadId: string; targetAgentId: string; limit: number }): Promise<ConversationPage> {
+  listConversation(input: { threadId: string; targetAgentId: string; cursor?: string | null; limit: number }): Promise<ConversationPage> {
     if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.listConversation(input));
     const correlationId = randomUUID();
     return new Promise((resolve, reject) => {

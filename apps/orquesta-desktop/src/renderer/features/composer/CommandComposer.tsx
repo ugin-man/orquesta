@@ -11,6 +11,7 @@ export function CommandComposer({
   value,
   targetAgentId,
   error,
+  directSendFailure,
   attachments,
   canAttach,
   onTargetChange,
@@ -18,7 +19,9 @@ export function CommandComposer({
   onSend,
   onOpenHistory,
   onSelectAttachments,
-  onRemoveAttachment
+  onRemoveAttachment,
+  onRetryDirect,
+  onOpenCodexDraft
 }: {
   agents: AgentUiModel[];
   online: boolean;
@@ -26,6 +29,7 @@ export function CommandComposer({
   value: string;
   targetAgentId: string;
   error: string | null;
+  directSendFailure: string | null;
   attachments: ComposerAttachment[];
   canAttach: boolean;
   onTargetChange(id: string): void;
@@ -34,6 +38,8 @@ export function CommandComposer({
   onOpenHistory(): void;
   onSelectAttachments(): void;
   onRemoveAttachment(id: string): void;
+  onRetryDirect(): void;
+  onOpenCodexDraft(): void;
 }) {
   const { t } = useI18n();
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -58,7 +64,15 @@ export function CommandComposer({
         </div>
       </div>
       {attachments.length ? <div className="composer-attachments" aria-label={t('selectedAttachments')}>{attachments.map((attachment) => <span key={attachment.id}>{attachment.name}<button type="button" onClick={() => onRemoveAttachment(attachment.id)} aria-label={`${t('removeAttachment')} ${attachment.name}`}><X size={12} /></button></span>)}</div> : null}
-      {!online ? <p className="composer-message composer-message--warning">{t('offlineDraft')}</p> : error ? <p className="composer-message composer-message--error">{error}</p> : null}
+      {!online ? <p className="composer-message composer-message--warning">{t('offlineDraft')}</p> : directSendFailure ? (
+        <div className="composer-fallback" role="status">
+          <p className="composer-message composer-message--error">{directSendFailure}</p>
+          <div>
+            <button type="button" onClick={onRetryDirect}>{t('retryDirectSend')}</button>
+            <button type="button" onClick={onOpenCodexDraft}>{t('openUnsentCodexDraft')}</button>
+          </div>
+        </div>
+      ) : error ? <p className="composer-message composer-message--error">{error}</p> : null}
     </section>
   );
 }

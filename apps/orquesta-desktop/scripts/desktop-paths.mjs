@@ -8,6 +8,7 @@ export function resolveDesktopPaths(appRoot) {
     electronDist: path.join(resolvedRoot, 'dist-electron'),
     mainEntry: path.join(resolvedRoot, 'electron', 'main', 'index.ts'),
     preloadEntry: path.join(resolvedRoot, 'electron', 'preload', 'index.ts'),
-    coreEntry: path.join(resolvedRoot, 'electron', 'core', 'index.ts')
+    coreEntry: path.join(resolvedRoot, 'electron', 'core', 'index.ts'),
+    e2eCoreEntry: path.join(resolvedRoot, 'electron', 'core', 'e2e-index.ts')
   };
 }

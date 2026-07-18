@@ -98,8 +98,11 @@ test('preserves the map camera when a same-project snapshot updates', async ({ p
   await page.getByRole('button', { name: 'Zoom in' }).click();
   await page.getByRole('button', { name: 'Zoom in' }).click();
   const zoomBefore = await world.getAttribute('data-zoom');
-  await page.locator('.attention-item .text-action').first().click();
-  await expect(page.locator('.attention-item')).toHaveCount(2);
+  await page.locator('.project-status__summary').click();
+  await page.getByRole('button', { name: 'Switch project' }).click();
+  await page.getByRole('dialog', { name: 'Switch project' })
+    .getByRole('button', { name: /Local Multi-Agent Orchestration/ })
+    .click();
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await expect(world).toHaveAttribute('data-zoom', zoomBefore ?? '');
 });

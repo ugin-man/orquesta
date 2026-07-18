@@ -11,5 +11,6 @@ assert.equal(paths.electronDist, path.join(appRoot, 'dist-electron'));
 assert.equal(paths.mainEntry, path.join(appRoot, 'electron', 'main', 'index.ts'));
 assert.equal(paths.preloadEntry, path.join(appRoot, 'electron', 'preload', 'index.ts'));
 assert.equal(paths.coreEntry, path.join(appRoot, 'electron', 'core', 'index.ts'));
+assert.equal(paths.e2eCoreEntry, path.join(appRoot, 'electron', 'core', 'e2e-index.ts'));
 
 console.log('desktop path tests passed');

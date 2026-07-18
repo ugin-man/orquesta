@@ -113,7 +113,7 @@ describe('RepositoryRuntime', () => {
     });
     await runtime.select({ projectId: 'repo-first', rootPath: 'C:\\first' });
     runtime.addRuntimeApproval({
-      projectId: 'repo-first', requestId: 'approval-1', method: 'item/fileChange/requestApproval',
+      projectId: 'repo-first', correlationId: 'corr-approval', requestId: 'approval-1', method: 'item/fileChange/requestApproval',
       threadId: 'thread-1', turnId: 'turn-1', reason: '[redacted approval reason]',
       responseOptions: ['accept', 'decline', 'cancel']
     });

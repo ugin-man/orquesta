@@ -21,6 +21,7 @@ export interface DesktopHostApi {
   sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult>;
   listConversation(input: ConversationQuery): Promise<ConversationPage>;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
+  openCodexDraft(input: { targetAgentId: string; text: string }): Promise<UiActionResult>;
   respondRuntimeApproval(input: { id: string; decision: string }): Promise<UiActionResult>;
   listAttentionHistory(): Promise<AttentionUiItem[]>;
   subscribeRuntime(listener: (notification: RuntimeNotification) => void): () => void;
@@ -40,5 +41,6 @@ export const DESKTOP_IPC = {
   getRuntimeInfo: 'orquesta.desktop.runtime.get-info',
   respondRuntimeApproval: 'orquesta.desktop.runtime.respond-approval',
   listAttentionHistory: 'orquesta.desktop.repository.attention-history',
+  openCodexDraft: 'orquesta.desktop.codex.open-draft',
   runtimeChanged: 'orquesta.desktop.runtime.changed'
 } as const;

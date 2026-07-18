@@ -130,6 +130,10 @@ export class MockOrquestaBridge implements OrquestaRendererBridge {
     };
   }
 
+  async openCodexDraft(_input: { targetAgentId: string; text: string }): Promise<UiActionResult> {
+    return unavailable('The prototype cannot open a real Codex draft.');
+  }
+
   async listProjects(): Promise<ProjectSummary[]> {
     return fixtureKeys.map((key) => {
       const fixture = fixtureCatalog[key];

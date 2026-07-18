@@ -19,6 +19,7 @@ describe('createDesktopHostApi', () => {
       };
       if (channel === DESKTOP_IPC.respondRuntimeApproval) return { status: 'accepted', correlationId: 'approval-1' };
       if (channel === DESKTOP_IPC.listAttentionHistory) return [];
+      if (channel === DESKTOP_IPC.openCodexDraft) return { status: 'accepted', correlationId: 'draft-1' };
       if (channel === DESKTOP_IPC.selectImageAttachments) return [];
       return input;
     });
@@ -41,6 +42,7 @@ describe('createDesktopHostApi', () => {
     await expect(api.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
     await expect(api.respondRuntimeApproval({ id: 'runtime-approval-1', decision: 'decline' })).resolves.toMatchObject({ status: 'accepted' });
     await expect(api.listAttentionHistory()).resolves.toEqual([]);
+    await expect(api.openCodexDraft({ targetAgentId: 'orchestrator', text: 'Keep as draft.' })).resolves.toMatchObject({ status: 'accepted' });
     const listener = vi.fn();
     const unsubscribe = api.subscribeRepository(listener);
     for (const notify of listeners) notify(snapshot);
@@ -58,7 +60,8 @@ describe('createDesktopHostApi', () => {
       [DESKTOP_IPC.listConversation, { targetAgentId: 'orchestrator', limit: 20 }],
       [DESKTOP_IPC.getRuntimeInfo, { probe: false }],
       [DESKTOP_IPC.respondRuntimeApproval, { id: 'runtime-approval-1', decision: 'decline' }],
-      [DESKTOP_IPC.listAttentionHistory]
+      [DESKTOP_IPC.listAttentionHistory],
+      [DESKTOP_IPC.openCodexDraft, { targetAgentId: 'orchestrator', text: 'Keep as draft.' }]
     ]);
     expect(api).not.toHaveProperty('invoke');
     expect(api).not.toHaveProperty('send');

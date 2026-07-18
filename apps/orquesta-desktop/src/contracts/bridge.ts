@@ -86,6 +86,7 @@ export interface OrquestaRendererBridge {
   resolveAttentionItem(input: AttentionResolutionInput): Promise<UiActionResult>;
   listConversation(input: ConversationQuery): Promise<ConversationPage>;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
+  openCodexDraft(input: { targetAgentId: string; text: string }): Promise<UiActionResult>;
   listProjects(): Promise<ProjectSummary[]>;
   switchProject(projectId: string): Promise<UiActionResult>;
   requestOpenProject(): Promise<UiActionResult>;

@@ -24,7 +24,8 @@ export async function buildDesktopHost() {
   await Promise.all([
     build({ ...shared, entryPoints: [paths.mainEntry], outfile: path.join(paths.electronDist, 'main.cjs') }),
     build({ ...shared, entryPoints: [paths.preloadEntry], outfile: path.join(paths.electronDist, 'preload.cjs') }),
-    build({ ...shared, entryPoints: [paths.coreEntry], outfile: path.join(paths.electronDist, 'core.cjs') })
+    build({ ...shared, entryPoints: [paths.coreEntry], outfile: path.join(paths.electronDist, 'core.cjs') }),
+    build({ ...shared, entryPoints: [paths.e2eCoreEntry], outfile: path.join(paths.electronDist, 'core-e2e.cjs') })
   ]);
 }
 

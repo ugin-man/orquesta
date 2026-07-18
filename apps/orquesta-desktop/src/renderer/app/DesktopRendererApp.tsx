@@ -83,9 +83,12 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [sending, setSending] = useState(false);
   const [openingProject, setOpeningProject] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [directSendFailure, setDirectSendFailure] = useState<string | null>(null);
   const [toasts, setToasts] = useState<RuntimeUiEvent[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [conversationCursor, setConversationCursor] = useState<string | null>(null);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [history, setHistory] = useState<AttentionUiItem[]>([]);
   const [proposals, setProposals] = useState<AgentProposal[]>([]);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
@@ -120,6 +123,9 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     if (!projectId || projectId === 'no-project' || draftProjectId.current === projectId) return;
     draftProjectId.current = projectId;
     setAttachments([]);
+    setDirectSendFailure(null);
+    setMessages([]);
+    setConversationCursor(null);
     setDraft(window.localStorage.getItem(`orquesta.desktop.draft.${projectId}`) ?? '');
   }, [snapshot?.project.id]);
 
@@ -142,11 +148,28 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   };
   const openConversation = async () => {
     try {
-      const page = await bridge.listConversation({ targetAgentId });
+      const page = await bridge.listConversation({ targetAgentId, cursor: null, limit: 100 });
       setMessages(page.items);
+      setConversationCursor(page.nextCursor);
       setOverlay({ kind: 'conversation' });
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const loadOlderConversation = async () => {
+    if (!conversationCursor || loadingOlderMessages) return;
+    setLoadingOlderMessages(true);
+    try {
+      const page = await bridge.listConversation({ targetAgentId, cursor: conversationCursor, limit: 100 });
+      setMessages((current) => {
+        const byId = new Map([...page.items, ...current].map((message) => [message.id, message]));
+        return [...byId.values()];
+      });
+      setConversationCursor(page.nextCursor);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLoadingOlderMessages(false);
     }
   };
   const openHistory = async () => {
@@ -169,14 +192,37 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     if (!draft.trim() || sending) return;
     setSending(true);
     setActionError(null);
+    setDirectSendFailure(null);
     try {
       const result = await bridge.sendMessage({ targetAgentId, text: draft.trim(), attachmentIds: attachments.map((attachment) => attachment.id), selectedContextIds: [] });
       if (result.status === 'accepted') { setDraft(''); setAttachments([]); }
-      else setActionError(result.reason);
+      else setDirectSendFailure(result.reason);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setDirectSendFailure(`Message was not sent. ${message}`);
     } finally {
       setSending(false);
+    }
+  };
+  const openCodexDraft = async () => {
+    if (!draft.trim()) return;
+    try {
+      const result = await bridge.openCodexDraft({ targetAgentId, text: draft.trim() });
+      if (result.status !== 'accepted') {
+        setDirectSendFailure(result.reason);
+        return;
+      }
+      setDirectSendFailure(null);
+      setToasts((current) => [...current, {
+        id: result.correlationId,
+        tone: 'neutral' as const,
+        title: 'Unsent Codex draft opened',
+        message: 'The text remains a draft and has not been sent.',
+        taskId: null,
+        createdAt: new Date().toISOString()
+      }].slice(-6));
+    } catch (error) {
+      setDirectSendFailure(error instanceof Error ? error.message : String(error));
     }
   };
   const selectAttachments = async () => {
@@ -295,14 +341,17 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           value={draft}
           targetAgentId={targetAgentId}
           error={actionError}
+          directSendFailure={directSendFailure}
           attachments={attachments}
           canAttach={bridge.capabilities.imageAttachments}
           onTargetChange={setTargetAgentId}
-          onChange={setDraft}
+          onChange={(value) => { setDraft(value); setDirectSendFailure(null); }}
           onSend={() => void send()}
           onOpenHistory={() => void openConversation()}
           onSelectAttachments={() => void selectAttachments()}
           onRemoveAttachment={(id) => setAttachments((current) => current.filter((attachment) => attachment.id !== id))}
+          onRetryDirect={() => void send()}
+          onOpenCodexDraft={() => void openCodexDraft()}
         />
         <ToastStack toasts={toasts} onDismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} />
       </div>
@@ -311,7 +360,17 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       {selectedTask ? <TaskDetail task={selectedTask} agents={snapshot.agents} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'project-route' ? <ProjectRoute project={snapshot.project} phases={snapshot.phases} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'project-switcher' ? <ProjectSwitcher projects={projects} currentProjectId={snapshot.project.id} onSwitch={(id) => bridge.switchProject(id)} onOpenProject={() => bridge.requestOpenProject()} onClose={closeOverlay} /> : null}
-      {overlay?.kind === 'conversation' ? <ConversationHistory targetAgentId={targetAgentId} agents={snapshot.agents} messages={messages} onClose={closeOverlay} /> : null}
+      {overlay?.kind === 'conversation' ? (
+        <ConversationHistory
+          targetAgentId={targetAgentId}
+          agents={snapshot.agents}
+          messages={messages}
+          nextCursor={conversationCursor}
+          loadingOlder={loadingOlderMessages}
+          onLoadOlder={() => void loadOlderConversation()}
+          onClose={closeOverlay}
+        />
+      ) : null}
       {overlay?.kind === 'attention-history' ? <AttentionHistory items={history} agents={snapshot.agents} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'team-management' ? (
         <TeamManagement

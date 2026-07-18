@@ -36,8 +36,9 @@ describe('registerDesktopIpc', () => {
       setCoordinatorThread: vi.fn(async () => undefined)
     };
     const attachments = { chooseImages: vi.fn(async () => []), resolveImagePaths: vi.fn(() => []) };
+    const external = { openExternal: vi.fn(async () => undefined) };
 
-    registerDesktopIpc(ipcMain, coreHost, repositories, attachments);
+    registerDesktopIpc(ipcMain, coreHost, repositories, attachments, external);
 
     expect([...handlers.keys()]).toEqual([
       DESKTOP_IPC.getHostInfo,
@@ -51,7 +52,8 @@ describe('registerDesktopIpc', () => {
       DESKTOP_IPC.listConversation,
       DESKTOP_IPC.getRuntimeInfo,
       DESKTOP_IPC.respondRuntimeApproval,
-      DESKTOP_IPC.listAttentionHistory
+      DESKTOP_IPC.listAttentionHistory,
+      DESKTOP_IPC.openCodexDraft
     ]);
     await expect(handlers.get(DESKTOP_IPC.getHostInfo)?.({})).resolves.toEqual({
       platform: 'win32',
@@ -74,6 +76,15 @@ describe('registerDesktopIpc', () => {
     })).resolves.toMatchObject({ status: 'accepted', correlationId: 'approval-1' });
     expect(coreHost.respondRuntimeApproval).toHaveBeenCalledWith({ attentionId: 'runtime-approval-1', decision: 'decline' });
     await expect(handlers.get(DESKTOP_IPC.listAttentionHistory)?.({})).resolves.toEqual([]);
+    await expect(handlers.get(DESKTOP_IPC.openCodexDraft)?.({}, {
+      targetAgentId: 'worker', text: '日本語の下書き', url: 'https://evil.example', rootPath: 'C:\\evil'
+    })).resolves.toMatchObject({ status: 'accepted' });
+    const opened = new URL(external.openExternal.mock.calls[0][0]);
+    expect(`${opened.protocol}//${opened.host}${opened.pathname}`).toBe('codex://threads/new');
+    expect(opened.searchParams.get('path')).toBe('C:\\repo');
+    expect(opened.searchParams.get('prompt')).toContain('日本語の下書き');
+    expect(opened.searchParams.get('prompt')).toContain('agent_id="worker"');
+    expect(opened.toString()).not.toContain('evil.example');
   });
 
   test('rejects malformed ping input without reaching Core', async () => {
@@ -106,5 +117,8 @@ describe('registerDesktopIpc', () => {
       id: 'runtime-approval-1', decision: ''
     })).rejects.toThrow('decision');
     expect(coreHost.respondRuntimeApproval).not.toHaveBeenCalled();
+    await expect(handlers.get(DESKTOP_IPC.openCodexDraft)?.({}, {
+      targetAgentId: 'orchestrator', text: ''
+    })).rejects.toThrow('text');
   });
 });

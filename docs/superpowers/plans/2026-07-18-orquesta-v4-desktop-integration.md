@@ -522,9 +522,9 @@
 - Modify: `apps/orquesta-desktop/tests/electron/fixtures/fake-codex-app-server.cjs`
 - Modify: `apps/orquesta-desktop/tests/electron/runtime-integration.spec.ts`
 
-- [ ] Add failing history projection tests for multiple turns, Japanese text, agent/system items, target wrappers, empty history, limit 1-200, and stable newest-page ordering. The Renderer receives `ConversationPage`; it never receives raw App Server turns.
+- [x] Add failing history projection tests for multiple turns, Japanese text, agent/system items, target wrappers, empty history, limit 1-200, and stable newest-page ordering. The Renderer receives `ConversationPage`; it never receives raw App Server turns.
 
-- [ ] Add failing safe-deep-link tests. The Renderer may call only:
+- [x] Add failing safe-deep-link tests. The Renderer may call only:
 
   ```ts
   openCodexDraft({ targetAgentId, text }): Promise<UiActionResult>
@@ -532,24 +532,24 @@
 
   Main gets the selected project root from `project-registry`, constructs `codex://threads/new?prompt=...&path=...` with `URL`/`URLSearchParams`, and passes that generated URL to `shell.openExternal`. Reject empty/oversized text and never accept a Renderer-supplied URL or root path.
 
-- [ ] Update the fake App Server to implement canonical `thread/read`, approval requests, runtime failure, and shutdown. Remove `ORQUESTA_CODEX_PATH` from `runtime-integration.spec.ts`; inject a test adapter/runtime location through a test-only Core factory boundary, not through production executable discovery.
+- [x] Update the fake App Server to implement canonical `thread/read`, approval requests, runtime failure, and shutdown. Remove `ORQUESTA_CODEX_PATH` from `runtime-integration.spec.ts`; inject a test adapter/runtime location through a test-only Core factory boundary, not through production executable discovery.
 
-- [ ] Run the focused tests and confirm the missing history/deep-link/fake-server behaviors:
+- [x] Run the focused tests and confirm the missing history/deep-link/fake-server behaviors:
 
   ```powershell
   npm run test:desktop-unit --prefix apps/orquesta-desktop -- desktop-codex-service.test.ts composer.test.tsx ipc-handlers.test.ts
   ```
 
-- [ ] Implement conversation pagination and display. When direct runtime dispatch is unavailable, keep the draft and show two distinct actions: Retry direct send, or Open as unsent draft in Codex. Never label the deep-link path as sent.
+- [x] Implement conversation pagination and display. When direct runtime dispatch is unavailable, keep the draft and show two distinct actions: Retry direct send, or Open as unsent draft in Codex. Never label the deep-link path as sent.
 
-- [ ] Map failures into clear states:
+- [x] Map failures into clear states:
 
   - runtime unavailable: setup/package problem, retryable after repair;
   - dispatch rejected before turn: message was not sent;
   - turn failed after acceptance: show the thread/turn and retain conversation access;
   - repository offline: sending disabled, viewing last snapshot allowed.
 
-- [ ] Run Electron runtime integration with the fake server and the full Desktop check:
+- [x] Run Electron runtime integration with the fake server and the full Desktop check:
 
   ```powershell
   npm run build:desktop --prefix apps/orquesta-desktop
@@ -559,7 +559,7 @@
   npm run check --prefix apps/orquesta-desktop
   ```
 
-- [ ] Commit:
+- [x] Commit:
 
   ```powershell
   git add apps/orquesta-desktop

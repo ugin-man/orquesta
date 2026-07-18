@@ -192,6 +192,58 @@ describe('DesktopCodexService', () => {
     expect(notifications.map((item) => item.kind)).toEqual(['agent_message', 'turn_completed']);
   });
 
+  test('projects stable newest-first pages without exposing target wrappers or raw turns', async () => {
+    const double = createAdapterDouble();
+    double.adapter.readThread.mockResolvedValue({
+      ok: true,
+      thread_id: 'thread-history',
+      thread: {
+        id: 'thread-history',
+        turns: [
+          {
+            startedAt: 1, completedAt: 2,
+            items: [
+              { id: 'user-1', type: 'userMessage', content: [{ type: 'text', text: '<orquesta_target agent_id="worker">\n最初の指示\n</orquesta_target>' }] },
+              { id: 'system-1', type: 'systemMessage', text: 'System checkpoint' },
+              { id: 'agent-1', type: 'agentMessage', text: '最初の回答' }
+            ]
+          },
+          {
+            startedAt: 3, completedAt: 4,
+            items: [
+              { id: 'user-2', type: 'userMessage', content: [{ type: 'text', text: '<orquesta_target agent_id="worker">\n続けて\n</orquesta_target>' }] },
+              { id: 'agent-2', type: 'agentMessage', text: '完了しました' }
+            ]
+          }
+        ]
+      }
+    });
+    const service = new DesktopCodexService({ adapter: double.adapter });
+
+    const newest = await service.listConversation({
+      correlationId: 'history-newest', threadId: 'thread-history', targetAgentId: 'worker', cursor: null, limit: 2
+    });
+    expect(newest).toEqual({
+      items: [expect.objectContaining({ id: 'user-2', text: '続けて' }), expect.objectContaining({ id: 'agent-2', text: '完了しました' })],
+      nextCursor: 'before:3'
+    });
+    const older = await service.listConversation({
+      correlationId: 'history-older', threadId: 'thread-history', targetAgentId: 'worker', cursor: newest.nextCursor, limit: 2
+    });
+    expect(older).toEqual({
+      items: [expect.objectContaining({ id: 'system-1', role: 'system' }), expect.objectContaining({ id: 'agent-1', text: '最初の回答' })],
+      nextCursor: 'before:1'
+    });
+    expect(JSON.stringify([newest, older])).not.toContain('orquesta_target');
+    expect(JSON.stringify([newest, older])).not.toContain('turns');
+    await expect(service.listConversation({
+      correlationId: 'history-bad', threadId: 'thread-history', targetAgentId: 'worker', cursor: 'bad', limit: 2
+    })).rejects.toThrow('cursor');
+    await expect(service.listConversation({
+      correlationId: 'history-limit', threadId: 'thread-history', targetAgentId: 'worker', cursor: null, limit: 201
+    })).rejects.toThrow('limit');
+  });
+
   test('returns bounded runtime information and invokes adapter shutdown only once', async () => {
     const double = createAdapterDouble();
     const service = new DesktopCodexService({ adapter: double.adapter });
@@ -225,7 +277,7 @@ describe('DesktopCodexService', () => {
     });
     await vi.waitFor(() => expect(approvals).toHaveLength(1));
     expect(approvals[0]).toEqual({
-      projectId: 'repo-1', requestId: 'approval-1', method: 'item/fileChange/requestApproval',
+      projectId: 'repo-1', correlationId: 'corr-approval', requestId: 'approval-1', method: 'item/fileChange/requestApproval',
       threadId: 'thread-new', turnId: 'turn-1', reason: '[redacted approval reason]',
       responseOptions: ['accept', 'acceptForSession', 'decline', 'cancel']
     });
@@ -234,7 +286,7 @@ describe('DesktopCodexService', () => {
       correlationId: 'respond-1', requestId: 'approval-1', decision: 'acceptForSession'
     })).resolves.toEqual({ requestId: 'approval-1', decision: 'acceptForSession' });
     expect(double.adapter.respondToApproval).toHaveBeenCalledWith({
-      correlationId: 'respond-1', requestId: 'approval-1', method: 'item/fileChange/requestApproval',
+      correlationId: 'corr-approval', requestId: 'approval-1', method: 'item/fileChange/requestApproval',
       threadId: 'thread-new', turnId: 'turn-1', decision: 'acceptForSession'
     });
     await expect(service.respondToApproval({
