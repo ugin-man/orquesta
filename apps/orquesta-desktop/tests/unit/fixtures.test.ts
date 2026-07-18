@@ -26,6 +26,24 @@ describe('renderer fixtures', () => {
     const fixture = fixtureCatalog['large-roster'];
     expect(fixture.snapshot.agents).toHaveLength(35);
     expect(new Set(fixture.snapshot.agents.map((agent) => agent.id)).size).toBe(35);
+    expect(fixture.snapshot.agents.some((agent) => agent.assignedByAgentId?.startsWith('agent-'))).toBe(true);
+  });
+
+  test('nested-roster exercises deep, repeated, and malformed delegation', () => {
+    const agents = fixtureCatalog['nested-roster'].snapshot.agents;
+    const byId = new Map(agents.map((agent) => [agent.id, agent]));
+    expect(agents.filter((agent) => agent.role === 'Implementation Specialist')).toHaveLength(4);
+    expect(agents.filter((agent) => agent.assignedByAgentId === 'design-lead')).toHaveLength(3);
+    expect(byId.get('depth-5')?.assignedByAgentId).toBe('depth-4');
+    expect(byId.get('missing-parent')?.assignedByAgentId).toBe('not-installed');
+    expect(byId.get('cycle-a')?.assignedByAgentId).toBe('cycle-b');
+    expect(byId.get('cycle-b')?.assignedByAgentId).toBe('cycle-a');
+  });
+
+  test('wide-roster retains eighty unique visible candidates', () => {
+    const agents = fixtureCatalog['wide-roster'].snapshot.agents;
+    expect(agents).toHaveLength(80);
+    expect(new Set(agents.map((agent) => agent.id))).toHaveLength(80);
   });
 
   test('offline snapshot stops proven work claims', () => {

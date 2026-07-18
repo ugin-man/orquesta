@@ -5,7 +5,7 @@ export const unknownEvidenceFixture: FixtureDefinition = {
   snapshot: {
     project: {
       id: 'unknown-evidence', title: 'Migration Planning', rootPathLabel: '~/projects/migration', status: 'ready', connectionLabel: 'Snapshot ready · runtime evidence incomplete',
-      isDemoData: true, lastSyncedAt: observedAt, currentPhaseId: 'phase-plan', agentCount: 3, provenWorkingAgentCount: 0,
+      isDemoData: true, lastSyncedAt: observedAt, currentPhaseId: 'phase-plan', agentCount: 4, provenWorkingAgentCount: 0,
       summary: 'Assigned work is waiting for start evidence', nextMilestone: 'Observe the first runtime turn'
     },
     agents: [

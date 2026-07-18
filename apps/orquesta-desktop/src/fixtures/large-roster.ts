@@ -10,10 +10,11 @@ for (let index = 1; index < 35; index += 1) {
   const role = roles[(index - 1) % roles.length];
   const id = `agent-${String(index).padStart(2, '0')}`;
   const taskId = working ? `L${index}` : null;
+  const assignedByAgentId = index <= 5 ? 'orchestrator' : index <= 14 ? 'agent-01' : index <= 24 ? 'agent-02' : 'agent-15';
   agents.push(agent({
     id, displayName: `${role} ${String(index).padStart(2, '0')}`, role, roleSummary: `${role} specialist`, iconKey: icons[(index - 1) % icons.length],
     status: working ? 'working' : 'standby', statusLabel: working ? 'Working' : 'Idle', currentTaskId: taskId, currentTaskTitle: working ? `Large-roster workstream ${index}` : null,
-    assignedByAgentId: working ? 'orchestrator' : null, expectedArtifact: working ? `Workstream ${index} report` : null
+    assignedByAgentId, expectedArtifact: working ? `Workstream ${index} report` : null
   }));
   if (working) tasks.push(task({ id: taskId!, title: `Large-roster workstream ${index}`, state: 'in_progress', ownerAgentId: id, assignedByAgentId: 'orchestrator', handoffSent: true, dispatchAccepted: true, turnStarted: true, progressObserved: true, progressPercent: index * 11, actualModel: 'gpt-5.4-mini', actualModelEvidence: 'reported', startedAt: observedAt }));
 }

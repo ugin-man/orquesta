@@ -17,7 +17,8 @@ test('renders the full active roster and opens agent and task details', async ({
 test('keeps dispatch-only work static and actual model unknown', async ({ page }) => {
   await openFixture(page, 'unknown-evidence');
   await expect(page.locator('.map-edge-flow')).toHaveCount(0);
-  await page.getByRole('button', { name: /U12: Prepare migration outline/ }).click();
+  await page.getByRole('button', { name: 'Planner, Assigned · waiting' }).click();
+  await page.locator('.agent-current-task').click();
   const detail = page.locator('aside[aria-label="Task U12"]');
   await expect(detail).toBeVisible();
   await expect(detail.getByText('Actual model', { exact: true })).toBeVisible();
@@ -53,9 +54,43 @@ test('large roster keeps all thirty-five agents as individual nodes', async ({ p
   await openFixture(page, 'large-roster');
   await expect(page.locator('[data-node-kind="agent"]')).toHaveCount(35);
   await page.getByRole('button', { name: 'Fit' }).click();
+  const occluded = await page.locator('[data-node-kind="agent"]').evaluateAll((nodes) => nodes.flatMap((node) => {
+    const rect = node.getBoundingClientRect();
+    const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return target && node.contains(target) ? [] : [node.getAttribute('data-agent-id')];
+  }));
+  expect(occluded).toEqual([]);
   await page.getByRole('button', { name: 'Zoom in' }).click();
   await page.getByRole('button', { name: 'Reset' }).click();
 });
+
+for (const [fixture, count] of [['nested-roster', 18], ['wide-roster', 80]] as const) {
+  test(`${fixture} keeps every agent in the DOM without document scroll`, async ({ page }) => {
+    await openFixture(page, fixture, { width: 1440, height: 900 });
+    await expect(page.locator('[data-node-kind="agent"]')).toHaveCount(count);
+    await expect(page.locator('.map-edge--base')).toHaveCount(count);
+    const overlaps = await page.locator('[data-node-kind="agent"]').evaluateAll((nodes) => {
+      const rectangles = nodes.map((node) => ({ id: node.getAttribute('data-agent-id'), rect: node.getBoundingClientRect() }));
+      return rectangles.flatMap((left, index) => rectangles.slice(index + 1).flatMap((right) => {
+        const intersects = left.rect.left < right.rect.right && left.rect.right > right.rect.left
+          && left.rect.top < right.rect.bottom && left.rect.bottom > right.rect.top;
+        return intersects ? [`${left.id}:${right.id}`] : [];
+      }));
+    });
+    expect(overlaps).toEqual([]);
+    const occluded = await page.locator('[data-node-kind="agent"]').evaluateAll((nodes) => nodes.flatMap((node) => {
+      const rect = node.getBoundingClientRect();
+      const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return target && node.contains(target) ? [] : [node.getAttribute('data-agent-id')];
+    }));
+    expect(occluded).toEqual([]);
+    const pageScroll = await page.evaluate(() => ({
+      html: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+      body: document.body.scrollHeight - document.body.clientHeight
+    }));
+    expect(pageScroll).toEqual({ html: 0, body: 0 });
+  });
+}
 
 test('preserves the map camera when a same-project snapshot updates', async ({ page }) => {
   await openFixture(page, 'active-project');

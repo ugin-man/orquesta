@@ -1,5 +1,5 @@
 import { Minus, Plus, RotateCcw, Scan } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
 import type { AgentUiModel, OrquestaUiSnapshot, TaskUiModel } from '../../../contracts/orquesta-ui';
 import { AgentGlyph } from '../../components/AgentGlyph';
 import { StatusDot } from '../../components/StatusDot';
@@ -10,6 +10,21 @@ interface Camera {
   x: number;
   y: number;
   zoom: number;
+}
+
+export type SemanticZoomLevel = 'overview' | 'normal' | 'detail';
+
+export function semanticLevelForZoom(zoom: number): SemanticZoomLevel {
+  if (zoom < 0.52) return 'overview';
+  if (zoom < 0.88) return 'normal';
+  return 'detail';
+}
+
+export function worldToScreen(point: Point, camera: Camera): Point {
+  return {
+    x: camera.x + point.x * camera.zoom,
+    y: camera.y + point.y * camera.zoom
+  };
 }
 
 interface DragState {
@@ -28,12 +43,18 @@ function isActiveTask(task: TaskUiModel | undefined, online: boolean): boolean {
   return Boolean(online && task && (task.turnStarted || task.progressObserved));
 }
 
-function fitCamera(viewport: DOMRect | { width: number; height: number }, world: { width: number; height: number }, padding = 18): Camera {
-  const zoom = clamp(Math.min((viewport.width - padding * 2) / world.width, (viewport.height - padding * 2) / world.height), 0.34, 1.12);
+export function fitCamera(viewport: DOMRect | { width: number; height: number }, world: { width: number; height: number }, padding = 18): Camera {
+  const useDesktopGutters = viewport.width >= 1100 && viewport.height >= 700;
+  const horizontalGutter = useDesktopGutters ? Math.min(300, viewport.width * 0.21) : padding;
+  const topGutter = useDesktopGutters ? 80 : padding;
+  const bottomGutter = useDesktopGutters ? 138 : padding;
+  const availableWidth = Math.max(1, viewport.width - horizontalGutter * 2);
+  const availableHeight = Math.max(1, viewport.height - topGutter - bottomGutter);
+  const zoom = clamp(Math.min(availableWidth / world.width, availableHeight / world.height), 0.18, 1.12);
   return {
     zoom,
-    x: (viewport.width - world.width * zoom) / 2,
-    y: (viewport.height - world.height * zoom) / 2
+    x: horizontalGutter + (availableWidth - world.width * zoom) / 2,
+    y: topGutter + (availableHeight - world.height * zoom) / 2
   };
 }
 
@@ -62,11 +83,14 @@ export function MapViewport({
 }) {
   const { t } = useI18n();
   const viewportRef = useRef<HTMLDivElement>(null);
-  const rosterLayoutKey = `${snapshot.project.id}:${snapshot.agents.map((agent) => agent.id).join('|')}`;
+  const rosterLayoutKey = `${snapshot.project.id}:${snapshot.agents.map((agent) => `${agent.id}:${agent.assignedByAgentId ?? ''}`).join('|')}`;
   const layout = useMemo(() => createStableLayout(snapshot.agents), [rosterLayoutKey]);
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 0.9 });
   const [drag, setDrag] = useState<DragState | null>(null);
+  const pendingPanRef = useRef<Camera | null>(null);
+  const panFrameRef = useRef<number | null>(null);
   const online = snapshot.project.status !== 'offline';
+  const semanticLevel = semanticLevelForZoom(camera.zoom);
 
   const applyFit = useCallback(() => {
     const rect = viewportRef.current?.getBoundingClientRect();
@@ -98,6 +122,10 @@ export function MapViewport({
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [applyFit]);
+
+  useEffect(() => () => {
+    if (panFrameRef.current !== null) cancelAnimationFrame(panFrameRef.current);
+  }, []);
 
   const taskById = useMemo(() => new Map(snapshot.tasks.map((task) => [task.id, task])), [snapshot.tasks]);
 
@@ -136,7 +164,7 @@ export function MapViewport({
 
   const zoomAt = (nextZoom: number, anchor?: { x: number; y: number }) => {
     setCamera((current) => {
-      const zoom = clamp(nextZoom, 0.32, 1.9);
+      const zoom = clamp(nextZoom, 0.18, 1.9);
       if (!anchor) return { ...current, zoom };
       const worldX = (anchor.x - current.x) / current.zoom;
       const worldY = (anchor.y - current.y) / current.zoom;
@@ -164,7 +192,18 @@ export function MapViewport({
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!drag || drag.pointerId !== event.pointerId) return;
-    setCamera((current) => ({ ...current, x: drag.cameraX + event.clientX - drag.startX, y: drag.cameraY + event.clientY - drag.startY }));
+    pendingPanRef.current = {
+      zoom: camera.zoom,
+      x: drag.cameraX + event.clientX - drag.startX,
+      y: drag.cameraY + event.clientY - drag.startY
+    };
+    if (panFrameRef.current !== null) return;
+    panFrameRef.current = requestAnimationFrame(() => {
+      panFrameRef.current = null;
+      const nextCamera = pendingPanRef.current;
+      pendingPanRef.current = null;
+      if (nextCamera) setCamera(nextCamera);
+    });
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -178,47 +217,51 @@ export function MapViewport({
     setCamera({ zoom, x: rect.width / 2 - point.x * zoom, y: rect.height / 2 - point.y * zoom });
   };
 
-  const worldStyle = {
-    width: `${layout.width}px`,
-    height: `${layout.height}px`,
-    transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.zoom})`
-  } satisfies CSSProperties;
-
   return (
     <section
       ref={viewportRef}
       className={`map-viewport${drag ? ' is-dragging' : ''}`}
       aria-label="Orquesta Map"
+      data-semantic-level={semanticLevel}
+      data-hierarchy-diagnostics={layout.hierarchy.diagnostics.length}
       onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      <div className="map-world" style={worldStyle} data-zoom={camera.zoom.toFixed(2)}>
-        <svg className="map-geometry" viewBox={`0 0 ${layout.width} ${layout.height}`} aria-hidden="true">
-          <circle className="map-boundary" cx={layout.center.x} cy={layout.center.y + (layout.compact ? 60 : 40)} r={layout.outerRadius} />
-          <circle className="map-orchestrator-ring map-orchestrator-ring--outer" cx={layout.center.x} cy={layout.center.y} r={layout.compact ? 112 : 108} />
-          <circle className="map-orchestrator-ring" cx={layout.center.x} cy={layout.center.y} r={layout.compact ? 78 : 75} />
-          {snapshot.agents.filter((agent) => agent.id !== 'orchestrator').map((agent) => {
-            const point = layout.agentPositions.get(agent.id);
-            if (!point) return null;
-            return <path key={`base-${agent.id}`} className="map-edge map-edge--base" d={edgePath(layout.center, point)} />;
-          })}
-          <path className="map-edge map-edge--base" d={edgePath(layout.user, layout.center)} />
+      <div className="map-world" data-zoom={camera.zoom.toFixed(2)}>
+        <svg className="map-geometry" aria-hidden="true">
+          <rect
+            className="map-world-boundary"
+            x={camera.x}
+            y={camera.y}
+            width={layout.width * camera.zoom}
+            height={layout.height * camera.zoom}
+            rx={Math.max(16, 34 * camera.zoom)}
+          />
+          {layout.edges.map(({ parentId, childId, from, to }) => (
+            <path
+              key={`base-${parentId}-${childId}`}
+              className="map-edge map-edge--base"
+              d={edgePath(worldToScreen(from, camera), worldToScreen(to, camera))}
+            />
+          ))}
           {currentEdges.map(({ task, from, to }) => {
             const active = isActiveTask(task, online);
             const selected = selectedTaskId === task.id;
+            const screenFrom = worldToScreen(from, camera);
+            const screenTo = worldToScreen(to, camera);
             return (
               <g key={`edge-${task.id}`}>
-                <path className={`map-edge map-edge--task${active ? ' is-active' : ''}${selected ? ' is-selected' : ''}`} d={edgePath(from, to)} />
-                {active && !reducedMotion ? <path className="map-edge-flow" d={edgePath(from, to)} /> : null}
+                <path className={`map-edge map-edge--task${active ? ' is-active' : ''}${selected ? ' is-selected' : ''}`} d={edgePath(screenFrom, screenTo)} />
+                {active && !reducedMotion ? <path className="map-edge-flow" d={edgePath(screenFrom, screenTo)} /> : null}
               </g>
             );
           })}
         </svg>
 
-        <div className="map-user-node" style={{ left: layout.user.x, top: layout.user.y }}>
+        <div className="map-user-node" style={{ left: worldToScreen(layout.user, camera).x, top: worldToScreen(layout.user, camera).y }}>
           <span className="agent-node__icon"><AgentGlyph iconKey="user" size={30} /></span>
           <strong>YOU</strong>
           <small>Human</small>
@@ -227,6 +270,7 @@ export function MapViewport({
         {snapshot.agents.map((agent) => {
           const point = layout.agentPositions.get(agent.id);
           if (!point) return null;
+          const screenPoint = worldToScreen(point, camera);
           const selected = selectedAgentId === agent.id;
           const dimmed = (selectedAgentId || selectedTaskId) && !selected && !connectedAgentIds.has(agent.id);
           const activeTask = agent.currentTaskId ? taskById.get(agent.currentTaskId) : undefined;
@@ -236,13 +280,14 @@ export function MapViewport({
               key={agent.id}
               type="button"
               data-node-kind="agent"
-              className={`agent-node${agent.id === 'orchestrator' ? ' agent-node--orchestrator' : ''}${layout.compact ? ' agent-node--compact' : ''}${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}${motion ? ' agent-node--motion' : ''}`}
-              style={{ left: point.x, top: point.y }}
+              data-agent-id={agent.id}
+              className={`agent-node${agent.id === 'orchestrator' ? ' agent-node--orchestrator' : ''}${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}${motion ? ' agent-node--motion' : ''}`}
+              style={{ left: screenPoint.x, top: screenPoint.y }}
               aria-label={`${agent.displayName}, ${mapStatusText(agent)}`}
               onClick={(event) => { event.stopPropagation(); onSelectAgent(agent.id); }}
               onDoubleClick={(event) => { event.stopPropagation(); focusPoint(point); }}
             >
-              <span className="agent-node__icon"><AgentGlyph iconKey={agent.iconKey} size={agent.id === 'orchestrator' ? 30 : layout.compact ? 20 : 26} /></span>
+              <span className="agent-node__icon"><AgentGlyph iconKey={agent.iconKey} size={agent.id === 'orchestrator' ? 30 : semanticLevel === 'overview' ? 18 : 26} /></span>
               <span className="agent-node__copy">
                 <strong>{agent.displayName.toUpperCase()}</strong>
                 <small>{agent.roleSummary}</small>
@@ -252,20 +297,20 @@ export function MapViewport({
           );
         })}
 
-        {currentEdges.map(({ task, chip }) => (
+        {currentEdges.map(({ task, chip }) => (semanticLevel === 'detail' || selectedTaskId === task.id) ? (
           <button
             key={`chip-${task.id}`}
             type="button"
             className={`task-chip${selectedTaskId === task.id ? ' is-selected' : ''}${isActiveTask(task, online) ? ' is-active' : ''}`}
-            style={{ left: chip.x, top: chip.y }}
+            style={{ left: worldToScreen(chip, camera).x, top: worldToScreen(chip, camera).y }}
             aria-label={`${task.id}: ${task.title}`}
             onClick={(event) => { event.stopPropagation(); onSelectTask(task.id); }}
           >
             {task.id}
           </button>
-        ))}
+        ) : null)}
 
-        <button type="button" className="add-agent-button" style={{ left: layout.center.x, top: layout.compact ? layout.height - 72 : 762 }} onClick={(event) => { event.stopPropagation(); onOpenTeam(); }}>
+        <button type="button" className="add-agent-button" style={{ left: worldToScreen({ x: layout.width / 2, y: layout.height - 48 }, camera).x, top: worldToScreen({ x: layout.width / 2, y: layout.height - 48 }, camera).y }} onClick={(event) => { event.stopPropagation(); onOpenTeam(); }}>
           <Plus size={16} aria-hidden="true" />{t('addAgent')}
         </button>
       </div>
