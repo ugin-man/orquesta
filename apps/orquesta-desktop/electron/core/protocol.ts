@@ -1,5 +1,5 @@
 import type { ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
-import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 
 export interface RuntimeModelEvidence {
   recommendedModel: string | null;
@@ -16,6 +16,16 @@ export interface RuntimeNotification {
   text: string | null;
   targetAgentId: string | null;
   modelEvidence: RuntimeModelEvidence;
+}
+
+export interface RuntimeApprovalRequest {
+  projectId: string;
+  requestId: string;
+  method: string;
+  threadId: string;
+  turnId: string;
+  reason: string | null;
+  responseOptions: string[];
 }
 
 export interface RuntimeSendRequest {
@@ -62,8 +72,21 @@ export interface RepositoryCloseRequest {
   correlationId: string;
 }
 
+export interface RuntimeApprovalRespondRequest {
+  type: 'runtime.approval.respond';
+  correlationId: string;
+  attentionId: string;
+  decision: string;
+}
+
+export interface RepositoryAttentionHistoryRequest {
+  type: 'repository.attention-history';
+  correlationId: string;
+}
+
 export type CoreDispatchRequest = RuntimeSendRequest | RuntimeConversationRequest | RuntimeInfoRequest
-  | RepositorySelectRequest | RepositorySnapshotRequest | RepositoryCloseRequest;
+  | RepositorySelectRequest | RepositorySnapshotRequest | RepositoryCloseRequest
+  | RuntimeApprovalRespondRequest | RepositoryAttentionHistoryRequest;
 
 export type CoreRequest =
   | { type: 'core.shutdown' }
@@ -73,7 +96,9 @@ export type CoreRequest =
   | RuntimeInfoRequest
   | RepositorySelectRequest
   | RepositorySnapshotRequest
-  | RepositoryCloseRequest;
+  | RepositoryCloseRequest
+  | RuntimeApprovalRespondRequest
+  | RepositoryAttentionHistoryRequest;
 
 export type CoreEvent =
   | { type: 'core.ready'; version: 1 }
@@ -85,6 +110,8 @@ export type CoreEvent =
   | { type: 'runtime.notification'; notification: RuntimeNotification }
   | { type: 'repository.snapshot.result'; correlationId: string; snapshot: OrquestaUiSnapshot }
   | { type: 'repository.snapshot.changed'; snapshot: OrquestaUiSnapshot }
+  | { type: 'runtime.approval.accepted'; correlationId: string; attentionId: string; decision: string }
+  | { type: 'repository.attention-history.result'; correlationId: string; items: AttentionUiItem[] }
   | { type: 'core.stopped' };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -166,6 +193,10 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
   if (value.type === 'repository.get-snapshot' || value.type === 'repository.close') {
     return isCorrelationId(value.correlationId);
   }
+  if (value.type === 'runtime.approval.respond') {
+    return isCorrelationId(value.correlationId) && isSafeId(value.attentionId) && isBoundedText(value.decision, 128);
+  }
+  if (value.type === 'repository.attention-history') return isCorrelationId(value.correlationId);
   return false;
 }
 
@@ -198,5 +229,11 @@ export function isCoreEvent(value: unknown): value is CoreEvent {
     return isCorrelationId(value.correlationId) && isRepositorySnapshot(value.snapshot);
   }
   if (value.type === 'repository.snapshot.changed') return isRepositorySnapshot(value.snapshot);
+  if (value.type === 'runtime.approval.accepted') {
+    return isCorrelationId(value.correlationId) && isSafeId(value.attentionId) && isBoundedText(value.decision, 128);
+  }
+  if (value.type === 'repository.attention-history.result') {
+    return isCorrelationId(value.correlationId) && Array.isArray(value.items);
+  }
   return value.type === 'core.stopped';
 }

@@ -187,9 +187,11 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       setActionError(error instanceof Error ? error.message : String(error));
     }
   };
-  const resolveAttention = async (item: AttentionUiItem) => {
+  const resolveAttention = async (item: AttentionUiItem, decision: string) => {
     try {
-      const result = await bridge.resolveAttentionItem({ id: item.id, resolution: 'resolved in prototype' });
+      const result = item.runtimeApproval
+        ? await bridge.resolveAttentionItem({ kind: 'runtime_approval', id: item.id, decision })
+        : await bridge.resolveAttentionItem({ kind: 'repository_action', id: item.id, resolution: decision });
       if (result.status !== 'accepted') setActionError(result.reason);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
@@ -283,7 +285,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           agents={snapshot.agents}
           canResolve={bridge.capabilities.attentionResolution}
           onOpenItem={(item) => item.taskId ? selectTask(item.taskId) : void bridge.openAttentionItem(item.id)}
-          onResolve={(item) => void resolveAttention(item)}
+          onResolve={(item, decision) => void resolveAttention(item, decision)}
           onViewHistory={() => void openHistory()}
         />
         <CommandComposer

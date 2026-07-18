@@ -32,7 +32,7 @@ describe('MockOrquestaBridge', () => {
 
   test('resolving attention removes it from the current list', async () => {
     const bridge = new MockOrquestaBridge('active-project');
-    await bridge.resolveAttentionItem({ id: 'A67', resolution: 'Resolved in test' });
+    await bridge.resolveAttentionItem({ kind: 'repository_action', id: 'A67', resolution: 'Resolved in test' });
     const snapshot = await bridge.getInitialSnapshot();
     expect(snapshot.attention.some((item) => item.id === 'A67')).toBe(false);
   });

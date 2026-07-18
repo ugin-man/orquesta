@@ -132,6 +132,31 @@ describe('CoreHost', () => {
     expect(listener).toHaveBeenCalledWith(snapshot);
   });
 
+  test('binds approval responses and resolved attention history to matching Core results', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+
+    const response = host.respondRuntimeApproval({ attentionId: 'runtime-approval-1', decision: 'decline' });
+    const responseRequest = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(responseRequest).toMatchObject({
+      type: 'runtime.approval.respond', attentionId: 'runtime-approval-1', decision: 'decline'
+    });
+    child.emit('message', {
+      type: 'runtime.approval.accepted', correlationId: responseRequest.correlationId,
+      attentionId: 'runtime-approval-1', decision: 'decline'
+    });
+    await expect(response).resolves.toMatchObject({ correlationId: responseRequest.correlationId, decision: 'decline' });
+
+    const history = host.listAttentionHistory();
+    const historyRequest = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    child.emit('message', {
+      type: 'repository.attention-history.result', correlationId: historyRequest.correlationId, items: []
+    });
+    await expect(history).resolves.toEqual([]);
+  });
+
   test('requests a clean shutdown and kills after the bounded timeout', async () => {
     vi.useFakeTimers();
     const child = new FakeCoreChild();

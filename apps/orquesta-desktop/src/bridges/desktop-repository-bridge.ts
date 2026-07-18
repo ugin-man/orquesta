@@ -20,7 +20,7 @@ function unsupported(reason: string): UiActionResult {
 }
 
 export class DesktopRepositoryBridge implements OrquestaRendererBridge {
-  readonly capabilities = { imageAttachments: true, attentionResolution: false } as const;
+  readonly capabilities = { imageAttachments: true, attentionResolution: true } as const;
   private readonly host: DesktopHostApi;
 
   constructor(host: DesktopHostApi) {
@@ -59,7 +59,10 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
     return unsupported('This read-only item has no external action.');
   }
 
-  async resolveAttentionItem(_input: AttentionResolutionInput): Promise<UiActionResult> {
+  async resolveAttentionItem(input: AttentionResolutionInput): Promise<UiActionResult> {
+    if (input.kind === 'runtime_approval') {
+      return this.host.respondRuntimeApproval({ id: input.id, decision: input.decision });
+    }
     return unsupported('Read-only repository mode cannot resolve canonical attention state.');
   }
 
@@ -87,8 +90,8 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
     return this.host.selectImageAttachments();
   }
 
-  async listAttentionHistory(): Promise<AttentionUiItem[]> {
-    return [];
+  listAttentionHistory(): Promise<AttentionUiItem[]> {
+    return this.host.listAttentionHistory();
   }
 
   async listAgentProposals(): Promise<AgentProposal[]> {

@@ -53,6 +53,9 @@ function createAdapterDouble() {
       platform_os: probe ? 'windows' : null,
       user_agent: probe ? 'codex-cli/0.144.5' : null
     })),
+    respondToApproval: vi.fn(async (input) => ({
+      ok: true, thread_id: input.threadId, turn_id: input.turnId, approval_id: input.requestId
+    })),
     shutdown: vi.fn(async () => ({ ok: true, status: 'completed' })),
     subscribeEvents: vi.fn(async ({ listener }) => {
       eventListener = listener;
@@ -204,6 +207,83 @@ describe('DesktopCodexService', () => {
 
     await Promise.all([service.shutdown(), service.shutdown()]);
     expect(double.adapter.shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  test('relays only an exact pending approval response and consumes it once', async () => {
+    const double = createAdapterDouble();
+    const approvals: Array<Record<string, unknown>> = [];
+    const service = new DesktopCodexService({ adapter: double.adapter });
+    service.subscribeApprovals((approval) => approvals.push(approval));
+    await service.sendMessage({
+      correlationId: 'corr-approval', projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null,
+      targetAgentId: 'orchestrator', text: 'Edit.', localImagePaths: [], recommendedModel: null, requestedModel: null
+    });
+    double.emit({
+      type: 'approval_requested', correlation_id: 'corr-approval', thread_id: 'thread-new', turn_id: 'turn-1',
+      request_id: 'approval-1', method: 'item/fileChange/requestApproval', reason: '[redacted approval reason]',
+      response_options: ['accept', 'acceptForSession', 'decline', 'cancel']
+    });
+    await vi.waitFor(() => expect(approvals).toHaveLength(1));
+    expect(approvals[0]).toEqual({
+      projectId: 'repo-1', requestId: 'approval-1', method: 'item/fileChange/requestApproval',
+      threadId: 'thread-new', turnId: 'turn-1', reason: '[redacted approval reason]',
+      responseOptions: ['accept', 'acceptForSession', 'decline', 'cancel']
+    });
+
+    await expect(service.respondToApproval({
+      correlationId: 'respond-1', requestId: 'approval-1', decision: 'acceptForSession'
+    })).resolves.toEqual({ requestId: 'approval-1', decision: 'acceptForSession' });
+    expect(double.adapter.respondToApproval).toHaveBeenCalledWith({
+      correlationId: 'respond-1', requestId: 'approval-1', method: 'item/fileChange/requestApproval',
+      threadId: 'thread-new', turnId: 'turn-1', decision: 'acceptForSession'
+    });
+    await expect(service.respondToApproval({
+      correlationId: 'respond-2', requestId: 'approval-1', decision: 'accept'
+    })).rejects.toThrow('pending');
+  });
+
+  test('rejects an invented approval option and never auto-responds during shutdown', async () => {
+    const double = createAdapterDouble();
+    const service = new DesktopCodexService({ adapter: double.adapter });
+    const approvals: Array<Record<string, unknown>> = [];
+    service.subscribeApprovals((approval) => approvals.push(approval));
+    await service.sendMessage({
+      correlationId: 'corr-approval', projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null,
+      targetAgentId: 'orchestrator', text: 'Edit.', localImagePaths: [], recommendedModel: null, requestedModel: null
+    });
+    double.emit({
+      type: 'approval_requested', correlation_id: 'corr-approval', thread_id: 'thread-new', turn_id: 'turn-1',
+      request_id: 'approval-2', method: 'item/fileChange/requestApproval', response_options: ['accept', 'decline']
+    });
+    await vi.waitFor(() => expect(approvals).toHaveLength(1));
+
+    await expect(service.respondToApproval({
+      correlationId: 'respond-invalid', requestId: 'approval-2', decision: 'allow'
+    })).rejects.toThrow('response option');
+    await service.shutdown();
+    expect(double.adapter.respondToApproval).not.toHaveBeenCalled();
+  });
+
+  test.each(['accept', 'decline', 'cancel'])('passes through the exact %s response option', async (decision) => {
+    const double = createAdapterDouble();
+    const approvals: Array<Record<string, unknown>> = [];
+    const service = new DesktopCodexService({ adapter: double.adapter });
+    service.subscribeApprovals((approval) => approvals.push(approval));
+    await service.sendMessage({
+      correlationId: `corr-${decision}`, projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null,
+      targetAgentId: 'orchestrator', text: 'Continue.', localImagePaths: [], recommendedModel: null, requestedModel: null
+    });
+    double.emit({
+      type: 'approval_requested', correlation_id: `corr-${decision}`, thread_id: 'thread-new', turn_id: 'turn-1',
+      request_id: `approval-${decision}`, method: 'item/commandExecution/requestApproval',
+      response_options: ['accept', 'decline', 'cancel']
+    });
+    await vi.waitFor(() => expect(approvals).toHaveLength(1));
+    await service.respondToApproval({
+      correlationId: `respond-${decision}`, requestId: `approval-${decision}`, decision
+    });
+    expect(double.adapter.respondToApproval).toHaveBeenCalledWith(expect.objectContaining({ decision }));
+    await service.shutdown();
   });
 
   test('verifies a packaged runtime once before constructing the canonical adapter', async () => {

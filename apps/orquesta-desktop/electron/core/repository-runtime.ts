@@ -1,6 +1,8 @@
 import { watch, type FSWatcher } from 'node:fs';
 import path from 'node:path';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import type { AttentionUiItem } from '../../src/contracts/orquesta-ui';
+import type { RuntimeApprovalRequest } from './protocol';
 import { readRepositorySnapshot } from './repository-reader';
 
 interface CloseableWatcher {
@@ -42,7 +44,11 @@ export class RepositoryRuntime {
   readonly #watchDirectory: (directory: string, onChange: () => void) => CloseableWatcher;
   readonly #debounceMs: number;
   readonly #listeners = new Set<(snapshot: OrquestaUiSnapshot) => void>();
+  readonly #runtimeApprovals = new Map<string, RuntimeApprovalRequest>();
+  readonly #runtimeApprovalCreatedAt = new Map<string, string>();
+  readonly #resolvedHistory: Array<{ projectId: string; item: AttentionUiItem }> = [];
   #snapshot: OrquestaUiSnapshot | null = null;
+  #projectId: string | null = null;
   #rootPath: string | null = null;
   #watchers: CloseableWatcher[] = [];
   #refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,7 +68,8 @@ export class RepositoryRuntime {
     this.#closeWatchers();
     this.#clearRefreshTimer();
     const next = await this.#readSnapshot(input.rootPath);
-    this.#snapshot = structuredClone(next);
+    this.#projectId = next.project.id;
+    this.#snapshot = this.#withRuntimeApprovals(next);
     this.#rootPath = next.project.rootPathLabel ?? input.rootPath;
     this.#startWatching(this.#rootPath);
     return structuredClone(next);
@@ -73,10 +80,49 @@ export class RepositoryRuntime {
     return structuredClone(this.#snapshot);
   }
 
+  addRuntimeApproval(approval: RuntimeApprovalRequest): void {
+    const attentionId = `runtime-approval-${approval.requestId}`;
+    this.#runtimeApprovals.set(attentionId, structuredClone(approval));
+    if (!this.#runtimeApprovalCreatedAt.has(attentionId)) {
+      this.#runtimeApprovalCreatedAt.set(attentionId, new Date().toISOString());
+    }
+    if (!this.#snapshot || this.#projectId !== approval.projectId) return;
+    this.#snapshot = this.#withRuntimeApprovals(this.#snapshot);
+    this.#emit();
+  }
+
+  runtimeApproval(attentionId: string): RuntimeApprovalRequest | null {
+    const approval = this.#runtimeApprovals.get(attentionId);
+    return approval ? structuredClone(approval) : null;
+  }
+
+  resolveRuntimeApproval(attentionId: string, decision: string): void {
+    const approval = this.#runtimeApprovals.get(attentionId);
+    if (!approval) throw new Error('Runtime approval is no longer pending');
+    const item = this.#runtimeApprovalItem(attentionId, approval);
+    this.#runtimeApprovals.delete(attentionId);
+    this.#runtimeApprovalCreatedAt.delete(attentionId);
+    this.#resolvedHistory.unshift({
+      projectId: approval.projectId,
+      item: { ...item, resolvedAt: new Date().toISOString(), resolutionLabel: decision }
+    });
+    if (this.#resolvedHistory.length > 200) this.#resolvedHistory.length = 200;
+    if (this.#snapshot && this.#projectId === approval.projectId) {
+      this.#snapshot = this.#withRuntimeApprovals(this.#snapshot);
+      this.#emit();
+    }
+  }
+
+  listAttentionHistory(): AttentionUiItem[] {
+    return this.#resolvedHistory
+      .filter((entry) => entry.projectId === this.#projectId)
+      .map((entry) => structuredClone(entry.item));
+  }
+
   async refresh(): Promise<OrquestaUiSnapshot> {
     if (!this.#rootPath || !this.#snapshot) throw new Error('No Orquesta repository is selected');
     try {
-      this.#snapshot = await this.#readSnapshot(this.#rootPath);
+      this.#snapshot = this.#withRuntimeApprovals(await this.#readSnapshot(this.#rootPath));
     } catch (error) {
       this.#snapshot = offlineSnapshot(this.#snapshot, error instanceof Error ? error.message : String(error));
     }
@@ -88,6 +134,10 @@ export class RepositoryRuntime {
     this.#clearRefreshTimer();
     this.#closeWatchers();
     this.#listeners.clear();
+    this.#runtimeApprovals.clear();
+    this.#runtimeApprovalCreatedAt.clear();
+    this.#resolvedHistory.splice(0);
+    this.#projectId = null;
     this.#rootPath = null;
     this.#snapshot = null;
   }
@@ -126,5 +176,39 @@ export class RepositoryRuntime {
   #emit(): void {
     if (!this.#snapshot) return;
     for (const listener of this.#listeners) listener(structuredClone(this.#snapshot));
+  }
+
+  #withRuntimeApprovals(snapshot: OrquestaUiSnapshot): OrquestaUiSnapshot {
+    const next = structuredClone(snapshot);
+    const canonicalAttention = next.attention.filter((item) => !item.runtimeApproval);
+    const runtimeAttention = [...this.#runtimeApprovals.entries()]
+      .filter(([, approval]) => approval.projectId === next.project.id)
+      .map(([attentionId, approval]) => this.#runtimeApprovalItem(attentionId, approval));
+    next.attention = [...runtimeAttention, ...canonicalAttention];
+    return next;
+  }
+
+  #runtimeApprovalItem(attentionId: string, approval: RuntimeApprovalRequest): AttentionUiItem {
+    return {
+      id: attentionId,
+      type: 'approval',
+      priority: 'blocker',
+      title: 'Codex approval required',
+      summary: approval.reason ?? 'Codex requires an explicit response before continuing.',
+      sourceAgentId: 'orchestrator',
+      taskId: null,
+      blocking: true,
+      primaryActionLabel: 'Review request',
+      createdAt: this.#runtimeApprovalCreatedAt.get(attentionId) ?? new Date().toISOString(),
+      resolvedAt: null,
+      resolutionLabel: null,
+      runtimeApproval: {
+        requestId: approval.requestId,
+        method: approval.method,
+        threadId: approval.threadId,
+        turnId: approval.turnId,
+        responseOptions: [...approval.responseOptions]
+      }
+    };
   }
 }

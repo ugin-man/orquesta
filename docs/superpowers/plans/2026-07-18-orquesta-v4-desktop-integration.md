@@ -463,7 +463,7 @@
 - Modify: `apps/orquesta-desktop/src/renderer/features/attention/AttentionCard.tsx`
 - Modify: `apps/orquesta-desktop/tests/unit/attention-card.test.tsx`
 
-- [ ] Replace the generic resolution input with a discriminated union and add failing compile/runtime tests:
+- [x] Replace the generic resolution input with a discriminated union and add failing compile/runtime tests:
 
   ```ts
   export type AttentionResolutionInput =
@@ -473,28 +473,28 @@
 
   Runtime `decision` is validated against the exact `response_options` sent by Codex; the UI must not invent a smaller universal allow/deny vocabulary.
 
-- [ ] Extend `AttentionUiItem` with an optional non-secret runtime approval descriptor containing `requestId`, `method`, `threadId`, `turnId`, and `responseOptions`. Add failing tests proving repository attention items remain read-only and runtime approval cards show only valid response buttons.
+- [x] Extend `AttentionUiItem` with an optional non-secret runtime approval descriptor containing `requestId`, `method`, `threadId`, `turnId`, and `responseOptions`. Add failing tests proving repository attention items remain read-only and runtime approval cards show only valid response buttons.
 
-- [ ] Run focused tests and confirm current `attentionResolution: false` behavior fails the new runtime case:
+- [x] Run focused tests and confirm current `attentionResolution: false` behavior fails the new runtime case:
 
   ```powershell
   npm run test:desktop-unit --prefix apps/orquesta-desktop -- attention-card.test.tsx desktop-repository-bridge.test.ts protocol.test.ts
   ```
 
-- [ ] Project canonical `approval_requested` events into the current Core repository snapshot as `type: 'approval'`, `blocking: true`, `priority: 'blocker'`. Do not write them into canonical `.orquesta` files. Resolve them only through adapter `respondToApproval()`.
+- [x] Project canonical `approval_requested` events into the current Core repository snapshot as `type: 'approval'`, `blocking: true`, `priority: 'blocker'`. Do not write them into canonical `.orquesta` files. Resolve them only through adapter `respondToApproval()`.
 
-- [ ] Set Desktop bridge `attentionResolution: true` only when the item has `kind: 'runtime_approval'`; keep existing repository items read-only. Once a response succeeds, remove the live item and append a local resolved history entry.
+- [x] Set Desktop bridge `attentionResolution: true` only when the item has `kind: 'runtime_approval'`; keep existing repository items read-only. Once a response succeeds, remove the live item and append a local resolved history entry.
 
-- [ ] Test accept, decline/cancel, invalid option, duplicate response, and App Server shutdown with an outstanding request.
+- [x] Test accept, decline/cancel, invalid option, duplicate response, and App Server shutdown with an outstanding request.
 
-- [ ] Run full Desktop unit tests and adapter tests:
+- [x] Run full Desktop unit tests and adapter tests:
 
   ```powershell
   npm run test:desktop-unit --prefix apps/orquesta-desktop
   npm test --workspace @orquesta/codex-adapter
   ```
 
-- [ ] Commit:
+- [x] Commit:
 
   ```powershell
   git add apps/orquesta-desktop

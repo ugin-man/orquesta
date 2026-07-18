@@ -104,4 +104,31 @@ describe('RepositoryRuntime', () => {
       project: expect.objectContaining({ status: 'offline' })
     }));
   });
+
+  test('projects live runtime approvals without writing canonical state and keeps local resolved history', async () => {
+    const first = snapshot('repo-first', 'C:\\first');
+    const runtime = new RepositoryRuntime({
+      readSnapshot: vi.fn(async () => first),
+      watchDirectory: vi.fn(() => ({ close: vi.fn() }))
+    });
+    await runtime.select({ projectId: 'repo-first', rootPath: 'C:\\first' });
+    runtime.addRuntimeApproval({
+      projectId: 'repo-first', requestId: 'approval-1', method: 'item/fileChange/requestApproval',
+      threadId: 'thread-1', turnId: 'turn-1', reason: '[redacted approval reason]',
+      responseOptions: ['accept', 'decline', 'cancel']
+    });
+
+    const item = runtime.getSnapshot().attention[0];
+    expect(item).toMatchObject({
+      id: 'runtime-approval-approval-1', type: 'approval', blocking: true, priority: 'blocker',
+      runtimeApproval: { requestId: 'approval-1', responseOptions: ['accept', 'decline', 'cancel'] }
+    });
+    expect(runtime.runtimeApproval(item.id)).toMatchObject({ requestId: 'approval-1' });
+
+    runtime.resolveRuntimeApproval(item.id, 'decline');
+    expect(runtime.getSnapshot().attention).toEqual([]);
+    expect(runtime.listAttentionHistory()).toEqual([
+      expect.objectContaining({ id: item.id, resolvedAt: expect.any(String), resolutionLabel: 'decline' })
+    ]);
+  });
 });

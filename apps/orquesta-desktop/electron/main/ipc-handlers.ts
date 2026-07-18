@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ConversationPage, ProjectSummary, RuntimeInfoUi, UiActionResult } from '../../src/contracts/bridge';
-import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { CoreHostStatus } from './core-host';
 import { DESKTOP_IPC, type CoreStatus } from '../shared/host-contract';
 
@@ -14,6 +14,8 @@ export interface CoreController {
   sendMessage(input: { projectId: string; rootPath: string; threadId: string | null; targetAgentId: string; text: string; localImagePaths: string[] }): Promise<{ correlationId: string; threadId: string; turnId: string; modelEvidence: import('../core/protocol').RuntimeModelEvidence }>;
   listConversation(input: { threadId: string; targetAgentId: string; limit: number }): Promise<ConversationPage>;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
+  respondRuntimeApproval(input: { attentionId: string; decision: string }): Promise<{ correlationId: string }>;
+  listAttentionHistory(): Promise<AttentionUiItem[]>;
 }
 
 export interface AttachmentController {
@@ -78,6 +80,18 @@ function readRuntimeInfoInput(input: unknown): { probe: boolean } {
   return { probe: (input as Record<string, unknown>).probe as boolean };
 }
 
+function readRuntimeApprovalInput(input: unknown): { id: string; decision: string } {
+  if (!input || typeof input !== 'object') throw new Error('Runtime approval response is required');
+  const value = input as Record<string, unknown>;
+  if (typeof value.id !== 'string' || !/^[a-zA-Z0-9._:-]{1,128}$/u.test(value.id)) {
+    throw new Error('Runtime approval id is invalid');
+  }
+  if (typeof value.decision !== 'string' || !value.decision.trim() || value.decision.length > 128) {
+    throw new Error('Runtime approval decision is invalid');
+  }
+  return { id: value.id, decision: value.decision };
+}
+
 export function registerDesktopIpc(ipcMain: IpcMainLike, coreHost: CoreController, repositories: RepositoryController, attachments: AttachmentController): void {
   ipcMain.handle(DESKTOP_IPC.getHostInfo, async () => ({
     platform: 'win32' as const,
@@ -113,4 +127,17 @@ export function registerDesktopIpc(ipcMain: IpcMainLike, coreHost: CoreControlle
     return coreHost.listConversation({ threadId: context.threadId, ...query });
   });
   ipcMain.handle(DESKTOP_IPC.getRuntimeInfo, async (_event, input) => coreHost.getRuntimeInfo(readRuntimeInfoInput(input)));
+  ipcMain.handle(DESKTOP_IPC.respondRuntimeApproval, async (_event, input) => {
+    const response = readRuntimeApprovalInput(input);
+    try {
+      const accepted = await coreHost.respondRuntimeApproval({ attentionId: response.id, decision: response.decision });
+      return { status: 'accepted', correlationId: accepted.correlationId } satisfies UiActionResult;
+    } catch (error) {
+      return {
+        status: 'rejected', correlationId: randomUUID(),
+        reason: error instanceof Error ? error.message : String(error), retryable: false
+      } satisfies UiActionResult;
+    }
+  });
+  ipcMain.handle(DESKTOP_IPC.listAttentionHistory, async () => coreHost.listAttentionHistory());
 }

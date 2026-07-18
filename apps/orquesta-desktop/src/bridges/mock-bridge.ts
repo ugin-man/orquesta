@@ -91,6 +91,7 @@ export class MockOrquestaBridge implements OrquestaRendererBridge {
   }
 
   async resolveAttentionItem(input: AttentionResolutionInput): Promise<UiActionResult> {
+    if (input.kind === 'runtime_approval') return rejected('The prototype has no live runtime approval request.');
     const snapshot = fixtureCatalog[this.fixtureId].snapshot;
     const item = snapshot.attention.find((candidate) => candidate.id === input.id);
     if (!item) return rejected('Unknown attention item.');

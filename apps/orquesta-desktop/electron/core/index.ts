@@ -24,6 +24,7 @@ const runtime = new DesktopCodexService({
 const repository = new RepositoryRuntime();
 const send = (event: CoreEvent) => parentPort.postMessage(event);
 runtime.subscribe((notification) => send({ type: 'runtime.notification', notification }));
+runtime.subscribeApprovals((approval) => repository.addRuntimeApproval(approval));
 repository.subscribe((snapshot) => send({ type: 'repository.snapshot.changed', snapshot }));
 
 const stop = () => {
@@ -44,6 +45,27 @@ const dispatch = (request: CoreDispatchRequest) => {
         send({ type: 'repository.snapshot.result', correlationId: request.correlationId, snapshot });
       } else if (request.type === 'repository.close') {
         await repository.stop();
+      } else if (request.type === 'repository.attention-history') {
+        send({
+          type: 'repository.attention-history.result',
+          correlationId: request.correlationId,
+          items: repository.listAttentionHistory()
+        });
+      } else if (request.type === 'runtime.approval.respond') {
+        const approval = repository.runtimeApproval(request.attentionId);
+        if (!approval) throw new Error('Runtime approval is no longer pending');
+        const result = await runtime.respondToApproval({
+          correlationId: request.correlationId,
+          requestId: approval.requestId,
+          decision: request.decision
+        });
+        repository.resolveRuntimeApproval(request.attentionId, result.decision);
+        send({
+          type: 'runtime.approval.accepted',
+          correlationId: request.correlationId,
+          attentionId: request.attentionId,
+          decision: result.decision
+        });
       } else if (request.type === 'runtime.send') {
         const result = await runtime.sendMessage({
           ...request,

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import * as canonicalAdapterModule from '@orquesta/codex-adapter';
 import type { ConversationMessage, ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
-import type { RuntimeModelEvidence, RuntimeNotification as DesktopRuntimeNotification } from './protocol';
+import type { RuntimeApprovalRequest, RuntimeModelEvidence, RuntimeNotification as DesktopRuntimeNotification } from './protocol';
 import { resolveDesktopSdkPackageRoot } from './runtime-location';
 import { verifyDesktopRuntimeIntegrity } from './runtime-integrity';
 
@@ -13,6 +13,7 @@ export interface CanonicalCodexAdapter {
   startTurn(input: UnknownRecord): Promise<UnknownRecord>;
   readThread(input: UnknownRecord): Promise<UnknownRecord>;
   runtimeInfo(input: UnknownRecord): Promise<UnknownRecord>;
+  respondToApproval(input: UnknownRecord): Promise<UnknownRecord>;
   shutdown(input: UnknownRecord): Promise<UnknownRecord>;
   subscribeEvents(input: { correlationId: string; listener(event: UnknownRecord): void }): Promise<UnknownRecord>;
 }
@@ -156,11 +157,15 @@ export class DesktopCodexService {
   private adapterPromise: Promise<CanonicalCodexAdapter> | null = null;
   private unsubscribeAdapter: (() => void) | null = null;
   private readonly listeners = new Set<(notification: DesktopRuntimeNotification) => void>();
+  private readonly approvalListeners = new Set<(approval: RuntimeApprovalRequest) => void>();
   private readonly evidenceByThread = new Map<string, RuntimeModelEvidence>();
+  private readonly projectByThread = new Map<string, string>();
+  private readonly pendingApprovals = new Map<string, RuntimeApprovalRequest>();
   private readonly seenAgentMessages = new Set<string>();
   private eventQueue: Promise<void> = Promise.resolve();
   private shutdownPromise: Promise<void> | null = null;
   private runtimeStarted = false;
+  private shutdownRequested = false;
   private integrity: RuntimeInfoUi['integrity'] = 'unverified';
 
   constructor(options: DesktopCodexServiceOptions = {}) {
@@ -177,8 +182,17 @@ export class DesktopCodexService {
     return () => this.listeners.delete(listener);
   }
 
+  subscribeApprovals(listener: (approval: RuntimeApprovalRequest) => void): () => void {
+    this.approvalListeners.add(listener);
+    return () => this.approvalListeners.delete(listener);
+  }
+
   private emit(notification: DesktopRuntimeNotification): void {
     for (const listener of this.listeners) listener(structuredClone(notification));
+  }
+
+  private emitApproval(approval: RuntimeApprovalRequest): void {
+    for (const listener of this.approvalListeners) listener(structuredClone(approval));
   }
 
   private async adapter(): Promise<CanonicalCodexAdapter> {
@@ -257,6 +271,7 @@ export class DesktopCodexService {
     if (!threadId) throw new Error('Codex App Server did not return a thread id');
     const evidence = modelEvidenceFromThreadResult(threadResult, input.recommendedModel, input.requestedModel);
     this.evidenceByThread.set(threadId, evidence);
+    this.projectByThread.set(threadId, input.projectId);
     const turnResult = requireSuccessfulResult(await adapter.startTurn({
       correlationId: input.correlationId,
       threadId,
@@ -333,6 +348,29 @@ export class DesktopCodexService {
     }
   }
 
+  async respondToApproval(input: { correlationId: string; requestId: string; decision: string }): Promise<{
+    requestId: string;
+    decision: string;
+  }> {
+    if (this.shutdownRequested) throw new Error('Codex runtime is shutting down');
+    const approval = this.pendingApprovals.get(input.requestId);
+    if (!approval) throw new Error('No pending Codex approval request matches this id');
+    if (!approval.responseOptions.includes(input.decision)) {
+      throw new Error('Decision is not a response option supplied by Codex');
+    }
+    const adapter = await this.adapter();
+    requireSuccessfulResult(await adapter.respondToApproval({
+      correlationId: input.correlationId,
+      requestId: approval.requestId,
+      method: approval.method,
+      threadId: approval.threadId,
+      turnId: approval.turnId,
+      decision: input.decision
+    }), 'respondToApproval');
+    this.pendingApprovals.delete(input.requestId);
+    return { requestId: input.requestId, decision: input.decision };
+  }
+
   private evidence(threadId: string): RuntimeModelEvidence {
     return structuredClone(this.evidenceByThread.get(threadId) ?? unknownModelEvidence());
   }
@@ -342,6 +380,28 @@ export class DesktopCodexService {
     const threadId = nonEmptyString(event.thread_id);
     if (!type || !threadId) return;
     const turnId = nullableString(event.turn_id);
+    if (type === 'approval_requested') {
+      const projectId = this.projectByThread.get(threadId);
+      const requestId = nonEmptyString(event.request_id);
+      const method = nonEmptyString(event.method);
+      const responseOptions = Array.isArray(event.response_options)
+        ? event.response_options.flatMap((option) => nonEmptyString(option) ?? [])
+        : [];
+      if (!projectId || !turnId || !requestId || !method || responseOptions.length === 0 || responseOptions.length > 16) return;
+      if (this.pendingApprovals.has(requestId)) return;
+      const approval: RuntimeApprovalRequest = {
+        projectId,
+        requestId,
+        method,
+        threadId,
+        turnId,
+        reason: nullableString(event.reason),
+        responseOptions
+      };
+      this.pendingApprovals.set(requestId, approval);
+      this.emitApproval(approval);
+      return;
+    }
     if (type === 'model_observed') {
       const model = nonEmptyString(event.model);
       if (!model) return;
@@ -400,11 +460,14 @@ export class DesktopCodexService {
 
   shutdown(): Promise<void> {
     if (!this.shutdownPromise) {
+      this.shutdownRequested = true;
       this.shutdownPromise = (async () => {
         const adapter = this.adapterPromise ? await this.adapterPromise.catch(() => null) : null;
         this.unsubscribeAdapter?.();
         this.unsubscribeAdapter = null;
         if (adapter) await adapter.shutdown({ correlationId: 'desktop-runtime-shutdown' });
+        this.pendingApprovals.clear();
+        this.approvalListeners.clear();
         this.listeners.clear();
       })();
     }

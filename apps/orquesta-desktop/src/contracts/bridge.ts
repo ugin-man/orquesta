@@ -38,11 +38,9 @@ export interface RuntimeInfoUi {
   integrity: 'verified' | 'unverified' | 'failed';
 }
 
-export interface AttentionResolutionInput {
-  id: string;
-  resolution: string;
-  note?: string | null;
-}
+export type AttentionResolutionInput =
+  | { kind: 'runtime_approval'; id: string; decision: string }
+  | { kind: 'repository_action'; id: string; resolution: string; note?: string | null };
 
 export interface ProjectSummary {
   id: string;

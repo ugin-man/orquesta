@@ -22,6 +22,8 @@ describe('DesktopRepositoryBridge', () => {
         runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
         platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified' as const
       })),
+      respondRuntimeApproval: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'approval-1' })),
+      listAttentionHistory: vi.fn(async () => []),
       subscribeRuntime: vi.fn((listener) => { runtimeSubscription.listener = listener; return () => { runtimeSubscription.listener = null; }; }),
       getHostInfo: vi.fn(),
       pingCore: vi.fn()
@@ -49,7 +51,11 @@ describe('DesktopRepositoryBridge', () => {
     await expect(bridge.switchProject('repo-1')).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.requestOpenProject()).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.sendMessage({ targetAgentId: 'orchestrator', text: 'hello', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted' });
-    await expect(bridge.resolveAttentionItem({ id: 'A1', resolution: 'done' })).resolves.toMatchObject({ status: 'unsupported' });
+    expect(bridge.capabilities.attentionResolution).toBe(true);
+    await expect(bridge.resolveAttentionItem({ kind: 'runtime_approval', id: 'runtime-approval-1', decision: 'decline' })).resolves.toMatchObject({ status: 'accepted' });
+    expect(host.respondRuntimeApproval).toHaveBeenCalledWith({ id: 'runtime-approval-1', decision: 'decline' });
+    await expect(bridge.resolveAttentionItem({ kind: 'repository_action', id: 'A1', resolution: 'done' })).resolves.toMatchObject({ status: 'unsupported' });
+    expect(host.respondRuntimeApproval).toHaveBeenCalledTimes(1);
     await expect(bridge.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
   });
 });

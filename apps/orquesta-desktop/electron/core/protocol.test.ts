@@ -68,4 +68,18 @@ describe('Core protocol validation', () => {
     expect(isCoreEvent({ type: 'repository.snapshot.result', correlationId: '', snapshot })).toBe(false);
     expect(isCoreEvent({ type: 'repository.snapshot.changed', snapshot: { project: { id: '../escape' } } })).toBe(false);
   });
+
+  test('accepts only bounded runtime approval and attention history messages', () => {
+    expect(isCoreRequest({
+      type: 'runtime.approval.respond', correlationId: 'respond-1', attentionId: 'runtime-approval-1', decision: 'acceptForSession'
+    })).toBe(true);
+    expect(isCoreRequest({
+      type: 'runtime.approval.respond', correlationId: 'respond-1', attentionId: 'runtime-approval-1', decision: ''
+    })).toBe(false);
+    expect(isCoreRequest({ type: 'repository.attention-history', correlationId: 'history-1' })).toBe(true);
+    expect(isCoreEvent({
+      type: 'runtime.approval.accepted', correlationId: 'respond-1', attentionId: 'runtime-approval-1', decision: 'decline'
+    })).toBe(true);
+    expect(isCoreEvent({ type: 'repository.attention-history.result', correlationId: 'history-1', items: [] })).toBe(true);
+  });
 });

@@ -1,5 +1,5 @@
 import type { ComposerAttachment, ConversationMessage, ConversationPage, ProjectSummary, RuntimeInfoUi, UiActionResult } from '../../src/contracts/bridge';
-import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
 import type { DesktopHostApi, DesktopHostInfo } from '../shared/host-contract';
 import { DESKTOP_IPC } from '../shared/host-contract';
@@ -93,6 +93,18 @@ function isRuntimeInfo(value: unknown): value is RuntimeInfoUi {
     && nullableString(info.userAgent) && ['verified', 'unverified', 'failed'].includes(String(info.integrity));
 }
 
+function isAttentionItem(value: unknown): value is AttentionUiItem {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Record<string, unknown>;
+  if (!safeId(item.id) || typeof item.title !== 'string' || typeof item.summary !== 'string') return false;
+  if (item.runtimeApproval === undefined) return true;
+  if (!item.runtimeApproval || typeof item.runtimeApproval !== 'object') return false;
+  const approval = item.runtimeApproval as Record<string, unknown>;
+  return safeId(approval.requestId) && safeId(approval.threadId) && safeId(approval.turnId)
+    && typeof approval.method === 'string' && Array.isArray(approval.responseOptions)
+    && approval.responseOptions.length > 0 && approval.responseOptions.every((option) => typeof option === 'string');
+}
+
 export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe): DesktopHostApi {
   return {
     async getHostInfo() {
@@ -167,6 +179,19 @@ export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe)
       const info = await invoke(DESKTOP_IPC.getRuntimeInfo, input);
       if (!isRuntimeInfo(info)) throw new Error('Desktop host returned invalid runtime information');
       return info;
+    },
+    async respondRuntimeApproval(input) {
+      if (!safeId(input.id) || typeof input.decision !== 'string' || !input.decision.trim() || input.decision.length > 128) {
+        throw new Error('Runtime approval response is invalid');
+      }
+      const action = await invoke(DESKTOP_IPC.respondRuntimeApproval, input);
+      if (!isActionResult(action)) throw new Error('Desktop host returned an invalid approval result');
+      return action;
+    },
+    async listAttentionHistory() {
+      const items = await invoke(DESKTOP_IPC.listAttentionHistory);
+      if (!Array.isArray(items) || !items.every(isAttentionItem)) throw new Error('Desktop host returned invalid attention history');
+      return items;
     },
     subscribeRuntime(listener) {
       return subscribe(DESKTOP_IPC.runtimeChanged, (payload) => {

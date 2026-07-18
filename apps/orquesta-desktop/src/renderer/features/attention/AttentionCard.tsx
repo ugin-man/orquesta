@@ -18,7 +18,7 @@ export function AttentionCard({ items, agents, canResolve, onOpenItem, onResolve
   agents: AgentUiModel[];
   canResolve: boolean;
   onOpenItem(item: AttentionUiItem): void;
-  onResolve(item: AttentionUiItem): void;
+  onResolve(item: AttentionUiItem, decision: string): void;
   onViewHistory(): void;
 }) {
   const { t } = useI18n();
@@ -41,7 +41,11 @@ export function AttentionCard({ items, agents, canResolve, onOpenItem, onResolve
                 <p>{item.summary}</p>
                 <div className="attention-item__actions">
                   <button type="button" onClick={() => onOpenItem(item)}>{item.primaryActionLabel}<ArrowRight size={14} /></button>
-                  {canResolve ? <button type="button" className="text-action" onClick={() => onResolve(item)}>{t('resolve')}</button> : null}
+                  {canResolve && item.runtimeApproval
+                    ? item.runtimeApproval.responseOptions.map((decision) => (
+                        <button type="button" className="text-action" key={decision} onClick={() => onResolve(item, decision)}>{decision}</button>
+                      ))
+                    : null}
                 </div>
               </div>
             </article>

@@ -22,7 +22,9 @@ describe('registerDesktopIpc', () => {
         status: 'not_started' as const, adapter: 'app_server' as const, sdkVersion: '0.144.5', codexVersion: '0.144.5',
         runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
         platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified' as const
-      }))
+      })),
+      respondRuntimeApproval: vi.fn(async () => ({ correlationId: 'approval-1' })),
+      listAttentionHistory: vi.fn(async () => [])
     };
     const snapshot = { project: { id: 'repo-1' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [] };
     const repositories = {
@@ -47,7 +49,9 @@ describe('registerDesktopIpc', () => {
       DESKTOP_IPC.selectImageAttachments,
       DESKTOP_IPC.sendMessage,
       DESKTOP_IPC.listConversation,
-      DESKTOP_IPC.getRuntimeInfo
+      DESKTOP_IPC.getRuntimeInfo,
+      DESKTOP_IPC.respondRuntimeApproval,
+      DESKTOP_IPC.listAttentionHistory
     ]);
     await expect(handlers.get(DESKTOP_IPC.getHostInfo)?.({})).resolves.toEqual({
       platform: 'win32',
@@ -65,6 +69,11 @@ describe('registerDesktopIpc', () => {
     await expect(handlers.get(DESKTOP_IPC.listConversation)?.({}, { targetAgentId: 'orchestrator', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
     await expect(handlers.get(DESKTOP_IPC.getRuntimeInfo)?.({}, { probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
     expect(coreHost.getRuntimeInfo).toHaveBeenCalledWith({ probe: false });
+    await expect(handlers.get(DESKTOP_IPC.respondRuntimeApproval)?.({}, {
+      id: 'runtime-approval-1', decision: 'decline'
+    })).resolves.toMatchObject({ status: 'accepted', correlationId: 'approval-1' });
+    expect(coreHost.respondRuntimeApproval).toHaveBeenCalledWith({ attentionId: 'runtime-approval-1', decision: 'decline' });
+    await expect(handlers.get(DESKTOP_IPC.listAttentionHistory)?.({})).resolves.toEqual([]);
   });
 
   test('rejects malformed ping input without reaching Core', async () => {
@@ -74,7 +83,11 @@ describe('registerDesktopIpc', () => {
         handlers.set(channel, handler);
       }
     };
-    const coreHost = { status: () => 'ready' as const, ping: vi.fn(), sendMessage: vi.fn(), listConversation: vi.fn(), getRuntimeInfo: vi.fn() };
+    const coreHost = {
+      status: () => 'ready' as const,
+      ping: vi.fn(), sendMessage: vi.fn(), listConversation: vi.fn(), getRuntimeInfo: vi.fn(),
+      respondRuntimeApproval: vi.fn(), listAttentionHistory: vi.fn()
+    };
     const repositories = {
       getSnapshot: vi.fn(), listProjects: vi.fn(), switchProject: vi.fn(), openProject: vi.fn(),
       getCurrentRuntimeContext: vi.fn(), setCoordinatorThread: vi.fn()
@@ -89,5 +102,9 @@ describe('registerDesktopIpc', () => {
     expect(coreHost.sendMessage).not.toHaveBeenCalled();
     await expect(handlers.get(DESKTOP_IPC.getRuntimeInfo)?.({}, { probe: 'yes' })).rejects.toThrow('probe');
     expect(coreHost.getRuntimeInfo).not.toHaveBeenCalled();
+    await expect(handlers.get(DESKTOP_IPC.respondRuntimeApproval)?.({}, {
+      id: 'runtime-approval-1', decision: ''
+    })).rejects.toThrow('decision');
+    expect(coreHost.respondRuntimeApproval).not.toHaveBeenCalled();
   });
 });

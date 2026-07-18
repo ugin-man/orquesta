@@ -111,6 +111,13 @@ export interface AttentionUiItem {
   createdAt: string;
   resolvedAt: string | null;
   resolutionLabel: string | null;
+  runtimeApproval?: {
+    requestId: string;
+    method: string;
+    threadId: string;
+    turnId: string;
+    responseOptions: string[];
+  };
 }
 
 export interface ProjectPhaseUiModel {
