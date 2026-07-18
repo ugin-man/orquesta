@@ -71,12 +71,17 @@ const coldStartProfile = await mkdtemp(path.join(os.tmpdir(), 'orquesta-cold-sta
 const idleProfile = await mkdtemp(path.join(os.tmpdir(), 'orquesta-idle-'));
 let desktop;
 let runtime;
+const measurementEnvironment = {
+  ...process.env,
+  ORQUESTA_E2E: '1',
+  ORQUESTA_E2E_FIXTURE: 'active-project'
+};
 
 try {
   desktop = await electron.launch({
     executablePath,
     args: [`--user-data-dir=${coldStartProfile}`],
-    env: { ...process.env, ORQUESTA_E2E: '1' }
+    env: measurementEnvironment
   });
   const window = await desktop.firstWindow();
   await window.getByRole('application', { name: 'Orquesta Desktop' }).waitFor({ state: 'visible' });
@@ -90,7 +95,7 @@ try {
     runtimeArguments.push('--force-prefers-reduced-motion=reduce');
   }
   runtime = spawn(executablePath, runtimeArguments, {
-    env: { ...process.env, ORQUESTA_E2E: '1' },
+    env: measurementEnvironment,
     stdio: 'ignore',
     windowsHide: false
   });

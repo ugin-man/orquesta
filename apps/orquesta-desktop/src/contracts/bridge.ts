@@ -50,11 +50,24 @@ export interface AgentProposal {
   capacityLabel: string;
 }
 
+export interface ComposerAttachment {
+  id: string;
+  name: string;
+  kind: 'image';
+  sizeBytes: number;
+}
+
+export interface RendererCapabilities {
+  imageAttachments: boolean;
+  attentionResolution: boolean;
+}
+
 export type BridgeEvent =
   | { type: 'snapshot_changed'; snapshot: OrquestaUiSnapshot }
   | { type: 'toast'; toast: RuntimeUiEvent };
 
 export interface OrquestaRendererBridge {
+  readonly capabilities: RendererCapabilities;
   getInitialSnapshot(): Promise<OrquestaUiSnapshot>;
   subscribe(listener: (event: BridgeEvent) => void): () => void;
   sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult>;
@@ -64,6 +77,7 @@ export interface OrquestaRendererBridge {
   listProjects(): Promise<ProjectSummary[]>;
   switchProject(projectId: string): Promise<UiActionResult>;
   requestOpenProject(): Promise<UiActionResult>;
+  selectImageAttachments(): Promise<ComposerAttachment[]>;
   listAttentionHistory(): Promise<AttentionUiItem[]>;
   listAgentProposals(): Promise<AgentProposal[]>;
   approveAgentProposal(proposalId: string): Promise<UiActionResult>;

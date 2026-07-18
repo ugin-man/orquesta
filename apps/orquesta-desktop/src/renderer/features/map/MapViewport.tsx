@@ -1,4 +1,4 @@
-import { Minus, Plus, RotateCcw, Scan } from 'lucide-react';
+import { Minus, Plus, RotateCcw, Scan, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
 import type { AgentUiModel, OrquestaUiSnapshot, TaskUiModel } from '../../../contracts/orquesta-ui';
 import { AgentGlyph } from '../../components/AgentGlyph';
@@ -318,7 +318,7 @@ export function MapViewport({
         ) : null)}
 
         <button type="button" className="add-agent-button" style={{ left: worldToScreen({ x: layout.width / 2, y: layout.height - 48 }, camera).x, top: worldToScreen({ x: layout.width / 2, y: layout.height - 48 }, camera).y }} onClick={(event) => { event.stopPropagation(); onOpenTeam(); }}>
-          <Plus size={16} aria-hidden="true" />{t('addAgent')}
+          <UsersRound size={16} aria-hidden="true" />{t('teamManagement')}
         </button>
       </div>
 

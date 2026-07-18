@@ -1,4 +1,4 @@
-import type { ConversationPage, ConversationQuery, ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
+import type { ComposerAttachment, ConversationPage, ConversationQuery, ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
 
@@ -16,6 +16,7 @@ export interface DesktopHostApi {
   listRepositories(): Promise<ProjectSummary[]>;
   switchRepository(projectId: string): Promise<UiActionResult>;
   openRepository(): Promise<UiActionResult>;
+  selectImageAttachments(): Promise<ComposerAttachment[]>;
   subscribeRepository(listener: (snapshot: OrquestaUiSnapshot) => void): () => void;
   sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult>;
   listConversation(input: ConversationQuery): Promise<ConversationPage>;
@@ -29,6 +30,7 @@ export const DESKTOP_IPC = {
   listRepositories: 'orquesta.desktop.repository.list',
   switchRepository: 'orquesta.desktop.repository.switch',
   openRepository: 'orquesta.desktop.repository.open',
+  selectImageAttachments: 'orquesta.desktop.attachment.select-images',
   repositoryChanged: 'orquesta.desktop.repository.changed',
   sendMessage: 'orquesta.desktop.runtime.send-message',
   listConversation: 'orquesta.desktop.runtime.list-conversation',

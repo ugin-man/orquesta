@@ -8,6 +8,7 @@ export interface RuntimeSendRequest {
   threadId: string | null;
   targetAgentId: string;
   text: string;
+  localImagePaths: string[];
 }
 
 export interface RuntimeConversationRequest {
@@ -62,7 +63,9 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
   if (value.type === 'core.ping') return isCorrelationId(value.correlationId);
   if (value.type === 'runtime.send') {
     return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768)
-      && (value.threadId === null || isSafeId(value.threadId)) && isSafeId(value.targetAgentId) && isBoundedText(value.text, 65_536);
+      && (value.threadId === null || isSafeId(value.threadId)) && isSafeId(value.targetAgentId) && isBoundedText(value.text, 65_536)
+      && Array.isArray(value.localImagePaths) && value.localImagePaths.length <= 4
+      && value.localImagePaths.every((filePath) => isBoundedText(filePath, 32_768));
   }
   if (value.type === 'runtime.conversation') {
     return isCorrelationId(value.correlationId) && isSafeId(value.threadId) && isSafeId(value.targetAgentId)

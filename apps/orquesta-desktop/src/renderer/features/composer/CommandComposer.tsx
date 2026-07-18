@@ -1,5 +1,6 @@
-import { ChevronDown, Clock3, Paperclip, ScanLine, Send } from 'lucide-react';
+import { ChevronDown, Clock3, Paperclip, Send, X } from 'lucide-react';
 import type { KeyboardEvent } from 'react';
+import type { ComposerAttachment } from '../../../contracts/bridge';
 import type { AgentUiModel } from '../../../contracts/orquesta-ui';
 import { useI18n } from '../i18n/I18nProvider';
 
@@ -10,10 +11,14 @@ export function CommandComposer({
   value,
   targetAgentId,
   error,
+  attachments,
+  canAttach,
   onTargetChange,
   onChange,
   onSend,
-  onOpenHistory
+  onOpenHistory,
+  onSelectAttachments,
+  onRemoveAttachment
 }: {
   agents: AgentUiModel[];
   online: boolean;
@@ -21,10 +26,14 @@ export function CommandComposer({
   value: string;
   targetAgentId: string;
   error: string | null;
+  attachments: ComposerAttachment[];
+  canAttach: boolean;
   onTargetChange(id: string): void;
   onChange(value: string): void;
   onSend(): void;
   onOpenHistory(): void;
+  onSelectAttachments(): void;
+  onRemoveAttachment(id: string): void;
 }) {
   const { t } = useI18n();
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -44,11 +53,11 @@ export function CommandComposer({
       <div className="command-composer__input-row">
         <textarea rows={1} value={value} onChange={(event) => onChange(event.target.value)} onKeyDown={handleKeyDown} placeholder={t('composerPlaceholder')} aria-label={t('composerPlaceholder')} />
         <div className="command-composer__buttons">
-          <button type="button" className="icon-button" aria-label={t('attachFile')}><Paperclip size={20} /></button>
-          <button type="button" className="icon-button" aria-label={t('attachContext')}><ScanLine size={20} /></button>
+          {canAttach ? <button type="button" className="icon-button" onClick={onSelectAttachments} aria-label={t('attachImages')}><Paperclip size={20} /></button> : null}
           <button type="button" className="composer-send" onClick={onSend} disabled={!online || sending || !value.trim()} aria-label={t('sendMessage')}><Send size={19} /></button>
         </div>
       </div>
+      {attachments.length ? <div className="composer-attachments" aria-label={t('selectedAttachments')}>{attachments.map((attachment) => <span key={attachment.id}>{attachment.name}<button type="button" onClick={() => onRemoveAttachment(attachment.id)} aria-label={`${t('removeAttachment')} ${attachment.name}`}><X size={12} /></button></span>)}</div> : null}
       {!online ? <p className="composer-message composer-message--warning">{t('offlineDraft')}</p> : error ? <p className="composer-message composer-message--error">{error}</p> : null}
     </section>
   );

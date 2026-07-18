@@ -12,6 +12,7 @@
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "generate:icon": "node scripts/generate-app-icon.mjs",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "build": "tsc -b && node scripts/build-renderer.mjs",
     "build:host": "node scripts/build-desktop.mjs",
@@ -24,7 +25,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "test:desktop-unit": "vitest run electron --config vitest.config.ts",
-    "test:desktop-scripts": "node scripts/desktop-paths.test.mjs && node scripts/package-policy.test.mjs && node scripts/package-locales.test.mjs && node scripts/desktop-metrics.test.mjs && node scripts/lockfile-policy.test.mjs",
+    "test:desktop-scripts": "node scripts/desktop-paths.test.mjs && node scripts/package-policy.test.mjs && node scripts/package-locales.test.mjs && node scripts/desktop-metrics.test.mjs && node scripts/lockfile-policy.test.mjs && node scripts/app-icon.test.mjs",
     "test:desktop-smoke": "npm run build:desktop && playwright test --config=playwright.electron.config.ts",
     "test:browser": "npm run build && playwright test",
     "check": "npm run test && npm run build && playwright test && playwright test --config=playwright.visual.config.ts",

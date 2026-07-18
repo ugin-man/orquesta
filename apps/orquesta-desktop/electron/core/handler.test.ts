@@ -26,7 +26,7 @@ describe('handleCoreRequest', () => {
     const handlers = { send: vi.fn(), stop: vi.fn(), dispatch: vi.fn() };
     const request = {
       type: 'runtime.send', correlationId: 'send-1', projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null,
-      targetAgentId: 'orchestrator', text: 'Continue.'
+      targetAgentId: 'orchestrator', text: 'Continue.', localImagePaths: []
     };
     expect(handleCoreRequest(request, handlers)).toBe(true);
     expect(handlers.dispatch).toHaveBeenCalledWith(request);

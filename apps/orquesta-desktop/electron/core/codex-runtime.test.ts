@@ -19,7 +19,7 @@ describe('CodexRuntime', () => {
     const runtime = new CodexRuntime(client);
 
     await expect(runtime.sendMessage({
-      projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null, targetAgentId: 'orchestrator', text: 'Continue the work.'
+      projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null, targetAgentId: 'orchestrator', text: 'Continue the work.', localImagePaths: ['C:\\images\\map.png']
     })).resolves.toEqual({ threadId: 'thread-1', turnId: 'turn-1', actualModel: 'gpt-current' });
 
     expect(client.request).toHaveBeenNthCalledWith(1, 'thread/start', expect.objectContaining({
@@ -27,7 +27,10 @@ describe('CodexRuntime', () => {
     }));
     expect(client.request).toHaveBeenNthCalledWith(2, 'turn/start', {
       threadId: 'thread-1',
-      input: [{ type: 'text', text: 'Continue the work.', text_elements: [] }]
+      input: [
+        { type: 'text', text: 'Continue the work.', text_elements: [] },
+        { type: 'localImage', path: 'C:\\images\\map.png' }
+      ]
     });
   });
 
@@ -38,7 +41,7 @@ describe('CodexRuntime', () => {
     });
     const runtime = new CodexRuntime(client);
 
-    await runtime.sendMessage({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-1', targetAgentId: 'reviewer', text: 'Review this.' });
+    await runtime.sendMessage({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-1', targetAgentId: 'reviewer', text: 'Review this.', localImagePaths: [] });
 
     expect(client.request).toHaveBeenNthCalledWith(1, 'thread/resume', expect.objectContaining({ threadId: 'thread-1', cwd: 'C:\\repo' }));
     expect(client.request).toHaveBeenNthCalledWith(2, 'turn/start', expect.objectContaining({

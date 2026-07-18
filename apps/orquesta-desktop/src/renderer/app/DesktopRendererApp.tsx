@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FolderOpen } from 'lucide-react';
-import type { AgentProposal, ConversationMessage, OrquestaRendererBridge, ProjectSummary } from '../../contracts/bridge';
+import type { AgentProposal, ComposerAttachment, ConversationMessage, OrquestaRendererBridge, ProjectSummary } from '../../contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent } from '../../contracts/orquesta-ui';
 import { DesktopRepositoryBridge } from '../../bridges/desktop-repository-bridge';
 import { MockOrquestaBridge } from '../../bridges/mock-bridge';
@@ -47,10 +47,16 @@ function createDefaultBridge(): OrquestaRendererBridge {
   if (typeof window !== 'undefined' && window.orquestaDesktop) return new DesktopRepositoryBridge(window.orquestaDesktop);
   return new MockOrquestaBridge('active-project');
 }
-function queryLocale(fallback: Locale): Locale {
-  if (typeof window === 'undefined') return fallback;
+const LOCALE_STORAGE_KEY = 'orquesta.desktop.locale';
+
+export function resolveInitialLocale(explicit?: Locale): Locale {
+  if (typeof window === 'undefined') return explicit ?? 'en';
   const requested = new URLSearchParams(window.location.search).get('lang');
-  return requested === 'ja' || requested === 'en' ? requested : fallback;
+  if (requested === 'ja' || requested === 'en') return requested;
+  if (explicit) return explicit;
+  const persisted = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+  if (persisted === 'ja' || persisted === 'en') return persisted;
+  return window.navigator.languages?.some((locale) => locale.toLowerCase().startsWith('ja')) ? 'ja' : 'en';
 }
 
 function useReducedMotion(): boolean {
@@ -82,6 +88,8 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [history, setHistory] = useState<AttentionUiItem[]>([]);
   const [proposals, setProposals] = useState<AgentProposal[]>([]);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const draftProjectId = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -107,6 +115,22 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     };
   }, [bridge]);
 
+  useEffect(() => {
+    const projectId = snapshot?.project.id ?? null;
+    if (!projectId || projectId === 'no-project' || draftProjectId.current === projectId) return;
+    draftProjectId.current = projectId;
+    setAttachments([]);
+    setDraft(window.localStorage.getItem(`orquesta.desktop.draft.${projectId}`) ?? '');
+  }, [snapshot?.project.id]);
+
+  useEffect(() => {
+    const projectId = draftProjectId.current;
+    if (!projectId) return;
+    const key = `orquesta.desktop.draft.${projectId}`;
+    if (draft) window.localStorage.setItem(key, draft);
+    else window.localStorage.removeItem(key);
+  }, [draft]);
+
   const closeOverlay = useCallback(() => setOverlay(null), []);
   const openProjects = async () => {
     try {
@@ -126,20 +150,28 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     }
   };
   const openHistory = async () => {
-    setHistory(await bridge.listAttentionHistory());
-    setOverlay({ kind: 'attention-history' });
+    try {
+      setHistory(await bridge.listAttentionHistory());
+      setOverlay({ kind: 'attention-history' });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
   };
   const openTeam = async () => {
-    setProposals(await bridge.listAgentProposals());
-    setOverlay({ kind: 'team-management' });
+    try {
+      setProposals(await bridge.listAgentProposals());
+      setOverlay({ kind: 'team-management' });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
   };
   const send = async () => {
     if (!draft.trim() || sending) return;
     setSending(true);
     setActionError(null);
     try {
-      const result = await bridge.sendMessage({ targetAgentId, text: draft.trim(), attachmentIds: [], selectedContextIds: [] });
-      if (result.status === 'accepted') setDraft('');
+      const result = await bridge.sendMessage({ targetAgentId, text: draft.trim(), attachmentIds: attachments.map((attachment) => attachment.id), selectedContextIds: [] });
+      if (result.status === 'accepted') { setDraft(''); setAttachments([]); }
       else setActionError(result.reason);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
@@ -147,9 +179,21 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       setSending(false);
     }
   };
+  const selectAttachments = async () => {
+    try {
+      const selected = await bridge.selectImageAttachments();
+      setAttachments((current) => [...current, ...selected].slice(0, 4));
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
+  };
   const resolveAttention = async (item: AttentionUiItem) => {
-    const result = await bridge.resolveAttentionItem({ id: item.id, resolution: 'resolved in prototype' });
-    if (result.status !== 'accepted') setActionError(result.reason);
+    try {
+      const result = await bridge.resolveAttentionItem({ id: item.id, resolution: 'resolved in prototype' });
+      if (result.status !== 'accepted') setActionError(result.reason);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
   };
 
   if (loadingError) {
@@ -237,6 +281,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
         <AttentionCard
           items={snapshot.attention}
           agents={snapshot.agents}
+          canResolve={bridge.capabilities.attentionResolution}
           onOpenItem={(item) => item.taskId ? selectTask(item.taskId) : void bridge.openAttentionItem(item.id)}
           onResolve={(item) => void resolveAttention(item)}
           onViewHistory={() => void openHistory()}
@@ -248,10 +293,14 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           value={draft}
           targetAgentId={targetAgentId}
           error={actionError}
+          attachments={attachments}
+          canAttach={bridge.capabilities.imageAttachments}
           onTargetChange={setTargetAgentId}
           onChange={setDraft}
           onSend={() => void send()}
           onOpenHistory={() => void openConversation()}
+          onSelectAttachments={() => void selectAttachments()}
+          onRemoveAttachment={(id) => setAttachments((current) => current.filter((attachment) => attachment.id !== id))}
         />
         <ToastStack toasts={toasts} onDismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} />
       </div>
@@ -280,11 +329,11 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   );
 }
 
-export function DesktopRendererApp({ bridge, initialLocale = 'en' }: { bridge?: OrquestaRendererBridge; initialLocale?: Locale }) {
+export function DesktopRendererApp({ bridge, initialLocale }: { bridge?: OrquestaRendererBridge; initialLocale?: Locale }) {
   useLayoutEffect(() => {
     document.documentElement.classList.add('orquesta-root');
     return () => document.documentElement.classList.remove('orquesta-root');
   }, []);
   const rendererBridge = useMemo(() => bridge ?? createDefaultBridge(), [bridge]);
-  return <I18nProvider initialLocale={queryLocale(initialLocale)}><Workspace bridge={rendererBridge} /></I18nProvider>;
+  return <I18nProvider initialLocale={resolveInitialLocale(initialLocale)}><Workspace bridge={rendererBridge} /></I18nProvider>;
 }

@@ -13,9 +13,10 @@ function AttentionIcon({ type }: { type: AttentionType }) {
 
 const priorityRank: Record<AttentionUiItem['priority'], number> = { blocker: 0, high: 1, medium: 2, low: 3 };
 
-export function AttentionCard({ items, agents, onOpenItem, onResolve, onViewHistory }: {
+export function AttentionCard({ items, agents, canResolve, onOpenItem, onResolve, onViewHistory }: {
   items: AttentionUiItem[];
   agents: AgentUiModel[];
+  canResolve: boolean;
   onOpenItem(item: AttentionUiItem): void;
   onResolve(item: AttentionUiItem): void;
   onViewHistory(): void;
@@ -40,7 +41,7 @@ export function AttentionCard({ items, agents, onOpenItem, onResolve, onViewHist
                 <p>{item.summary}</p>
                 <div className="attention-item__actions">
                   <button type="button" onClick={() => onOpenItem(item)}>{item.primaryActionLabel}<ArrowRight size={14} /></button>
-                  <button type="button" className="text-action" onClick={() => onResolve(item)}>{t('resolve')}</button>
+                  {canResolve ? <button type="button" className="text-action" onClick={() => onResolve(item)}>{t('resolve')}</button> : null}
                 </div>
               </div>
             </article>

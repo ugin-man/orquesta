@@ -7,6 +7,7 @@ module.exports = {
     asar: true,
     name: 'Orquesta',
     executableName: 'Orquesta',
+    icon: require('node:path').join(__dirname, 'assets', 'orquesta.ico'),
     ignore: createPackageIgnore(__dirname),
     prune: false,
     afterComplete: [
@@ -22,7 +23,7 @@ module.exports = {
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: { name: 'Orquesta', setupExe: 'OrquestaSetup.exe' }
+      config: { name: 'Orquesta', setupExe: 'OrquestaSetup.exe', setupIcon: require('node:path').join(__dirname, 'assets', 'orquesta.ico') }
     },
     {
       name: '@electron-forge/maker-zip',

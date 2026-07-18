@@ -15,10 +15,14 @@ function renderComposer(onSend = vi.fn()) {
         value="Run acceptance checks"
         targetAgentId="orchestrator"
         error={null}
+        attachments={[]}
+        canAttach={false}
         onTargetChange={() => undefined}
         onChange={() => undefined}
         onSend={onSend}
         onOpenHistory={() => undefined}
+        onSelectAttachments={() => undefined}
+        onRemoveAttachment={() => undefined}
       />
     </I18nProvider>
   );
@@ -26,6 +30,12 @@ function renderComposer(onSend = vi.fn()) {
 }
 
 describe('CommandComposer', () => {
+  it('does not expose attachment controls before they are connected', () => {
+    renderComposer();
+    expect(screen.queryByRole('button', { name: 'Attach file' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Attach map context' })).not.toBeInTheDocument();
+  });
+
   it('sends on Enter', () => {
     const onSend = renderComposer();
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', shiftKey: false });

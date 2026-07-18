@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { messages, type Locale } from './messages';
 
 interface I18nValue {
@@ -11,15 +11,22 @@ const I18nContext = createContext<I18nValue | null>(null);
 
 export function I18nProvider({ initialLocale = 'en', children }: { initialLocale?: Locale; children: ReactNode }) {
   const [locale, setLocale] = useState<Locale>(initialLocale);
+  const selectLocale = useCallback((nextLocale: Locale) => {
+    window.localStorage.setItem('orquesta.desktop.locale', nextLocale);
+    setLocale(nextLocale);
+  }, []);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
   const value = useMemo<I18nValue>(() => ({
     locale,
-    setLocale,
+    setLocale: selectLocale,
     t: (key) => {
       const current = messages[locale] as Record<string, string>;
       const fallback = messages.en as Record<string, string>;
       return current[key] ?? fallback[key] ?? key;
     }
-  }), [locale]);
+  }), [locale, selectLocale]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 

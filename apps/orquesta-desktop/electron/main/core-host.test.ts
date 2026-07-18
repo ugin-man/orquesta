@@ -8,6 +8,21 @@ class FakeCoreChild extends EventEmitter implements CoreChildProcess {
 }
 
 describe('CoreHost', () => {
+  test('starts Core lazily on the first request', async () => {
+    const child = new FakeCoreChild();
+    const fork = vi.fn(() => child);
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork });
+
+    const pending = host.ping('lazy-ping');
+    expect(host.status()).toBe('starting');
+    expect(fork).toHaveBeenCalledOnce();
+    child.emit('message', { type: 'core.ready', version: 1 });
+    await Promise.resolve();
+    child.emit('message', { type: 'core.pong', correlationId: 'lazy-ping' });
+
+    await expect(pending).resolves.toEqual({ correlationId: 'lazy-ping' });
+  });
+
   test('becomes ready only after a validated ready event', () => {
     const child = new FakeCoreChild();
     const fork = vi.fn(() => child);
@@ -45,7 +60,7 @@ describe('CoreHost', () => {
     host.start();
     child.emit('message', { type: 'core.ready', version: 1 });
 
-    const pending = host.sendMessage({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null, targetAgentId: 'orchestrator', text: 'Continue.' });
+    const pending = host.sendMessage({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null, targetAgentId: 'orchestrator', text: 'Continue.', localImagePaths: [] });
     const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
     child.emit('message', { type: 'runtime.dispatch.accepted', correlationId: request.correlationId, threadId: 'thread-1', turnId: 'turn-1', actualModel: 'gpt-current' });
 

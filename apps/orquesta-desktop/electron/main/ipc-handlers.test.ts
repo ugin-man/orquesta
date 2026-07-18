@@ -25,8 +25,9 @@ describe('registerDesktopIpc', () => {
       getCurrentRuntimeContext: vi.fn(() => ({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-1' })),
       setCoordinatorThread: vi.fn(async () => undefined)
     };
+    const attachments = { chooseImages: vi.fn(async () => []), resolveImagePaths: vi.fn(() => []) };
 
-    registerDesktopIpc(ipcMain, coreHost, repositories);
+    registerDesktopIpc(ipcMain, coreHost, repositories, attachments);
 
     expect([...handlers.keys()]).toEqual([
       DESKTOP_IPC.getHostInfo,
@@ -35,6 +36,7 @@ describe('registerDesktopIpc', () => {
       DESKTOP_IPC.listRepositories,
       DESKTOP_IPC.switchRepository,
       DESKTOP_IPC.openRepository,
+      DESKTOP_IPC.selectImageAttachments,
       DESKTOP_IPC.sendMessage,
       DESKTOP_IPC.listConversation
     ]);
@@ -50,7 +52,7 @@ describe('registerDesktopIpc', () => {
     await expect(handlers.get(DESKTOP_IPC.switchRepository)?.({}, { projectId: 'repo-1' })).resolves.toMatchObject({ status: 'accepted' });
     await expect(handlers.get(DESKTOP_IPC.openRepository)?.({})).resolves.toMatchObject({ status: 'accepted' });
     await expect(handlers.get(DESKTOP_IPC.sendMessage)?.({}, { targetAgentId: 'orchestrator', text: 'Continue.', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted', correlationId: 'send-1' });
-    expect(coreHost.sendMessage).toHaveBeenCalledWith({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-1', targetAgentId: 'orchestrator', text: 'Continue.' });
+    expect(coreHost.sendMessage).toHaveBeenCalledWith({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-1', targetAgentId: 'orchestrator', text: 'Continue.', localImagePaths: [] });
     await expect(handlers.get(DESKTOP_IPC.listConversation)?.({}, { targetAgentId: 'orchestrator', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
   });
 
@@ -66,7 +68,7 @@ describe('registerDesktopIpc', () => {
       getSnapshot: vi.fn(), listProjects: vi.fn(), switchProject: vi.fn(), openProject: vi.fn(),
       getCurrentRuntimeContext: vi.fn(), setCoordinatorThread: vi.fn()
     };
-    registerDesktopIpc(ipcMain, coreHost, repositories);
+    registerDesktopIpc(ipcMain, coreHost, repositories, { chooseImages: vi.fn(async () => []), resolveImagePaths: vi.fn(() => []) });
 
     await expect(handlers.get(DESKTOP_IPC.pingCore)?.({}, { correlationId: '' })).rejects.toThrow('correlationId');
     expect(coreHost.ping).not.toHaveBeenCalled();

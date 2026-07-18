@@ -16,6 +16,7 @@ export interface RuntimeMessageInput {
   threadId: string | null;
   targetAgentId: string;
   text: string;
+  localImagePaths: string[];
 }
 
 export interface RuntimeDispatch {
@@ -98,7 +99,10 @@ export class CodexRuntime {
     if (!threadId) throw new Error('Codex App Server did not return a thread id');
     const turnResponse = object(await this.#client.request('turn/start', {
       threadId,
-      input: [{ type: 'text', text: routeText(input.targetAgentId, input.text), text_elements: [] }]
+      input: [
+        { type: 'text', text: routeText(input.targetAgentId, input.text), text_elements: [] },
+        ...input.localImagePaths.map((filePath) => ({ type: 'localImage', path: filePath }))
+      ]
     }));
     const turnId = string(object(turnResponse?.turn)?.id);
     if (!turnId) throw new Error('Codex App Server did not accept the turn');

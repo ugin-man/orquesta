@@ -20,6 +20,7 @@ function unsupported(reason: string): UiActionResult {
 }
 
 export class DesktopRepositoryBridge implements OrquestaRendererBridge {
+  readonly capabilities = { imageAttachments: true, attentionResolution: false } as const;
   private readonly host: DesktopHostApi;
 
   constructor(host: DesktopHostApi) {
@@ -75,6 +76,10 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
 
   requestOpenProject(): Promise<UiActionResult> {
     return this.host.openRepository();
+  }
+
+  selectImageAttachments() {
+    return this.host.selectImageAttachments();
   }
 
   async listAttentionHistory(): Promise<AttentionUiItem[]> {

@@ -2,16 +2,26 @@
 
 Orquesta V4のWindows向けElectronアプリです。中央のOrquesta Map、Now、Project Status、Attention、Composer、各種overlayをReact Rendererで表示します。Electron Main、sandboxed Preload、別utility processのOrquesta Coreで構成しています。
 
-製品起動時は選択したプロジェクトの`.orquesta` stateを読み取り、変更を自動反映します。Composerからの指示はCodex App Serverでプロジェクト専用の統括スレッドへ送り、会話履歴も同じスレッドから読みます。fixtureはレイアウトと回帰テストだけに使います。
+製品起動時は選択したプロジェクトの`.orquesta` stateを読み取り、変更を自動反映します。Composerからの指示と画像はCodex App Serverでプロジェクト専用の統括スレッドへ送り、会話履歴も同じスレッドから読みます。fixtureはレイアウトと回帰テストだけに使います。
 
-## 必要なもの
+通常起動では透明なOrquestaロゴを短く表示してから本体を開きます。日本語Windowsでは日本語を初期選択し、言語設定とプロジェクトごとのComposer下書きを次回起動まで保持します。
+
+## 利用環境
 
 - Windows 10または11
-- Node.js 22.12.0以上
-- npm
 - Codex Desktopまたはstandalone Codex CLI
 
+SetupまたはZIP版を使うだけならNode.jsとnpmは不要です。sourceからbuildする場合だけNode.js 22.12.0以上とnpmが必要です。
+
 Codexの実行ファイルは、standalone CLI、インストール済みCodex Desktopの順で探します。自動検出できない場合は`ORQUESTA_CODEX_PATH`へ`codex.exe`の絶対パスを指定できます。Codex runtimeをOrquestaのpackageへ重複同梱はしません。
+
+## 配布物
+
+- `out/make/squirrel.windows/x64/OrquestaSetup.exe`: 通常のWindowsインストーラー
+- `out/make/zip/win32/x64/Orquesta-win32-x64-0.1.0.zip`: 展開して使う版
+- `out/Orquesta-win32-x64/Orquesta.exe`: build確認用の展開済み実行ファイル
+
+現在の0.1.0開発buildはコード署名していません。Windowsが発行元の警告を出す場合があります。一般公開で警告をなくすには、別途コード署名証明書と署名工程が必要です。
 
 ## 起動
 
@@ -76,13 +86,13 @@ src/
     features/composer/   命令入力と会話履歴への入口
     features/details/    Agent Detail、Task Detail
     features/team/       Team Management
-    features/operations/ Advanced Operations shellと言語切り替え
+    features/operations/ 言語とデスクトップ統合状態
     styles/              desktop固定layoutとvisual tokens
   contracts/             UI projectionとbridge interface
   bridges/               Electronとfixtureのbridge
   fixtures/              検証用snapshot
 electron/
-  main/                  native window、IPC、Core lifecycle
+  main/                  native window、splash、画像選択、IPC、Core lifecycle
   preload/               Rendererへ公開する限定API
   core/                  projectとCodex接続を担うutility process
   shared/                host contract

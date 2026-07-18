@@ -1,4 +1,4 @@
-import type { ConversationMessage, ConversationPage, ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
+import type { ComposerAttachment, ConversationMessage, ConversationPage, ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
 import type { DesktopHostApi, DesktopHostInfo } from '../shared/host-contract';
@@ -28,6 +28,13 @@ function isProjectSummary(value: unknown): value is ProjectSummary {
   if (!value || typeof value !== 'object') return false;
   const project = value as Record<string, unknown>;
   return typeof project.id === 'string' && typeof project.title === 'string' && typeof project.lastOpenedAt === 'string';
+}
+
+function isComposerAttachment(value: unknown): value is ComposerAttachment {
+  if (!value || typeof value !== 'object') return false;
+  const attachment = value as Record<string, unknown>;
+  return safeId(attachment.id) && attachment.kind === 'image' && typeof attachment.name === 'string'
+    && typeof attachment.sizeBytes === 'number' && Number.isSafeInteger(attachment.sizeBytes) && attachment.sizeBytes >= 0;
 }
 
 function isActionResult(value: unknown): value is UiActionResult {
@@ -109,6 +116,13 @@ export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe)
       const action = await invoke(DESKTOP_IPC.openRepository);
       if (!isActionResult(action)) throw new Error('Desktop host returned an invalid open result');
       return action;
+    },
+    async selectImageAttachments() {
+      const attachments = await invoke(DESKTOP_IPC.selectImageAttachments);
+      if (!Array.isArray(attachments) || attachments.length > 4 || !attachments.every(isComposerAttachment)) {
+        throw new Error('Desktop host returned invalid image attachments');
+      }
+      return attachments;
     },
     subscribeRepository(listener) {
       return subscribe(DESKTOP_IPC.repositoryChanged, (payload) => {

@@ -25,7 +25,7 @@ export function ConversationHistory({ targetAgentId, agents, messages, onClose }
             <span className="conversation-message__avatar">{message.role === 'user' ? <UserRound size={16} /> : <Bot size={16} />}</span>
             <div><header><strong>{message.authorLabel}</strong><time>{formatDateTime(message.createdAt)}</time></header><p>{message.text}</p>{message.evidenceLabel ? <small>{message.evidenceLabel}</small> : null}</div>
           </article>
-        )) : <div className="empty-detail">No messages in this prototype conversation.</div>}
+        )) : <div className="empty-detail">{t('noMessages')}</div>}
       </div>
       <button type="button" className="latest-button" onClick={scrollLatest}><ArrowDown size={14} />{t('latest')}</button>
     </OverlayFrame>

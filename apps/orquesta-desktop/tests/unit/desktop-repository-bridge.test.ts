@@ -12,6 +12,7 @@ describe('DesktopRepositoryBridge', () => {
       listRepositories: vi.fn(async () => []),
       switchRepository: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'switch-1' })),
       openRepository: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'open-1' })),
+      selectImageAttachments: vi.fn(async () => []),
       subscribeRepository: vi.fn((listener: (next: typeof snapshot) => void) => { subscription.listener = listener; return () => { subscription.listener = null; }; }),
       sendMessage: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'send-1' })),
       listConversation: vi.fn(async () => ({ items: [], nextCursor: null })),

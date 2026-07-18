@@ -29,6 +29,7 @@ function rejected(reason: string): UiActionResult {
 }
 
 export class MockOrquestaBridge implements OrquestaRendererBridge {
+  readonly capabilities = { imageAttachments: false, attentionResolution: true } as const;
   private fixtureId: FixtureId;
   private listeners = new Set<(event: BridgeEvent) => void>();
   private conversations = new Map<string, ConversationMessage[]>();
@@ -139,6 +140,10 @@ export class MockOrquestaBridge implements OrquestaRendererBridge {
 
   async requestOpenProject(): Promise<UiActionResult> {
     return unavailable('Directory picker is added during Electron integration.');
+  }
+
+  async selectImageAttachments() {
+    return [];
   }
 
   async listAttentionHistory(): Promise<AttentionUiItem[]> {

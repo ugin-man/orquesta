@@ -8,6 +8,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDirectory, '..');
 const temporaryOut = await mkdtemp(path.join(os.tmpdir(), 'orquesta-forge-'));
 const forgeCli = path.join(appRoot, 'node_modules', '@electron-forge', 'cli', 'dist', 'electron-forge.js');
+const finalPackageDirectory = path.join(appRoot, 'out', 'Orquesta-win32-x64');
 const finalMakeDirectory = path.join(appRoot, 'out', 'make');
 
 function runForgeMake() {
@@ -27,11 +28,18 @@ function runForgeMake() {
 
 try {
   await runForgeMake();
+  const temporaryPackageDirectory = path.join(temporaryOut, 'Orquesta-win32-x64');
   const temporaryMakeDirectory = path.join(temporaryOut, 'make');
-  await access(temporaryMakeDirectory);
-  await rm(finalMakeDirectory, { force: true, recursive: true });
+  await Promise.all([access(temporaryPackageDirectory), access(temporaryMakeDirectory)]);
+  await Promise.all([
+    rm(finalPackageDirectory, { force: true, recursive: true }),
+    rm(finalMakeDirectory, { force: true, recursive: true })
+  ]);
   await mkdir(path.dirname(finalMakeDirectory), { recursive: true });
-  await cp(temporaryMakeDirectory, finalMakeDirectory, { recursive: true });
+  await Promise.all([
+    cp(temporaryPackageDirectory, finalPackageDirectory, { recursive: true }),
+    cp(temporaryMakeDirectory, finalMakeDirectory, { recursive: true })
+  ]);
 } finally {
   await rm(temporaryOut, { force: true, recursive: true });
 }

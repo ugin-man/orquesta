@@ -34,7 +34,7 @@ export function ProjectSwitcher({ projects, currentProjectId, onSwitch, onOpenPr
         {projects.map((project) => (
           <button type="button" key={project.id} className={`project-list__item${project.id === currentProjectId ? ' is-current' : ''}`} onClick={() => void switchProject(project.id)} disabled={busy !== null}>
             <span className="project-list__icon"><FolderOpen size={20} /></span>
-            <span className="project-list__copy"><strong>{project.title}</strong><small><MapPin size={12} />{project.rootPathLabel ?? 'Path unavailable'}</small><em>{project.connectionLabel} · {formatDateTime(project.lastOpenedAt)}</em></span>
+            <span className="project-list__copy"><strong>{project.title}</strong><small><MapPin size={12} />{project.rootPathLabel ?? t('pathUnavailable')}</small><em>{project.connectionLabel} · {formatDateTime(project.lastOpenedAt)}</em></span>
             <span className="project-list__status"><StatusDot status={project.status} />{project.id === currentProjectId ? t('currentProject') : busy === project.id ? <RotateCw className="is-spinning" size={15} /> : project.status}</span>
           </button>
         ))}

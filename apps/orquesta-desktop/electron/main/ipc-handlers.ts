@@ -11,8 +11,13 @@ export interface IpcMainLike {
 export interface CoreController {
   status(): CoreHostStatus;
   ping(correlationId: string): Promise<{ correlationId: string }>;
-  sendMessage(input: { projectId: string; rootPath: string; threadId: string | null; targetAgentId: string; text: string }): Promise<{ correlationId: string; threadId: string; turnId: string; actualModel: string | null }>;
+  sendMessage(input: { projectId: string; rootPath: string; threadId: string | null; targetAgentId: string; text: string; localImagePaths: string[] }): Promise<{ correlationId: string; threadId: string; turnId: string; actualModel: string | null }>;
   listConversation(input: { threadId: string; targetAgentId: string; limit: number }): Promise<ConversationPage>;
+}
+
+export interface AttachmentController {
+  chooseImages(): Promise<import('../../src/contracts/bridge').ComposerAttachment[]>;
+  resolveImagePaths(ids: string[]): string[];
 }
 
 export interface RepositoryController {
@@ -46,13 +51,14 @@ function readProjectId(input: unknown): string {
   return projectId;
 }
 
-function readMessageInput(input: unknown): { targetAgentId: string; text: string } {
+function readMessageInput(input: unknown): { targetAgentId: string; text: string; attachmentIds: string[] } {
   if (!input || typeof input !== 'object') throw new Error('message input is required');
   const value = input as Record<string, unknown>;
   if (typeof value.targetAgentId !== 'string' || !/^[a-zA-Z0-9._:-]{1,128}$/u.test(value.targetAgentId)) throw new Error('targetAgentId is invalid');
   if (typeof value.text !== 'string' || !value.text.trim() || value.text.length > 65_536) throw new Error('text must contain 1-65536 characters');
   if (!Array.isArray(value.attachmentIds) || !Array.isArray(value.selectedContextIds)) throw new Error('message context arrays are required');
-  return { targetAgentId: value.targetAgentId, text: value.text.trim() };
+  if (value.attachmentIds.length > 4 || !value.attachmentIds.every((id) => typeof id === 'string' && /^[a-zA-Z0-9._:-]{1,128}$/u.test(id))) throw new Error('attachmentIds are invalid');
+  return { targetAgentId: value.targetAgentId, text: value.text.trim(), attachmentIds: value.attachmentIds };
 }
 
 function readConversationInput(input: unknown): { targetAgentId: string; limit: number } {
@@ -64,7 +70,7 @@ function readConversationInput(input: unknown): { targetAgentId: string; limit: 
   return { targetAgentId: value.targetAgentId, limit };
 }
 
-export function registerDesktopIpc(ipcMain: IpcMainLike, coreHost: CoreController, repositories: RepositoryController): void {
+export function registerDesktopIpc(ipcMain: IpcMainLike, coreHost: CoreController, repositories: RepositoryController, attachments: AttachmentController): void {
   ipcMain.handle(DESKTOP_IPC.getHostInfo, async () => ({
     platform: 'win32' as const,
     coreStatus: publicCoreStatus(coreHost.status())
@@ -74,12 +80,15 @@ export function registerDesktopIpc(ipcMain: IpcMainLike, coreHost: CoreControlle
   ipcMain.handle(DESKTOP_IPC.listRepositories, async () => repositories.listProjects());
   ipcMain.handle(DESKTOP_IPC.switchRepository, async (_event, input) => repositories.switchProject(readProjectId(input)));
   ipcMain.handle(DESKTOP_IPC.openRepository, async () => repositories.openProject());
+  ipcMain.handle(DESKTOP_IPC.selectImageAttachments, async () => attachments.chooseImages());
   ipcMain.handle(DESKTOP_IPC.sendMessage, async (_event, input) => {
     const message = readMessageInput(input);
     const context = repositories.getCurrentRuntimeContext();
     if (!context) return { status: 'unavailable', correlationId: randomUUID(), reason: 'Open an Orquesta project before sending a message.', retryable: false } satisfies UiActionResult;
     try {
-      const result = await coreHost.sendMessage({ ...context, ...message });
+      const localImagePaths = attachments.resolveImagePaths(message.attachmentIds);
+      const { attachmentIds: _attachmentIds, ...messageWithoutIds } = message;
+      const result = await coreHost.sendMessage({ ...context, ...messageWithoutIds, localImagePaths });
       await repositories.setCoordinatorThread(context.projectId, result.threadId).catch(() => undefined);
       return { status: 'accepted', correlationId: result.correlationId } satisfies UiActionResult;
     } catch (error) {

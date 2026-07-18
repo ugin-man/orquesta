@@ -36,7 +36,7 @@ test('boots the packaged renderer behind the bounded desktop API', async () => {
     });
 
     expect(rendererBoundary.requireType).toBe('undefined');
-    expect(rendererBoundary.host).toEqual({ platform: 'win32', coreStatus: 'ready' });
+    expect(rendererBoundary.host).toEqual({ platform: 'win32', coreStatus: 'stopped' });
     expect(rendererBoundary.ping).toEqual({ correlationId: 'desktop-smoke' });
   } finally {
     await desktop.close();

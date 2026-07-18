@@ -19,9 +19,10 @@ test('sends a composer instruction to a Codex App Server thread and reads its hi
   }), 'utf8');
   await writeFile(path.join(state, 'tasks.json'), JSON.stringify({ updated_at: new Date().toISOString(), tasks: [] }), 'utf8');
 
+  const packagedExecutable = process.env.ORQUESTA_PACKAGED_EXE;
   const desktop = await electron.launch({
-    args: [`--user-data-dir=${userData}`, '.'],
-    cwd: appRoot,
+    ...(packagedExecutable ? { executablePath: packagedExecutable } : { cwd: appRoot }),
+    args: packagedExecutable ? [`--user-data-dir=${userData}`] : [`--user-data-dir=${userData}`, '.'],
     env: {
       ...process.env,
       ORQUESTA_E2E: '1',

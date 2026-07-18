@@ -3,9 +3,10 @@ import { app, BrowserWindow, dialog, ipcMain, utilityProcess } from 'electron';
 import squirrelStartup from 'electron-squirrel-startup';
 import { CoreHost } from './core-host';
 import { registerDesktopIpc } from './ipc-handlers';
-import { createMainWindowOptions } from './window-options';
+import { createMainWindowOptions, createSplashWindowOptions, splashDocument } from './window-options';
 import { RepositoryService } from './repository-service';
 import { DESKTOP_IPC } from '../shared/host-contract';
+import { AttachmentService } from './attachment-service';
 
 if (squirrelStartup) app.quit();
 
@@ -17,14 +18,35 @@ const coreHost = new CoreHost({
 });
 
 let mainWindow: BrowserWindow | null = null;
+let splashWindow: BrowserWindow | null = null;
 let repositories: RepositoryService | null = null;
 let quittingAfterServiceStop = false;
+let splashStartedAt = 0;
+
+function createSplashWindow(): BrowserWindow {
+  const window = new BrowserWindow(createSplashWindowOptions());
+  splashStartedAt = Date.now();
+  window.once('ready-to-show', () => window.show());
+  window.on('closed', () => {
+    if (splashWindow === window) splashWindow = null;
+  });
+  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashDocument())}`);
+  return window;
+}
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow(createMainWindowOptions(preloadPath));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
-  window.once('ready-to-show', () => window.show());
+  window.once('ready-to-show', () => {
+    const reveal = () => {
+      splashWindow?.close();
+      splashWindow = null;
+      window.show();
+    };
+    if (!splashWindow) reveal();
+    else setTimeout(reveal, Math.max(0, 420 - (Date.now() - splashStartedAt)));
+  });
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null;
   });
@@ -52,7 +74,7 @@ if (!hasSingleInstanceLock) {
 
   void app.whenReady().then(async () => {
     app.setAppUserModelId('com.orquesta.desktop');
-    coreHost.start();
+    if (process.env.ORQUESTA_E2E !== '1') splashWindow = createSplashWindow();
     repositories = new RepositoryService({
       registryPath: path.join(app.getPath('userData'), 'repositories.json'),
       initialRootPath: process.env.ORQUESTA_E2E === '1' ? process.env.ORQUESTA_E2E_PROJECT_ROOT : null,
@@ -63,7 +85,18 @@ if (!hasSingleInstanceLock) {
       }
     });
     await repositories.initialize();
-    registerDesktopIpc(ipcMain, coreHost, repositories);
+    const attachments = new AttachmentService({
+      choosePaths: async () => {
+        const options = {
+          title: 'Attach images',
+          properties: ['openFile' as const, 'multiSelections' as const],
+          filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }]
+        };
+        const selection = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+        return selection.canceled ? [] : selection.filePaths;
+      }
+    });
+    registerDesktopIpc(ipcMain, coreHost, repositories, attachments);
     mainWindow = createMainWindow();
     repositories.subscribe((snapshot) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DESKTOP_IPC.repositoryChanged, snapshot);

@@ -22,12 +22,12 @@ export function TeamManagement({ agents, proposals, onApprove, onClose }: {
     if (result.status === 'accepted') setApproved((current) => new Set(current).add(id));
   };
   return (
-    <OverlayFrame title={t('teamManagement')} subtitle="Prototype roster proposal review" ariaLabel={t('teamManagement')} className="team-overlay" onClose={onClose}>
+    <OverlayFrame title={t('teamManagement')} subtitle={t('teamIntro')} ariaLabel={t('teamManagement')} className="team-overlay" onClose={onClose}>
       <div className="team-layout">
         <section><h3><UsersRound size={16} />{t('currentRoster')} <span>{agents.length}</span></h3><div className="roster-list">{agents.map((agent) => <article key={agent.id}><span><AgentGlyph iconKey={agent.iconKey} size={18} /></span><div><strong>{agent.displayName}</strong><small>{agent.roleSummary} · {agent.statusLabel}</small></div></article>)}</div></section>
         <section><h3><Plus size={16} />{t('proposedRoles')} <span>{proposals.length}</span></h3><div className="proposal-list">{proposals.length ? proposals.map((proposal) => (
           <article key={proposal.id}><header><div><strong>{proposal.displayName}</strong><small>{proposal.role}</small></div><ShieldCheck size={17} /></header><p>{proposal.reason}</p><dl><div><dt>Scope</dt><dd>{proposal.contextScope}</dd></div><div><dt>Capacity</dt><dd>{proposal.capacityLabel}</dd></div></dl><button type="button" onClick={() => void approve(proposal.id)} disabled={busy === proposal.id || approved.has(proposal.id)}>{approved.has(proposal.id) ? <><Check size={14} />{t('approved')}</> : busy === proposal.id ? '…' : t('approve')}</button></article>
-        )) : <div className="empty-detail">No new role proposals.</div>}</div></section>
+        )) : <div className="empty-detail">{t('noRoleProposals')}</div>}</div></section>
       </div>
     </OverlayFrame>
   );

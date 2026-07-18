@@ -26,6 +26,12 @@ interface PendingPing {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface PendingReady {
+  resolve(): void;
+  reject(error: Error): void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 interface PendingRuntime<T> {
   resolve(value: T): void;
   reject(error: Error): void;
@@ -35,6 +41,7 @@ interface PendingRuntime<T> {
 export class CoreHost {
   readonly #options: Required<Pick<CoreHostOptions, 'shutdownTimeoutMs' | 'pingTimeoutMs' | 'runtimeTimeoutMs'>> & CoreHostOptions;
   readonly #pendingPings = new Map<string, PendingPing>();
+  readonly #pendingReady = new Set<PendingReady>();
   readonly #pendingDispatches = new Map<string, PendingRuntime<{ correlationId: string; threadId: string; turnId: string; actualModel: string | null }>>();
   readonly #pendingConversations = new Map<string, PendingRuntime<ConversationPage>>();
   readonly #runtimeListeners = new Set<(notification: RuntimeNotification) => void>();
@@ -74,9 +81,7 @@ export class CoreHost {
     if (!correlationId || correlationId.length > 128) {
       return Promise.reject(new Error('correlationId must contain 1-128 characters'));
     }
-    if (this.#status !== 'ready' || !this.#child) {
-      return Promise.reject(new Error('Orquesta Core is not ready'));
-    }
+    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.ping(correlationId));
     if (this.#pendingPings.has(correlationId)) {
       return Promise.reject(new Error(`Duplicate correlationId: ${correlationId}`));
     }
@@ -91,8 +96,8 @@ export class CoreHost {
     });
   }
 
-  sendMessage(input: { projectId: string; rootPath: string; threadId: string | null; targetAgentId: string; text: string }): Promise<{ correlationId: string; threadId: string; turnId: string; actualModel: string | null }> {
-    if (this.#status !== 'ready' || !this.#child) return Promise.reject(new Error('Orquesta Core is not ready'));
+  sendMessage(input: { projectId: string; rootPath: string; threadId: string | null; targetAgentId: string; text: string; localImagePaths: string[] }): Promise<{ correlationId: string; threadId: string; turnId: string; actualModel: string | null }> {
+    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.sendMessage(input));
     const correlationId = randomUUID();
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -105,7 +110,7 @@ export class CoreHost {
   }
 
   listConversation(input: { threadId: string; targetAgentId: string; limit: number }): Promise<ConversationPage> {
-    if (this.#status !== 'ready' || !this.#child) return Promise.reject(new Error('Orquesta Core is not ready'));
+    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.listConversation(input));
     const correlationId = randomUUID();
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -120,6 +125,24 @@ export class CoreHost {
   subscribeRuntime(listener: (notification: RuntimeNotification) => void): () => void {
     this.#runtimeListeners.add(listener);
     return () => this.#runtimeListeners.delete(listener);
+  }
+
+  #ensureReady(): Promise<void> {
+    if (this.#status === 'ready' && this.#child) return Promise.resolve();
+    if (this.#status === 'stopped') this.start();
+    if (this.#status === 'ready' && this.#child) return Promise.resolve();
+    if (this.#status !== 'starting') return Promise.reject(new Error('Orquesta Core is not available'));
+    return new Promise((resolve, reject) => {
+      const pending: PendingReady = {
+        resolve: () => resolve(),
+        reject,
+        timeout: setTimeout(() => {
+          this.#pendingReady.delete(pending);
+          reject(new Error('Orquesta Core startup timed out'));
+        }, this.#options.pingTimeoutMs)
+      };
+      this.#pendingReady.add(pending);
+    });
   }
 
   stop(): Promise<void> {
@@ -150,7 +173,14 @@ export class CoreHost {
 
   #handleEvent(event: CoreEvent): void {
     if (event.type === 'core.ready') {
-      if (this.#status === 'starting') this.#status = 'ready';
+      if (this.#status === 'starting') {
+        this.#status = 'ready';
+        for (const pending of this.#pendingReady) {
+          clearTimeout(pending.timeout);
+          pending.resolve();
+        }
+        this.#pendingReady.clear();
+      }
       return;
     }
     if (event.type === 'core.pong') {
@@ -198,6 +228,11 @@ export class CoreHost {
     this.#shutdownTimeout = null;
     this.#child = null;
     this.#status = 'stopped';
+    for (const pending of this.#pendingReady) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error('Orquesta Core stopped before it became ready'));
+    }
+    this.#pendingReady.clear();
     for (const pending of this.#pendingPings.values()) {
       clearTimeout(pending.timeout);
       pending.reject(new Error('Orquesta Core stopped'));

@@ -2,9 +2,23 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { MockOrquestaBridge } from '../../src/bridges/mock-bridge';
-import { DesktopRendererApp } from '../../src/renderer/app/DesktopRendererApp';
+import { DesktopRendererApp, resolveInitialLocale } from '../../src/renderer/app/DesktopRendererApp';
 
 describe('DesktopRendererApp', () => {
+  test('uses a persisted locale unless an explicit locale is supplied', () => {
+    window.localStorage.setItem('orquesta.desktop.locale', 'ja');
+    expect(resolveInitialLocale()).toBe('ja');
+    expect(resolveInitialLocale('en')).toBe('en');
+    window.localStorage.removeItem('orquesta.desktop.locale');
+  });
+
+  test('restores the project draft after relaunch', async () => {
+    window.localStorage.setItem('orquesta.desktop.draft.active-project', 'Continue the implementation');
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('Continue the implementation'));
+    window.localStorage.removeItem('orquesta.desktop.draft.active-project');
+  });
+
   test('labels prototype data and opens an agent inspector', async () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} />);
     expect(await screen.findByText('Prototype data')).toBeVisible();
