@@ -286,7 +286,9 @@ function projectAgents(
       statusEvidence,
       currentTaskId: currentTask?.id ?? null,
       currentTaskTitle: currentTask?.title ?? null,
-      assignedByAgentId: id === 'orchestrator' ? 'user' : string(raw.assigned_by_agent_id) ?? currentTask?.assignedByAgentId ?? 'orchestrator',
+      assignedByAgentId: id === 'orchestrator'
+        ? 'user'
+        : string(raw.organization_parent_agent_id) ?? string(raw.assigned_by_agent_id) ?? 'orchestrator',
       blockedReason: string(raw.blocked_reason) ?? (currentTask?.state === 'blocked' ? currentTask.progressSummary : null),
       waitingOn: string(raw.waiting_on),
       contextScope: string(raw.context_scope),

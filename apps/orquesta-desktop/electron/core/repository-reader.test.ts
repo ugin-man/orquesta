@@ -79,6 +79,19 @@ describe('repository reader', () => {
     expect(snapshot.agents.find((agent) => agent.id === 'worker')).toMatchObject({ status: 'assigned_waiting', statusEvidence: 'reported' });
   });
 
+  test('does not use the current task delegation source as the organization parent', () => {
+    const source = documents();
+    delete source.agents.agents[1].assigned_by_agent_id;
+    (source.tasks.tasks[0] as Record<string, unknown>).assigned_by_agent_id = 'idle';
+
+    const fallback = projectSnapshotFromDocuments({ rootPath: 'C:\\work\\sample', documents: source });
+    expect(fallback.agents.find((agent) => agent.id === 'worker')?.assignedByAgentId).toBe('orchestrator');
+
+    (source.agents.agents[1] as Record<string, unknown>).organization_parent_agent_id = 'idle';
+    const explicit = projectSnapshotFromDocuments({ rootPath: 'C:\\work\\sample', documents: source });
+    expect(explicit.agents.find((agent) => agent.id === 'worker')?.assignedByAgentId).toBe('idle');
+  });
+
   test('keeps actual model unknown unless separate evidence is recorded', () => {
     const source = documents();
     source.tasks.tasks[0].model_route = { requested_model: 'gpt-5.6-terra', actual_model: 'gpt-5.6-sol' };
