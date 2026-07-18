@@ -54,4 +54,41 @@ describe('CoreHost', () => {
     expect(host.status()).toBe('stopped');
     vi.useRealTimers();
   });
+
+  test('can stop a new child after a completed stop and restart', async () => {
+    const firstChild = new FakeCoreChild();
+    const secondChild = new FakeCoreChild();
+    const children = [firstChild, secondChild];
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => children.shift()! });
+
+    host.start();
+    const firstStop = host.stop();
+    firstChild.emit('message', { type: 'core.stopped' });
+    await firstStop;
+
+    host.start();
+    const secondStop = host.stop();
+    expect(secondChild.postMessage).toHaveBeenCalledWith({ type: 'core.shutdown' });
+    secondChild.emit('message', { type: 'core.stopped' });
+    await secondStop;
+  });
+
+  test('ignores a late exit from the previous child after restart', async () => {
+    const firstChild = new FakeCoreChild();
+    const secondChild = new FakeCoreChild();
+    const children = [firstChild, secondChild];
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => children.shift()! });
+
+    host.start();
+    const firstStop = host.stop();
+    firstChild.emit('message', { type: 'core.stopped' });
+    await firstStop;
+
+    host.start();
+    firstChild.emit('exit', 0);
+    expect(host.status()).toBe('starting');
+
+    secondChild.emit('message', { type: 'core.ready', version: 1 });
+    expect(host.status()).toBe('ready');
+  });
 });

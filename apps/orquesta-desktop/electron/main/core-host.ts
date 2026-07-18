@@ -49,8 +49,12 @@ export class CoreHost {
     this.#status = 'starting';
     const child = this.#options.fork(this.#options.coreEntryPath);
     this.#child = child;
-    child.on('message', (message) => this.#acceptEvent(message));
-    child.on('exit', () => this.#finishStop());
+    child.on('message', (message) => {
+      if (this.#child === child) this.#acceptEvent(message);
+    });
+    child.on('exit', () => {
+      if (this.#child === child) this.#finishStop();
+    });
   }
 
   ping(correlationId: string): Promise<{ correlationId: string }> {
@@ -85,9 +89,11 @@ export class CoreHost {
     this.#stopPromise = new Promise((resolve) => {
       this.#resolveStop = resolve;
     });
-    this.#child.postMessage({ type: 'core.shutdown' });
+    const child = this.#child;
+    child.postMessage({ type: 'core.shutdown' });
     this.#shutdownTimeout = setTimeout(() => {
-      this.#child?.kill();
+      if (this.#child !== child) return;
+      child.kill();
       this.#finishStop();
     }, this.#options.shutdownTimeoutMs);
     return this.#stopPromise;
@@ -124,7 +130,9 @@ export class CoreHost {
       pending.reject(new Error('Orquesta Core stopped'));
     }
     this.#pendingPings.clear();
-    this.#resolveStop?.();
+    const resolveStop = this.#resolveStop;
     this.#resolveStop = null;
+    this.#stopPromise = null;
+    resolveStop?.();
   }
 }
