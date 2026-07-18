@@ -1,0 +1,13 @@
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { DesktopRendererApp } from './renderer/app/DesktopRendererApp';
+import './renderer/styles/global.css';
+
+const root = document.getElementById('root');
+if (!root) throw new Error('Renderer root element was not found.');
+
+createRoot(root).render(
+  <StrictMode>
+    <DesktopRendererApp initialLocale={new URLSearchParams(window.location.search).get('lang') === 'ja' ? 'ja' : 'en'} />
+  </StrictMode>
+);

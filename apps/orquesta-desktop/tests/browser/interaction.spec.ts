@@ -1,0 +1,138 @@
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test } from '@playwright/test';
+import { openFixture } from './helpers';
+
+test('renders the full active roster and opens agent and task details', async ({ page }) => {
+  await openFixture(page, 'active-project');
+  await expect(page.locator('[data-node-kind="agent"]')).toHaveCount(7);
+  await page.getByRole('button', { name: 'Analyst, Working' }).click();
+  await expect(page.locator('aside[aria-label="Analyst detail"]')).toBeVisible();
+  await page.locator('.agent-current-task').click();
+  const detail = page.locator('aside[aria-label="Task T68"]');
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText('Dispatch accepted', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Turn started', { exact: true })).toBeVisible();
+});
+
+test('keeps dispatch-only work static and actual model unknown', async ({ page }) => {
+  await openFixture(page, 'unknown-evidence');
+  await expect(page.locator('.map-edge-flow')).toHaveCount(0);
+  await page.getByRole('button', { name: /U12: Prepare migration outline/ }).click();
+  const detail = page.locator('aside[aria-label="Task U12"]');
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText('Actual model', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Unknown', { exact: true }).first()).toBeVisible();
+  await expect(detail.getByText('Not observed', { exact: true })).toHaveCount(2);
+});
+
+test('switches to offline project without claiming live work', async ({ page }) => {
+  await openFixture(page, 'active-project');
+  await page.locator('.project-status__summary').click();
+  await page.getByRole('button', { name: 'Switch project' }).click();
+  await expect(page.getByRole('dialog', { name: 'Switch project' })).toBeVisible();
+  await page.getByRole('button', { name: /Disconnected Repository/ }).click();
+  await expect(page.locator('.stale-ribbon')).toBeVisible();
+  await expect(page.getByText('No proven active work')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  await expect(page.locator('.map-edge-flow')).toHaveCount(0);
+});
+
+test('keeps Home fixed while Attention scrolls internally', async ({ page }) => {
+  await openFixture(page, 'attention-heavy', { width: 1366, height: 768 });
+  const fixed = await page.evaluate(() => ({
+    html: document.documentElement.scrollHeight === document.documentElement.clientHeight,
+    body: document.body.scrollHeight === document.body.clientHeight
+  }));
+  expect(fixed).toEqual({ html: true, body: true });
+  const attention = page.getByTestId('attention-scroll');
+  const metrics = await attention.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientHeight: element.clientHeight }));
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+});
+
+test('large roster keeps all thirty-five agents as individual nodes', async ({ page }) => {
+  await openFixture(page, 'large-roster');
+  await expect(page.locator('[data-node-kind="agent"]')).toHaveCount(35);
+  await page.getByRole('button', { name: 'Fit' }).click();
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await page.getByRole('button', { name: 'Reset' }).click();
+});
+
+test('preserves the map camera when a same-project snapshot updates', async ({ page }) => {
+  await openFixture(page, 'active-project');
+  const world = page.locator('.map-world');
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  await page.getByRole('button', { name: 'Zoom in' }).click();
+  const zoomBefore = await world.getAttribute('data-zoom');
+  await page.locator('.attention-item .text-action').first().click();
+  await expect(page.locator('.attention-item')).toHaveCount(2);
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect(world).toHaveAttribute('data-zoom', zoomBefore ?? '');
+});
+
+test('opens route, conversation, operations, and returns with Escape', async ({ page }) => {
+  await openFixture(page, 'active-project');
+  await page.locator('.project-status__summary').click();
+  await page.getByRole('button', { name: 'Open Project Route' }).click();
+  await expect(page.getByRole('dialog', { name: 'Project Route' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Project Route' })).toHaveCount(0);
+  await page.getByRole('button', { name: /Conversation history/ }).click();
+  await expect(page.getByRole('dialog', { name: /Conversation · Orchestrator/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.locator('.project-status__summary').click();
+  await page.getByRole('button', { name: 'Open operations' }).click();
+  await expect(page.getByRole('dialog', { name: 'Advanced Operations' })).toBeVisible();
+});
+
+
+test('keeps map controls clear of the user node and team action clear of the composer', async ({ page }) => {
+  await openFixture(page, 'active-project');
+  const boxes = await page.evaluate(() => {
+    const rect = (selector: string) => {
+      const element = document.querySelector<HTMLElement>(selector);
+      if (!element) throw new Error(`Missing ${selector}`);
+      const box = element.getBoundingClientRect();
+      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+    };
+    return {
+      controls: rect('.map-controls'),
+      user: rect('.map-user-node'),
+      team: rect('.add-agent-button'),
+      composer: rect('.command-composer')
+    };
+  });
+  const overlaps = (a: typeof boxes.controls, b: typeof boxes.controls) =>
+    a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  expect(overlaps(boxes.controls, boxes.user)).toBe(false);
+  expect(overlaps(boxes.team, boxes.composer)).toBe(false);
+});
+
+
+test('keeps large-roster map controls clear of the user node', async ({ page }) => {
+  await openFixture(page, 'large-roster');
+  const [controls, user] = await Promise.all([
+    page.locator('.map-controls').boundingBox(),
+    page.locator('.map-user-node').boundingBox()
+  ]);
+  expect(controls).not.toBeNull();
+  expect(user).not.toBeNull();
+  const overlaps = Boolean(
+    controls && user &&
+    controls.x < user.x + user.width && controls.x + controls.width > user.x &&
+    controls.y < user.y + user.height && controls.y + controls.height > user.y
+  );
+  expect(overlaps).toBe(false);
+});
+
+test('has no serious accessibility violations or browser errors in the standard fixture', async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+
+  await openFixture(page, 'active-project');
+  const results = await new AxeBuilder({ page }).disableRules(['region']).analyze();
+  expect(results.violations.filter((item) => ['serious', 'critical'].includes(item.impact ?? ''))).toEqual([]);
+  expect(browserErrors).toEqual([]);
+});
