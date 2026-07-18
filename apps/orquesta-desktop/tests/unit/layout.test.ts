@@ -35,6 +35,10 @@ describe('stable map layout', () => {
     expect(layout.compact).toBe(true);
     expect(layout.agentPositions.size).toBe(35);
     expect(layout.width).toBeGreaterThan(1200);
+    const directReportYs = agents
+      .filter((item) => item.assignedByAgentId === 'orchestrator')
+      .map((item) => layout.agentPositions.get(item.id)?.y);
+    expect(new Set(directReportYs)).toHaveLength(1);
     expectNoNodeCollisions(layout);
   });
 

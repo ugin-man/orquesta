@@ -30,7 +30,9 @@ function createMainWindow(): BrowserWindow {
   if (rendererUrl) {
     void window.loadURL(rendererUrl);
   } else {
-    void window.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'));
+    const requestedFixture = process.env.ORQUESTA_E2E === '1' ? process.env.ORQUESTA_E2E_FIXTURE : undefined;
+    const fixture = requestedFixture && /^[a-z0-9-]+$/.test(requestedFixture) ? requestedFixture : undefined;
+    void window.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'), fixture ? { query: { fixture } } : undefined);
   }
   return window;
 }

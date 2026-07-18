@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { fitCamera, semanticLevelForZoom, worldToScreen } from '../../src/renderer/features/map/MapViewport';
+import { compactAgentName, fitCamera, semanticLevelForZoom, worldToScreen } from '../../src/renderer/features/map/MapViewport';
 
 describe('Map viewport projection', () => {
   test('uses three deterministic semantic zoom levels', () => {
@@ -18,5 +18,10 @@ describe('Map viewport projection', () => {
     expect(camera.y).toBeGreaterThanOrEqual(80);
     expect(camera.x + 1200 * camera.zoom).toBeLessThanOrEqual(1150);
     expect(camera.y + 900 * camera.zoom).toBeLessThanOrEqual(770);
+  });
+
+  test('keeps a distinguishing suffix in overview labels', () => {
+    expect(compactAgentName('Connector 02')).toBe('CONNE 02');
+    expect(compactAgentName('Orchestrator')).toBe('ORCHESTR');
   });
 });

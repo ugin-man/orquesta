@@ -20,6 +20,13 @@ export function semanticLevelForZoom(zoom: number): SemanticZoomLevel {
   return 'detail';
 }
 
+export function compactAgentName(displayName: string): string {
+  const normalized = displayName.trim().toUpperCase();
+  const numbered = normalized.match(/^(.*?)\s+(\d+)$/u);
+  if (numbered) return `${Array.from(numbered[1]).slice(0, 5).join('')} ${numbered[2]}`;
+  return Array.from(normalized).slice(0, 8).join('');
+}
+
 export function worldToScreen(point: Point, camera: Camera): Point {
   return {
     x: camera.x + point.x * camera.zoom,
@@ -289,7 +296,7 @@ export function MapViewport({
             >
               <span className="agent-node__icon"><AgentGlyph iconKey={agent.iconKey} size={agent.id === 'orchestrator' ? 30 : semanticLevel === 'overview' ? 18 : 26} /></span>
               <span className="agent-node__copy">
-                <strong>{agent.displayName.toUpperCase()}</strong>
+                <strong>{semanticLevel === 'overview' && !selected ? compactAgentName(agent.displayName) : agent.displayName.toUpperCase()}</strong>
                 <small>{agent.roleSummary}</small>
                 <span className="agent-node__status"><StatusDot status={agent.status} /><em>{mapStatusText(agent)}</em></span>
               </span>

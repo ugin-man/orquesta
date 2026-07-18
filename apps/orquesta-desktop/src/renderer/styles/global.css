@@ -183,16 +183,16 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .map-viewport[data-semantic-level="normal"] .agent-node__status em { font-size: 8px; }
 
 .map-viewport[data-semantic-level="overview"] .map-user-node,
-.map-viewport[data-semantic-level="overview"] .agent-node { width: 64px; }
-.map-viewport[data-semantic-level="overview"] .agent-node__icon { width: 30px; height: 30px; box-shadow: 0 3px 8px rgba(42,36,29,.09); }
-.map-viewport[data-semantic-level="overview"] .agent-node--orchestrator .agent-node__icon { width: 36px; height: 36px; box-shadow: 0 4px 12px rgba(42,36,29,.1), 0 0 0 4px rgba(255,253,248,.5); }
+.map-viewport[data-semantic-level="overview"] .agent-node { width: 48px; }
+.map-viewport[data-semantic-level="overview"] .agent-node__icon { width: 26px; height: 26px; box-shadow: 0 3px 8px rgba(42,36,29,.09); }
+.map-viewport[data-semantic-level="overview"] .agent-node--orchestrator .agent-node__icon { width: 32px; height: 32px; box-shadow: 0 4px 12px rgba(42,36,29,.1), 0 0 0 4px rgba(255,253,248,.5); }
 .map-viewport[data-semantic-level="overview"] .map-user-node strong,
-.map-viewport[data-semantic-level="overview"] .agent-node__copy strong { margin-top: 4px; max-width: 64px; overflow: hidden; font-size: 8px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+.map-viewport[data-semantic-level="overview"] .agent-node__copy strong { margin-top: 3px; max-width: 48px; overflow: hidden; font-size: 7px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .map-viewport[data-semantic-level="overview"] .map-user-node small,
 .map-viewport[data-semantic-level="overview"] .agent-node__copy small,
 .map-viewport[data-semantic-level="overview"] .agent-node__status em { display: none; }
-.map-viewport[data-semantic-level="overview"] .agent-node__copy { min-height: 20px; }
-.map-viewport[data-semantic-level="overview"] .agent-node__status { margin-top: 4px; }
+.map-viewport[data-semantic-level="overview"] .agent-node__copy { min-height: 0; }
+.map-viewport[data-semantic-level="overview"] .agent-node__status { position: absolute; left: calc(50% + 7px); top: 20px; margin: 0; }
 .map-viewport[data-semantic-level="overview"] .agent-node--orchestrator .agent-node__status { display: none; }
 .map-viewport[data-semantic-level="overview"] .agent-node.is-selected { width: 126px; }
 .map-viewport[data-semantic-level="overview"] .agent-node.is-selected .agent-node__icon { width: 48px; height: 48px; box-shadow: 0 0 0 2px var(--paper-strong), 0 0 0 4px var(--ink), 0 8px 20px rgba(25,22,18,.12); }
@@ -200,7 +200,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .map-viewport[data-semantic-level="overview"] .agent-node.is-selected .agent-node__copy strong { margin-top: 6px; max-width: 118px; font-size: 10px; }
 .map-viewport[data-semantic-level="overview"] .agent-node.is-selected .agent-node__copy small,
 .map-viewport[data-semantic-level="overview"] .agent-node.is-selected .agent-node__status em { display: block; font-size: 8px; }
-.map-viewport[data-semantic-level="overview"] .agent-node.is-selected .agent-node__status { margin-top: 7px; }
+.map-viewport[data-semantic-level="overview"] .agent-node.is-selected .agent-node__status { position: static; margin-top: 7px; }
 
 .status-dot { display: inline-block; width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #a9a49b; }
 .status-dot--working { background: #151515; }

@@ -26,7 +26,6 @@ const USER_NODE_HEIGHT = 100;
 const HORIZONTAL_GAP = 48;
 const LEVEL_GAP = 110;
 const ROW_GAP = 64;
-const MAX_ROW_WIDTH = 2400;
 const WORLD_MARGIN_X = 120;
 const WORLD_MARGIN_Y = 80;
 
@@ -53,10 +52,15 @@ function layoutSubtree(parentId: HierarchyParentId, hierarchy: AgentHierarchy): 
   }
 
   const rows: Array<{ boxes: SubtreeBox[]; width: number; height: number }> = [];
+  const targetColumns = Math.max(1, Math.ceil(Math.sqrt(childBoxes.length * 1.5)));
+  const gridWidth = targetColumns * NODE_WIDTH + (targetColumns - 1) * HORIZONTAL_GAP;
+  const maxRowWidth = childBoxes.length <= 8
+    ? Number.POSITIVE_INFINITY
+    : Math.max(gridWidth, ...childBoxes.map((box) => box.width));
   for (const box of childBoxes) {
     let row = rows.at(-1);
     const nextWidth = row ? row.width + HORIZONTAL_GAP + box.width : box.width;
-    if (!row || (row.boxes.length > 0 && nextWidth > MAX_ROW_WIDTH)) {
+    if (!row || (row.boxes.length > 0 && nextWidth > maxRowWidth)) {
       row = { boxes: [], width: 0, height: 0 };
       rows.push(row);
     }
