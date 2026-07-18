@@ -1,14 +1,17 @@
 # Orquesta Desktop
 
-Orquesta V4のWindows向けElectronアプリです。中央のOrquesta Map、Now、Project Status、Attention、Composer、各種overlayをReact Rendererで表示します。Electron Main、sandboxed Preload、別utility processのOrquesta Coreまで接続済みです。
+Orquesta V4のWindows向けElectronアプリです。中央のOrquesta Map、Now、Project Status、Attention、Composer、各種overlayをReact Rendererで表示します。Electron Main、sandboxed Preload、別utility processのOrquesta Coreで構成しています。
 
-Desktop Foundationの段階なので、表示データはまだ`MockOrquestaBridge`のfixtureです。Codex App Server、ローカルproject、実際の`.orquesta` stateとの接続は次の実装段階で行います。
+製品起動時は選択したプロジェクトの`.orquesta` stateを読み取り、変更を自動反映します。Composerからの指示はCodex App Serverでプロジェクト専用の統括スレッドへ送り、会話履歴も同じスレッドから読みます。fixtureはレイアウトと回帰テストだけに使います。
 
 ## 必要なもの
 
 - Windows 10または11
 - Node.js 22.12.0以上
 - npm
+- Codex Desktopまたはstandalone Codex CLI
+
+Codexの実行ファイルは、standalone CLI、インストール済みCodex Desktopの順で探します。自動検出できない場合は`ORQUESTA_CODEX_PATH`へ`codex.exe`の絶対パスを指定できます。Codex runtimeをOrquestaのpackageへ重複同梱はしません。
 
 ## 起動
 
@@ -76,7 +79,7 @@ src/
     features/operations/ Advanced Operations shellと言語切り替え
     styles/              desktop固定layoutとvisual tokens
   contracts/             UI projectionとbridge interface
-  bridges/               MockOrquestaBridge
+  bridges/               Electronとfixtureのbridge
   fixtures/              検証用snapshot
 electron/
   main/                  native window、IPC、Core lifecycle
@@ -85,4 +88,4 @@ electron/
   shared/                host contract
 ```
 
-Renderer componentはNode.js APIやfilesystemへ直接アクセスしません。Desktop Foundationの実測結果は[`docs/validation/desktop-foundation.md`](./docs/validation/desktop-foundation.md)、UIのhandoff情報は[`README-UI-HANDOFF.md`](./README-UI-HANDOFF.md)を参照してください。
+Renderer componentはNode.js APIやfilesystemへ直接アクセスしません。読み取り統合は[`docs/validation/repository-integration.md`](./docs/validation/repository-integration.md)、Codex接続は[`docs/validation/codex-runtime.md`](./docs/validation/codex-runtime.md)、当初の実測値は[`docs/validation/desktop-foundation.md`](./docs/validation/desktop-foundation.md)にあります。

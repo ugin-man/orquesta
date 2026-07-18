@@ -1,5 +1,6 @@
-import type { ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
+import type { ConversationMessage, ConversationPage, ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import type { RuntimeNotification } from '../core/protocol';
 import type { DesktopHostApi, DesktopHostInfo } from '../shared/host-contract';
 import { DESKTOP_IPC } from '../shared/host-contract';
 
@@ -40,6 +41,31 @@ function isActionResult(value: unknown): value is UiActionResult {
 
 function safeProjectId(projectId: string): boolean {
   return /^[a-zA-Z0-9._:-]{1,128}$/u.test(projectId);
+}
+
+function safeId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-zA-Z0-9._:-]{1,128}$/u.test(value);
+}
+
+function isConversationMessage(value: unknown): value is ConversationMessage {
+  if (!value || typeof value !== 'object') return false;
+  const message = value as Record<string, unknown>;
+  return safeId(message.id) && ['user', 'agent', 'system'].includes(String(message.role)) && safeId(message.targetAgentId)
+    && typeof message.authorLabel === 'string' && typeof message.text === 'string' && typeof message.createdAt === 'string';
+}
+
+function isConversationPage(value: unknown): value is ConversationPage {
+  if (!value || typeof value !== 'object') return false;
+  const page = value as Record<string, unknown>;
+  return Array.isArray(page.items) && page.items.every(isConversationMessage) && (page.nextCursor === null || typeof page.nextCursor === 'string');
+}
+
+function isRuntimeNotification(value: unknown): value is RuntimeNotification {
+  if (!value || typeof value !== 'object') return false;
+  const notification = value as Record<string, unknown>;
+  return ['turn_started', 'turn_completed', 'turn_failed', 'agent_message'].includes(String(notification.kind))
+    && safeId(notification.threadId) && (notification.turnId === null || safeId(notification.turnId))
+    && (notification.text === null || typeof notification.text === 'string');
 }
 
 export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe): DesktopHostApi {
@@ -87,6 +113,26 @@ export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe)
     subscribeRepository(listener) {
       return subscribe(DESKTOP_IPC.repositoryChanged, (payload) => {
         if (isRepositorySnapshot(payload)) listener(payload);
+      });
+    },
+    async sendMessage(input) {
+      if (!safeId(input.targetAgentId) || !input.text.trim() || input.text.length > 65_536) throw new Error('Message input is invalid');
+      if (!Array.isArray(input.attachmentIds) || !Array.isArray(input.selectedContextIds)) throw new Error('Message context is invalid');
+      const action = await invoke(DESKTOP_IPC.sendMessage, input);
+      if (!isActionResult(action)) throw new Error('Desktop host returned an invalid send result');
+      return action;
+    },
+    async listConversation(input) {
+      if (!safeId(input.targetAgentId)) throw new Error('Conversation target is invalid');
+      const limit = input.limit ?? 100;
+      if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('Conversation limit is invalid');
+      const page = await invoke(DESKTOP_IPC.listConversation, { ...input, limit });
+      if (!isConversationPage(page)) throw new Error('Desktop host returned an invalid conversation page');
+      return page;
+    },
+    subscribeRuntime(listener) {
+      return subscribe(DESKTOP_IPC.runtimeChanged, (payload) => {
+        if (isRuntimeNotification(payload)) listener(payload);
       });
     }
   };

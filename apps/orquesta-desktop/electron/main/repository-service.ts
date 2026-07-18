@@ -8,6 +8,7 @@ import { readRepositorySnapshot } from './repository-reader';
 
 interface RegistryEntry extends ProjectSummary {
   rootPath: string;
+  coordinatorThreadId: string | null;
 }
 
 interface RegistryDocument {
@@ -80,7 +81,8 @@ function validRegistry(value: unknown): RegistryDocument | null {
       rootPathLabel: typeof entry.rootPathLabel === 'string' ? entry.rootPathLabel : entry.rootPath,
       status: ['ready', 'working', 'blocked', 'offline', 'unknown'].includes(String(entry.status)) ? entry.status as ProjectSummary['status'] : 'unknown',
       connectionLabel: typeof entry.connectionLabel === 'string' ? entry.connectionLabel : 'Saved project',
-      lastOpenedAt: entry.lastOpenedAt
+      lastOpenedAt: entry.lastOpenedAt,
+      coordinatorThreadId: typeof entry.coordinatorThreadId === 'string' && /^[a-zA-Z0-9._:-]{1,128}$/u.test(entry.coordinatorThreadId) ? entry.coordinatorThreadId : null
     }];
   });
   return {
@@ -137,7 +139,20 @@ export class RepositoryService {
   }
 
   async listProjects(): Promise<ProjectSummary[]> {
-    return this.registry.projects.map(({ rootPath: _rootPath, ...project }) => structuredClone(project));
+    return this.registry.projects.map(({ rootPath: _rootPath, coordinatorThreadId: _threadId, ...project }) => structuredClone(project));
+  }
+
+  getCurrentRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null {
+    const project = this.registry.projects.find((item) => item.id === this.registry.currentProjectId);
+    return project ? { projectId: project.id, rootPath: project.rootPath, threadId: project.coordinatorThreadId } : null;
+  }
+
+  async setCoordinatorThread(projectId: string, threadId: string): Promise<void> {
+    if (!/^[a-zA-Z0-9._:-]{1,128}$/u.test(threadId)) throw new Error('Invalid coordinator thread id');
+    const project = this.registry.projects.find((item) => item.id === projectId);
+    if (!project) throw new Error('Unknown project for coordinator thread');
+    project.coordinatorThreadId = threadId;
+    await this.persistRegistry();
   }
 
   async openProject(): Promise<UiActionResult> {
@@ -160,7 +175,8 @@ export class RepositoryService {
         rootPathLabel: next.project.rootPathLabel,
         status: next.project.status,
         connectionLabel: next.project.connectionLabel,
-        lastOpenedAt: now
+        lastOpenedAt: now,
+        coordinatorThreadId: this.registry.projects.find((project) => project.id === next.project.id)?.coordinatorThreadId ?? null
       };
       this.registry.projects = [entry, ...this.registry.projects.filter((project) => project.id !== entry.id)].slice(0, 24);
       this.registry.currentProjectId = entry.id;

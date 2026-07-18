@@ -32,6 +32,9 @@ describe('RepositoryService', () => {
 
     await service.initialize();
     expect((await service.getSnapshot()).project.title).toBe('first');
+    const firstContext = service.getCurrentRuntimeContext()!;
+    await service.setCoordinatorThread(firstContext.projectId, 'thread-1');
+    expect(service.getCurrentRuntimeContext()).toMatchObject({ rootPath: first, threadId: 'thread-1' });
     await expect(service.selectRoot(second)).resolves.toMatchObject({ status: 'accepted' });
     const projects = await service.listProjects();
     expect(projects.map((project) => project.title).sort()).toEqual(['first', 'second']);
@@ -39,7 +42,9 @@ describe('RepositoryService', () => {
     expect((await service.getSnapshot()).project.title).toBe('first');
     expect(snapshots).toContain('second');
     expect(await readFile(path.join(first, '.orquesta', 'state', 'agents.json'), 'utf8')).toBe(firstAgentsBefore);
-    expect(JSON.parse(await readFile(registryPath, 'utf8')).projects).toHaveLength(2);
+    const registry = JSON.parse(await readFile(registryPath, 'utf8')) as { projects: Array<{ title: string; coordinatorThreadId: string | null }> };
+    expect(registry.projects).toHaveLength(2);
+    expect(registry.projects.find((project) => project.title === 'first')?.coordinatorThreadId).toBe('thread-1');
     await service.stop();
   });
 

@@ -10,6 +10,8 @@ describe('createDesktopHostApi', () => {
       if (channel === DESKTOP_IPC.getRepositorySnapshot) return snapshot;
       if (channel === DESKTOP_IPC.listRepositories) return [];
       if (channel === DESKTOP_IPC.switchRepository || channel === DESKTOP_IPC.openRepository) return { status: 'accepted', correlationId: 'action-1' };
+      if (channel === DESKTOP_IPC.sendMessage) return { status: 'accepted', correlationId: 'send-1' };
+      if (channel === DESKTOP_IPC.listConversation) return { items: [], nextCursor: null };
       return input;
     });
     const listeners = new Set<(payload: unknown) => void>();
@@ -25,6 +27,8 @@ describe('createDesktopHostApi', () => {
     await expect(api.listRepositories()).resolves.toEqual([]);
     await expect(api.switchRepository('repo-1')).resolves.toMatchObject({ status: 'accepted' });
     await expect(api.openRepository()).resolves.toMatchObject({ status: 'accepted' });
+    await expect(api.sendMessage({ targetAgentId: 'orchestrator', text: 'Continue.', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted' });
+    await expect(api.listConversation({ targetAgentId: 'orchestrator', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
     const listener = vi.fn();
     const unsubscribe = api.subscribeRepository(listener);
     for (const notify of listeners) notify(snapshot);
@@ -36,7 +40,9 @@ describe('createDesktopHostApi', () => {
       [DESKTOP_IPC.getRepositorySnapshot],
       [DESKTOP_IPC.listRepositories],
       [DESKTOP_IPC.switchRepository, { projectId: 'repo-1' }],
-      [DESKTOP_IPC.openRepository]
+      [DESKTOP_IPC.openRepository],
+      [DESKTOP_IPC.sendMessage, { targetAgentId: 'orchestrator', text: 'Continue.', attachmentIds: [], selectedContextIds: [] }],
+      [DESKTOP_IPC.listConversation, { targetAgentId: 'orchestrator', limit: 20 }]
     ]);
     expect(api).not.toHaveProperty('invoke');
     expect(api).not.toHaveProperty('send');

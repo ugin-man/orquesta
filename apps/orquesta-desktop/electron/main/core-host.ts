@@ -1,4 +1,6 @@
-import type { CoreEvent, CoreRequest } from '../core/protocol';
+import { randomUUID } from 'node:crypto';
+import type { ConversationPage } from '../../src/contracts/bridge';
+import type { CoreEvent, CoreRequest, RuntimeNotification } from '../core/protocol';
 import { isCoreEvent } from '../core/protocol';
 
 export interface CoreChildProcess {
@@ -13,6 +15,7 @@ export interface CoreHostOptions {
   fork(coreEntryPath: string): CoreChildProcess;
   shutdownTimeoutMs?: number;
   pingTimeoutMs?: number;
+  runtimeTimeoutMs?: number;
 }
 
 export type CoreHostStatus = 'stopped' | 'starting' | 'ready' | 'stopping';
@@ -23,9 +26,18 @@ interface PendingPing {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface PendingRuntime<T> {
+  resolve(value: T): void;
+  reject(error: Error): void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 export class CoreHost {
-  readonly #options: Required<Pick<CoreHostOptions, 'shutdownTimeoutMs' | 'pingTimeoutMs'>> & CoreHostOptions;
+  readonly #options: Required<Pick<CoreHostOptions, 'shutdownTimeoutMs' | 'pingTimeoutMs' | 'runtimeTimeoutMs'>> & CoreHostOptions;
   readonly #pendingPings = new Map<string, PendingPing>();
+  readonly #pendingDispatches = new Map<string, PendingRuntime<{ correlationId: string; threadId: string; turnId: string; actualModel: string | null }>>();
+  readonly #pendingConversations = new Map<string, PendingRuntime<ConversationPage>>();
+  readonly #runtimeListeners = new Set<(notification: RuntimeNotification) => void>();
   #child: CoreChildProcess | null = null;
   #status: CoreHostStatus = 'stopped';
   #stopPromise: Promise<void> | null = null;
@@ -36,6 +48,7 @@ export class CoreHost {
     this.#options = {
       shutdownTimeoutMs: options.shutdownTimeoutMs ?? 2_000,
       pingTimeoutMs: options.pingTimeoutMs ?? 5_000,
+      runtimeTimeoutMs: options.runtimeTimeoutMs ?? 60_000,
       ...options
     };
   }
@@ -78,6 +91,37 @@ export class CoreHost {
     });
   }
 
+  sendMessage(input: { projectId: string; rootPath: string; threadId: string | null; targetAgentId: string; text: string }): Promise<{ correlationId: string; threadId: string; turnId: string; actualModel: string | null }> {
+    if (this.#status !== 'ready' || !this.#child) return Promise.reject(new Error('Orquesta Core is not ready'));
+    const correlationId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.#pendingDispatches.delete(correlationId);
+        reject(new Error('Codex runtime dispatch timed out'));
+      }, this.#options.runtimeTimeoutMs);
+      this.#pendingDispatches.set(correlationId, { resolve, reject, timeout });
+      this.#child?.postMessage({ type: 'runtime.send', correlationId, ...input });
+    });
+  }
+
+  listConversation(input: { threadId: string; targetAgentId: string; limit: number }): Promise<ConversationPage> {
+    if (this.#status !== 'ready' || !this.#child) return Promise.reject(new Error('Orquesta Core is not ready'));
+    const correlationId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.#pendingConversations.delete(correlationId);
+        reject(new Error('Codex runtime conversation read timed out'));
+      }, this.#options.runtimeTimeoutMs);
+      this.#pendingConversations.set(correlationId, { resolve, reject, timeout });
+      this.#child?.postMessage({ type: 'runtime.conversation', correlationId, ...input });
+    });
+  }
+
+  subscribeRuntime(listener: (notification: RuntimeNotification) => void): () => void {
+    this.#runtimeListeners.add(listener);
+    return () => this.#runtimeListeners.delete(listener);
+  }
+
   stop(): Promise<void> {
     if (!this.#child) {
       this.#status = 'stopped';
@@ -117,6 +161,35 @@ export class CoreHost {
       pending.resolve({ correlationId: event.correlationId });
       return;
     }
+    if (event.type === 'runtime.dispatch.accepted') {
+      const pending = this.#pendingDispatches.get(event.correlationId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      this.#pendingDispatches.delete(event.correlationId);
+      pending.resolve({ correlationId: event.correlationId, threadId: event.threadId, turnId: event.turnId, actualModel: event.actualModel });
+      return;
+    }
+    if (event.type === 'runtime.conversation.result') {
+      const pending = this.#pendingConversations.get(event.correlationId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      this.#pendingConversations.delete(event.correlationId);
+      pending.resolve(event.page);
+      return;
+    }
+    if (event.type === 'runtime.request.failed') {
+      const pending = this.#pendingDispatches.get(event.correlationId) ?? this.#pendingConversations.get(event.correlationId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      this.#pendingDispatches.delete(event.correlationId);
+      this.#pendingConversations.delete(event.correlationId);
+      pending.reject(new Error(event.reason));
+      return;
+    }
+    if (event.type === 'runtime.notification') {
+      for (const listener of this.#runtimeListeners) listener(structuredClone(event.notification));
+      return;
+    }
     this.#finishStop();
   }
 
@@ -130,6 +203,13 @@ export class CoreHost {
       pending.reject(new Error('Orquesta Core stopped'));
     }
     this.#pendingPings.clear();
+    for (const pending of [...this.#pendingDispatches.values(), ...this.#pendingConversations.values()]) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error('Orquesta Core stopped'));
+    }
+    this.#pendingDispatches.clear();
+    this.#pendingConversations.clear();
+    this.#runtimeListeners.clear();
     const resolveStop = this.#resolveStop;
     this.#resolveStop = null;
     this.#stopPromise = null;

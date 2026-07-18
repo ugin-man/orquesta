@@ -1,5 +1,6 @@
-import type { ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
+import type { ConversationPage, ConversationQuery, ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import type { RuntimeNotification } from '../core/protocol';
 
 export type CoreStatus = 'starting' | 'ready' | 'stopped';
 
@@ -16,6 +17,9 @@ export interface DesktopHostApi {
   switchRepository(projectId: string): Promise<UiActionResult>;
   openRepository(): Promise<UiActionResult>;
   subscribeRepository(listener: (snapshot: OrquestaUiSnapshot) => void): () => void;
+  sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult>;
+  listConversation(input: ConversationQuery): Promise<ConversationPage>;
+  subscribeRuntime(listener: (notification: RuntimeNotification) => void): () => void;
 }
 
 export const DESKTOP_IPC = {
@@ -25,5 +29,8 @@ export const DESKTOP_IPC = {
   listRepositories: 'orquesta.desktop.repository.list',
   switchRepository: 'orquesta.desktop.repository.switch',
   openRepository: 'orquesta.desktop.repository.open',
-  repositoryChanged: 'orquesta.desktop.repository.changed'
+  repositoryChanged: 'orquesta.desktop.repository.changed',
+  sendMessage: 'orquesta.desktop.runtime.send-message',
+  listConversation: 'orquesta.desktop.runtime.list-conversation',
+  runtimeChanged: 'orquesta.desktop.runtime.changed'
 } as const;

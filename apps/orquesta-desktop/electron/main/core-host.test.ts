@@ -39,6 +39,36 @@ describe('CoreHost', () => {
     await expect(pending).resolves.toEqual({ correlationId: 'ping-1' });
   });
 
+  test('accepts a runtime dispatch only after the Core returns thread and turn evidence', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+
+    const pending = host.sendMessage({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null, targetAgentId: 'orchestrator', text: 'Continue.' });
+    const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    child.emit('message', { type: 'runtime.dispatch.accepted', correlationId: request.correlationId, threadId: 'thread-1', turnId: 'turn-1', actualModel: 'gpt-current' });
+
+    await expect(pending).resolves.toEqual({ correlationId: request.correlationId, threadId: 'thread-1', turnId: 'turn-1', actualModel: 'gpt-current' });
+  });
+
+  test('forwards bounded runtime notifications and conversation pages', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+    const listener = vi.fn();
+    host.subscribeRuntime(listener);
+
+    const pending = host.listConversation({ threadId: 'thread-1', targetAgentId: 'orchestrator', limit: 20 });
+    const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    child.emit('message', { type: 'runtime.conversation.result', correlationId: request.correlationId, page: { items: [], nextCursor: null } });
+    child.emit('message', { type: 'runtime.notification', notification: { kind: 'turn_started', threadId: 'thread-1', turnId: 'turn-1', text: null } });
+
+    await expect(pending).resolves.toEqual({ items: [], nextCursor: null });
+    expect(listener).toHaveBeenCalledWith({ kind: 'turn_started', threadId: 'thread-1', turnId: 'turn-1', text: null });
+  });
+
   test('requests a clean shutdown and kills after the bounded timeout', async () => {
     vi.useFakeTimers();
     const child = new FakeCoreChild();

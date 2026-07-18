@@ -109,13 +109,21 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
 
   const closeOverlay = useCallback(() => setOverlay(null), []);
   const openProjects = async () => {
-    setProjects(await bridge.listProjects());
-    setOverlay({ kind: 'project-switcher' });
+    try {
+      setProjects(await bridge.listProjects());
+      setOverlay({ kind: 'project-switcher' });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
   };
   const openConversation = async () => {
-    const page = await bridge.listConversation({ targetAgentId });
-    setMessages(page.items);
-    setOverlay({ kind: 'conversation' });
+    try {
+      const page = await bridge.listConversation({ targetAgentId });
+      setMessages(page.items);
+      setOverlay({ kind: 'conversation' });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
   };
   const openHistory = async () => {
     setHistory(await bridge.listAttentionHistory());
@@ -129,10 +137,15 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     if (!draft.trim() || sending) return;
     setSending(true);
     setActionError(null);
-    const result = await bridge.sendMessage({ targetAgentId, text: draft.trim(), attachmentIds: [], selectedContextIds: [] });
-    setSending(false);
-    if (result.status === 'accepted') setDraft('');
-    else setActionError(result.reason);
+    try {
+      const result = await bridge.sendMessage({ targetAgentId, text: draft.trim(), attachmentIds: [], selectedContextIds: [] });
+      if (result.status === 'accepted') setDraft('');
+      else setActionError(result.reason);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSending(false);
+    }
   };
   const resolveAttention = async (item: AttentionUiItem) => {
     const result = await bridge.resolveAttentionItem({ id: item.id, resolution: 'resolved in prototype' });

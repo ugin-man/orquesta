@@ -68,6 +68,9 @@ if (!hasSingleInstanceLock) {
     repositories.subscribe((snapshot) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DESKTOP_IPC.repositoryChanged, snapshot);
     });
+    coreHost.subscribeRuntime((notification) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DESKTOP_IPC.runtimeChanged, notification);
+    });
   });
 }
 

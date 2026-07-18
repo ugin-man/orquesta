@@ -1,5 +1,7 @@
 # Validation
 
+> このファイルはChatGPTで作ったRenderer handoff時点の記録です。現在のElectron、マップ、repository、Codex runtimeの検証は`docs/validation/`を正とします。
+
 実行日: 2026-07-17
 
 ## 環境

@@ -4,7 +4,7 @@ import { DesktopRepositoryBridge } from '../../src/bridges/desktop-repository-br
 import { fixtureCatalog } from '../../src/fixtures';
 
 describe('DesktopRepositoryBridge', () => {
-  test('adapts the bounded host repository API and keeps writes unavailable', async () => {
+  test('adapts repository reads and runtime messages through the bounded host API', async () => {
     const snapshot = fixtureCatalog['active-project'].snapshot;
     const subscription: { listener: ((next: typeof snapshot) => void) | null } = { listener: null };
     const host = {
@@ -13,6 +13,9 @@ describe('DesktopRepositoryBridge', () => {
       switchRepository: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'switch-1' })),
       openRepository: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'open-1' })),
       subscribeRepository: vi.fn((listener: (next: typeof snapshot) => void) => { subscription.listener = listener; return () => { subscription.listener = null; }; }),
+      sendMessage: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'send-1' })),
+      listConversation: vi.fn(async () => ({ items: [], nextCursor: null })),
+      subscribeRuntime: vi.fn(() => () => undefined),
       getHostInfo: vi.fn(),
       pingCore: vi.fn()
     } satisfies DesktopHostApi;
@@ -26,7 +29,7 @@ describe('DesktopRepositoryBridge', () => {
     unsubscribe();
     await expect(bridge.switchProject('repo-1')).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.requestOpenProject()).resolves.toMatchObject({ status: 'accepted' });
-    await expect(bridge.sendMessage({ targetAgentId: 'orchestrator', text: 'hello', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'unavailable' });
+    await expect(bridge.sendMessage({ targetAgentId: 'orchestrator', text: 'hello', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.resolveAttentionItem({ id: 'A1', resolution: 'done' })).resolves.toMatchObject({ status: 'unsupported' });
   });
 });

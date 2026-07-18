@@ -15,10 +15,6 @@ function correlationId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `desktop-${Date.now()}`;
 }
 
-function unavailable(reason: string): UiActionResult {
-  return { status: 'unavailable', correlationId: correlationId(), reason, retryable: true };
-}
-
 function unsupported(reason: string): UiActionResult {
   return { status: 'unsupported', correlationId: correlationId(), reason, retryable: false };
 }
@@ -35,11 +31,26 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
   }
 
   subscribe(listener: (event: BridgeEvent) => void): () => void {
-    return this.host.subscribeRepository((snapshot) => listener({ type: 'snapshot_changed', snapshot }));
+    const unsubscribeRepository = this.host.subscribeRepository((snapshot) => listener({ type: 'snapshot_changed', snapshot }));
+    const unsubscribeRuntime = this.host.subscribeRuntime((notification) => {
+      const tone = notification.kind === 'turn_failed' ? 'danger' : notification.kind === 'turn_completed' ? 'success' : 'neutral';
+      const title = notification.kind === 'turn_started' ? 'Codex turn started'
+        : notification.kind === 'turn_completed' ? 'Codex turn completed'
+          : notification.kind === 'turn_failed' ? 'Codex turn failed' : 'Coordinator replied';
+      listener({
+        type: 'toast',
+        toast: {
+          id: `${notification.kind}-${notification.turnId ?? notification.threadId}-${Date.now()}`,
+          tone, title, message: notification.text ?? (notification.kind === 'turn_started' ? 'The coordinator accepted the instruction.' : title),
+          taskId: null, createdAt: new Date().toISOString()
+        }
+      });
+    });
+    return () => { unsubscribeRepository(); unsubscribeRuntime(); };
   }
 
-  async sendMessage(_input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult> {
-    return unavailable('Codex App Server command runtime is not connected yet. The draft remains in the app.');
+  sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult> {
+    return this.host.sendMessage(input);
   }
 
   async openAttentionItem(_id: string): Promise<UiActionResult> {
@@ -50,8 +61,8 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
     return unsupported('Read-only repository mode cannot resolve canonical attention state.');
   }
 
-  async listConversation(_input: ConversationQuery): Promise<ConversationPage> {
-    return { items: [], nextCursor: null };
+  listConversation(input: ConversationQuery): Promise<ConversationPage> {
+    return this.host.listConversation(input);
   }
 
   listProjects(): Promise<ProjectSummary[]> {
