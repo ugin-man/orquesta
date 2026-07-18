@@ -22,7 +22,10 @@ test("CodexAdapter declares the complete stable method surface", () => {
     "interruptTurn",
     "respondToApproval",
     "subscribeEvents",
-    "readActualModel"
+    "readActualModel",
+    "readThread",
+    "runtimeInfo",
+    "shutdown"
   ]);
   assert.deepEqual(ADAPTER_FAILURE_STATUSES, [
     "unsupported",

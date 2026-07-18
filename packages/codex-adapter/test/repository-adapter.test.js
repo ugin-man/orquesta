@@ -19,14 +19,14 @@ test("repository adapter reports repository-only capability truth", async () => 
   assert.deepEqual(result.capabilities, Object.fromEntries(
     CODEX_ADAPTER_METHODS
       .filter((method) => method !== "capabilities")
-      .map((method) => [method, false])
+      .map((method) => [method, ["runtimeInfo", "shutdown"].includes(method)])
   ));
 });
 
 test("repository adapter returns unsupported without runtime evidence for every runtime action", async () => {
   const adapter = createRepositoryAdapter();
   const runtimeMethods = CODEX_ADAPTER_METHODS.filter(
-    (method) => method !== "capabilities"
+    (method) => !["capabilities", "runtimeInfo", "shutdown"].includes(method)
   );
 
   for (const method of runtimeMethods) {
@@ -44,6 +44,23 @@ test("repository adapter returns unsupported without runtime evidence for every 
       actual_model: null
     }, method);
   }
+});
+
+test("repository adapter exposes non-secret adapter metadata and a completed no-op shutdown", async () => {
+  const adapter = createRepositoryAdapter();
+  const info = await adapter.runtimeInfo({ correlationId: "corr-info", probe: false });
+  assert.equal(info.ok, true);
+  assert.equal(info.status, "completed");
+  assert.equal(info.adapter, "repository_only");
+  assert.equal(info.adapter_package, "@orquesta/codex-adapter");
+  assert.equal(info.adapter_package_version, "0.4.0-preview.1");
+  assert.equal(info.sdk_package, null);
+  assert.equal(JSON.stringify(info).includes("executable"), false);
+
+  const shutdown = await adapter.shutdown({ correlationId: "corr-shutdown" });
+  assert.equal(shutdown.ok, true);
+  assert.equal(shutdown.status, "completed");
+  assert.equal(shutdown.operation, "shutdown");
 });
 
 test("repository adapter creates only an explicit detached handoff draft", () => {

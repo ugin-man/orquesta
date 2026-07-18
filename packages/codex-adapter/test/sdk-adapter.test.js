@@ -299,3 +299,69 @@ test("keeps steer, direct approval, and actual-model evidence explicitly unsuppo
     assert.equal(result.evidence.actual_model, null, method);
   }
 });
+
+test("reports pinned SDK metadata without creating a client and keeps thread reads unsupported", async () => {
+  let factoryCalls = 0;
+  const adapter = createSdkAdapter({
+    codexFactory: async () => {
+      factoryCalls += 1;
+      return {};
+    }
+  });
+  const info = await adapter.runtimeInfo({ correlationId: "corr-info", probe: true });
+  assert.equal(info.ok, true);
+  assert.equal(info.adapter_package, "@orquesta/codex-adapter");
+  assert.equal(info.adapter_package_version, "0.4.0-preview.1");
+  assert.equal(info.sdk_package, "@openai/codex-sdk");
+  assert.equal(info.sdk_version, "0.144.5");
+  assert.equal(info.codex_package, "@openai/codex");
+  assert.equal(info.codex_version, "0.144.5");
+  assert.equal(factoryCalls, 0);
+  assert.equal(JSON.stringify(info).includes("executable"), false);
+
+  const read = await adapter.readThread({
+    correlationId: "corr-read",
+    threadId: "thread-sdk",
+    includeTurns: true
+  });
+  assert.equal(read.status, "unsupported");
+});
+
+test("shutdown aborts active SDK streams, clears state, and permits a clean restart", async () => {
+  let factoryCalls = 0;
+  let capturedSignal;
+  let releaseStream;
+  const adapter = createSdkAdapter({
+    codexFactory: async () => {
+      factoryCalls += 1;
+      return {
+        startThread: () => ({
+          id: `thread-${factoryCalls}`,
+          async runStreamed(_input, options) {
+            capturedSignal = options.signal;
+            return {
+              events: (async function* () {
+                yield { type: "turn.started" };
+                await new Promise((resolve) => { releaseStream = resolve; });
+              })()
+            };
+          }
+        })
+      };
+    }
+  });
+
+  const first = await adapter.createThread({ correlationId: "corr-first", profile: {} });
+  await adapter.startTurn({ correlationId: "corr-turn", threadHandle: first.thread_handle, input: "hello" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const shutdown = await adapter.shutdown({ correlationId: "corr-shutdown" });
+  assert.equal(shutdown.ok, true);
+  assert.equal(shutdown.status, "completed");
+  assert.equal(capturedSignal.aborted, true);
+  const stale = await adapter.interruptTurn({ correlationId: "corr-stale", threadHandle: first.thread_handle });
+  assert.equal(stale.status, "unsupported");
+
+  await adapter.createThread({ correlationId: "corr-second", profile: {} });
+  assert.equal(factoryCalls, 2);
+  releaseStream();
+});

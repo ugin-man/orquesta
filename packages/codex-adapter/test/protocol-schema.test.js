@@ -14,6 +14,7 @@ test("pins the generated App Server v2 lifecycle subset", () => {
     "initialize",
     "thread/start",
     "thread/resume",
+    "thread/read",
     "turn/start",
     "turn/steer",
     "turn/interrupt"
@@ -22,6 +23,11 @@ test("pins the generated App Server v2 lifecycle subset", () => {
     "input",
     "threadId"
   ]);
+  assert.deepEqual(schema.client_requests["thread/read"], {
+    required: ["id", "method", "params"],
+    params_required: ["threadId"],
+    response_required: ["thread"]
+  });
   assert.deepEqual(schema.client_requests["turn/steer"].params_required, [
     "expectedTurnId",
     "input",

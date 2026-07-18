@@ -1,4 +1,5 @@
 const {
+  ADAPTER_PACKAGE,
   createAdapterFailure,
   deepFreeze,
   defineCodexAdapter
@@ -13,7 +14,10 @@ const SDK_CAPABILITIES = Object.freeze({
   interruptTurn: true,
   respondToApproval: false,
   subscribeEvents: true,
-  readActualModel: false
+  readActualModel: false,
+  readThread: false,
+  runtimeInfo: true,
+  shutdown: true
 });
 
 const THREAD_OPTION_FIELDS = Object.freeze([
@@ -352,7 +356,39 @@ function createSdkAdapter({
       "readActualModel",
       correlationId,
       "Codex SDK 0.144.5 provides no independent actual-model evidence."
-    )
+    ),
+
+    readThread: ({ correlationId }) => unsupported(
+      "readThread",
+      correlationId,
+      "Codex SDK 0.144.5 does not expose canonical thread history reads."
+    ),
+
+    runtimeInfo: ({ correlationId }) => success("runtimeInfo", correlationId, {
+      adapter_package: ADAPTER_PACKAGE.name,
+      adapter_package_version: ADAPTER_PACKAGE.version,
+      sdk_package: "@openai/codex-sdk",
+      sdk_version: "0.144.5",
+      codex_package: "@openai/codex",
+      codex_version: "0.144.5",
+      runtime_package: null,
+      runtime_package_version: null,
+      target_triple: null,
+      platform_family: null,
+      platform_os: null,
+      user_agent: null
+    }),
+
+    shutdown: ({ correlationId }) => {
+      for (const active of activeTurns.values()) {
+        active.controller.abort();
+      }
+      activeTurns.clear();
+      threads.clear();
+      eventListeners.clear();
+      codexPromise = null;
+      return success("shutdown", correlationId);
+    }
   };
 
   return defineCodexAdapter({

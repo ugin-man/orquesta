@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { ACQUISITION_LIMITS } = require("@orquesta/acquisition");
 const { canonicalHash } = require("@orquesta/contracts");
-const { createRepositoryAdapter } = require("@orquesta/codex-adapter");
+const { CAPABILITY_METHODS, createRepositoryAdapter } = require("@orquesta/codex-adapter");
 const { COMMAND_NAMES } = require("@orquesta/core");
 const { runDeterministicPhase2Slice } = require("./run-phase2-slice");
 
@@ -143,6 +143,9 @@ async function verifyPhase2({ root = REPOSITORY_ROOT, liveEvidencePath = DEFAULT
     if (resolved.startsWith(`${temporaryBase}${path.sep}`)) fs.rmSync(resolved, { recursive: true, force: true });
   }
   const repository = await createRepositoryAdapter().capabilities({ correlationId: "CORR-phase2-verifier" });
+  const expectedRepositoryCapabilities = Object.fromEntries(
+    CAPABILITY_METHODS.map((method) => [method, ["runtimeInfo", "shutdown"].includes(method)])
+  );
   const deterministicFailures = [];
   if (canonicalHash(ACQUISITION_LIMITS) !== canonicalHash({ max_requests_per_need: 8, max_requests_per_connector: 2, max_candidates: 3 })) deterministicFailures.push("acquisition_budget_drift");
   if (canonicalHash(slice.acquisition.connector_ids) !== canonicalHash(CONNECTOR_IDS)) deterministicFailures.push("connector_coverage_incomplete");
@@ -151,7 +154,11 @@ async function verifyPhase2({ root = REPOSITORY_ROOT, liveEvidencePath = DEFAULT
   if (canonicalHash(slice.runtime.timeline) !== canonicalHash(["dispatch_accepted", "turn_started", "progress_observed", "turn_completed"]) || slice.runtime.actual_model !== null) deterministicFailures.push("runtime_slice_mismatch");
   if (!slice.journal.replay_equivalent || slice.journal.evidence_count !== 7 || slice.acceptance.status !== "passed") deterministicFailures.push("evidence_slice_mismatch");
   if (!COMMAND_NAMES.includes("candidate.install.request") || !COMMAND_NAMES.includes("candidate.install.authorize") || COMMAND_NAMES.some((name) => name.includes("install.execute"))) deterministicFailures.push("install_authorization_boundary_drift");
-  if (repository.execution !== "unsupported" || repository.actual_model !== null || Object.values(repository.capabilities).some(Boolean)) deterministicFailures.push("repository_fallback_drift");
+  if (repository.execution !== "unsupported"
+      || repository.actual_model !== null
+      || canonicalHash(repository.capabilities) !== canonicalHash(expectedRepositoryCapabilities)) {
+    deterministicFailures.push("repository_fallback_drift");
+  }
   const deterministic = {
     passed: deterministicFailures.length === 0,
     failures: deterministicFailures,

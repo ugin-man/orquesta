@@ -22,6 +22,11 @@
       "params_required": ["threadId"],
       "response_required": ["approvalPolicy", "approvalsReviewer", "cwd", "model", "modelProvider", "sandbox", "thread"]
     },
+    "thread/read": {
+      "required": ["id", "method", "params"],
+      "params_required": ["threadId"],
+      "response_required": ["thread"]
+    },
     "turn/start": {
       "required": ["id", "method", "params"],
       "params_required": ["input", "threadId"],

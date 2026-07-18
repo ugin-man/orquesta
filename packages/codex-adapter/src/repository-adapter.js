@@ -1,4 +1,5 @@
 const {
+  ADAPTER_PACKAGE,
   CAPABILITY_METHODS,
   assertCorrelationId,
   createAdapterFailure,
@@ -7,7 +8,10 @@ const {
 } = require("./contract");
 
 const REPOSITORY_CAPABILITIES = Object.freeze(
-  Object.fromEntries(CAPABILITY_METHODS.map((method) => [method, false]))
+  Object.fromEntries(CAPABILITY_METHODS.map((method) => [
+    method,
+    ["runtimeInfo", "shutdown"].includes(method)
+  ]))
 );
 
 function createRepositoryAdapter() {
@@ -34,11 +38,49 @@ function createRepositoryAdapter() {
       correlation_id: correlationId,
       actual_model: null,
       capabilities: { ...REPOSITORY_CAPABILITIES }
+    }),
+
+    runtimeInfo: ({ correlationId }) => deepFreeze({
+      ok: true,
+      status: "completed",
+      adapter: "repository_only",
+      operation: "runtimeInfo",
+      correlation_id: correlationId,
+      thread_id: null,
+      turn_id: null,
+      approval_id: null,
+      actual_model: null,
+      adapter_package: ADAPTER_PACKAGE.name,
+      adapter_package_version: ADAPTER_PACKAGE.version,
+      sdk_package: null,
+      sdk_version: null,
+      codex_package: null,
+      codex_version: null,
+      runtime_package: null,
+      runtime_package_version: null,
+      target_triple: null,
+      platform_family: null,
+      platform_os: null,
+      user_agent: null
+    }),
+
+    shutdown: ({ correlationId }) => deepFreeze({
+      ok: true,
+      status: "completed",
+      adapter: "repository_only",
+      operation: "shutdown",
+      correlation_id: correlationId,
+      thread_id: null,
+      turn_id: null,
+      approval_id: null,
+      actual_model: null
     })
   };
 
   for (const method of CAPABILITY_METHODS) {
-    methods[method] = ({ correlationId }) => unsupported(method, correlationId);
+    if (!methods[method]) {
+      methods[method] = ({ correlationId }) => unsupported(method, correlationId);
+    }
   }
 
   const adapter = defineCodexAdapter({

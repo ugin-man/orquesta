@@ -176,11 +176,13 @@
 - Modify: `packages/codex-adapter/src/repository-adapter.js`
 - Modify: `packages/codex-adapter/src/sdk-adapter.js`
 - Modify: `packages/codex-adapter/test/contract.test.js`
+- Modify: `packages/codex-adapter/test/protocol-schema.test.js`
 - Modify: `packages/codex-adapter/test/app-server-adapter.test.js`
 - Modify: `packages/codex-adapter/test/repository-adapter.test.js`
 - Modify: `packages/codex-adapter/test/sdk-adapter.test.js`
+- Modify: `scripts/v4/verify-phase2.js`
 
-- [ ] Add failing contract tests requiring these new capability methods on all adapters:
+- [x] Add failing contract tests requiring these new capability methods on all adapters:
 
   ```js
   readThread({ correlationId, threadId, includeTurns: true })
@@ -190,17 +192,17 @@
 
   `readThread` may return `unsupported` on Repository and SDK adapters. `runtimeInfo({ probe: false })` must not spawn a process; `probe: true` may initialize App Server to collect platform/user-agent evidence. Neither form may include an executable path. `shutdown` must return a completed result even when the adapter was never started.
 
-- [ ] Add a failing App Server schema test for `thread/read` with `params_required: ["threadId"]` and `response_required: ["thread"]`. `includeTurns` is optional and must default to `true` in the adapter.
+- [x] Add a failing App Server schema test for `thread/read` with `params_required: ["threadId"]` and `response_required: ["thread"]`. `includeTurns` is optional and must default to `true` in the adapter.
 
-- [ ] Run the focused tests and confirm the missing capability/schema failures:
+- [x] Run the focused tests and confirm the missing capability/schema failures:
 
   ```powershell
   node --test packages/codex-adapter/test/contract.test.js packages/codex-adapter/test/app-server-adapter.test.js packages/codex-adapter/test/repository-adapter.test.js packages/codex-adapter/test/sdk-adapter.test.js
   ```
 
-- [ ] Extend `CAPABILITY_METHODS` and the capability objects without renaming or weakening any existing operation.
+- [x] Extend `CAPABILITY_METHODS` and the capability objects without renaming or weakening any existing operation.
 
-- [ ] Implement App Server `readThread` through the canonical validator and transport:
+- [x] Implement App Server `readThread` through the canonical validator and transport:
 
   ```js
   const params = { threadId, includeTurns };
@@ -210,21 +212,21 @@
   return success("readThread", correlationId, { thread_id: threadId, thread: result.thread });
   ```
 
-- [ ] Implement `runtimeInfo` from validated runtime and, only with `probe: true`, initialize metadata. Return package names/versions, target triple, platform family/OS, user agent, and adapter name. Exclude `executable_path`, `codexHome`, environment variables, and authentication material.
+- [x] Implement `runtimeInfo` from validated runtime and, only with `probe: true`, initialize metadata. Return package names/versions, target triple, platform family/OS, user agent, and adapter name. Exclude `executable_path`, `codexHome`, environment variables, and authentication material.
 
-- [ ] Implement Repository/SDK behavior exactly as tested: Repository and SDK `readThread` return `unsupported`; Repository `shutdown` is a completed no-op; SDK `shutdown` aborts tracked streams and clears internal state; both return non-secret package/adapter metadata from `runtimeInfo`.
+- [x] Implement Repository/SDK behavior exactly as tested: Repository and SDK `readThread` return `unsupported`; Repository `shutdown` is a completed no-op; SDK `shutdown` aborts tracked streams and clears internal state; both return non-secret package/adapter metadata from `runtimeInfo`.
 
-- [ ] Run the full adapter suite and V4 Phase 2 check:
+- [x] Run the full adapter suite and V4 Phase 2 check:
 
   ```powershell
   npm test --workspace @orquesta/codex-adapter
   npm run check:v4:phase2
   ```
 
-- [ ] Commit:
+- [x] Commit:
 
   ```powershell
-  git add packages/codex-adapter
+  git add packages/codex-adapter scripts/v4/verify-phase2.js docs/superpowers/plans/2026-07-18-orquesta-v4-desktop-integration.md
   git commit -m "feat: extend canonical Codex adapter operations"
   ```
 

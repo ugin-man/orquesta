@@ -4,6 +4,7 @@ const path = require("node:path");
 
 const schema = require("../protocol/app-server-schema.json");
 const {
+  ADAPTER_PACKAGE,
   CAPABILITY_METHODS,
   createAdapterFailure,
   deepFreeze,
@@ -22,7 +23,10 @@ const APP_SERVER_CAPABILITIES = Object.freeze({
   interruptTurn: true,
   respondToApproval: true,
   subscribeEvents: true,
-  readActualModel: false
+  readActualModel: false,
+  readThread: true,
+  runtimeInfo: true,
+  shutdown: true
 });
 
 class RuntimeUnavailableError extends Error {
@@ -85,6 +89,7 @@ function createAppServerAdapter({
   const approvalRelay = createApprovalRelay();
   let transport = null;
   let initializePromise = null;
+  let resolvedRuntime = null;
 
   function turnKey(threadId, turnId) {
     return `${threadId}\u0000${turnId}`;
@@ -135,6 +140,7 @@ function createAppServerAdapter({
   }
 
   function resolveRuntimeResult() {
+    if (resolvedRuntime) return resolvedRuntime;
     try {
       const resolved = resolveRuntime({
         sdkPackageRoot: sdkPackageRoot || findInstalledSdkPackageRoot()
@@ -144,7 +150,8 @@ function createAppServerAdapter({
           || resolved.executable_path.trim() === "") {
         throw new Error("bundled runtime result must contain executable_path");
       }
-      return deepFreeze({ ...resolved });
+      resolvedRuntime = deepFreeze({ ...resolved });
+      return resolvedRuntime;
     } catch (error) {
       throw new RuntimeUnavailableError(
         `pinned bundled Codex runtime is unavailable: ${error.message}`
@@ -478,7 +485,58 @@ function createAppServerAdapter({
         turn_started: false,
         actual_model: null
       }
-    })
+    }),
+
+    readThread: ({ correlationId, threadId, includeTurns = true }) => run(
+      "readThread",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        const params = { threadId, includeTurns };
+        validateRequest("thread/read", params);
+        const result = await transport.request("thread/read", params);
+        validateResponse("thread/read", result);
+        return success("readThread", correlationId, {
+          thread_id: threadId,
+          thread: result.thread
+        });
+      }
+    ),
+
+    runtimeInfo: ({ correlationId, probe = false }) => run(
+      "runtimeInfo",
+      correlationId,
+      async () => {
+        const runtime = resolveRuntimeResult();
+        const initialized = probe ? await ensureInitialized() : null;
+        return success("runtimeInfo", correlationId, {
+          adapter_package: ADAPTER_PACKAGE.name,
+          adapter_package_version: ADAPTER_PACKAGE.version,
+          sdk_package: runtime.sdk_package,
+          sdk_version: runtime.sdk_version,
+          codex_package: runtime.codex_package,
+          codex_version: runtime.codex_version,
+          runtime_package: runtime.runtime_package,
+          runtime_package_version: runtime.runtime_package_version,
+          target_triple: runtime.target_triple,
+          platform_family: initialized?.platformFamily ?? null,
+          platform_os: initialized?.platformOs ?? null,
+          user_agent: initialized?.userAgent ?? null
+        });
+      }
+    ),
+
+    shutdown: ({ correlationId }) => {
+      transport?.close("App Server adapter shut down");
+      approvalRelay.reset();
+      activeTurns.clear();
+      threadCorrelations.clear();
+      eventListeners.clear();
+      transport = null;
+      initializePromise = null;
+      resolvedRuntime = null;
+      return success("shutdown", correlationId);
+    }
   };
 
   for (const method of CAPABILITY_METHODS) {

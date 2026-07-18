@@ -77,6 +77,11 @@ function attachSuccessfulServer(process) {
           thread: makeThread(message.params.threadId)
         }
       });
+    } else if (message.method === "thread/read") {
+      process.send({
+        id: message.id,
+        result: { thread: makeThread(message.params.threadId) }
+      });
     } else if (message.method === "turn/start") {
       process.send({ id: message.id, result: { turn: makeTurn("turn-1") } });
     } else if (message.method === "turn/steer") {
@@ -132,6 +137,80 @@ test("spawns App Server without a shell and initializes exactly once before thre
     "thread/start",
     "thread/resume"
   ]);
+});
+
+test("reads canonical thread history with turns included by default", async () => {
+  const { adapter, process } = createHarness();
+  const result = await adapter.readThread({
+    correlationId: "corr-read",
+    threadId: "thread-history"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, "readThread");
+  assert.equal(result.thread_id, "thread-history");
+  assert.equal(result.thread.id, "thread-history");
+  const message = process.clientMessages.find((entry) => entry.method === "thread/read");
+  assert.deepEqual(message.params, { threadId: "thread-history", includeTurns: true });
+});
+
+test("reports non-secret pinned runtime metadata without probing unless explicitly requested", async () => {
+  const process = new FakeAppServerProcess();
+  attachSuccessfulServer(process);
+  const spawnCalls = [];
+  const adapter = createAppServerAdapter({
+    resolveRuntime: () => bundledRuntime(),
+    spawnProcess: (...args) => {
+      spawnCalls.push(args);
+      return process;
+    }
+  });
+
+  const unprobed = await adapter.runtimeInfo({ correlationId: "corr-info", probe: false });
+  assert.equal(unprobed.ok, true);
+  assert.equal(unprobed.operation, "runtimeInfo");
+  assert.equal(unprobed.sdk_package, "@openai/codex-sdk");
+  assert.equal(unprobed.sdk_version, "0.144.5");
+  assert.equal(unprobed.codex_package, "@openai/codex");
+  assert.equal(unprobed.codex_version, "0.144.5");
+  assert.equal(unprobed.runtime_package, "@openai/codex-win32-x64");
+  assert.equal(unprobed.runtime_package_version, "0.144.5-win32-x64");
+  assert.equal(unprobed.target_triple, "x86_64-pc-windows-msvc");
+  assert.equal(unprobed.platform_family, null);
+  assert.equal(unprobed.platform_os, null);
+  assert.equal(unprobed.user_agent, null);
+  assert.equal(spawnCalls.length, 0);
+  assert.equal(JSON.stringify(unprobed).includes("executable_path"), false);
+  assert.equal(JSON.stringify(unprobed).includes("codexHome"), false);
+
+  const probed = await adapter.runtimeInfo({ correlationId: "corr-probe", probe: true });
+  assert.equal(spawnCalls.length, 1);
+  assert.equal(probed.platform_family, "windows");
+  assert.equal(probed.platform_os, "windows");
+  assert.equal(probed.user_agent, "codex-cli/0.144.5");
+  assert.equal(JSON.stringify(probed).includes("C:\\codex-home"), false);
+});
+
+test("shutdown completes without resolving or spawning a runtime when never started", async () => {
+  let resolveCalls = 0;
+  let spawnCalls = 0;
+  const adapter = createAppServerAdapter({
+    resolveRuntime: () => {
+      resolveCalls += 1;
+      return bundledRuntime();
+    },
+    spawnProcess: () => {
+      spawnCalls += 1;
+      return new FakeAppServerProcess();
+    }
+  });
+
+  const result = await adapter.shutdown({ correlationId: "corr-shutdown" });
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "completed");
+  assert.equal(result.operation, "shutdown");
+  assert.equal(resolveCalls, 0);
+  assert.equal(spawnCalls, 0);
 });
 
 test("ignores direct runtime, executable, and PATH injection and spawns only the resolver result", async () => {

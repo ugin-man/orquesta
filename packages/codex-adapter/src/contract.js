@@ -12,8 +12,16 @@ const CODEX_ADAPTER_METHODS = Object.freeze([
   "interruptTurn",
   "respondToApproval",
   "subscribeEvents",
-  "readActualModel"
+  "readActualModel",
+  "readThread",
+  "runtimeInfo",
+  "shutdown"
 ]);
+
+const ADAPTER_PACKAGE = Object.freeze({
+  name: "@orquesta/codex-adapter",
+  version: "0.4.0-preview.1"
+});
 
 const CAPABILITY_METHODS = Object.freeze(
   CODEX_ADAPTER_METHODS.filter((method) => method !== "capabilities")
@@ -137,6 +145,7 @@ function defineCodexAdapter({ adapter, capabilities, methods }) {
 }
 
 module.exports = {
+  ADAPTER_PACKAGE,
   CODEX_ADAPTER_METHODS,
   CAPABILITY_METHODS,
   assertCorrelationId,
