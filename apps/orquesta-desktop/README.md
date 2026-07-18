@@ -1,38 +1,43 @@
-# Orquesta Desktop Renderer
+# Orquesta Desktop
 
-Orquesta V4 DesktopのHome画面を、Electron統合前にブラウザで確認するためのReact Rendererです。中央のOrquesta Map、Now、Project Status、Attention、Composer、各種overlayを、型付きfixtureと`MockOrquestaBridge`で動かします。
+Orquesta V4のWindows向けElectronアプリです。中央のOrquesta Map、Now、Project Status、Attention、Composer、各種overlayをReact Rendererで表示します。Electron Main、sandboxed Preload、別utility processのOrquesta Coreまで接続済みです。
 
-この段階ではElectron、Codex App Server、ローカルファイル、実際の`.orquesta` stateには接続しません。画面内にも`Prototype data`と表示します。
+Desktop Foundationの段階なので、表示データはまだ`MockOrquestaBridge`のfixtureです。Codex App Server、ローカルproject、実際の`.orquesta` stateとの接続は次の実装段階で行います。
 
 ## 必要なもの
 
-- Node.js 20.19.0以上
+- Windows 10または11
+- Node.js 22.12.0以上
 - npm
-- browser testを実行する場合はChromium
 
 ## 起動
 
 ```bash
-npm ci
-npm run dev
+npm ci --no-audit --no-fund
+npm run dev:desktop
 ```
+
+`dev:desktop`は内部でViteを起動し、外部browserではなくElectron windowを開きます。
 
 ## Commands
 
 ```bash
-npm run dev          # Vite開発サーバー
-npm run build        # TypeScript確認とproduction build
-npm test             # Vitest unit / component test
-npm run test:browser # Playwright interaction / accessibility test
-npm run test:visual  # 1440×900 / 1366×768 visual regression
-npm run check        # test、build、browser、visualをまとめて実行
-npm run preview      # distのローカルpreview
+npm run dev:desktop        # ViteとElectronを一緒に起動
+npm run build:desktop      # Renderer、Main、Preload、Coreをbuild
+npm run start:desktop      # production buildをElectronで起動
+npm run test               # Vitest unit / component / host test
+npm run test:desktop-smoke # 実Electronの起動、Preload、Core疎通test
+npm run package:win        # out/Orquesta-win32-x64を生成
+npm run make:win           # Windows installerとzipを生成
+npm run measure:desktop    # package済みexeの起動、memory、sizeを実測
+npm run validate:lockfile  # lockfileのdependency sourceを検証
 ```
 
-Playwrightで既定のChromiumを使えない環境では、実行ファイルを指定できます。
+Browser testとvisual regressionはRenderer fixtureの補助検証として残しています。製品の正式な実行環境ではありません。
 
 ```bash
-PLAYWRIGHT_CHROMIUM_PATH=/path/to/chromium npm run test:browser
+npm run test:browser
+npm run test:visual
 ```
 
 ## Fixture切り替え
@@ -73,6 +78,11 @@ src/
   contracts/             UI projectionとbridge interface
   bridges/               MockOrquestaBridge
   fixtures/              検証用snapshot
+electron/
+  main/                  native window、IPC、Core lifecycle
+  preload/               Rendererへ公開する限定API
+  core/                  projectとCodex接続を担うutility process
+  shared/                host contract
 ```
 
-Renderer componentはNode.js APIやfilesystemへ直接アクセスしません。Electron統合境界、visual invariant、検証結果は[`README-UI-HANDOFF.md`](./README-UI-HANDOFF.md)と[`VALIDATION.md`](./VALIDATION.md)を参照してください。
+Renderer componentはNode.js APIやfilesystemへ直接アクセスしません。Desktop Foundationの実測結果は[`docs/validation/desktop-foundation.md`](./docs/validation/desktop-foundation.md)、UIのhandoff情報は[`README-UI-HANDOFF.md`](./README-UI-HANDOFF.md)を参照してください。

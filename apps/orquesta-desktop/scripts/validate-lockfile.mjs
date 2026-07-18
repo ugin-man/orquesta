@@ -1,18 +1,19 @@
 import { readFile } from "node:fs/promises";
+import { isApprovedResolvedUrl } from './lockfile-policy.mjs';
 
 const lock = JSON.parse(await readFile(new URL("../package-lock.json", import.meta.url), "utf8"));
 const invalid = [];
 for (const [name, entry] of Object.entries(lock.packages ?? {})) {
   const resolved = entry?.resolved;
-  if (typeof resolved === "string" && !resolved.startsWith("https://registry.npmjs.org/")) {
+  if (typeof resolved === "string" && !isApprovedResolvedUrl(resolved)) {
     invalid.push(`${name || "<root>"}: ${resolved}`);
   }
 }
 
 if (invalid.length > 0) {
-  console.error("package-lock.json contains non-public registry URLs:");
+  console.error("package-lock.json contains unapproved dependency sources:");
   console.error(invalid.join("\n"));
   process.exit(1);
 }
 
-console.log("package-lock.json uses only registry.npmjs.org tarball URLs.");
+console.log("package-lock.json uses approved public and commit-pinned dependency sources.");

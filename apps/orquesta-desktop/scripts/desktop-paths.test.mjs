@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { resolveDesktopPaths } from './desktop-paths.mjs';
+
+const appRoot = path.resolve('C:\\repo\\apps\\orquesta-desktop');
+const paths = resolveDesktopPaths(appRoot);
+
+assert.equal(paths.appRoot, appRoot);
+assert.equal(paths.rendererDist, path.join(appRoot, 'dist'));
+assert.equal(paths.electronDist, path.join(appRoot, 'dist-electron'));
+assert.equal(paths.mainEntry, path.join(appRoot, 'electron', 'main', 'index.ts'));
+assert.equal(paths.preloadEntry, path.join(appRoot, 'electron', 'preload', 'index.ts'));
+assert.equal(paths.coreEntry, path.join(appRoot, 'electron', 'core', 'index.ts'));
+
+console.log('desktop path tests passed');
