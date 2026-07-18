@@ -662,18 +662,22 @@ App Serverが利用できない場合、V3と同じrepository-only adapterへ落
 
 ## デスクトップアプリ
 
-Build WeekではElectronを使う。現在のJavaScript/Node資産とCodex TypeScript SDKを再利用しやすく、Windows向けの完成速度が高いためである。Tauriへの移行は、メモリ使用量や配布サイズが実測で問題になった場合に再評価する。
+Electronを正式採用する。現在のJavaScript、Node資産とCodex TypeScript SDKを再利用しやすく、Windows向けの完成速度が高いためである。Tauriへの移行は、メモリ使用量や配布サイズがWindows実機の基準を超え、改善後もElectron runtimeが主因として残った場合だけ再評価する。
 
-構成はmain、preload、rendererを分ける。
+詳細は`docs/superpowers/specs/2026-07-18-orquesta-desktop-electron-architecture-design.md`を正とする。
 
-- mainだけがfilesystem、process、Codex App Serverへアクセスする。
+構成はmain、preload、renderer、Orquesta Core utility processへ分ける。
+
+- filesystem、process、Codex App ServerへアクセスできるのはmainとCoreだけにする。
+- mainはwindow、native dialog、process lifecycle、IPC中継を担当する。
+- Coreは`.orquesta`、watcher、UI projection、Codex App Serverを担当する。
 - rendererは直接Node APIへ触れない。
 - preloadは型付きの最小IPCだけを公開する。
 - Webから取得した内容をrendererでHTMLとして直接実行しない。
 - 秘密情報はevent journalやrenderer logへ保存しない。
-- Phase 1のWorkbench rendererをPhase 2でそのままデスクトップへ載せる。
+- Phase 1のWorkbench rendererをそのままデスクトップへ載せる。
 
-デスクトップ化は箱を作る作業であり、製品の差別化そのものではない。CapabilityからLearningまでの縦の流れが動かない状態で、先に配布パッケージだけを磨かない。
+開発中からElectronを正式な実行環境にする。ブラウザfixtureはcomponentとlayoutの補助確認に残すが、Windows DPI、native window、process lifecycle、package済みexeの合格証拠には使わない。
 
 ## Codexプラグイン
 
