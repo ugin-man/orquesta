@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fixtureCatalog } from '../../src/fixtures';
-import { buildMapLayout, taskHasActiveEvidence } from '../../src/renderer/features/map/layout';
+import { buildMapLayout, orthogonalPath, taskHasActiveEvidence } from '../../src/renderer/features/map/layout';
 
 describe('map layout', () => {
   it('creates a stable unique position for every agent', () => {
@@ -19,5 +19,11 @@ describe('map layout', () => {
     const dispatchOnly = fixtureCatalog['unknown-evidence'].snapshot.tasks.find((task) => task.id === 'U12');
     expect(active && taskHasActiveEvidence(active)).toBe(true);
     expect(dispatchOnly && taskHasActiveEvidence(dispatchOnly)).toBe(false);
+  });
+
+  it('uses straight orthogonal commands for organization links', () => {
+    const path = orthogonalPath({ x: 40, y: 20 }, { x: 180, y: 140 });
+    expect(path).toBe('M 40 20 V 80 H 180 V 140');
+    expect(path).not.toContain('C');
   });
 });

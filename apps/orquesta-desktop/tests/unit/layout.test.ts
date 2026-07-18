@@ -3,8 +3,8 @@ import { fixtureCatalog } from '../../src/fixtures';
 import { agent } from '../../src/fixtures/helpers';
 import { createStableLayout } from '../../src/renderer/features/map/layout';
 
-function makeAgent(id: string, assignedByAgentId: string | null) {
-  return agent({ id, displayName: id, role: 'Worker', roleSummary: 'Worker', iconKey: 'code', assignedByAgentId });
+function makeAgent(id: string, assignedByAgentId: string | null, role = 'Worker') {
+  return agent({ id, displayName: id, role, roleSummary: role, iconKey: 'code', assignedByAgentId });
 }
 
 function expectNoNodeCollisions(layout: ReturnType<typeof createStableLayout>) {
@@ -35,22 +35,42 @@ describe('stable map layout', () => {
     expect(layout.compact).toBe(true);
     expect(layout.agentPositions.size).toBe(35);
     expect(layout.width).toBeGreaterThan(1200);
-    const directReportYs = agents
-      .filter((item) => item.assignedByAgentId === 'orchestrator')
-      .map((item) => layout.agentPositions.get(item.id)?.y);
-    expect(new Set(directReportYs)).toHaveLength(1);
+    expect(layout.groups.length).toBeGreaterThan(1);
+    expect(layout.edges.every((edge) => ['spine', 'admin', 'support', 'production', 'delegation'].includes(edge.kind))).toBe(true);
+    expectNoNodeCollisions(layout);
+  });
+
+  test('keeps same-role implementation agents inside one visible production group', () => {
+    const agents = [
+      makeAgent('orchestrator', 'user', 'orchestrator'),
+      makeAgent('orquesta-admin', 'orchestrator', 'orquesta-admin'),
+      makeAgent('user-liaison', 'orchestrator', 'user-liaison'),
+      makeAgent('vision-curator', 'orchestrator', 'vision-curator'),
+      makeAgent('error-concierge', 'orchestrator', 'error-concierge'),
+      makeAgent('implementation-001', 'orchestrator', 'implementation'),
+      makeAgent('implementation-002', 'orchestrator', 'implementation'),
+      makeAgent('implementation-003', 'implementation-001', 'implementation')
+    ];
+
+    const layout = createStableLayout(agents);
+    const implementation = layout.groups.find((group) => group.id === 'implementation');
+
+    expect(implementation?.agentIds).toEqual(['implementation-001', 'implementation-002', 'implementation-003']);
+    expect(layout.agentPositions.get('orquesta-admin')!.x).toBeLessThan(layout.user.x);
+    expect(layout.agentPositions.get('user-liaison')!.x).toBeGreaterThan(layout.user.x);
+    expect(layout.agentPositions.size).toBe(agents.length);
     expectNoNodeCollisions(layout);
   });
 
   test('wraps eighty direct reports without dropping or colliding nodes', () => {
     const agents = [makeAgent('orchestrator', 'user')];
     for (let index = 0; index < 79; index += 1) {
-      agents.push(makeAgent(`worker-${String(index).padStart(2, '0')}`, 'orchestrator'));
+      agents.push(makeAgent(`worker-${String(index).padStart(2, '0')}`, 'orchestrator', 'implementation'));
     }
     const layout = createStableLayout(agents);
 
     expect(layout.agentPositions.size).toBe(80);
-    expect(layout.width).toBeLessThanOrEqual(3000);
+    expect(layout.width).toBeLessThanOrEqual(4200);
     expectNoNodeCollisions(layout);
   });
 
