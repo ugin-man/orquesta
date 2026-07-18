@@ -1,9 +1,11 @@
 import path from 'node:path';
-import { app, BrowserWindow, ipcMain, utilityProcess } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, utilityProcess } from 'electron';
 import squirrelStartup from 'electron-squirrel-startup';
 import { CoreHost } from './core-host';
 import { registerDesktopIpc } from './ipc-handlers';
 import { createMainWindowOptions } from './window-options';
+import { RepositoryService } from './repository-service';
+import { DESKTOP_IPC } from '../shared/host-contract';
 
 if (squirrelStartup) app.quit();
 
@@ -15,7 +17,8 @@ const coreHost = new CoreHost({
 });
 
 let mainWindow: BrowserWindow | null = null;
-let quittingAfterCoreStop = false;
+let repositories: RepositoryService | null = null;
+let quittingAfterServiceStop = false;
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow(createMainWindowOptions(preloadPath));
@@ -47,20 +50,33 @@ if (!hasSingleInstanceLock) {
     mainWindow.focus();
   });
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     app.setAppUserModelId('com.orquesta.desktop');
     coreHost.start();
-    registerDesktopIpc(ipcMain, coreHost);
+    repositories = new RepositoryService({
+      registryPath: path.join(app.getPath('userData'), 'repositories.json'),
+      initialRootPath: process.env.ORQUESTA_E2E === '1' ? process.env.ORQUESTA_E2E_PROJECT_ROOT : null,
+      chooseDirectory: async () => {
+        const options = { title: 'Open Orquesta project', properties: ['openDirectory' as const] };
+        const selection = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+        return selection.canceled ? null : selection.filePaths[0] ?? null;
+      }
+    });
+    await repositories.initialize();
+    registerDesktopIpc(ipcMain, coreHost, repositories);
     mainWindow = createMainWindow();
+    repositories.subscribe((snapshot) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DESKTOP_IPC.repositoryChanged, snapshot);
+    });
   });
 }
 
 app.on('window-all-closed', () => app.quit());
 app.on('before-quit', (event) => {
-  if (quittingAfterCoreStop || coreHost.status() === 'stopped') return;
+  if (quittingAfterServiceStop) return;
   event.preventDefault();
-  void coreHost.stop().finally(() => {
-    quittingAfterCoreStop = true;
+  void Promise.all([coreHost.stop(), repositories?.stop()]).finally(() => {
+    quittingAfterServiceStop = true;
     app.quit();
   });
 });

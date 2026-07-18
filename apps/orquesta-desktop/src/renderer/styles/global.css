@@ -67,6 +67,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
   backdrop-filter: blur(8px);
 }
 .prototype-badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
+.prototype-badge.live-state-badge i { background: var(--success); box-shadow: 0 0 0 3px rgba(79,146,120,.12); }
 .stale-ribbon {
   position: fixed;
   z-index: 42;
@@ -94,6 +95,27 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .loading-shell button { border: 1px solid var(--ink); border-radius: 999px; padding: 8px 16px; background: var(--ink); color: white; }
 .loading-mark { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--ink-muted); }
 .loading-mark i { width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--ink); border-radius: 50%; animation: spin .8s linear infinite; }
+
+.project-onboarding-shell { display: grid; place-items: center; }
+.project-onboarding {
+  position: relative;
+  z-index: 2;
+  width: min(510px, calc(100vw - 80px));
+  padding: 44px 48px 40px;
+  border: 1px solid rgba(187,180,169,.76);
+  border-radius: 18px;
+  background: rgba(250,248,242,.9);
+  box-shadow: 0 22px 58px rgba(40,34,26,.12);
+  text-align: center;
+  backdrop-filter: blur(14px);
+}
+.project-onboarding__mark { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper-strong); }
+.project-onboarding > p { margin: 0; color: var(--ink-muted); font-size: 9px; font-weight: 760; letter-spacing: .12em; text-transform: uppercase; }
+.project-onboarding h1 { margin: 12px 0 0; font-family: Georgia, 'Yu Mincho', serif; font-size: 25px; font-weight: 520; letter-spacing: -.02em; }
+.project-onboarding__rule { width: 52px; margin: 20px auto; border-top: 1px solid var(--line-strong); }
+.project-onboarding small { display: block; max-width: 390px; margin: 0 auto; color: var(--ink-muted); font-size: 11px; line-height: 1.7; }
+.project-onboarding button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 200px; margin-top: 26px; padding: 10px 16px; border: 1px solid var(--ink); border-radius: 999px; background: var(--ink); color: white; font-size: 10px; }
+.project-onboarding__error { margin: 14px 0 0 !important; color: var(--warning) !important; font-size: 10px !important; font-weight: 500 !important; letter-spacing: 0 !important; text-transform: none !important; }
 
 /* Map */
 .map-viewport {

@@ -14,10 +14,24 @@ describe('registerDesktopIpc', () => {
       status: vi.fn(() => 'ready' as const),
       ping: vi.fn(async (correlationId: string) => ({ correlationId }))
     };
+    const snapshot = { project: { id: 'repo-1' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [] };
+    const repositories = {
+      getSnapshot: vi.fn(async () => snapshot),
+      listProjects: vi.fn(async () => [{ id: 'repo-1' }]),
+      switchProject: vi.fn(async () => ({ status: 'accepted', correlationId: 'switch-1' })),
+      openProject: vi.fn(async () => ({ status: 'accepted', correlationId: 'open-1' }))
+    };
 
-    registerDesktopIpc(ipcMain, coreHost);
+    registerDesktopIpc(ipcMain, coreHost, repositories);
 
-    expect([...handlers.keys()]).toEqual([DESKTOP_IPC.getHostInfo, DESKTOP_IPC.pingCore]);
+    expect([...handlers.keys()]).toEqual([
+      DESKTOP_IPC.getHostInfo,
+      DESKTOP_IPC.pingCore,
+      DESKTOP_IPC.getRepositorySnapshot,
+      DESKTOP_IPC.listRepositories,
+      DESKTOP_IPC.switchRepository,
+      DESKTOP_IPC.openRepository
+    ]);
     await expect(handlers.get(DESKTOP_IPC.getHostInfo)?.({})).resolves.toEqual({
       platform: 'win32',
       coreStatus: 'ready'
@@ -25,6 +39,10 @@ describe('registerDesktopIpc', () => {
     await expect(handlers.get(DESKTOP_IPC.pingCore)?.({}, { correlationId: 'ping-1' })).resolves.toEqual({
       correlationId: 'ping-1'
     });
+    await expect(handlers.get(DESKTOP_IPC.getRepositorySnapshot)?.({})).resolves.toBe(snapshot);
+    await expect(handlers.get(DESKTOP_IPC.listRepositories)?.({})).resolves.toEqual([{ id: 'repo-1' }]);
+    await expect(handlers.get(DESKTOP_IPC.switchRepository)?.({}, { projectId: 'repo-1' })).resolves.toMatchObject({ status: 'accepted' });
+    await expect(handlers.get(DESKTOP_IPC.openRepository)?.({})).resolves.toMatchObject({ status: 'accepted' });
   });
 
   test('rejects malformed ping input without reaching Core', async () => {
@@ -35,9 +53,12 @@ describe('registerDesktopIpc', () => {
       }
     };
     const coreHost = { status: () => 'ready' as const, ping: vi.fn() };
-    registerDesktopIpc(ipcMain, coreHost);
+    const repositories = { getSnapshot: vi.fn(), listProjects: vi.fn(), switchProject: vi.fn(), openProject: vi.fn() };
+    registerDesktopIpc(ipcMain, coreHost, repositories);
 
     await expect(handlers.get(DESKTOP_IPC.pingCore)?.({}, { correlationId: '' })).rejects.toThrow('correlationId');
     expect(coreHost.ping).not.toHaveBeenCalled();
+    await expect(handlers.get(DESKTOP_IPC.switchRepository)?.({}, { projectId: '../escape' })).rejects.toThrow('projectId');
+    expect(repositories.switchProject).not.toHaveBeenCalled();
   });
 });

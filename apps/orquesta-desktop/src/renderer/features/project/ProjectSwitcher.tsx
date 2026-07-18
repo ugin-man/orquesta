@@ -23,8 +23,10 @@ export function ProjectSwitcher({ projects, currentProjectId, onSwitch, onOpenPr
     if (result.status === 'accepted') onClose(); else setMessage(result.reason);
   };
   const openProject = async () => {
+    setBusy('open-project'); setMessage(null);
     const result = await onOpenProject();
-    if (result.status !== 'accepted') setMessage(result.reason);
+    setBusy(null);
+    if (result.status === 'accepted') onClose(); else setMessage(result.reason);
   };
   return (
     <OverlayFrame title={t('switchProjectTitle')} subtitle={t('recentProjects')} ariaLabel={t('switchProjectTitle')} className="project-switcher-overlay" onClose={onClose}>
@@ -37,7 +39,7 @@ export function ProjectSwitcher({ projects, currentProjectId, onSwitch, onOpenPr
           </button>
         ))}
       </div>
-      <button type="button" className="secondary-action" onClick={() => void openProject()}><FolderOpen size={16} />{t('openProjectFolder')}</button>
+      <button type="button" className="secondary-action" onClick={() => void openProject()} disabled={busy !== null}><FolderOpen size={16} />{t('openProjectFolder')}</button>
       {message ? <p className="inline-message">{message}</p> : null}
     </OverlayFrame>
   );

@@ -11,7 +11,8 @@ test('boots the packaged renderer behind the bounded desktop API', async () => {
     cwd: appRoot,
     env: {
       ...process.env,
-      ORQUESTA_E2E: '1'
+      ORQUESTA_E2E: '1',
+      ORQUESTA_E2E_FIXTURE: 'active-project'
     }
   });
 

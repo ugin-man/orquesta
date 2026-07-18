@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { FolderOpen } from 'lucide-react';
 import type { AgentProposal, ConversationMessage, OrquestaRendererBridge, ProjectSummary } from '../../contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent } from '../../contracts/orquesta-ui';
+import { DesktopRepositoryBridge } from '../../bridges/desktop-repository-bridge';
 import { MockOrquestaBridge } from '../../bridges/mock-bridge';
 import { fixtureKeys, type FixtureId } from '../../fixtures';
 import { AttentionCard } from '../features/attention/AttentionCard';
@@ -33,10 +35,17 @@ export type OpenOverlay =
   | { kind: 'now-list' }
   | null;
 
-function queryFixture(): FixtureId {
-  if (typeof window === 'undefined') return 'active-project';
+function queryFixture(): FixtureId | null {
+  if (typeof window === 'undefined') return null;
   const requested = new URLSearchParams(window.location.search).get('fixture');
-  return fixtureKeys.includes(requested as FixtureId) ? requested as FixtureId : 'active-project';
+  return fixtureKeys.includes(requested as FixtureId) ? requested as FixtureId : null;
+}
+
+function createDefaultBridge(): OrquestaRendererBridge {
+  const fixture = queryFixture();
+  if (fixture) return new MockOrquestaBridge(fixture);
+  if (typeof window !== 'undefined' && window.orquestaDesktop) return new DesktopRepositoryBridge(window.orquestaDesktop);
+  return new MockOrquestaBridge('active-project');
 }
 function queryLocale(fallback: Locale): Locale {
   if (typeof window === 'undefined') return fallback;
@@ -66,6 +75,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [draft, setDraft] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('orchestrator');
   const [sending, setSending] = useState(false);
+  const [openingProject, setOpeningProject] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<RuntimeUiEvent[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -140,6 +150,34 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     return <main className="desktop-shell loading-shell" role="application" aria-label="Orquesta Desktop"><div className="loading-mark"><i />{t('loading')}</div></main>;
   }
 
+  if (snapshot.project.id === 'no-project') {
+    const openFirstProject = async () => {
+      if (openingProject) return;
+      setOpeningProject(true);
+      setActionError(null);
+      const result = await bridge.requestOpenProject();
+      setOpeningProject(false);
+      if (result.status !== 'accepted') setActionError(result.reason);
+    };
+    return (
+      <main className="desktop-shell project-onboarding-shell" role="application" aria-label="Orquesta Desktop">
+        <div className="paper-grain" aria-hidden="true" />
+        <span className="prototype-badge live-state-badge"><i />{t('liveState')}</span>
+        <section className="project-onboarding" aria-labelledby="project-onboarding-title">
+          <span className="project-onboarding__mark" aria-hidden="true"><FolderOpen size={27} /></span>
+          <p>{t('orquestaDesktop')}</p>
+          <h1 id="project-onboarding-title">{t('openFirstProjectTitle')}</h1>
+          <div className="project-onboarding__rule" aria-hidden="true" />
+          <small>{t('openFirstProjectBody')}</small>
+          <button type="button" onClick={() => void openFirstProject()} disabled={openingProject}>
+            <FolderOpen size={16} />{openingProject ? t('openingProject') : t('openProjectFolder')}
+          </button>
+          {actionError ? <p className="project-onboarding__error" role="status">{actionError}</p> : null}
+        </section>
+      </main>
+    );
+  }
+
   const selectedAgent = overlay?.kind === 'agent' ? snapshot.agents.find((agent) => agent.id === overlay.agentId) ?? null : null;
   const selectedTask = overlay?.kind === 'task' ? snapshot.tasks.find((task) => task.id === overlay.taskId) ?? null : null;
   const selectedAgentTask = selectedAgent?.currentTaskId ? snapshot.tasks.find((task) => task.id === selectedAgent.currentTaskId) ?? null : null;
@@ -149,7 +187,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   return (
     <main className={`desktop-shell project-${snapshot.project.status}`} role="application" aria-label="Orquesta Desktop">
       <div className="paper-grain" aria-hidden="true" />
-      <span className="prototype-badge"><i />{t('prototype')}</span>
+      <span className={`prototype-badge${snapshot.project.isDemoData ? '' : ' live-state-badge'}`}><i />{snapshot.project.isDemoData ? t('prototype') : t('liveState')}</span>
       {snapshot.project.status === 'offline' ? (
         <div className="stale-ribbon" role="status">{t('offlineSnapshot')} · {t('lastSynced')} {snapshot.project.lastSyncedAt ? new Date(snapshot.project.lastSyncedAt).toLocaleTimeString() : t('unknown')}</div>
       ) : null}
@@ -234,6 +272,6 @@ export function DesktopRendererApp({ bridge, initialLocale = 'en' }: { bridge?: 
     document.documentElement.classList.add('orquesta-root');
     return () => document.documentElement.classList.remove('orquesta-root');
   }, []);
-  const rendererBridge = useMemo(() => bridge ?? new MockOrquestaBridge(queryFixture()), [bridge]);
+  const rendererBridge = useMemo(() => bridge ?? createDefaultBridge(), [bridge]);
   return <I18nProvider initialLocale={queryLocale(initialLocale)}><Workspace bridge={rendererBridge} /></I18nProvider>;
 }
