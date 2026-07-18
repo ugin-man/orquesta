@@ -93,6 +93,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [proposals, setProposals] = useState<AgentProposal[]>([]);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const draftProjectId = useRef<string | null>(null);
+  const rendererReadyReported = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -117,6 +118,14 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       unsubscribe();
     };
   }, [bridge]);
+
+  useEffect(() => {
+    if (rendererReadyReported.current || (!snapshot && !loadingError) || !window.orquestaDesktop?.notifyRendererReady) return;
+    rendererReadyReported.current = true;
+    void window.orquestaDesktop.notifyRendererReady().catch(() => {
+      rendererReadyReported.current = false;
+    });
+  }, [loadingError, snapshot]);
 
   useEffect(() => {
     const projectId = snapshot?.project.id ?? null;
@@ -322,6 +331,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
         <ProjectStatusCard
           project={snapshot.project}
           phases={snapshot.phases}
+          agentCount={snapshot.agents.length}
           onOpenRoute={() => setOverlay({ kind: 'project-route' })}
           onSwitchProject={() => void openProjects()}
           onOpenOperations={() => setOverlay({ kind: 'operations' })}

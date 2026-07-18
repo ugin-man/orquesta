@@ -7,11 +7,13 @@ import { createMainWindowOptions, createSplashWindowOptions, splashDocument } fr
 import { RepositoryService } from './repository-service';
 import { DESKTOP_IPC } from '../shared/host-contract';
 import { AttachmentService } from './attachment-service';
+import { createWindowReadinessGate, type WindowReadinessGate } from './window-readiness';
+import { useFakeRuntimeCore } from './startup-mode';
 
 if (squirrelStartup) app.quit();
 
 const preloadPath = path.join(__dirname, 'preload.cjs');
-const coreEntryPath = process.env.ORQUESTA_E2E === '1' && !app.isPackaged
+const coreEntryPath = useFakeRuntimeCore(process.env) && !app.isPackaged
   ? path.join(__dirname, 'core-e2e.cjs')
   : path.join(__dirname, 'core.cjs');
 const coreHost = new CoreHost({
@@ -24,6 +26,7 @@ let splashWindow: BrowserWindow | null = null;
 let repositories: RepositoryService | null = null;
 let quittingAfterServiceStop = false;
 let splashStartedAt = 0;
+let readinessGate: WindowReadinessGate | null = null;
 
 function createSplashWindow(): BrowserWindow {
   const window = new BrowserWindow(createSplashWindowOptions());
@@ -40,7 +43,7 @@ function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow(createMainWindowOptions(preloadPath));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
-  window.once('ready-to-show', () => {
+  readinessGate = createWindowReadinessGate(() => {
     const reveal = () => {
       splashWindow?.close();
       splashWindow = null;
@@ -49,7 +52,10 @@ function createMainWindow(): BrowserWindow {
     if (!splashWindow) reveal();
     else setTimeout(reveal, Math.max(0, 420 - (Date.now() - splashStartedAt)));
   });
+  window.once('ready-to-show', () => readinessGate?.markWindowReady());
   window.on('closed', () => {
+    readinessGate?.dispose();
+    readinessGate = null;
     if (mainWindow === window) mainWindow = null;
   });
 
@@ -59,7 +65,10 @@ function createMainWindow(): BrowserWindow {
   } else {
     const requestedFixture = process.env.ORQUESTA_E2E === '1' ? process.env.ORQUESTA_E2E_FIXTURE : undefined;
     const fixture = requestedFixture && /^[a-z0-9-]+$/.test(requestedFixture) ? requestedFixture : undefined;
-    void window.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'), fixture ? { query: { fixture } } : undefined);
+    const query: Record<string, string> = {};
+    if (process.env.ORQUESTA_E2E === '1') query.lang = 'en';
+    if (fixture) query.fixture = fixture;
+    void window.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'), Object.keys(query).length ? { query } : undefined);
   }
   return window;
 }
@@ -101,6 +110,10 @@ if (!hasSingleInstanceLock) {
     });
     registerDesktopIpc(ipcMain, coreHost, repositories, attachments, {
       openExternal: (url) => shell.openExternal(url)
+    });
+    ipcMain.handle(DESKTOP_IPC.rendererReady, async () => {
+      readinessGate?.markRendererReady();
+      return { accepted: true };
     });
     mainWindow = createMainWindow();
     repositories.subscribe((snapshot) => {

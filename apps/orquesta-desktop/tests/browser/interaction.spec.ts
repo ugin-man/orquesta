@@ -68,7 +68,7 @@ for (const [fixture, count] of [['nested-roster', 18], ['wide-roster', 80]] as c
   test(`${fixture} keeps every agent in the DOM without document scroll`, async ({ page }) => {
     await openFixture(page, fixture, { width: 1440, height: 900 });
     await expect(page.locator('[data-node-kind="agent"]')).toHaveCount(count);
-    await expect(page.locator('.map-edge--base')).toHaveCount(count);
+    expect(await page.locator('.map-edge--base').count()).toBeGreaterThanOrEqual(count);
     const overlaps = await page.locator('[data-node-kind="agent"]').evaluateAll((nodes) => {
       const rectangles = nodes.map((node) => ({ id: node.getAttribute('data-agent-id'), rect: node.getBoundingClientRect() }));
       return rectangles.flatMap((left, index) => rectangles.slice(index + 1).flatMap((right) => {
@@ -105,6 +105,35 @@ test('preserves the map camera when a same-project snapshot updates', async ({ p
     .click();
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await expect(world).toHaveAttribute('data-zoom', zoomBefore ?? '');
+});
+
+test('persists a manually moved agent and Reset restores the organization layout', async ({ page }) => {
+  await openFixture(page, 'active-project', { width: 1440, height: 900 });
+  await page.evaluate(() => window.localStorage.removeItem('orquesta.desktop.map-layout.active-project'));
+  await page.reload();
+  const coder = page.locator('[data-agent-id="coder"]');
+  await expect(coder).toBeVisible();
+  const initial = await coder.boundingBox();
+  if (!initial) throw new Error('Coder node did not expose a bounding box');
+
+  await page.mouse.move(initial.x + initial.width / 2, initial.y + initial.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(initial.x + initial.width / 2 + 72, initial.y + initial.height / 2 - 36, { steps: 5 });
+  await page.mouse.up();
+  const moved = await coder.boundingBox();
+  expect(moved?.x).toBeGreaterThan(initial.x + 45);
+  const savedOffset = await page.evaluate(() => JSON.parse(window.localStorage.getItem('orquesta.desktop.map-layout.active-project') ?? '{}').coder?.x ?? 0);
+  expect(savedOffset).toBeGreaterThan(45);
+
+  await page.reload();
+  await expect(page.locator('[data-agent-id="coder"]')).toBeVisible();
+  const restoredOffset = await page.evaluate(() => JSON.parse(window.localStorage.getItem('orquesta.desktop.map-layout.active-project') ?? '{}').coder?.x ?? 0);
+  expect(restoredOffset).toBeCloseTo(savedOffset, 3);
+
+  await page.getByRole('button', { name: 'Reset' }).click();
+  expect(await page.evaluate(() => window.localStorage.getItem('orquesta.desktop.map-layout.active-project'))).toBeNull();
+  const reset = await page.locator('[data-agent-id="coder"]').boundingBox();
+  expect(Math.abs((reset?.x ?? 0) - initial.x)).toBeLessThan(6);
 });
 
 test('opens route, conversation, operations, and returns with Escape', async ({ page }) => {

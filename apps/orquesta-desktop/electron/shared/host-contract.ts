@@ -10,6 +10,7 @@ export interface DesktopHostInfo {
 }
 
 export interface DesktopHostApi {
+  notifyRendererReady(): Promise<void>;
   getHostInfo(): Promise<DesktopHostInfo>;
   pingCore(correlationId: string): Promise<{ correlationId: string }>;
   getRepositorySnapshot(): Promise<OrquestaUiSnapshot>;
@@ -28,6 +29,7 @@ export interface DesktopHostApi {
 }
 
 export const DESKTOP_IPC = {
+  rendererReady: 'orquesta.desktop.renderer.ready',
   getHostInfo: 'orquesta.desktop.get-host-info',
   pingCore: 'orquesta.desktop.ping-core',
   getRepositorySnapshot: 'orquesta.desktop.repository.get-snapshot',

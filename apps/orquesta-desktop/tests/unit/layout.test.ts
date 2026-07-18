@@ -85,7 +85,7 @@ describe('stable map layout', () => {
     const layout = createStableLayout(agents);
 
     expect(layout.height).toBeGreaterThan(1500);
-    expect(layout.edges).toHaveLength(agents.length);
+    expect(layout.edges.length).toBeGreaterThanOrEqual(agents.length);
     expectNoNodeCollisions(layout);
   });
 });

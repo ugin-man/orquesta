@@ -154,7 +154,7 @@ function layoutProductionGroup(group: OrganizationProjection['groups'][number], 
 }
 
 function groupRows(groups: UnshiftedGroup[]): Array<{ groups: UnshiftedGroup[]; width: number; height: number }> {
-  const columns = groups.length <= 5 ? 2 : 3;
+  const columns = groups.length <= 6 ? Math.max(1, groups.length) : 3;
   const rows: Array<{ groups: UnshiftedGroup[]; width: number; height: number }> = [];
   for (const group of groups) {
     let row = rows.at(-1);
@@ -191,8 +191,8 @@ export function createStableLayout(agents: AgentUiModel[]): MapLayout {
   const productionWidth = rows.length ? Math.max(...rows.map((row) => row.width)) : NODE_WIDTH;
   const coreX = Math.max(560, productionWidth / 2 + WORLD_MARGIN_X);
   const user: Point = { x: coreX, y: 94 };
-  const orchestrator: Point = { x: coreX, y: 304 };
-  const productionTop = 520;
+  const orchestrator: Point = { x: coreX, y: 500 };
+  const productionTop = 1050;
   const agentPositions = new Map<string, Point>();
   if (agentById.has('orchestrator')) agentPositions.set('orchestrator', orchestrator);
   if (agentById.has('orquesta-admin')) agentPositions.set('orquesta-admin', { x: coreX - 310, y: 118 });
@@ -243,6 +243,19 @@ export function createStableLayout(agents: AgentUiModel[]): MapLayout {
   }
   for (const group of groups) {
     edges.push({ id: `production:orchestrator:${group.id}`, parentId: 'orchestrator', childId: `group:${group.id}`, from: orchestrator, to: group.anchor, kind: 'production' });
+    const sourceGroup = organization.groups.find((candidate) => candidate.id === group.id);
+    for (const rootAgentId of sourceGroup?.rootAgentIds ?? []) {
+      const rootPoint = agentPositions.get(rootAgentId);
+      if (!rootPoint) continue;
+      edges.push({
+        id: `delegation:group:${group.id}:${rootAgentId}`,
+        parentId: `group:${group.id}`,
+        childId: rootAgentId,
+        from: group.anchor,
+        to: rootPoint,
+        kind: 'delegation'
+      });
+    }
   }
   for (const [childId, parentId] of organization.parentByAgentId) {
     if (organization.laneByAgentId.get(childId) !== 'production' || parentId === 'user' || parentId === 'orchestrator') continue;

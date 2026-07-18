@@ -8,6 +8,6 @@ if (!root) throw new Error('Renderer root element was not found.');
 
 createRoot(root).render(
   <StrictMode>
-    <DesktopRendererApp initialLocale={new URLSearchParams(window.location.search).get('lang') === 'ja' ? 'ja' : 'en'} />
+    <DesktopRendererApp />
   </StrictMode>
 );

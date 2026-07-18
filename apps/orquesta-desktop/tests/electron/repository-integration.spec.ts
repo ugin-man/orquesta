@@ -46,7 +46,7 @@ test('loads a real .orquesta repository read-only and follows canonical file cha
   const originalTasks = await readFile(tasksPath, 'utf8');
 
   const desktop = await electron.launch({
-    args: [`--user-data-dir=${userData}`, '.'],
+    args: [`--user-data-dir=${userData}`, '--lang=en-US', '.'],
     cwd: appRoot,
     env: { ...process.env, ORQUESTA_E2E: '1', ORQUESTA_E2E_PROJECT_ROOT: root }
   });
@@ -80,7 +80,7 @@ test('loads a real .orquesta repository read-only and follows canonical file cha
 test('shows a bounded first-launch project chooser instead of prototype content', async () => {
   const userData = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-first-run-'));
   const desktop = await electron.launch({
-    args: [`--user-data-dir=${userData}`, '.'],
+    args: [`--user-data-dir=${userData}`, '--lang=en-US', '.'],
     cwd: appRoot,
     env: { ...process.env, ORQUESTA_E2E: '1' }
   });

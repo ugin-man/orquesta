@@ -22,7 +22,7 @@ test('sends a composer instruction to a Codex App Server thread and reads its hi
   const packagedExecutable = process.env.ORQUESTA_PACKAGED_EXE;
   const desktop = await electron.launch({
     ...(packagedExecutable ? { executablePath: packagedExecutable } : { cwd: appRoot }),
-    args: packagedExecutable ? [`--user-data-dir=${userData}`] : [`--user-data-dir=${userData}`, '.'],
+    args: packagedExecutable ? [`--user-data-dir=${userData}`, '--lang=en-US'] : [`--user-data-dir=${userData}`, '--lang=en-US', '.'],
     env: {
       ...process.env,
       ORQUESTA_E2E: '1',

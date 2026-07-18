@@ -39,6 +39,15 @@ describe('DesktopRendererApp', () => {
     expect(container.querySelector('.project-status .status-dot--success')).not.toBeNull();
   });
 
+  test('switches Japanese and English from the project status card', async () => {
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
+    await screen.findByText('Prototype data');
+    await userEvent.click(screen.getByRole('button', { name: '日本語' }));
+    expect(screen.getByText('プロジェクト状況')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'English' }));
+    expect(screen.getByText('PROJECT STATUS')).toBeVisible();
+  });
+
   test('does not reload the project snapshot when the composer target changes', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const getInitialSnapshot = vi.spyOn(bridge, 'getInitialSnapshot');

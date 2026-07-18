@@ -7,7 +7,7 @@ const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.
 
 test('boots the packaged renderer behind the bounded desktop API', async () => {
   const desktop = await electron.launch({
-    args: ['.'],
+    args: ['--lang=en-US', '.'],
     cwd: appRoot,
     env: {
       ...process.env,

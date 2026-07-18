@@ -138,7 +138,7 @@ export function buildOrganizationProjection(agents: AgentUiModel[]): Organizatio
     if (!agentIds.length) return [];
     const roots = agentIds.filter((agentId) => {
       const parentId = parentByAgentId.get(agentId);
-      return parentId === 'orchestrator' || parentId === 'user' || groupByAgentId.get(parentId) !== id;
+      return !parentId || parentId === 'orchestrator' || parentId === 'user' || groupByAgentId.get(parentId) !== id;
     });
     return [{ id, agentIds, rootAgentIds: roots }];
   });

@@ -107,6 +107,12 @@ function isAttentionItem(value: unknown): value is AttentionUiItem {
 
 export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe): DesktopHostApi {
   return {
+    async notifyRendererReady() {
+      const result = await invoke(DESKTOP_IPC.rendererReady);
+      if (!result || typeof result !== 'object' || (result as Record<string, unknown>).accepted !== true) {
+        throw new Error('Desktop host did not accept renderer readiness');
+      }
+    },
     async getHostInfo() {
       const result = await invoke(DESKTOP_IPC.getHostInfo);
       if (!isDesktopHostInfo(result)) throw new Error('Desktop host returned invalid host information');

@@ -4,14 +4,15 @@ import type { ProjectPhaseUiModel, ProjectUiModel } from '../../../contracts/orq
 import { StatusDot } from '../../components/StatusDot';
 import { useI18n } from '../i18n/I18nProvider';
 
-export function ProjectStatusCard({ project, phases, onOpenRoute, onSwitchProject, onOpenOperations }: {
+export function ProjectStatusCard({ project, phases, agentCount, onOpenRoute, onSwitchProject, onOpenOperations }: {
   project: ProjectUiModel;
   phases: ProjectPhaseUiModel[];
+  agentCount: number;
   onOpenRoute(): void;
   onSwitchProject(): void;
   onOpenOperations(): void;
 }) {
-  const { t } = useI18n();
+  const { locale, setLocale, t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const current = phases.find((phase) => phase.id === project.currentPhaseId) ?? phases.find((phase) => phase.status === 'current');
   const connectionTone = project.status === 'working' || project.status === 'ready' ? 'success' : project.status;
@@ -25,8 +26,12 @@ export function ProjectStatusCard({ project, phases, onOpenRoute, onSwitchProjec
       <button type="button" className="project-status__summary" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
         <header><span>{t('projectStatus')} <StatusDot status={connectionTone} label={project.connectionLabel} /></span><Expand size={13} aria-hidden="true" /></header>
         <strong>{project.title}</strong>
-        <p>{project.agentCount} {t('agents')} <i /> {project.provenWorkingAgentCount} {t('working').toLowerCase()}</p>
+        <p>{agentCount} {t('agents')} <i /> {project.provenWorkingAgentCount} {t('provenWorking')}</p>
       </button>
+      <div className="project-status__languages">
+        <button type="button" aria-label="日本語" aria-pressed={locale === 'ja'} onClick={() => setLocale('ja')}>JA</button>
+        <button type="button" aria-label="English" aria-pressed={locale === 'en'} onClick={() => setLocale('en')}>EN</button>
+      </div>
       {expanded ? (
         <div className="project-status__expanded">
           <dl>
