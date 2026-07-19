@@ -18,6 +18,7 @@ import { WorkspaceSurface, type RecordKind, type UserTaskKind } from '../feature
 import { createDefaultTaskRecordView, type TaskRecordView } from '../features/records/TaskRecordsWorkspace';
 import { createDefaultFailureRecordView, type FailureRecordView } from '../features/records/FailureRecordsWorkspace';
 import type { DecisionRecordKind } from '../features/records/DecisionRecordsWorkspace';
+import type { TimelineRecord } from '../features/records/TimelineRecordsWorkspace';
 import { NowCardStack } from '../features/now/NowCardStack';
 import { V4Operations } from '../features/operations/V4Operations';
 import { ProjectLauncher } from '../features/project/ProjectLauncher';
@@ -91,6 +92,9 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [decisionRecords, setDecisionRecords] = useState<AttentionUiItem[]>([]);
   const [decisionRecordKind, setDecisionRecordKind] = useState<DecisionRecordKind>('all');
   const [decisionRecordsLoading, setDecisionRecordsLoading] = useState(false);
+  const [timelineConversations, setTimelineConversations] = useState<ConversationMessage[]>([]);
+  const [timelineDecisions, setTimelineDecisions] = useState<AttentionUiItem[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [mapSelection, setMapSelection] = useState<MapSelection>(null);
   const [draft, setDraft] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('orchestrator');
@@ -111,6 +115,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const rendererReadyReported = useRef(false);
   const conversationRequest = useRef(0);
   const decisionHistoryRequest = useRef(0);
+  const timelineRequest = useRef(0);
   const conversationTargetAgentIdRef = useRef('orchestrator');
   const availableAgentIdsRef = useRef<Set<string>>(new Set());
 
@@ -173,6 +178,10 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     setDecisionRecordKind('all');
     setDecisionRecordsLoading(false);
     decisionHistoryRequest.current += 1;
+    setTimelineConversations([]);
+    setTimelineDecisions([]);
+    setTimelineLoading(false);
+    timelineRequest.current += 1;
     setOverlay(null);
     setAttachments([]);
     setDirectSendFailure(null);
@@ -257,6 +266,33 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       if (request === decisionHistoryRequest.current) setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       if (request === decisionHistoryRequest.current) setDecisionRecordsLoading(false);
+    }
+  };
+  const openTimeline = async () => {
+    if (!snapshot) return;
+    const projectId = snapshot.project.id;
+    const request = ++timelineRequest.current;
+    setTimelineConversations([]);
+    setTimelineDecisions([]);
+    setTimelineLoading(true);
+    setActionError(null);
+    setOverlay(null);
+    setMapSelection(null);
+    setRecordKind('timeline');
+    setActiveWorkspace('records');
+    try {
+      const [decisions, conversationPages] = await Promise.all([
+        bridge.listAttentionHistory(),
+        Promise.all(snapshot.agents.map((agent) => bridge.listConversation({ targetAgentId: agent.id, cursor: null, limit: 100 })))
+      ]);
+      if (request !== timelineRequest.current || draftProjectId.current !== projectId) return;
+      const byId = new Map(conversationPages.flatMap((page) => page.items).map((message) => [message.id, message]));
+      setTimelineConversations([...byId.values()]);
+      setTimelineDecisions(decisions);
+    } catch (error) {
+      if (request === timelineRequest.current) setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (request === timelineRequest.current) setTimelineLoading(false);
     }
   };
   const selectWorkspace = (workspace: WorkspaceId) => {
@@ -433,6 +469,28 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     setRecordKind('task');
     setActiveWorkspace('records');
   };
+  const openTimelineRecord = (record: TimelineRecord) => {
+    if (record.kind === 'task') {
+      openTaskRecord(record.sourceId);
+      return;
+    }
+    if (record.kind === 'error') {
+      const failure = snapshot.failures.find((candidate) => candidate.id === record.sourceId);
+      setFailureRecordView((current) => ({
+        ...current,
+        scope: failure?.resolution === 'resolved' ? 'resolved' : (failure?.occurrenceCount ?? 0) >= 2 ? 'repeated' : 'open',
+        selectedFailureId: record.sourceId
+      }));
+      setRecordKind('error');
+      setActiveWorkspace('records');
+      return;
+    }
+    if (record.kind === 'conversation') {
+      void openConversation(record.sourceId);
+      return;
+    }
+    void openDecisionHistory();
+  };
   const workspaceCounts = {
     userTasks: snapshot.attention.length
   };
@@ -498,6 +556,9 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           decisionRecords={decisionRecords}
           decisionRecordKind={decisionRecordKind}
           decisionRecordsLoading={decisionRecordsLoading}
+          timelineConversations={timelineConversations}
+          timelineDecisions={timelineDecisions}
+          timelineLoading={timelineLoading}
           messages={messages}
           conversationTargetAgentId={conversationTargetAgentId}
           conversationLoading={loadingConversation || loadingOlderMessages}
@@ -507,11 +568,13 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           onSelectRecordKind={(kind) => {
             if (kind === 'conversation') void openConversation();
             else if (kind === 'decision') void openDecisionHistory();
+            else if (kind === 'timeline') void openTimeline();
             else setRecordKind(kind);
           }}
           onTaskRecordViewChange={setTaskRecordView}
           onFailureRecordViewChange={setFailureRecordView}
           onDecisionRecordKindChange={setDecisionRecordKind}
+          onOpenTimelineRecord={openTimelineRecord}
           onSelectConversationTarget={(agentId) => void openConversation(agentId)}
           onLoadOlderConversation={() => void loadOlderConversation()}
           onOpenAttention={openAttentionItem}

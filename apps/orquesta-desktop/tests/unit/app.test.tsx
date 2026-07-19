@@ -311,6 +311,32 @@ describe('DesktopRendererApp', () => {
     expect(within(detail).getByRole('heading', { name: 'Report accepted' })).toBeVisible();
   });
 
+  test('aggregates the project timeline and opens the matching primary record', async () => {
+    const user = userEvent.setup();
+    const bridge = new MockOrquestaBridge('active-project');
+    const listConversation = vi.spyOn(bridge, 'listConversation');
+    render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Records' }));
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+
+    const filters = await screen.findByRole('navigation', { name: 'Timeline types' });
+    expect(within(filters).getByRole('button', { name: 'All 13' })).toBeVisible();
+    expect(within(filters).getByRole('button', { name: 'Tasks 6' })).toBeVisible();
+    expect(within(filters).getByRole('button', { name: 'Errors 3' })).toBeVisible();
+    expect(within(filters).getByRole('button', { name: 'Conversation 2' })).toBeVisible();
+    expect(within(filters).getByRole('button', { name: 'Decisions 2' })).toBeVisible();
+    expect(listConversation).toHaveBeenCalledWith({ targetAgentId: 'orchestrator', cursor: null, limit: 100 });
+    expect(listConversation).toHaveBeenCalledWith({ targetAgentId: 'analyst', cursor: null, limit: 100 });
+    expect(screen.getByText('3 messages · Build the approved desktop Renderer and keep the Electron boundary clean.')).toBeVisible();
+
+    await user.click(within(filters).getByRole('button', { name: 'Errors 3' }));
+    await user.click(screen.getByRole('button', { name: 'Error · FC66 · External API timeout' }));
+
+    expect(screen.getByRole('button', { name: 'Errors' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('region', { name: 'Failure FC66 detail' })).toBeVisible();
+  });
+
   test('closes stale conversation content when its agent disappears from the same project', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const base = await bridge.getInitialSnapshot();
