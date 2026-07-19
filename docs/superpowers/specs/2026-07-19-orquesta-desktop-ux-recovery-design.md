@@ -2,7 +2,9 @@
 
 作成日: 2026-07-19
 
-状態: ユーザーレビュー待ち
+状態: 情報設計と実装段階は新設計へ移行
+
+> Home、workspace、導線、設定、D1からD4の区分は、`2026-07-19-orquesta-desktop-information-architecture-design.md`で置き換えた。本書は当時の調査と背景資料として残す。新しい実装判断には使わない。
 
 対象: `apps/orquesta-desktop`
 
