@@ -10,6 +10,7 @@ D1では、既存の円形HomeとElectron基盤を残したまま、表示状態
 - 上中央の状態表示を、Demo、状態ファイル読取済み、監視中、オフライン、読取エラーに分けた。緑は監視中だけに使う。
 - 左下にHome、要対応、Tasks、Failures、会話、Moreの常設ドックを置いた。
 - 要対応は質問、承認、確認、作業の件数をまとめ、優先度順の上位5件を表示する。
+- 質問、ユーザー作業、修復、dashboard actionなど別々の台帳が同じcanonical IDを使っても、発生元ごとのUI IDで区別し、要対応を欠落させない。
 - taskに結び付かない要対応でも、アプリ内の詳細を開けるようにした。
 - Toastは同じ通知を5秒間重複させず、画面には新しい3件まで表示する。
 - Toastの省略件数は表示言語に合わせ、英語画面へ日本語が混ざらないようにした。
@@ -23,7 +24,7 @@ D1では、既存の円形HomeとElectron基盤を残したまま、表示状態
 
 | コマンド | 結果 |
 | --- | --- |
-| `npm test` | 36 files、180 tests、0 fail |
+| `npm test` | 36 files、181 tests、0 fail |
 | `npm run build:desktop` | TypeScript、Renderer、Electron hostすべてexit 0 |
 | `npm run test:desktop-smoke` | 7 tests、0 fail |
 | `npm run test:interaction-retention` | 2 tests、0 fail |

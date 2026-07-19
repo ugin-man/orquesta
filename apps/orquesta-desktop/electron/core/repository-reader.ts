@@ -344,13 +344,17 @@ function actionAttentionType(kind: AttentionUiItem['actionKind']): AttentionUiIt
   return 'direction';
 }
 
+function attentionId(source: 'question' | 'user-task' | 'user-action' | 'dashboard-action' | 'incident', canonicalId: string): string {
+  return `${source}:${canonicalId}`;
+}
+
 function projectAttention(documents: RepositoryDocuments, now: Date): AttentionUiItem[] {
   const questions = rows(documents.questions, 'questions')
     .filter((item) => actionIsOpen(item.status))
     .flatMap((item) => {
       const id = string(item.question_id) ?? string(item.id);
       return id ? [{
-        id, type: 'question' as const, actionKind: 'answer' as const, priority: priority(item.priority), title: string(item.title) ?? 'Question',
+        id: attentionId('question', id), type: 'question' as const, actionKind: 'answer' as const, priority: priority(item.priority), title: string(item.title) ?? 'Question',
         summary: string(item.question) ?? 'A user decision is waiting.', sourceAgentId: string(item.source_agent_id), taskId: string(item.source_task_id) ?? string(item.task_id),
         blocking: Boolean(item.blocking), primaryActionLabel: 'Review', createdAt: string(item.created_at) ?? now.toISOString(), resolvedAt: null, resolutionLabel: null
       }] : [];
@@ -360,7 +364,7 @@ function projectAttention(documents: RepositoryDocuments, now: Date): AttentionU
     .flatMap((item) => {
       const id = string(item.incident_id);
       return id ? [{
-        id, type: 'repair' as const, actionKind: 'do' as const,
+        id: attentionId('incident', id), type: 'repair' as const, actionKind: 'do' as const,
         priority: string(item.severity) === 'critical' ? 'blocker' as const : priority(item.severity),
         title: string(item.title) ?? 'Runtime incident', summary: string(item.current_action) ?? string(item.suspected_cause) ?? 'An unresolved incident is recorded.',
         sourceAgentId: string(item.source_agent_id), taskId: string(item.task_id), blocking: string(item.severity) === 'critical',
@@ -379,7 +383,7 @@ function projectAttention(documents: RepositoryDocuments, now: Date): AttentionU
           ? 'review'
           : 'do';
       return [{
-        id,
+        id: attentionId('user-task', id),
         type: actionAttentionType(kind),
         actionKind: kind,
         priority: priority(item.priority),
@@ -401,7 +405,7 @@ function projectAttention(documents: RepositoryDocuments, now: Date): AttentionU
       if (!id) return [];
       const steps = stringArray(item.user_steps);
       return [{
-        id,
+        id: attentionId('user-action', id),
         type: 'repair' as const,
         actionKind: 'do' as const,
         priority: priority(item.priority ?? item.risk),
@@ -425,7 +429,7 @@ function projectAttention(documents: RepositoryDocuments, now: Date): AttentionU
       const kind = dashboardActionKind(type);
       const payload = object(item.payload);
       return [{
-        id,
+        id: attentionId('dashboard-action', id),
         type: actionAttentionType(kind),
         actionKind: kind,
         priority: priority(item.priority ?? payload?.priority),

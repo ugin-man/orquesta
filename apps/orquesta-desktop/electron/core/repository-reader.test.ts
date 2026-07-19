@@ -55,7 +55,7 @@ describe('repository reader', () => {
       status: 'working', statusEvidence: 'proven', currentTaskId: 'T1', assignedByAgentId: 'orchestrator'
     });
     expect(snapshot.tasks[0]).toMatchObject({ turnStarted: true, progressObserved: true, actualModel: null, actualModelEvidence: 'unknown' });
-    expect(snapshot.attention).toMatchObject([{ id: 'Q1', actionKind: 'answer' }]);
+    expect(snapshot.attention).toMatchObject([{ id: 'question:Q1', actionKind: 'answer' }]);
     expect(snapshot.recentEvents[0]).toMatchObject({ taskId: 'T1', message: 'Reader tests are running.' });
   });
 
@@ -131,6 +131,26 @@ describe('repository reader', () => {
     expect(snapshot.attention.map((item) => item.actionKind)).toEqual(
       expect.arrayContaining(['answer', 'approve', 'review', 'do'])
     );
+  });
+
+  test('keeps distinct attention items when separate ledgers reuse the same canonical id', () => {
+    const source = documents();
+    const snapshot = projectSnapshotFromDocuments({
+      rootPath: 'C:\\work\\sample',
+      documents: {
+        ...source,
+        questions: {
+          questions: [{ question_id: 'SHARED-1', status: 'pending', question: 'Choose a direction.' }]
+        },
+        userTasks: {
+          tasks: [{ user_task_id: 'SHARED-1', status: 'pending', title: 'Run locally' }]
+        }
+      }
+    });
+
+    expect(snapshot.attention).toHaveLength(2);
+    expect(new Set(snapshot.attention.map((item) => item.id)).size).toBe(2);
+    expect(snapshot.attention.map((item) => item.actionKind)).toEqual(['answer', 'do']);
   });
 
   test('does not expose internal task review states as user attention', () => {
@@ -226,7 +246,12 @@ describe('repository reader', () => {
 
     const snapshot = await readRepositorySnapshot(root);
 
-    expect(snapshot.attention.map((item) => item.id)).toEqual(['Q1', 'UT1', 'UA1', 'DA1']);
+    expect(snapshot.attention.map((item) => item.id)).toEqual([
+      'question:Q1',
+      'user-task:UT1',
+      'user-action:UA1',
+      'dashboard-action:DA1'
+    ]);
   });
 
   test('rejects malformed required JSON with a bounded filename', async () => {
