@@ -128,6 +128,58 @@ async function unobstructedMapPoint(window: Page): Promise<{ x: number; y: numbe
   });
 }
 
+async function settleAnimationFrames(window: Page): Promise<void> {
+  await window.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
+
+async function installAnimationFrameMonitor(window: Page): Promise<void> {
+  await window.evaluate(() => {
+    const scope = globalThis as typeof globalThis & {
+      __orquestaPointerFrameMonitor?: { pending: Set<number>; requested: number };
+    };
+    const nativeRequest = window.requestAnimationFrame.bind(window);
+    const nativeCancel = window.cancelAnimationFrame.bind(window);
+    const monitor = { pending: new Set<number>(), requested: 0 };
+    window.requestAnimationFrame = (callback: FrameRequestCallback) => {
+      let frameId = 0;
+      frameId = nativeRequest((time) => {
+        monitor.pending.delete(frameId);
+        callback(time);
+      });
+      monitor.pending.add(frameId);
+      monitor.requested += 1;
+      return frameId;
+    };
+    window.cancelAnimationFrame = (frameId: number) => {
+      monitor.pending.delete(frameId);
+      nativeCancel(frameId);
+    };
+    scope.__orquestaPointerFrameMonitor = monitor;
+  });
+}
+
+async function runPointerLifecycleCycle(window: Page, cycle: number): Promise<void> {
+  const direction = cycle % 2 === 0 ? 1 : -1;
+  const mapPoint = await unobstructedMapPoint(window);
+  await window.mouse.move(mapPoint.x, mapPoint.y);
+  await window.mouse.down();
+  await window.mouse.move(mapPoint.x + 12 * direction, mapPoint.y + 8 * direction, { steps: 3 });
+  await window.mouse.up();
+
+  const draggedAgent = window.locator('[data-agent-id="agent-01"]');
+  const dragBox = await draggedAgent.boundingBox();
+  if (!dragBox) throw new Error('agent-01 is not visible for pointer lifecycle validation');
+  const dragX = dragBox.x + dragBox.width / 2;
+  const dragY = dragBox.y + dragBox.height / 2;
+  await window.mouse.move(dragX, dragY);
+  await window.mouse.down();
+  await window.mouse.move(dragX + 7 * direction, dragY + 5 * direction, { steps: 3 });
+  await window.mouse.up();
+
+  await window.locator('[data-agent-id="agent-02"]').click();
+  await window.keyboard.press('Escape');
+}
+
 async function runInteractionBatch(window: Page, batch: number): Promise<void> {
   for (let cycle = 0; cycle < 20; cycle += 1) {
     const point = await unobstructedMapPoint(window);
@@ -183,6 +235,68 @@ function createReport(evidence: {
   ].map((snapshot) => `| ${snapshot.label} | ${formatMiB(snapshot.totalWorkingSetBytes)} | ${formatMiB(snapshot.workingSetByRole.renderer ?? 0)} | ${formatMiB(snapshot.workingSetByRole.gpu ?? 0)} | ${formatMiB(snapshot.jsHeapUsedBytes)} | ${snapshot.nodes} | ${snapshot.liveDomNodes} | ${snapshot.eventListeners} |`).join('\n');
   return `# Orquesta Desktop Interaction Retention\n\nMeasured on ${evidence.measuredAt} with the packaged Windows x64 app and the 35-agent fixture. Six identical batches exercised map pan, wheel zoom, native agent-detail open/close, Fit, and zoom controls. CDP garbage collection was used only for diagnosis, not to change product behavior.\n\n| Sample | Total working set | Renderer | GPU | JS heap used | DOM counter | Live DOM | Event listeners |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n${rows}\n\n- Final retained total working set: ${formatMiB(evidence.deltas.totalWorkingSetBytes)}\n- Working-set growth after the first warmed interaction batch: ${formatMiB(evidence.deltas.repeatedWorkingSetBytes)}\n- Final retained Renderer working set: ${formatMiB(evidence.deltas.rendererWorkingSetBytes)}\n- Final retained GPU working set: ${formatMiB(evidence.deltas.gpuWorkingSetBytes)}\n- Final retained JS heap after forced collection: ${formatMiB(evidence.deltas.jsHeapUsedBytes)}\n- Final DOM-counter delta: ${evidence.deltas.nodes}\n- Final live-DOM delta: ${evidence.deltas.liveDomNodes}\n- Final event-listener delta: ${evidence.deltas.eventListeners}\n- Stable process count: ${evidence.gates.stableProcessCount ? 'PASS' : 'FAIL'}\n- Total retained working set <= 75 MiB: ${evidence.gates.boundedWorkingSet ? 'PASS' : 'FAIL'}\n- Growth after the first warmed batch <= 30 MiB: ${evidence.gates.boundedRepeatedGrowth ? 'PASS' : 'FAIL'}\n- Post-GC JS heap growth <= 8 MiB: ${evidence.gates.boundedReachableHeap ? 'PASS' : 'FAIL'}\n- DOM-counter growth <= 10: ${evidence.gates.boundedDomCounters ? 'PASS' : 'FAIL'}\n- Live-DOM growth = 0: ${evidence.gates.stableLiveDom ? 'PASS' : 'FAIL'}\n- Event-listener growth <= 20: ${evidence.gates.boundedEventListeners ? 'PASS' : 'FAIL'}\n\nThe process working set is reported separately from reachable JavaScript heap. A first-use working-set increase that plateaus across repeated batches while post-GC heap, DOM nodes, and listeners stay bounded is retained Chromium/V8 capacity or graphics caching, not an accumulating product leak.\n`;
 }
+
+test('releases pointer capture, frames, and listeners after 100 map interaction cycles', async () => {
+  test.setTimeout(240_000);
+  const userData = await mkdtemp(path.join(os.tmpdir(), 'orquesta-pointer-lifecycle-'));
+  const desktop = await electron.launch({
+    args: [
+      `--user-data-dir=${userData}`,
+      '--force-prefers-reduced-motion=reduce',
+      '--lang=en-US',
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
+      '.'
+    ],
+    cwd: appRoot,
+    env: { ...process.env, ORQUESTA_E2E: '1', ORQUESTA_E2E_FIXTURE: 'large-roster' }
+  });
+
+  try {
+    const window = await desktop.firstWindow();
+    await expect(window.locator('[data-node-kind="agent"]')).toHaveCount(35);
+    await window.getByRole('button', { name: 'Fit' }).click();
+    await settleAnimationFrames(window);
+    await runPointerLifecycleCycle(window, 0);
+    await window.getByRole('button', { name: 'Reset' }).click();
+    await settleAnimationFrames(window);
+    const session = await window.context().newCDPSession(window);
+    await session.send('HeapProfiler.enable');
+    await session.send('HeapProfiler.collectGarbage');
+    const baseline = await session.send('Memory.getDOMCounters') as { jsEventListeners: number };
+    await installAnimationFrameMonitor(window);
+
+    for (let cycle = 0; cycle < 100; cycle += 1) {
+      await runPointerLifecycleCycle(window, cycle);
+    }
+    await window.getByRole('button', { name: 'Fit' }).click();
+    await settleAnimationFrames(window);
+
+    const pointerState = await window.evaluate(() => {
+      const scope = globalThis as typeof globalThis & {
+        __orquestaPointerFrameMonitor?: { pending: Set<number>; requested: number };
+      };
+      const retainedCapture = [...document.querySelectorAll<HTMLElement>('.map-viewport, [data-agent-id]')]
+        .flatMap((element) => [1, 2, 3, 4].filter((pointerId) => element.hasPointerCapture?.(pointerId)));
+      return {
+        pendingFrames: scope.__orquestaPointerFrameMonitor?.pending.size ?? -1,
+        requestedFrames: scope.__orquestaPointerFrameMonitor?.requested ?? 0,
+        retainedCapture
+      };
+    });
+    await session.send('HeapProfiler.collectGarbage');
+    const after = await session.send('Memory.getDOMCounters') as { jsEventListeners: number };
+
+    expect(pointerState.requestedFrames).toBeGreaterThan(0);
+    expect(pointerState.pendingFrames).toBe(0);
+    expect(pointerState.retainedCapture).toEqual([]);
+    expect(after.jsEventListeners).toBe(baseline.jsEventListeners);
+  } finally {
+    await desktop.close();
+    await rm(userData, { recursive: true, force: true });
+  }
+});
 
 test('classifies memory retained after repeated map interaction', async () => {
   test.setTimeout(300_000);

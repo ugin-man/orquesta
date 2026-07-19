@@ -18,15 +18,25 @@ export function ProjectSwitcher({ projects, currentProjectId, onSwitch, onOpenPr
   const [message, setMessage] = useState<string | null>(null);
   const switchProject = async (id: string) => {
     setBusy(id); setMessage(null);
-    const result = await onSwitch(id);
-    setBusy(null);
-    if (result.status === 'accepted') onClose(); else setMessage(result.reason);
+    try {
+      const result = await onSwitch(id);
+      if (result.status === 'accepted') onClose(); else setMessage(result.reason);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
   };
   const openProject = async () => {
     setBusy('open-project'); setMessage(null);
-    const result = await onOpenProject();
-    setBusy(null);
-    if (result.status === 'accepted') onClose(); else setMessage(result.reason);
+    try {
+      const result = await onOpenProject();
+      if (result.status === 'accepted') onClose(); else setMessage(result.reason);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
   };
   return (
     <OverlayFrame title={t('switchProjectTitle')} subtitle={t('recentProjects')} ariaLabel={t('switchProjectTitle')} className="project-switcher-overlay" onClose={onClose}>

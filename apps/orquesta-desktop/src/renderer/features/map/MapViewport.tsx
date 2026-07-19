@@ -9,8 +9,12 @@ import { applyManualOffsets, clearManualOffsets, loadManualOffsets, saveManualOf
 
 interface Camera { x: number; y: number; zoom: number }
 interface Bounds { x: number; y: number; width: number; height: number }
-interface PanDrag { pointerId: number; startX: number; startY: number; cameraX: number; cameraY: number }
-interface AgentDrag { pointerId: number; agentId: string; startX: number; startY: number; origin: Point; moved: boolean }
+interface PanDrag { pointerId: number; startX: number; startY: number; cameraX: number; cameraY: number; zoom: number }
+interface AgentDrag { pointerId: number; agentId: string; startX: number; startY: number; origin: Point; zoom: number; moved: boolean }
+type PendingPointerUpdate =
+  | { kind: 'pan'; pointerId: number; camera: Camera }
+  | { kind: 'agent'; pointerId: number; agentId: string; offset: Point };
+interface CapturedPointer { pointerId: number; target: HTMLElement }
 
 export type SemanticZoomLevel = 'overview' | 'normal' | 'detail';
 
@@ -125,11 +129,83 @@ export function MapViewport({
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 0.72 });
   const [panDrag, setPanDrag] = useState<PanDrag | null>(null);
   const [agentDrag, setAgentDrag] = useState<AgentDrag | null>(null);
+  const panDragRef = useRef<PanDrag | null>(null);
+  const agentDragRef = useRef<AgentDrag | null>(null);
   const suppressClickRef = useRef<string | null>(null);
-  const pendingPanRef = useRef<Camera | null>(null);
-  const panFrameRef = useRef<number | null>(null);
+  const capturedPointerRef = useRef<CapturedPointer | null>(null);
+  const pendingPointerUpdateRef = useRef<PendingPointerUpdate | null>(null);
+  const pointerFrameRef = useRef<number | null>(null);
   const online = snapshot.project.status !== 'offline';
   const semanticLevel = semanticLevelForZoom(camera.zoom);
+
+  const applyPointerUpdate = useCallback((update: PendingPointerUpdate) => {
+    if (update.kind === 'pan') {
+      if (panDragRef.current?.pointerId === update.pointerId) setCamera(update.camera);
+      return;
+    }
+    if (agentDragRef.current?.pointerId !== update.pointerId || agentDragRef.current.agentId !== update.agentId) return;
+    setManualOffsets((current) => {
+      const next = { ...current, [update.agentId]: update.offset };
+      manualOffsetsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const schedulePointerFrame = useCallback((update: PendingPointerUpdate) => {
+    pendingPointerUpdateRef.current = update;
+    if (pointerFrameRef.current !== null) return;
+    pointerFrameRef.current = requestAnimationFrame(() => {
+      pointerFrameRef.current = null;
+      const pending = pendingPointerUpdateRef.current;
+      pendingPointerUpdateRef.current = null;
+      if (pending) applyPointerUpdate(pending);
+    });
+  }, [applyPointerUpdate]);
+
+  const releaseCapturedPointer = useCallback((pointerId?: number) => {
+    const captured = capturedPointerRef.current;
+    if (!captured || (pointerId !== undefined && captured.pointerId !== pointerId)) return;
+    try {
+      captured.target.releasePointerCapture?.(captured.pointerId);
+    } catch {
+      // Chromium may already have released capture while the terminal event was dispatched.
+    }
+    capturedPointerRef.current = null;
+  }, []);
+
+  const finishPointerInteraction = useCallback((pointerId?: number, renderState = true, suppressNextClick = false) => {
+    const pan = panDragRef.current;
+    const agent = agentDragRef.current;
+    if (pointerId !== undefined && pan?.pointerId !== pointerId && agent?.pointerId !== pointerId) return;
+
+    if (pointerFrameRef.current !== null) cancelAnimationFrame(pointerFrameRef.current);
+    pointerFrameRef.current = null;
+    const pending = pendingPointerUpdateRef.current;
+    pendingPointerUpdateRef.current = null;
+
+    if (pending?.kind === 'pan' && pan?.pointerId === pending.pointerId && renderState) {
+      setCamera(pending.camera);
+    }
+    if (agent) {
+      let offsets = manualOffsetsRef.current;
+      if (agent.moved) {
+        if (pending?.kind === 'agent' && pending.pointerId === agent.pointerId && pending.agentId === agent.agentId) {
+          offsets = { ...offsets, [agent.agentId]: pending.offset };
+          manualOffsetsRef.current = offsets;
+          if (renderState) setManualOffsets(offsets);
+        }
+        saveManualOffsets(snapshot.project.id, offsets, window.localStorage);
+      }
+      suppressClickRef.current = agent.moved && suppressNextClick ? agent.agentId : null;
+      agentDragRef.current = null;
+      if (renderState) setAgentDrag(null);
+    }
+    if (pan) {
+      panDragRef.current = null;
+      if (renderState) setPanDrag(null);
+    }
+    releaseCapturedPointer(pointerId);
+  }, [releaseCapturedPointer, snapshot.project.id]);
 
   useEffect(() => {
     const loaded = loadManualOffsets(snapshot.project.id, window.localStorage);
@@ -153,13 +229,13 @@ export function MapViewport({
   const applyFitRef = useRef(applyFit);
   applyFitRef.current = applyFit;
 
-  const fittedProjectIdRef = useRef<string | null>(null);
+  const fittedLayoutKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (fittedProjectIdRef.current === snapshot.project.id) return;
-    fittedProjectIdRef.current = snapshot.project.id;
+    if (fittedLayoutKeyRef.current === rosterLayoutKey) return;
+    fittedLayoutKeyRef.current = rosterLayoutKey;
     const frame = requestAnimationFrame(applyFit);
     return () => cancelAnimationFrame(frame);
-  }, [applyFit, snapshot.project.id]);
+  }, [applyFit, rosterLayoutKey]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -169,9 +245,19 @@ export function MapViewport({
     return () => observer.disconnect();
   }, [snapshot.project.id]);
 
-  useEffect(() => () => {
-    if (panFrameRef.current !== null) cancelAnimationFrame(panFrameRef.current);
-  }, []);
+  useEffect(() => {
+    const handleBlur = () => finishPointerInteraction();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') finishPointerInteraction();
+    };
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('keydown', handleKeyDown);
+      finishPointerInteraction(undefined, false);
+    };
+  }, [finishPointerInteraction]);
 
   const taskById = useMemo(() => new Map(snapshot.tasks.map((task) => [task.id, task])), [snapshot.tasks]);
   const groupById = useMemo(() => new Map(effectiveGroups.map((group) => [group.id, group])), [effectiveGroups]);
@@ -236,48 +322,63 @@ export function MapViewport({
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest('button, [role="dialog"]')) return;
+    finishPointerInteraction();
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    setPanDrag({ pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, cameraX: camera.x, cameraY: camera.y });
+    capturedPointerRef.current = { pointerId: event.pointerId, target: event.currentTarget };
+    const drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, cameraX: camera.x, cameraY: camera.y, zoom: camera.zoom };
+    panDragRef.current = drag;
+    setPanDrag(drag);
     onClearSelection();
   };
 
   const handleAgentPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, agentId: string) => {
     if (event.button !== 0) return;
     event.stopPropagation();
+    finishPointerInteraction();
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    setAgentDrag({ pointerId: event.pointerId, agentId, startX: event.clientX, startY: event.clientY, origin: manualOffsets[agentId] ?? { x: 0, y: 0 }, moved: false });
+    capturedPointerRef.current = { pointerId: event.pointerId, target: event.currentTarget };
+    const drag = { pointerId: event.pointerId, agentId, startX: event.clientX, startY: event.clientY, origin: manualOffsetsRef.current[agentId] ?? { x: 0, y: 0 }, zoom: camera.zoom, moved: false };
+    agentDragRef.current = drag;
+    setAgentDrag({ ...drag });
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (agentDrag?.pointerId === event.pointerId) {
-      const dx = (event.clientX - agentDrag.startX) / camera.zoom;
-      const dy = (event.clientY - agentDrag.startY) / camera.zoom;
-      const moved = agentDrag.moved || Math.hypot(dx, dy) > 4;
-      setManualOffsets((current) => {
-        const next = { ...current, [agentDrag.agentId]: { x: agentDrag.origin.x + dx, y: agentDrag.origin.y + dy } };
-        manualOffsetsRef.current = next;
-        return next;
+    const draggedAgent = agentDragRef.current;
+    if (draggedAgent?.pointerId === event.pointerId) {
+      const screenDx = event.clientX - draggedAgent.startX;
+      const screenDy = event.clientY - draggedAgent.startY;
+      if (!draggedAgent.moved && Math.hypot(screenDx, screenDy) <= 4) return;
+      draggedAgent.moved = true;
+      schedulePointerFrame({
+        kind: 'agent',
+        pointerId: event.pointerId,
+        agentId: draggedAgent.agentId,
+        offset: {
+          x: draggedAgent.origin.x + screenDx / draggedAgent.zoom,
+          y: draggedAgent.origin.y + screenDy / draggedAgent.zoom
+        }
       });
-      if (moved !== agentDrag.moved) setAgentDrag({ ...agentDrag, moved });
       return;
     }
-    if (!panDrag || panDrag.pointerId !== event.pointerId) return;
-    pendingPanRef.current = { zoom: camera.zoom, x: panDrag.cameraX + event.clientX - panDrag.startX, y: panDrag.cameraY + event.clientY - panDrag.startY };
-    if (panFrameRef.current !== null) return;
-    panFrameRef.current = requestAnimationFrame(() => {
-      panFrameRef.current = null;
-      if (pendingPanRef.current) setCamera(pendingPanRef.current);
-      pendingPanRef.current = null;
+    const draggedMap = panDragRef.current;
+    if (!draggedMap || draggedMap.pointerId !== event.pointerId) return;
+    schedulePointerFrame({
+      kind: 'pan',
+      pointerId: event.pointerId,
+      camera: {
+        zoom: draggedMap.zoom,
+        x: draggedMap.cameraX + event.clientX - draggedMap.startX,
+        y: draggedMap.cameraY + event.clientY - draggedMap.startY
+      }
     });
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (agentDrag?.pointerId === event.pointerId) {
-      if (agentDrag.moved) suppressClickRef.current = agentDrag.agentId;
-      saveManualOffsets(snapshot.project.id, manualOffsetsRef.current, window.localStorage);
-      setAgentDrag(null);
-    }
-    if (panDrag?.pointerId === event.pointerId) setPanDrag(null);
+    finishPointerInteraction(event.pointerId, true, true);
+  };
+
+  const handlePointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    finishPointerInteraction(event.pointerId);
   };
 
   const focusPoint = (point: Point) => {
@@ -308,7 +409,7 @@ export function MapViewport({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
     >
       <div className="map-world" data-zoom={camera.zoom.toFixed(2)}>
         <svg className="map-geometry" aria-hidden="true">

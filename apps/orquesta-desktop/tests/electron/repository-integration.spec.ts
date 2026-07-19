@@ -53,8 +53,8 @@ test('loads a real .orquesta repository read-only and follows canonical file cha
 
   try {
     const window = await desktop.firstWindow();
-    await expect(window.getByText('Live repository', { exact: true })).toBeVisible();
-    await expect(window.getByText('Prototype data')).toHaveCount(0);
+    await expect(window.getByText('Watching state files', { exact: true })).toBeVisible();
+    await expect(window.getByText('Demo data')).toHaveCount(0);
     await expect(window.getByLabel('Orquesta Map')).toBeVisible();
     await expect(window.locator('[data-node-kind="agent"]')).toHaveCount(2);
     await expect(window.getByRole('button', { name: 'Builder, Working' })).toBeVisible();
@@ -89,7 +89,7 @@ test('shows a bounded first-launch project chooser instead of prototype content'
     const window = await desktop.firstWindow();
     await expect(window.getByRole('heading', { name: 'Open your first Orquesta project' })).toBeVisible();
     await expect(window.getByRole('button', { name: 'Open project folder' })).toBeVisible();
-    await expect(window.getByText('Prototype data')).toHaveCount(0);
+    await expect(window.getByText('Demo data')).toHaveCount(0);
     await expect(window.getByLabel('Orquesta Map')).toHaveCount(0);
   } finally {
     await desktop.close();

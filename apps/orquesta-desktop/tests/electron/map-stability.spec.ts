@@ -85,6 +85,14 @@ test('keeps the complete hierarchy crisp and responsive in Electron', async () =
       expect(actualScale).toBeCloseTo(variant.scale, 1);
 
       await window.getByRole('button', { name: 'Fit' }).click();
+      const overflowingGlyphs = await window.locator('.agent-node__icon').evaluateAll((icons) => icons.flatMap((icon) => {
+        const frame = icon.getBoundingClientRect();
+        const svg = icon.querySelector('svg')?.getBoundingClientRect();
+        return svg && (svg.width > frame.width + 0.5 || svg.height > frame.height + 0.5)
+          ? [icon.closest('[data-agent-id]')?.getAttribute('data-agent-id') ?? 'user']
+          : [];
+      }));
+      expect(overflowingGlyphs).toEqual([]);
       const documentBounds = await window.evaluate(() => ({
         bodyWidth: document.body.scrollWidth - document.body.clientWidth,
         bodyHeight: document.body.scrollHeight - document.body.clientHeight,

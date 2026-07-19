@@ -40,11 +40,12 @@ test('sends a composer instruction to a Codex App Server thread and reads its hi
     await expect(window.getByText('Fake coordinator accepted the desktop instruction.')).toBeVisible();
 
     await window.getByRole('button', { name: 'Conversation history · Coordinator' }).click();
-    const history = window.getByRole('dialog', { name: 'Conversation · Coordinator' });
+    const history = window.getByRole('region', { name: 'Conversation', exact: true });
     await expect(history).toBeVisible();
+    await expect(history.getByRole('heading', { name: 'Conversation · Coordinator' })).toBeVisible();
     await expect(history.getByText('Continue from desktop.')).toBeVisible();
     await expect(history.getByText('Fake coordinator accepted the desktop instruction.')).toBeVisible();
-    await history.getByRole('button', { name: 'Close' }).click();
+    await window.getByRole('button', { name: 'Home' }).click();
 
     await composer.fill('REQUEST_APPROVAL');
     await window.getByRole('button', { name: 'Send message' }).click();

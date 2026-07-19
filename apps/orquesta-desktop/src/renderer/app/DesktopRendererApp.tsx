@@ -8,15 +8,18 @@ import { fixtureKeys, type FixtureId } from '../../fixtures';
 import { AttentionCard } from '../features/attention/AttentionCard';
 import { AttentionHistory } from '../features/attention/AttentionHistory';
 import { CommandComposer } from '../features/composer/CommandComposer';
-import { ConversationHistory } from '../features/conversation/ConversationHistory';
 import { AgentDetail } from '../features/details/AgentDetail';
+import { AttentionDetail } from '../features/details/AttentionDetail';
 import { TaskDetail } from '../features/details/TaskDetail';
 import { I18nProvider, useI18n } from '../features/i18n/I18nProvider';
 import type { Locale } from '../features/i18n/messages';
 import { MapViewport } from '../features/map/MapViewport';
+import { WorkspaceDock, type WorkspaceId } from '../features/navigation/WorkspaceDock';
+import { WorkspaceSurface } from '../features/navigation/WorkspaceSurface';
 import { NowCardStack } from '../features/now/NowCardStack';
-import { NowListOverlay } from '../features/now/NowListOverlay';
 import { V4Operations } from '../features/operations/V4Operations';
+import { ProjectLauncher } from '../features/project/ProjectLauncher';
+import { RepositoryStatusPill } from '../features/project/RepositoryStatusPill';
 import { ProjectRoute } from '../features/project/ProjectRoute';
 import { ProjectStatusCard } from '../features/project/ProjectStatusCard';
 import { ProjectSwitcher } from '../features/project/ProjectSwitcher';
@@ -26,13 +29,12 @@ import { ToastStack } from '../features/toast/ToastStack';
 export type OpenOverlay =
   | { kind: 'agent'; agentId: string }
   | { kind: 'task'; taskId: string }
+  | { kind: 'attention'; attentionId: string }
   | { kind: 'project-route' }
   | { kind: 'project-switcher' }
-  | { kind: 'conversation' }
   | { kind: 'attention-history' }
   | { kind: 'team-management' }
   | { kind: 'operations' }
-  | { kind: 'now-list' }
   | null;
 
 type MapSelection = { kind: 'agent'; agentId: string } | { kind: 'task'; taskId: string } | null;
@@ -80,6 +82,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [snapshot, setSnapshot] = useState<OrquestaUiSnapshot | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<OpenOverlay>(null);
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>('home');
   const [mapSelection, setMapSelection] = useState<MapSelection>(null);
   const [draft, setDraft] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('orchestrator');
@@ -90,6 +93,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [toasts, setToasts] = useState<RuntimeUiEvent[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [conversationTargetAgentId, setConversationTargetAgentId] = useState('orchestrator');
   const [conversationCursor, setConversationCursor] = useState<string | null>(null);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [history, setHistory] = useState<AttentionUiItem[]>([]);
@@ -97,21 +101,37 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const draftProjectId = useRef<string | null>(null);
   const rendererReadyReported = useRef(false);
+  const conversationRequest = useRef(0);
+  const conversationTargetAgentIdRef = useRef('orchestrator');
+  const availableAgentIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let alive = true;
     void bridge.getInitialSnapshot()
       .then((next) => {
         if (!alive) return;
+        availableAgentIdsRef.current = new Set(next.agents.map((agent) => agent.id));
         setSnapshot(next);
         setToasts(next.recentEvents);
       })
       .catch((error: unknown) => setLoadingError(error instanceof Error ? error.message : String(error)));
     const unsubscribe = bridge.subscribe((event) => {
       if (event.type === 'snapshot_changed') {
+        availableAgentIdsRef.current = new Set(event.snapshot.agents.map((agent) => agent.id));
+        const fallbackAgentId = event.snapshot.agents.find((agent) => agent.id === 'orchestrator')?.id
+          ?? event.snapshot.agents[0]?.id
+          ?? 'orchestrator';
         setSnapshot(event.snapshot);
         setActionError(null);
-        setTargetAgentId((current) => event.snapshot.agents.some((agent) => agent.id === current) ? current : 'orchestrator');
+        setTargetAgentId((current) => event.snapshot.agents.some((agent) => agent.id === current) ? current : fallbackAgentId);
+        if (!event.snapshot.agents.some((agent) => agent.id === conversationTargetAgentIdRef.current)) {
+          conversationRequest.current += 1;
+          conversationTargetAgentIdRef.current = fallbackAgentId;
+          setConversationTargetAgentId(fallbackAgentId);
+          setMessages([]);
+          setConversationCursor(null);
+          setActiveWorkspace('home');
+        }
       } else {
         setToasts((current) => [...current, event.toast].slice(-6));
       }
@@ -135,10 +155,14 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     if (!projectId || projectId === 'no-project' || draftProjectId.current === projectId) return;
     draftProjectId.current = projectId;
     setMapSelection(null);
+    setActiveWorkspace('home');
     setOverlay(null);
     setAttachments([]);
     setDirectSendFailure(null);
     setMessages([]);
+    conversationTargetAgentIdRef.current = 'orchestrator';
+    setConversationTargetAgentId('orchestrator');
+    conversationRequest.current += 1;
     setConversationCursor(null);
     setDraft(window.localStorage.getItem(`orquesta.desktop.draft.${projectId}`) ?? '');
   }, [snapshot?.project.id]);
@@ -165,21 +189,44 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       setActionError(error instanceof Error ? error.message : String(error));
     }
   };
-  const openConversation = async () => {
+  const openProjectFolder = async () => {
     try {
-      const page = await bridge.listConversation({ targetAgentId, cursor: null, limit: 100 });
-      setMessages(page.items);
-      setConversationCursor(page.nextCursor);
-      setOverlay({ kind: 'conversation' });
+      const result = await bridge.requestOpenProject();
+      if (result.status !== 'accepted') setActionError(result.reason);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
     }
+  };
+  const openConversation = async (requestedTargetAgentId = targetAgentId) => {
+    const request = ++conversationRequest.current;
+    try {
+      const page = await bridge.listConversation({ targetAgentId: requestedTargetAgentId, cursor: null, limit: 100 });
+      if (request !== conversationRequest.current || !availableAgentIdsRef.current.has(requestedTargetAgentId)) return;
+      setMessages(page.items);
+      setConversationCursor(page.nextCursor);
+      conversationTargetAgentIdRef.current = requestedTargetAgentId;
+      setConversationTargetAgentId(requestedTargetAgentId);
+      setOverlay(null);
+      setMapSelection(null);
+      setActiveWorkspace('conversation');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const selectWorkspace = (workspace: WorkspaceId) => {
+    if (workspace === 'conversation') {
+      void openConversation();
+      return;
+    }
+    setOverlay(null);
+    setMapSelection(null);
+    setActiveWorkspace(workspace);
   };
   const loadOlderConversation = async () => {
     if (!conversationCursor || loadingOlderMessages) return;
     setLoadingOlderMessages(true);
     try {
-      const page = await bridge.listConversation({ targetAgentId, cursor: conversationCursor, limit: 100 });
+      const page = await bridge.listConversation({ targetAgentId: conversationTargetAgentId, cursor: conversationCursor, limit: 100 });
       setMessages((current) => {
         const byId = new Map([...page.items, ...current].map((message) => [message.id, message]));
         return [...byId.values()];
@@ -266,7 +313,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   if (loadingError) {
     return (
       <main className="desktop-shell loading-shell" role="application" aria-label="Orquesta Desktop">
-        <section><strong>{t('snapshotUnavailable')}</strong><p>{loadingError}</p><button type="button" onClick={() => window.location.reload()}>{t('retry')}</button></section>
+        <section><strong>{t('snapshotUnavailable')}</strong><p>{loadingError}</p><div className="loading-actions"><button type="button" onClick={() => window.location.reload()}>{t('retry')}</button><button type="button" onClick={() => void openProjectFolder()}><FolderOpen size={15} />{t('openProjectFolder')}</button></div></section>
       </main>
     );
   }
@@ -279,9 +326,14 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       if (openingProject) return;
       setOpeningProject(true);
       setActionError(null);
-      const result = await bridge.requestOpenProject();
-      setOpeningProject(false);
-      if (result.status !== 'accepted') setActionError(result.reason);
+      try {
+        const result = await bridge.requestOpenProject();
+        if (result.status !== 'accepted') setActionError(result.reason);
+      } catch (error) {
+        setActionError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setOpeningProject(false);
+      }
     };
     return (
       <main className="desktop-shell project-onboarding-shell" role="application" aria-label="Orquesta Desktop">
@@ -304,6 +356,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
 
   const selectedAgent = overlay?.kind === 'agent' ? snapshot.agents.find((agent) => agent.id === overlay.agentId) ?? null : null;
   const selectedTask = overlay?.kind === 'task' ? snapshot.tasks.find((task) => task.id === overlay.taskId) ?? null : null;
+  const selectedAttention = overlay?.kind === 'attention' ? snapshot.attention.find((item) => item.id === overlay.attentionId) ?? null : null;
   const selectedAgentTask = selectedAgent?.currentTaskId ? snapshot.tasks.find((task) => task.id === selectedAgent.currentTaskId) ?? null : null;
   const selectAgent = (agentId: string) => {
     setMapSelection({ kind: 'agent', agentId });
@@ -313,60 +366,97 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     setMapSelection({ kind: 'task', taskId });
     setOverlay({ kind: 'task', taskId });
   };
-  const repositoryBadge = {
-    watching: { label: t('repositoryWatching'), live: true },
-    snapshot: { label: t('repositorySnapshot'), live: false },
-    offline: { label: t('repositoryOffline'), live: false },
-    demo: { label: t('prototype'), live: false },
-    error: { label: t('repositoryError'), live: false }
-  }[snapshot.project.repositoryDisplayState];
+  const workspaceCounts = {
+    attention: snapshot.attention.length,
+    tasks: snapshot.tasks.filter((task) => ['blocked', 'needs_review', 'report_ready', 'approval_wait'].includes(task.state)).length,
+    failures: snapshot.attention.filter((item) => item.type === 'error' || item.type === 'repair').length,
+    conversation: 0
+  };
+  const workspaceLabels = {
+    navigation: t('workspace'),
+    home: t('home'),
+    attention: t('workspaceAttention'),
+    tasks: t('tasks'),
+    failures: t('workspaceFailures'),
+    conversation: t('workspaceConversation'),
+    more: t('workspaceMore')
+  };
+  const openAttentionItem = (item: AttentionUiItem) => item.taskId && snapshot.tasks.some((task) => task.id === item.taskId)
+    ? selectTask(item.taskId)
+    : setOverlay({ kind: 'attention', attentionId: item.id });
+  const conversationTargetLabel = snapshot.agents.find((agent) => agent.id === conversationTargetAgentId)?.displayName ?? conversationTargetAgentId;
+  const changeTargetAgent = (agentId: string) => {
+    setTargetAgentId(agentId);
+    if (activeWorkspace === 'conversation') void openConversation(agentId);
+  };
 
   return (
     <main className={`desktop-shell project-${snapshot.project.status}`} role="application" aria-label="Orquesta Desktop">
       <div className="paper-grain" aria-hidden="true" />
-      <span className={`prototype-badge${repositoryBadge.live ? ' live-state-badge' : ''}`}><i />{repositoryBadge.label}</span>
+      <RepositoryStatusPill project={snapshot.project} />
+      <ProjectLauncher
+        project={snapshot.project}
+        onSwitchProject={() => void openProjects()}
+        onOpenProject={() => void openProjectFolder()}
+        onOpenRoute={() => setOverlay({ kind: 'project-route' })}
+      />
       {snapshot.project.status === 'offline' ? (
         <div className="stale-ribbon" role="status">{t('offlineSnapshot')} · {t('lastSynced')} {snapshot.project.lastSyncedAt ? new Date(snapshot.project.lastSyncedAt).toLocaleTimeString() : t('unknown')}</div>
       ) : null}
 
-      <MapViewport
-        snapshot={snapshot}
-        selectedAgentId={mapSelection?.kind === 'agent' ? mapSelection.agentId : null}
-        selectedTaskId={mapSelection?.kind === 'task' ? mapSelection.taskId : null}
-        reducedMotion={reducedMotion}
-        onSelectAgent={selectAgent}
-        onSelectTask={selectTask}
-        onClearSelection={clearMapSelection}
-        onOpenTeam={() => void openTeam()}
-      />
+      {activeWorkspace === 'home' ? (
+        <MapViewport
+          snapshot={snapshot}
+          selectedAgentId={mapSelection?.kind === 'agent' ? mapSelection.agentId : null}
+          selectedTaskId={mapSelection?.kind === 'task' ? mapSelection.taskId : null}
+          reducedMotion={reducedMotion}
+          onSelectAgent={selectAgent}
+          onSelectTask={selectTask}
+          onClearSelection={clearMapSelection}
+          onOpenTeam={() => void openTeam()}
+        />
+      ) : (
+        <WorkspaceSurface
+          active={activeWorkspace}
+          snapshot={snapshot}
+          messages={messages}
+          conversationTargetLabel={conversationTargetLabel}
+          conversationLoading={loadingOlderMessages}
+          conversationHasOlder={Boolean(conversationCursor)}
+          onLoadOlderConversation={() => void loadOlderConversation()}
+          onOpenAttention={openAttentionItem}
+          onOpenTask={selectTask}
+          onOpenRoute={() => setOverlay({ kind: 'project-route' })}
+          onOpenOperations={() => setOverlay({ kind: 'operations' })}
+          onOpenTeam={() => void openTeam()}
+        />
+      )}
 
       <div className="floating-instrument-layer" aria-label="Workspace instruments">
-        <NowCardStack
-          agents={snapshot.agents}
-          tasks={snapshot.tasks}
-          allowActive={snapshot.project.status !== 'offline'}
-          onOpenTask={(taskId, agentId) => {
-            setTargetAgentId(agentId);
-            selectTask(taskId);
-          }}
-          onOpenAll={() => setOverlay({ kind: 'now-list' })}
-        />
-        <ProjectStatusCard
-          project={snapshot.project}
-          phases={snapshot.phases}
-          agentCount={snapshot.agents.length}
-          onOpenRoute={() => setOverlay({ kind: 'project-route' })}
-          onSwitchProject={() => void openProjects()}
-          onOpenOperations={() => setOverlay({ kind: 'operations' })}
-        />
-        <AttentionCard
-          items={snapshot.attention}
-          agents={snapshot.agents}
-          canResolve={bridge.capabilities.attentionResolution}
-          onOpenItem={(item) => item.taskId ? selectTask(item.taskId) : void bridge.openAttentionItem(item.id)}
-          onResolve={(item, decision) => void resolveAttention(item, decision)}
-          onViewHistory={() => void openHistory()}
-        />
+        {activeWorkspace === 'home' ? (
+          <>
+            <NowCardStack
+              agents={snapshot.agents}
+              tasks={snapshot.tasks}
+              allowActive={snapshot.project.status !== 'offline'}
+              onOpenTask={(taskId, agentId) => {
+                setTargetAgentId(agentId);
+                selectTask(taskId);
+              }}
+              onOpenAll={() => selectWorkspace('tasks')}
+            />
+            <ProjectStatusCard project={snapshot.project} agentCount={snapshot.agents.length} />
+            <AttentionCard
+              items={snapshot.attention}
+              agents={snapshot.agents}
+              canResolve={bridge.capabilities.attentionResolution}
+              onOpenItem={openAttentionItem}
+              onResolve={(item, decision) => void resolveAttention(item, decision)}
+              onOpenAll={() => selectWorkspace('attention')}
+              onViewHistory={() => void openHistory()}
+            />
+          </>
+        ) : null}
         <CommandComposer
           agents={snapshot.agents}
           online={snapshot.project.status !== 'offline'}
@@ -377,7 +467,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           directSendFailure={directSendFailure}
           attachments={attachments}
           canAttach={bridge.capabilities.imageAttachments}
-          onTargetChange={setTargetAgentId}
+          onTargetChange={changeTargetAgent}
           onChange={(value) => { setDraft(value); setDirectSendFailure(null); }}
           onSend={() => void send()}
           onOpenHistory={() => void openConversation()}
@@ -387,23 +477,14 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           onOpenCodexDraft={() => void openCodexDraft()}
         />
         <ToastStack toasts={toasts} onDismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} />
+        <WorkspaceDock active={activeWorkspace} counts={workspaceCounts} labels={workspaceLabels} onSelect={selectWorkspace} />
       </div>
 
       {selectedAgent ? <AgentDetail agent={selectedAgent} task={selectedAgentTask} onOpenTask={selectTask} onClose={clearMapSelection} /> : null}
       {selectedTask ? <TaskDetail task={selectedTask} agents={snapshot.agents} onClose={clearMapSelection} /> : null}
+      {selectedAttention ? <AttentionDetail item={selectedAttention} sourceLabel={selectedAttention.sourceAgentId ? snapshot.agents.find((agent) => agent.id === selectedAttention.sourceAgentId)?.displayName ?? selectedAttention.sourceAgentId : 'System'} canResolve={bridge.capabilities.attentionResolution} onResolve={(decision) => void resolveAttention(selectedAttention, decision)} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'project-route' ? <ProjectRoute project={snapshot.project} phases={snapshot.phases} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'project-switcher' ? <ProjectSwitcher projects={projects} currentProjectId={snapshot.project.id} onSwitch={(id) => bridge.switchProject(id)} onOpenProject={() => bridge.requestOpenProject()} onClose={closeOverlay} /> : null}
-      {overlay?.kind === 'conversation' ? (
-        <ConversationHistory
-          targetAgentId={targetAgentId}
-          agents={snapshot.agents}
-          messages={messages}
-          nextCursor={conversationCursor}
-          loadingOlder={loadingOlderMessages}
-          onLoadOlder={() => void loadOlderConversation()}
-          onClose={closeOverlay}
-        />
-      ) : null}
       {overlay?.kind === 'attention-history' ? <AttentionHistory items={history} agents={snapshot.agents} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'team-management' ? (
         <TeamManagement
@@ -418,7 +499,6 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
         />
       ) : null}
       {overlay?.kind === 'operations' ? <V4Operations operations={snapshot.v4Operations} getRuntimeInfo={getRuntimeInfo} onClose={closeOverlay} /> : null}
-      {overlay?.kind === 'now-list' ? <NowListOverlay agents={snapshot.agents} tasks={snapshot.tasks} onOpenTask={selectTask} onClose={closeOverlay} /> : null}
     </main>
   );
 }

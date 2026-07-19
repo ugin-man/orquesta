@@ -2,6 +2,7 @@ import { CircleCheck, CircleDashed, CircleDot, TriangleAlert } from 'lucide-reac
 import { useState } from 'react';
 import type { ProjectPhaseUiModel, ProjectUiModel } from '../../../contracts/orquesta-ui';
 import { OverlayFrame } from '../../components/OverlayFrame';
+import { formatDateTime } from '../../components/format';
 import { useI18n } from '../i18n/I18nProvider';
 
 function PhaseIcon({ status }: { status: ProjectPhaseUiModel['status'] }) {
@@ -15,9 +16,21 @@ export function ProjectRoute({ project, phases, onClose }: { project: ProjectUiM
   const { t } = useI18n();
   const [selectedId, setSelectedId] = useState(project.currentPhaseId ?? phases[0]?.id ?? null);
   const selected = phases.find((phase) => phase.id === selectedId) ?? phases[0];
+  const sourceLabel = {
+    watching: t('repositoryWatching'),
+    snapshot: t('repositorySnapshot'),
+    offline: t('repositoryOffline'),
+    demo: t('demoData'),
+    error: t('repositoryError')
+  }[project.repositoryDisplayState];
   return (
     <OverlayFrame title={t('projectRoute')} subtitle={project.title} ariaLabel={t('projectRoute')} className="project-route-overlay" onClose={onClose}>
       <div className="project-route">
+        <div className={`project-route__freshness project-route__freshness--${project.repositoryDisplayState}`}>
+          <span><i aria-hidden="true" />{sourceLabel}</span>
+          <time>{formatDateTime(project.lastSyncedAt)}</time>
+          <small>{project.connectionLabel}</small>
+        </div>
         <div className="project-route__track">
           {phases.map((phase, index) => (
             <button type="button" key={phase.id} className={`route-phase route-phase--${phase.status}${phase.id === selectedId ? ' is-selected' : ''}`} onClick={() => setSelectedId(phase.id)}>
