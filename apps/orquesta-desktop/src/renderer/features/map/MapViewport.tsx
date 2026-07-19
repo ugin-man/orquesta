@@ -4,7 +4,7 @@ import type { AgentUiModel, OrquestaUiSnapshot, TaskUiModel } from '../../../con
 import { AgentGlyph } from '../../components/AgentGlyph';
 import { StatusDot } from '../../components/StatusDot';
 import { useI18n } from '../i18n/I18nProvider';
-import { createStableLayout, edgePath, type MapGroupLayout, type Point } from './layout';
+import { createStableLayout, edgePath, groupBoundsForPositions, type MapGroupLayout, type Point } from './layout';
 import { applyManualOffsets, clearManualOffsets, loadManualOffsets, saveManualOffsets, type ManualOffsets } from './manual-layout';
 
 interface Camera { x: number; y: number; zoom: number }
@@ -76,19 +76,6 @@ function mapStatusText(agent: AgentUiModel): string {
 function shortRole(agent: AgentUiModel): string {
   const value = agent.role.trim() || agent.roleSummary.trim();
   return Array.from(value).slice(0, 22).join('');
-}
-
-function groupBounds(group: MapGroupLayout, positions: Map<string, Point>, nodeWidth: number, nodeHeight: number): MapGroupLayout {
-  const points = group.agentIds.flatMap((agentId) => {
-    const point = positions.get(agentId);
-    return point ? [point] : [];
-  });
-  if (!points.length) return group;
-  const x = Math.min(...points.map((point) => point.x - nodeWidth / 2)) - 34;
-  const y = Math.min(...points.map((point) => point.y - nodeHeight / 2)) - 42;
-  const right = Math.max(...points.map((point) => point.x + nodeWidth / 2)) + 34;
-  const bottom = Math.max(...points.map((point) => point.y + nodeHeight / 2)) + 30;
-  return { ...group, x, y, width: right - x, height: bottom - y, anchor: { x: (x + right) / 2, y } };
 }
 
 function contentBounds(user: Point, positions: Map<string, Point>, groups: MapGroupLayout[], nodeWidth: number, nodeHeight: number): Bounds {
@@ -214,7 +201,7 @@ export function MapViewport({
   }, [snapshot.project.id]);
   const effectivePositions = useMemo(() => applyManualOffsets(layout.agentPositions, manualOffsets), [layout.agentPositions, manualOffsets]);
   const effectiveGroups = useMemo(
-    () => layout.groups.map((group) => groupBounds(group, effectivePositions, layout.nodeWidth, layout.nodeHeight)),
+    () => layout.groups.map((group) => groupBoundsForPositions(group, effectivePositions, layout.nodeWidth, layout.nodeHeight)),
     [effectivePositions, layout.groups, layout.nodeHeight, layout.nodeWidth]
   );
   const bounds = useMemo(
@@ -269,9 +256,12 @@ export function MapViewport({
         ? groupById.get(parentGroupId as MapGroupLayout['id'])?.anchor ?? edge.from
         : effectivePositions.get(edge.parentId) ?? edge.from;
     const groupId = edge.childId.startsWith('group:') ? edge.childId.slice(6) : null;
-    const child = groupId ? groupById.get(groupId as MapGroupLayout['id'])?.anchor : effectivePositions.get(edge.childId);
+    const childPoint = groupId ? groupById.get(groupId as MapGroupLayout['id'])?.anchor : effectivePositions.get(edge.childId);
+    const child = parentGroupId && childPoint
+      ? { x: childPoint.x, y: childPoint.y - layout.nodeHeight / 2 }
+      : childPoint;
     return { ...edge, from: parent, to: child ?? edge.to };
-  }), [effectivePositions, groupById, layout.edges, layout.user]);
+  }), [effectivePositions, groupById, layout.edges, layout.nodeHeight, layout.user]);
 
   const currentEdges = useMemo(() => snapshot.agents.flatMap((agent) => {
     if (!agent.currentTaskId) return [];
@@ -416,9 +406,9 @@ export function MapViewport({
           {effectiveGroups.filter((group) => group.agentIds.length > 1).map((group) => {
             const topLeft = worldToScreen({ x: group.x, y: group.y }, camera);
             return (
-              <g key={`group-${group.id}`} className="map-group">
-                <rect x={topLeft.x} y={topLeft.y} width={group.width * camera.zoom} height={group.height * camera.zoom} rx={Math.max(10, 22 * camera.zoom)} />
-                <text x={topLeft.x + 14} y={topLeft.y + 19}>{group.id.toUpperCase()}</text>
+              <g key={`group-${group.id}`} className="map-group" transform={`translate(${topLeft.x} ${topLeft.y}) scale(${camera.zoom})`}>
+                <rect x={0} y={0} width={group.width} height={group.height} rx={22} />
+                <text x={14} y={19}>{group.id.toUpperCase()}</text>
               </g>
             );
           })}

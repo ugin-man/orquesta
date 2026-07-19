@@ -133,6 +133,18 @@ describe('Map viewport projection', () => {
     expect(compactAgentName('Orchestrator')).toBe('ORCHESTR');
   });
 
+  test('keeps each group frame and heading inside one camera transform', () => {
+    const animationFrames = installAnimationFrames();
+    const { container } = renderMap();
+    act(() => animationFrames.flush());
+
+    const group = container.querySelector<SVGGElement>('.map-group');
+    expect(group).not.toBeNull();
+    expect(group).toHaveAttribute('transform');
+    expect(group!.querySelector('rect')).toHaveAttribute('x', '0');
+    expect(group!.querySelector('text')).toHaveAttribute('x', '14');
+  });
+
   test('coalesces agent pointer moves into one update per animation frame', () => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     const animationFrames = installAnimationFrames();

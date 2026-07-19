@@ -52,7 +52,7 @@ const HORIZONTAL_GAP = 56;
 const LEVEL_GAP = 104;
 const ROW_GAP = 68;
 const GROUP_PADDING_X = 52;
-const GROUP_PADDING_TOP = 64;
+const GROUP_PADDING_TOP = 92;
 const GROUP_PADDING_BOTTOM = 44;
 const GROUP_GAP_X = 72;
 const GROUP_GAP_Y = 88;
@@ -183,6 +183,24 @@ function translated(point: Point, dx: number, dy: number): Point {
   return { x: point.x + dx, y: point.y + dy };
 }
 
+export function groupBoundsForPositions(
+  group: MapGroupLayout,
+  positions: Map<string, Point>,
+  nodeWidth: number,
+  nodeHeight: number
+): MapGroupLayout {
+  const points = group.agentIds.flatMap((agentId) => {
+    const point = positions.get(agentId);
+    return point ? [point] : [];
+  });
+  if (!points.length) return group;
+  const x = Math.min(...points.map((point) => point.x - nodeWidth / 2)) - GROUP_PADDING_X;
+  const y = Math.min(...points.map((point) => point.y - nodeHeight / 2)) - GROUP_PADDING_TOP;
+  const right = Math.max(...points.map((point) => point.x + nodeWidth / 2)) + GROUP_PADDING_X;
+  const bottom = Math.max(...points.map((point) => point.y + nodeHeight / 2)) + GROUP_PADDING_BOTTOM;
+  return { ...group, x, y, width: right - x, height: bottom - y, anchor: { x: (x + right) / 2, y } };
+}
+
 export function createStableLayout(agents: AgentUiModel[]): MapLayout {
   const organization = buildOrganizationProjection(agents);
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
@@ -252,7 +270,7 @@ export function createStableLayout(agents: AgentUiModel[]): MapLayout {
         parentId: `group:${group.id}`,
         childId: rootAgentId,
         from: group.anchor,
-        to: rootPoint,
+        to: { x: rootPoint.x, y: rootPoint.y - NODE_HEIGHT / 2 },
         kind: 'delegation'
       });
     }
