@@ -1,5 +1,8 @@
-import { describe, expect, test } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
 import type { RuntimeUiEvent } from '../../src/contracts/orquesta-ui';
+import { I18nProvider } from '../../src/renderer/features/i18n/I18nProvider';
+import { ToastStack } from '../../src/renderer/features/toast/ToastStack';
 import { visibleToastQueue } from '../../src/renderer/features/toast/toast-queue';
 
 function toast(input: Partial<RuntimeUiEvent> & Pick<RuntimeUiEvent, 'id' | 'title' | 'message'>): RuntimeUiEvent {
@@ -29,5 +32,23 @@ describe('visibleToastQueue', () => {
 
     expect(result.visible.map((item) => item.id)).toEqual(['new', 'old']);
     expect(result.hiddenCount).toBe(0);
+  });
+
+  test('localizes the hidden notification count in the active language', () => {
+    const toasts = Array.from({ length: 5 }, (_, index) => toast({
+      id: String(index),
+      title: `Event ${index}`,
+      message: `Message ${index}`,
+      createdAt: `2026-07-19T00:00:0${index}.000Z`
+    }));
+
+    render(
+      <I18nProvider initialLocale="en">
+        <ToastStack toasts={toasts} onDismiss={vi.fn()} />
+      </I18nProvider>
+    );
+
+    expect(screen.getByText('2 more notifications')).toBeVisible();
+    expect(screen.queryByText('ほか2件')).not.toBeInTheDocument();
   });
 });

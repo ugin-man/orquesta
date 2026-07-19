@@ -109,7 +109,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .project-launcher__copy { min-width: 0; }
 .project-launcher__copy strong, .project-launcher__copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-launcher__copy strong { font-size: 10px; }
-.project-launcher__copy small { margin-top: 3px; color: var(--ink-muted); font-size: 7px; }
+.project-launcher__copy small { margin-top: 3px; color: var(--ink-muted); font-size: 8px; }
 .project-launcher__menu { padding: 5px 8px 8px; border-top: 1px solid var(--line); }
 .project-launcher__menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 5px; border: 0; border-radius: 7px; background: transparent; text-align: left; font-size: 9px; }
 .project-launcher__menu button:hover { background: rgba(20,20,20,.055); }

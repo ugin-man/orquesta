@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { useEffect } from 'react';
 import type { RuntimeUiEvent } from '../../../contracts/orquesta-ui';
+import { useI18n } from '../i18n/I18nProvider';
 import { visibleToastQueue } from './toast-queue';
 
 function Toast({ toast, onDismiss }: { toast: RuntimeUiEvent; onDismiss(id: string): void }) {
@@ -18,6 +19,7 @@ function Toast({ toast, onDismiss }: { toast: RuntimeUiEvent; onDismiss(id: stri
 }
 
 export function ToastStack({ toasts, onDismiss }: { toasts: RuntimeUiEvent[]; onDismiss(id: string): void }) {
+  const { t } = useI18n();
   const queue = visibleToastQueue(toasts);
   const suppressedKey = queue.suppressedIds.join('|');
   useEffect(() => {
@@ -25,7 +27,7 @@ export function ToastStack({ toasts, onDismiss }: { toasts: RuntimeUiEvent[]; on
   }, [onDismiss, suppressedKey]);
   return (
     <section className="toast-stack" aria-live="polite" aria-label="Notifications">
-      {queue.hiddenCount ? <div className="toast-overflow">ほか{queue.hiddenCount}件</div> : null}
+      {queue.hiddenCount ? <div className="toast-overflow">{t('toastOverflow').replace('{count}', String(queue.hiddenCount))}</div> : null}
       {[...queue.visible].reverse().map((toast) => <Toast key={toast.id} toast={toast} onDismiss={onDismiss} />)}
     </section>
   );

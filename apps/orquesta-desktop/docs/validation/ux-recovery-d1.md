@@ -12,6 +12,7 @@ D1では、既存の円形HomeとElectron基盤を残したまま、表示状態
 - 要対応は質問、承認、確認、作業の件数をまとめ、優先度順の上位5件を表示する。
 - taskに結び付かない要対応でも、アプリ内の詳細を開けるようにした。
 - Toastは同じ通知を5秒間重複させず、画面には新しい3件まで表示する。
+- Toastの省略件数は表示言語に合わせ、英語画面へ日本語が混ざらないようにした。
 - Mapのアイコンをズーム倍率と一緒に縮小し、pointer capture、listener、requestAnimationFrameを操作後に解放する。
 - 会話画面は選択中の相手を見出しに表示し、相手を変えたときに会話も読み直す。
 - 読み込み中、プロジェクト未選択、snapshot読取失敗を別画面にした。
@@ -21,7 +22,7 @@ D1では、既存の円形HomeとElectron基盤を残したまま、表示状態
 
 | コマンド | 結果 |
 | --- | --- |
-| `npm test` | 36 files、177 tests、0 fail |
+| `npm test` | 36 files、178 tests、0 fail |
 | `npm run build:desktop` | TypeScript、Renderer、Electron hostすべてexit 0 |
 | `npm run test:desktop-smoke` | 6 tests、0 fail |
 | `npm run test:interaction-retention` | 2 tests、0 fail |
@@ -68,6 +69,12 @@ package内のCodex実行ファイルは`resources/codex-runtime/node_modules/@op
 - [ ] pan、zoom、連打の後にCPU負荷が残り続けない。
 - [ ] Toastが要対応やComposerを隠さない。
 - [ ] Moreの言語切り替えが再起動後も保持される。
+
+## Mapの暫定扱い
+
+2026-07-19のユーザー判断により、組織ツリーのrole構成と最終配置は後の再設計へ回した。現在のMapはcanonical stateのagentを確認するための暫定表示であり、管理係、利用者連絡係、vision-curator、error-concierge、設計規約系roleが常設されることを完成条件にしない。
+
+D1ではiconの枠外表示、panとdrag後の入力解放、操作後の負荷残留といった、将来のrole構成に依存しない安定性だけを維持する。最終ツリーはrole lifecycle、表示対象、organization parentの契約を決めてから設計し直す。
 
 ## D1ではまだ行わないこと
 

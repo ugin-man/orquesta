@@ -8,10 +8,12 @@
 
 **Tech Stack:** Electron 43、React 19、TypeScript 5.7、Vite 7、Vitest 4、Playwright、CSS
 
+**2026-07-19 scope update:** Mapの最終role構成と配置はユーザー判断で延期した。D1では既存Mapを暫定projectionとして残し、特定のfoundation roleや12-agent構成を固定する調整は行わない。icon枠外、pointer cleanup、操作後の負荷残留など、topology非依存の安定性だけを維持する。
+
 ## Global Constraints
 
 - 対象は`apps/orquesta-desktop`とし、Codex App Server、preload、typed IPC、Windows package基盤を作り直さない。
-- Homeの紙質、白黒基調、円形Orquesta Map、全agent表示を保持する。
+- Homeの紙質、白黒基調、円形Orquesta Map、canonical state上のagentを欠落させない暫定表示を保持する。role構成と配置は最終仕様にしない。
 - Home全体は1366 x 768でもscrollさせず、各workspaceの一覧だけを局所scrollさせる。
 - Project Status、Now、Attention、Composer、Toast、MapViewport、ProjectSwitcher、ConversationHistoryを再利用する。
 - 266件規模のtaskは既存`snapshot.tasks`を使い、新しいpagination IPCをD1では作らない。
