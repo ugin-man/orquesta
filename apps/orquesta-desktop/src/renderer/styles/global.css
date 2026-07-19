@@ -447,10 +447,21 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .user-task-context dt { display: flex; align-items: center; gap: 6px; color: var(--ink-muted); font-size: 7px; }
 .user-task-context dd { margin: 5px 0 0 20px; overflow-wrap: anywhere; font-size: 9px; }
 .user-task-actions { border-bottom: 0; }
-.user-task-actions > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.user-task-action-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
 .user-task-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 11px; border: 1px solid var(--line-strong); border-radius: 99px; font-size: 8px; }
 .user-task-actions button.is-primary { background: var(--ink); color: var(--paper-strong); }
 .user-task-actions button.is-secondary { background: transparent; color: var(--ink-muted); }
+.user-task-actions button:disabled { cursor: not-allowed; opacity: .42; }
+.user-task-answer { display: grid; gap: 8px; }
+.user-task-answer label { color: var(--ink-muted); font-size: 8px; }
+.user-task-answer textarea { width: 100%; min-height: 92px; resize: vertical; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; outline: none; background: rgba(255,253,248,.82); color: var(--ink); font: inherit; font-size: 10px; line-height: 1.55; }
+.user-task-answer textarea:focus { border-color: var(--ink-muted); box-shadow: 0 0 0 2px rgba(42,39,35,.06); }
+.user-task-submission { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; font-size: 8px; }
+.user-task-submission--sending, .user-task-submission--held { color: var(--ink-muted); }
+.user-task-submission--pending { border-color: rgba(61,116,85,.28); background: rgba(61,116,85,.06); color: #365f49; }
+.user-task-submission--failed { align-items: flex-start; justify-content: space-between; border-color: rgba(185,69,60,.32); background: rgba(185,69,60,.055); color: var(--danger); }
+.user-task-submission--failed > span { display: flex; align-items: flex-start; gap: 6px; padding-top: 6px; }
+.user-task-submission--failed button { flex: 0 0 auto; color: var(--danger); }
 .user-task-empty { display: grid; place-items: center; min-height: 150px; margin: 0; padding: 20px; color: var(--ink-muted); font-size: 9px; text-align: center; }
 .workspace-list button { display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%; padding: 12px 4px; border: 0; border-bottom: 1px solid rgba(216,210,199,.8); background: transparent; text-align: left; }
 .workspace-list button:hover { background: rgba(255,253,248,.65); }

@@ -1,5 +1,5 @@
 import { ArrowRight, Bot, Clock3, GitBranch, Languages, Settings, ShieldAlert, Stethoscope, UserRound, Wrench } from 'lucide-react';
-import type { ConversationMessage } from '../../../contracts/bridge';
+import type { ConversationMessage, UiActionResult } from '../../../contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot, TaskUiModel } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
 import { UserTasksWorkspace, type UserTaskKind } from '../attention/UserTasksWorkspace';
@@ -96,7 +96,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, m
   onSelectRecordKind(kind: RecordKind): void;
   onLoadOlderConversation(): void;
   onOpenAttention(item: AttentionUiItem): void;
-  onResolveAttention(item: AttentionUiItem, decision: string): void;
+  onResolveAttention(item: AttentionUiItem, decision: string): Promise<UiActionResult>;
   onOpenTask(taskId: string): void;
   onOpenRoute(): void;
   onOpenOperations(): void;
@@ -133,7 +133,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, m
             selectedKind={userTaskKind}
             canResolve={canResolveAttention}
             onSelectKind={onSelectUserTaskKind}
-            onResolve={onResolveAttention}
+            onSubmit={onResolveAttention}
           />
         ) : null}
         {active === 'records' && recordKind === 'task' ? <TaskList tasks={snapshot.tasks} onOpen={onOpenTask} /> : null}

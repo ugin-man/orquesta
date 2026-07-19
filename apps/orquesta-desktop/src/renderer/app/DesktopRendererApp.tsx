@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FolderOpen } from 'lucide-react';
-import type { AgentProposal, ComposerAttachment, ConversationMessage, OrquestaRendererBridge, ProjectSummary } from '../../contracts/bridge';
+import type { AgentProposal, ComposerAttachment, ConversationMessage, OrquestaRendererBridge, ProjectSummary, UiActionResult } from '../../contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent, UserActionKind } from '../../contracts/orquesta-ui';
 import { DesktopRepositoryBridge } from '../../bridges/desktop-repository-bridge';
 import { MockOrquestaBridge } from '../../bridges/mock-bridge';
@@ -288,14 +288,39 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       setActionError(error instanceof Error ? error.message : String(error));
     }
   };
-  const resolveAttention = async (item: AttentionUiItem, decision: string) => {
+  const resolveAttention = async (item: AttentionUiItem, decision: string): Promise<UiActionResult> => {
     try {
-      const result = item.runtimeApproval
-        ? await bridge.resolveAttentionItem({ kind: 'runtime_approval', id: item.id, decision })
-        : await bridge.resolveAttentionItem({ kind: 'repository_action', id: item.id, resolution: decision });
-      if (result.status !== 'accepted') setActionError(result.reason);
+      if (item.runtimeApproval) {
+        const result = await bridge.resolveAttentionItem({ kind: 'runtime_approval', id: item.id, decision });
+        if (result.status !== 'accepted' && activeWorkspace === 'home') setActionError(result.reason);
+        return result;
+      }
+
+      const directResult = await bridge.resolveAttentionItem({ kind: 'repository_action', id: item.id, resolution: decision });
+      if (directResult.status !== 'unsupported') {
+        if (directResult.status !== 'accepted' && activeWorkspace === 'home') setActionError(directResult.reason);
+        return directResult;
+      }
+
+      const responseTargetAgentId = item.sourceAgentId && availableAgentIdsRef.current.has(item.sourceAgentId)
+        ? item.sourceAgentId
+        : availableAgentIdsRef.current.has('orchestrator') ? 'orchestrator' : targetAgentId;
+      const message = [
+        'User Task response',
+        `ID: ${item.id}`,
+        `Task: ${item.taskId ?? 'none'}`,
+        `Type: ${item.actionKind}`,
+        '',
+        'Response:',
+        decision,
+        '',
+        'Apply this response to the canonical Orquesta state and continue the related work.'
+      ].join('\n');
+      return await bridge.sendMessage({ targetAgentId: responseTargetAgentId, text: message, attachmentIds: [], selectedContextIds: [] });
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      const reason = error instanceof Error ? error.message : String(error);
+      if (activeWorkspace === 'home') setActionError(reason);
+      return { status: 'failed', correlationId: `user-task-${Date.now()}`, reason, retryable: true };
     }
   };
 
@@ -427,7 +452,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           }}
           onLoadOlderConversation={() => void loadOlderConversation()}
           onOpenAttention={openAttentionItem}
-          onResolveAttention={(item, decision) => void resolveAttention(item, decision)}
+          onResolveAttention={resolveAttention}
           onOpenTask={selectTask}
           onOpenRoute={() => setOverlay({ kind: 'project-route' })}
           onOpenOperations={() => setOverlay({ kind: 'operations' })}

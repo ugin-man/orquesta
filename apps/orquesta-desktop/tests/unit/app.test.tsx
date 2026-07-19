@@ -128,6 +128,36 @@ describe('DesktopRendererApp', () => {
     expect(within(navigation).getByRole('button', { name: 'Records' })).toBeVisible();
   });
 
+  test('updates the User Tasks count only after the canonical snapshot changes', async () => {
+    const user = userEvent.setup();
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
+    const navigation = await screen.findByRole('navigation', { name: 'Workspaces' });
+
+    await user.click(within(navigation).getByRole('button', { name: 'User Tasks 3' }));
+    await user.type(screen.getByRole('textbox', { name: 'Answer' }), 'Ship the foundation first.');
+    await user.click(screen.getByRole('button', { name: 'Send answer' }));
+
+    expect(await within(navigation).findByRole('button', { name: 'User Tasks 2' })).toBeVisible();
+  });
+
+  test('routes a repository-backed response to its source agent when direct resolution is unsupported', async () => {
+    const user = userEvent.setup();
+    const bridge = new MockOrquestaBridge('active-project');
+    vi.spyOn(bridge, 'resolveAttentionItem').mockResolvedValue({ status: 'unsupported', correlationId: 'unsupported-1', reason: 'Canonical state is read-only.', retryable: false });
+    const sendMessage = vi.spyOn(bridge, 'sendMessage').mockResolvedValue({ status: 'accepted', correlationId: 'sent-1' });
+    render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
+
+    await user.click(await screen.findByRole('button', { name: 'User Tasks 3' }));
+    await user.type(screen.getByRole('textbox', { name: 'Answer' }), 'Keep the scope narrow.');
+    await user.click(screen.getByRole('button', { name: 'Send answer' }));
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      targetAgentId: 'analyst',
+      text: expect.stringContaining('Keep the scope narrow.')
+    })));
+    expect(screen.getByText('Sent · waiting for update')).toBeVisible();
+  });
+
   test('keeps project switching on Home instead of competing with workspace headings', async () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
     const navigation = await screen.findByRole('navigation', { name: 'Workspaces' });
