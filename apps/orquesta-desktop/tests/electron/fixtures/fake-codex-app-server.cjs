@@ -100,6 +100,8 @@ lines.on('line', (line) => {
           params: { error: { message: 'Fake failure after turn start.' }, threadId: 'thread-e2e', turnId, willRetry: false }
         });
         completeTurn(turn, null, 'failed');
+      } else if (userText.includes('DELAY_TURN')) {
+        setTimeout(() => completeTurn(turn, 'Fake delayed coordinator accepted the desktop instruction.'), 5_000);
       } else {
         completeTurn(turn, 'Fake coordinator accepted the desktop instruction.');
       }

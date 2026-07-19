@@ -18,7 +18,15 @@ async function launchVariant(variant: typeof variants[number]): Promise<{ deskto
   const userData = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-map-user-'));
   try {
     const desktop = await electron.launch({
-      args: [`--user-data-dir=${userData}`, '--force-prefers-reduced-motion=reduce', '--lang=en-US', '.'],
+      args: [
+        `--user-data-dir=${userData}`,
+        '--force-prefers-reduced-motion=reduce',
+        '--lang=en-US',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '.'
+      ],
       cwd: appRoot,
       env: { ...process.env, ORQUESTA_E2E: '1', ORQUESTA_E2E_FIXTURE: 'large-roster' }
     });
@@ -39,9 +47,24 @@ async function launchVariant(variant: typeof variants[number]): Promise<{ deskto
 }
 
 async function startLongTaskObserver(window: Page) {
-  await window.evaluate(() => {
-    const scope = globalThis as typeof globalThis & { __orquestaLongTasks?: number[]; __orquestaLongTaskObserver?: PerformanceObserver };
+  await window.evaluate(async () => {
+    const scope = globalThis as typeof globalThis & {
+      __orquestaFrameDeltas?: number[];
+      __orquestaFrameObserverActive?: boolean;
+      __orquestaLongTasks?: number[];
+      __orquestaLongTaskObserver?: PerformanceObserver;
+    };
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     scope.__orquestaLongTasks = [];
+    scope.__orquestaFrameDeltas = [];
+    scope.__orquestaFrameObserverActive = true;
+    let previous = performance.now();
+    const sampleFrame = (now: number) => {
+      scope.__orquestaFrameDeltas?.push(now - previous);
+      previous = now;
+      if (scope.__orquestaFrameObserverActive) requestAnimationFrame(sampleFrame);
+    };
+    requestAnimationFrame(sampleFrame);
     scope.__orquestaLongTaskObserver = new PerformanceObserver((list) => {
       scope.__orquestaLongTasks?.push(...list.getEntries().map((entry) => entry.duration));
     });
@@ -60,9 +83,26 @@ test('keeps the complete hierarchy crisp and responsive in Electron', async () =
       expect(await window.locator('.map-edge--base').count()).toBeGreaterThanOrEqual(35);
       const actualScale = await window.evaluate(() => window.devicePixelRatio);
       expect(actualScale).toBeCloseTo(variant.scale, 1);
-      await startLongTaskObserver(window);
 
       await window.getByRole('button', { name: 'Fit' }).click();
+      const documentBounds = await window.evaluate(() => ({
+        bodyWidth: document.body.scrollWidth - document.body.clientWidth,
+        bodyHeight: document.body.scrollHeight - document.body.clientHeight,
+        documentWidth: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        documentHeight: document.documentElement.scrollHeight - document.documentElement.clientHeight
+      }));
+      expect(documentBounds).toEqual({ bodyWidth: 0, bodyHeight: 0, documentWidth: 0, documentHeight: 0 });
+      for (const locator of [window.locator('.map-user-node strong'), window.locator('[data-agent-id="orchestrator"] strong')]) {
+        await expect(locator).toBeVisible();
+        const label = await locator.evaluate((element) => ({
+          fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+          opacity: Number.parseFloat(getComputedStyle(element).opacity),
+          text: element.textContent?.trim() ?? ''
+        }));
+        expect(label.text.length).toBeGreaterThan(0);
+        expect(label.fontSize).toBeGreaterThanOrEqual(5);
+        expect(label.opacity).toBe(1);
+      }
       const projectedOverlaps = await window.locator('[data-node-kind="agent"]').evaluateAll((nodes) => {
         const rectangles = nodes.map((node) => ({ id: node.getAttribute('data-agent-id'), rect: node.getBoundingClientRect() }));
         return rectangles.flatMap((left, index) => rectangles.slice(index + 1).flatMap((right) => {
@@ -73,6 +113,7 @@ test('keeps the complete hierarchy crisp and responsive in Electron', async () =
       });
       expect(projectedOverlaps).toEqual([]);
       const orchestratorBefore = await window.locator('[data-agent-id="orchestrator"]').boundingBox();
+      await startLongTaskObserver(window);
       const dragPoint = await window.evaluate(() => {
         for (let y = 150; y < innerHeight - 150; y += 30) {
           for (let x = 310; x < innerWidth - 310; x += 30) {
@@ -89,6 +130,25 @@ test('keeps the complete hierarchy crisp and responsive in Electron', async () =
       const orchestratorAfter = await window.locator('[data-agent-id="orchestrator"]').boundingBox();
       expect(orchestratorAfter?.x).toBeGreaterThan((orchestratorBefore?.x ?? 0) + 45);
 
+      const zoomBeforeWheel = Number(await window.locator('.map-world').getAttribute('data-zoom'));
+      await window.mouse.move(dragPoint.x, dragPoint.y);
+      await window.mouse.wheel(0, -480);
+      await expect.poll(async () => Number(await window.locator('.map-world').getAttribute('data-zoom'))).toBeGreaterThan(zoomBeforeWheel);
+      await window.mouse.wheel(0, 480);
+      await window.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      const performanceSamples = await window.evaluate(() => {
+        const scope = globalThis as typeof globalThis & {
+          __orquestaFrameDeltas?: number[];
+          __orquestaFrameObserverActive?: boolean;
+          __orquestaLongTasks?: number[];
+        };
+        scope.__orquestaFrameObserverActive = false;
+        return { frameDeltas: scope.__orquestaFrameDeltas ?? [], longTasks: scope.__orquestaLongTasks ?? [] };
+      });
+      const longTasks = performanceSamples.longTasks;
+      expect(longTasks.filter((duration) => duration >= 500)).toEqual([]);
+      expect(performanceSamples.frameDeltas.filter((duration) => duration >= 500)).toEqual([]);
+
       for (let index = 0; index < 5; index += 1) await window.getByRole('button', { name: 'Zoom in' }).click();
       for (let index = 0; index < 5; index += 1) await window.getByRole('button', { name: 'Zoom out' }).click();
       await window.getByRole('button', { name: 'Fit' }).click();
@@ -100,8 +160,6 @@ test('keeps the complete hierarchy crisp and responsive in Electron', async () =
 
       await window.screenshot({ path: path.join(captureRoot, `electron-map-${variant.label}.png`), animations: 'disabled' });
       await expect(window).toHaveScreenshot(`map-stability-${variant.label}.png`, { animations: 'disabled', maxDiffPixelRatio: 0.003 });
-      const longTasks = await window.evaluate(() => (globalThis as typeof globalThis & { __orquestaLongTasks?: number[] }).__orquestaLongTasks ?? []);
-      expect(longTasks.filter((duration) => duration >= 500)).toEqual([]);
       results.push({
         label: variant.label,
         width: variant.width,

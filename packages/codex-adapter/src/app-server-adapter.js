@@ -162,6 +162,13 @@ function createAppServerAdapter({
 
   function handleNotification(message) {
     try {
+      if (!schema.server_notifications[message?.method]) {
+        onDiagnostic({
+          type: "ignored_server_notification",
+          method: typeof message?.method === "string" ? message.method.slice(0, 256) : "unknown"
+        });
+        return;
+      }
       validateServerMessage(schema.server_notifications, message, "server notification");
       const params = message.params;
       if (message.method === "thread/started") {

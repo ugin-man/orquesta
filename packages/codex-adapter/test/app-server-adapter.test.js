@@ -521,3 +521,23 @@ test("fails closed when a response does not satisfy the pinned schema", async ()
   assert.equal(result.status, "failed");
   assert.match(result.error.message, /schema.*approvalPolicy/i);
 });
+
+test("ignores forward-compatible server notifications without closing the transport", async () => {
+  const process = new FakeAppServerProcess();
+  const diagnostics = [];
+  attachSuccessfulServer(process);
+  const adapter = createAppServerAdapter({
+    resolveRuntime: () => bundledRuntime(),
+    spawnProcess: () => process,
+    onDiagnostic: (diagnostic) => diagnostics.push(diagnostic)
+  });
+
+  const runtime = await adapter.runtimeInfo({ correlationId: "corr-runtime", probe: true });
+  assert.equal(runtime.ok, true);
+  process.send({ method: "remoteControl/status/changed", params: { status: "disconnected" } });
+  await new Promise((resolve) => setImmediate(resolve));
+  const thread = await adapter.createThread({ correlationId: "corr-after-notification", params: { cwd: "C:\\repo" } });
+
+  assert.equal(thread.ok, true);
+  assert.deepEqual(diagnostics, [{ type: "ignored_server_notification", method: "remoteControl/status/changed" }]);
+});

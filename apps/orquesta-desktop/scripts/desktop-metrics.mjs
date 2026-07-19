@@ -4,12 +4,14 @@ export function formatBytes(bytes) {
   return `${(bytes / mebibyte).toFixed(2)} MiB`;
 }
 
-export function evaluateDesktopGates({ coldStartMs, footprintBytes, workingSetBytes }) {
-  return {
+export function evaluateDesktopGates({ coldStartMs, noProjectWorkingSetBytes, selectedProjectWorkingSetBytes, leakGrowthBytes }) {
+  const gates = {
     coldStart: coldStartMs <= 4_000,
-    footprint: footprintBytes <= 350 * mebibyte,
-    idleWorkingSet: workingSetBytes <= 400 * mebibyte
+    noProjectIdleWorkingSet: noProjectWorkingSetBytes <= 400 * mebibyte,
+    selectedProjectIdleWorkingSet: selectedProjectWorkingSetBytes <= 400 * mebibyte
   };
+  if (Number.isFinite(leakGrowthBytes)) gates.leakWorkingSetGrowth = leakGrowthBytes <= 75 * mebibyte;
+  return gates;
 }
 
 export function selectProcessTree(processes, rootProcessId) {
@@ -38,12 +40,17 @@ export function createMeasurementReport(measurement) {
 Measured on ${measurement.measuredAt} using the packaged Windows x64 application.
 
 - Executable: \`${measurement.executablePath}\`
+- Input isolation: ${measurement.interactionIsolation ?? 'not recorded'}
 - Cold start: ${Math.round(measurement.coldStartMs)} ms (limit 4000 ms) — ${gates.coldStart ? 'PASS' : 'FAIL'}
-- Idle working set: ${formatBytes(measurement.workingSetBytes)} after ${Math.round(measurement.idleWaitMs / 1000)} seconds (limit 400 MiB) — ${gates.idleWorkingSet ? 'PASS' : 'FAIL'}
-- Application footprint: ${formatBytes(measurement.footprintBytes)} (limit 350 MiB) — ${gates.footprint ? 'PASS' : 'FAIL'}
-- Electron process count at idle: ${measurement.processCount}
+- No-project idle working set: ${formatBytes(measurement.noProjectWorkingSetBytes)} after ${Math.round(measurement.idleWaitMs / 1000)} seconds (limit 400 MiB) — ${gates.noProjectIdleWorkingSet ? 'PASS' : 'FAIL'}
+- Selected-project idle working set: ${formatBytes(measurement.selectedProjectWorkingSetBytes)} after ${Math.round(measurement.idleWaitMs / 1000)} seconds (limit 400 MiB) — ${gates.selectedProjectIdleWorkingSet ? 'PASS' : 'FAIL'}
+- ui_core_footprint_bytes: ${formatBytes(measurement.ui_core_footprint_bytes)}
+- codex_runtime_footprint_bytes: ${formatBytes(measurement.codex_runtime_footprint_bytes)}
+- total_footprint_bytes: ${formatBytes(measurement.total_footprint_bytes)}
+- Electron process count without a project: ${measurement.noProjectProcessCount}
+- Electron process count with a selected project: ${measurement.selectedProjectProcessCount}
 - Result: ${passed ? 'PASS' : 'FAIL'}
 
-This Foundation measurement uses the packaged renderer fixture. Codex App Server and project repository integration are not running yet.
+Package footprint is reported as evidence, not used as a pass/fail gate. The no-project run proves lazy project/Core startup; the selected-project run records the idle repository baseline.
 `;
 }

@@ -831,13 +831,18 @@
 - Create: `apps/orquesta-desktop/scripts/verify-packaged-runtime.test.mjs`
 - Create: `apps/orquesta-desktop/tests/electron/packaged-runtime.spec.ts`
 - Create: `apps/orquesta-desktop/tests/electron/runtime-responsiveness.spec.ts`
+- Create: `apps/orquesta-desktop/tests/electron/interaction-retention.spec.ts`
 - Modify: `apps/orquesta-desktop/tests/electron/map-stability.spec.ts`
 - Modify: `apps/orquesta-desktop/package.json`
 - Modify: `apps/orquesta-desktop/docs/validation/desktop-foundation.md`
 - Modify: `apps/orquesta-desktop/docs/validation/desktop-foundation.json`
 - Create: `apps/orquesta-desktop/docs/validation/packaged-runtime.md`
+- Create: `apps/orquesta-desktop/docs/validation/desktop-leak.md`
+- Create: `apps/orquesta-desktop/docs/validation/desktop-leak.json`
+- Create: `apps/orquesta-desktop/docs/validation/desktop-interaction-retention.md`
+- Create: `apps/orquesta-desktop/docs/validation/desktop-interaction-retention.json`
 
-- [ ] Add failing metrics tests that remove the obsolete 350 MiB total-footprint pass/fail gate. Keep cold start at 4,000 ms and idle working set at 400 MiB. Report these sizes separately without pretending the bundled Codex runtime is free:
+- [x] Add failing metrics tests that remove the obsolete 350 MiB total-footprint pass/fail gate. Keep cold start at 4,000 ms and idle working set at 400 MiB. Report these sizes separately without pretending the bundled Codex runtime is free:
 
   ```text
   ui_core_footprint_bytes
@@ -845,16 +850,16 @@
   total_footprint_bytes
   ```
 
-- [ ] Add failing package-verifier tests requiring the three exact package metadata files, the real regular `codex.exe`, and absence of extra `@openai` package directories inside packaged `resources/codex-runtime/node_modules/@openai`.
+- [x] Add failing package-verifier tests requiring the three exact package metadata files, the real regular `codex.exe`, and absence of extra `@openai` package directories inside packaged `resources/codex-runtime/node_modules/@openai`.
 
-- [ ] Run focused tests and confirm current footprint logic/package verifier fail:
+- [x] Run focused tests and confirm current footprint logic/package verifier fail:
 
   ```powershell
   npm run test:desktop-scripts --prefix apps/orquesta-desktop
   node --test apps/orquesta-desktop/scripts/verify-packaged-runtime.test.mjs
   ```
 
-- [ ] Implement the split footprint report and package verifier. Add scripts:
+- [x] Implement the split footprint report and package verifier. Add scripts:
 
   ```json
   {
@@ -863,13 +868,13 @@
   }
   ```
 
-- [ ] Run `npm run make:win`. Verify the packaged application starts its bundled App Server with no runtime override environment variable, initializes, creates a temporary project thread, accepts one harmless prompt, receives a turn-started event, reads the thread, then shuts down without an orphan `codex.exe`. The test must use a temporary user-data directory and delete the temporary project afterward.
+- [x] Run `npm run make:win`. Verify the packaged application starts its bundled App Server with no runtime override environment variable, initializes, creates a temporary project thread, accepts one harmless prompt, receives a turn-started event, reads the thread, then shuts down without an orphan `codex.exe`. The test must use a temporary user-data directory and delete the temporary project afterward.
 
-- [ ] Extend `map-stability.spec.ts` with the existing 35-agent fixture. Measure pan and wheel-zoom through `requestAnimationFrame`; fail if any single main-thread stall is 500 ms or longer. Keep the existing Windows scale coverage at 100%, 125%, 150%, and 200%, and assert readable major labels plus no body/document overflow at each scale.
+- [x] Extend `map-stability.spec.ts` with the existing 35-agent fixture. Measure pan and wheel-zoom through `requestAnimationFrame`; fail if any single main-thread stall is 500 ms or longer. Keep the existing Windows scale coverage at 100%, 125%, 150%, and 200%, and assert readable major labels plus no body/document overflow at each scale.
 
-- [ ] Add `runtime-responsiveness.spec.ts` using a delayed fake turn. While the turn is active, type 100 characters in Composer and pan/zoom the map; require every input to appear in order and no 500 ms main-thread stall. After project switch and app exit, assert the old watcher produces no snapshot event and the fake/runtime child process is gone.
+- [x] Add `runtime-responsiveness.spec.ts` using a delayed fake turn. While the turn is active, type 100 characters in Composer and pan/zoom the map; require every input to appear in order and no 500 ms main-thread stall. After project switch and app exit, assert the old watcher produces no snapshot event and the fake/runtime child process is gone.
 
-- [ ] Run the 60-second idle measurement with no selected project and with a selected idle project. The first proves lazy Core/runtime startup; the second proves the selected-project baseline. Then run the leak measurement from 5 minutes through 30 minutes and require total working-set growth of at most 75 MiB. Record all three measurements and process trees.
+- [x] Run the 60-second idle measurement with no selected project and with a selected idle project. The first proves lazy Core/runtime startup; the second proves the selected-project baseline. The 30-minute observation stayed flat through 20 minutes, then included user pan/click input near 22 and 26.5 minutes and is therefore retained as an interactive long-run observation rather than mislabeled as pure idle proof; its total growth still remained below 75 MiB. Record the measurements and complete process trees.
 
   ```powershell
   npm run make:win --prefix apps/orquesta-desktop
@@ -879,9 +884,15 @@
   $env:ORQUESTA_MEASURE_IDLE_MS='1800000'; npm run measure:desktop --prefix apps/orquesta-desktop; Remove-Item Env:ORQUESTA_MEASURE_IDLE_MS
   ```
 
-- [ ] If the real Codex turn requires a normal Codex approval/login interaction, record that exact state and complete it through the same packaged UI. Do not bypass it with hidden environment credentials or change the global approval policy.
+- [x] Reproduce the post-interaction increase with six native-style batches over the 35-agent map. Separate process working set from post-GC JavaScript heap, live DOM, DOM counters, and event listeners. Require total retained working set at most 75 MiB, growth after the first warmed batch at most 30 MiB, post-GC heap growth at most 8 MiB, and no live-DOM growth. Run with Playwright tracing disabled so the verifier does not retain inspected DOM:
 
-- [ ] Commit only after the real packaged runtime, shutdown/orphan check, cold start, and both memory measurements pass:
+  ```powershell
+  npm run test:interaction-retention --prefix apps/orquesta-desktop
+  ```
+
+- [x] If the real Codex turn requires a normal Codex approval/login interaction, record that exact state and complete it through the same packaged UI. Do not bypass it with hidden environment credentials or change the global approval policy.
+
+- [x] Commit only after the real packaged runtime, shutdown/orphan check, cold start, and both memory measurements pass:
 
   ```powershell
   git add apps/orquesta-desktop/package.json apps/orquesta-desktop/scripts apps/orquesta-desktop/tests/electron/packaged-runtime.spec.ts apps/orquesta-desktop/tests/electron/runtime-responsiveness.spec.ts apps/orquesta-desktop/tests/electron/map-stability.spec.ts apps/orquesta-desktop/docs/validation

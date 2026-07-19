@@ -1,0 +1,900 @@
+{
+  "measuredAt": "2026-07-19T03:44:40.947Z",
+  "packagedExecutable": "C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe",
+  "baseline": {
+    "label": "baseline after 30s + GC",
+    "capturedAt": "2026-07-19T03:43:14.764Z",
+    "forcedGarbageCollection": true,
+    "totalWorkingSetBytes": 365264896,
+    "processCount": 5,
+    "workingSetByRole": {
+      "launcher": 8200192,
+      "main": 96075776,
+      "gpu": 117043200,
+      "network": 42770432,
+      "renderer": 101175296
+    },
+    "jsHeapUsedBytes": 4271660,
+    "jsHeapTotalBytes": 5033984,
+    "documents": 1,
+    "nodes": 1111,
+    "liveDomNodes": 744,
+    "eventListeners": 209,
+    "processMetrics": [
+      {
+        "processId": 38688,
+        "parentProcessId": 30820,
+        "name": "cmd.exe",
+        "workingSetBytes": 8200192,
+        "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+      },
+      {
+        "processId": 2096,
+        "parentProcessId": 38688,
+        "name": "Orquesta.exe",
+        "workingSetBytes": 96075776,
+        "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+      },
+      {
+        "processId": 6896,
+        "parentProcessId": 2096,
+        "name": "Orquesta.exe",
+        "workingSetBytes": 117043200,
+        "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+      },
+      {
+        "processId": 38024,
+        "parentProcessId": 2096,
+        "name": "Orquesta.exe",
+        "workingSetBytes": 42770432,
+        "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+      },
+      {
+        "processId": 30680,
+        "parentProcessId": 2096,
+        "name": "Orquesta.exe",
+        "workingSetBytes": 101175296,
+        "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+      }
+    ]
+  },
+  "batches": [
+    {
+      "batch": 1,
+      "immediate": {
+        "label": "batch 1 immediate",
+        "capturedAt": "2026-07-19T03:43:17.266Z",
+        "forcedGarbageCollection": false,
+        "totalWorkingSetBytes": 424394752,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 97087488,
+          "gpu": 122904576,
+          "network": 42770432,
+          "renderer": 153432064
+        },
+        "jsHeapUsedBytes": 8707952,
+        "jsHeapTotalBytes": 13946880,
+        "documents": 1,
+        "nodes": 1488,
+        "liveDomNodes": 744,
+        "eventListeners": 7551,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 97087488,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 122904576,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 153432064,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      },
+      "afterGarbageCollection": {
+        "label": "batch 1 after GC",
+        "capturedAt": "2026-07-19T03:43:18.860Z",
+        "forcedGarbageCollection": true,
+        "totalWorkingSetBytes": 393904128,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 97087488,
+          "gpu": 122155008,
+          "network": 42770432,
+          "renderer": 123691008
+        },
+        "jsHeapUsedBytes": 4865400,
+        "jsHeapTotalBytes": 5296128,
+        "documents": 1,
+        "nodes": 1111,
+        "liveDomNodes": 744,
+        "eventListeners": 209,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 97087488,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 122155008,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 123691008,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      }
+    },
+    {
+      "batch": 2,
+      "immediate": {
+        "label": "batch 2 immediate",
+        "capturedAt": "2026-07-19T03:43:21.203Z",
+        "forcedGarbageCollection": false,
+        "totalWorkingSetBytes": 426496000,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 97255424,
+          "gpu": 124272640,
+          "network": 42770432,
+          "renderer": 153997312
+        },
+        "jsHeapUsedBytes": 6013076,
+        "jsHeapTotalBytes": 14209024,
+        "documents": 1,
+        "nodes": 1483,
+        "liveDomNodes": 744,
+        "eventListeners": 7434,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 97255424,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 124272640,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 153997312,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      },
+      "afterGarbageCollection": {
+        "label": "batch 2 after GC",
+        "capturedAt": "2026-07-19T03:43:22.816Z",
+        "forcedGarbageCollection": true,
+        "totalWorkingSetBytes": 402444288,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 97255424,
+          "gpu": 123371520,
+          "network": 42770432,
+          "renderer": 130846720
+        },
+        "jsHeapUsedBytes": 4929324,
+        "jsHeapTotalBytes": 5296128,
+        "documents": 1,
+        "nodes": 1111,
+        "liveDomNodes": 744,
+        "eventListeners": 209,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 97255424,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 123371520,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 130846720,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      }
+    },
+    {
+      "batch": 3,
+      "immediate": {
+        "label": "batch 3 immediate",
+        "capturedAt": "2026-07-19T03:43:25.152Z",
+        "forcedGarbageCollection": false,
+        "totalWorkingSetBytes": 429297664,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 96595968,
+          "gpu": 124579840,
+          "network": 42770432,
+          "renderer": 157151232
+        },
+        "jsHeapUsedBytes": 6531660,
+        "jsHeapTotalBytes": 14471168,
+        "documents": 1,
+        "nodes": 1488,
+        "liveDomNodes": 744,
+        "eventListeners": 7551,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 96595968,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 124579840,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 157151232,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      },
+      "afterGarbageCollection": {
+        "label": "batch 3 after GC",
+        "capturedAt": "2026-07-19T03:43:26.777Z",
+        "forcedGarbageCollection": true,
+        "totalWorkingSetBytes": 406982656,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 96595968,
+          "gpu": 123703296,
+          "network": 42770432,
+          "renderer": 135712768
+        },
+        "jsHeapUsedBytes": 5021736,
+        "jsHeapTotalBytes": 5296128,
+        "documents": 1,
+        "nodes": 1111,
+        "liveDomNodes": 744,
+        "eventListeners": 209,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 96595968,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 123703296,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 135712768,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      }
+    },
+    {
+      "batch": 4,
+      "immediate": {
+        "label": "batch 4 immediate",
+        "capturedAt": "2026-07-19T03:43:29.233Z",
+        "forcedGarbageCollection": false,
+        "totalWorkingSetBytes": 429535232,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 96665600,
+          "gpu": 124989440,
+          "network": 42770432,
+          "renderer": 156909568
+        },
+        "jsHeapUsedBytes": 7718088,
+        "jsHeapTotalBytes": 13946880,
+        "documents": 1,
+        "nodes": 1483,
+        "liveDomNodes": 744,
+        "eventListeners": 7434,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 96665600,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 124989440,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 156909568,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      },
+      "afterGarbageCollection": {
+        "label": "batch 4 after GC",
+        "capturedAt": "2026-07-19T03:43:30.857Z",
+        "forcedGarbageCollection": true,
+        "totalWorkingSetBytes": 409432064,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 96665600,
+          "gpu": 124231680,
+          "network": 42770432,
+          "renderer": 137564160
+        },
+        "jsHeapUsedBytes": 5044012,
+        "jsHeapTotalBytes": 5558272,
+        "documents": 1,
+        "nodes": 1111,
+        "liveDomNodes": 744,
+        "eventListeners": 209,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 96665600,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 124231680,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 137564160,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      }
+    },
+    {
+      "batch": 5,
+      "immediate": {
+        "label": "batch 5 immediate",
+        "capturedAt": "2026-07-19T03:43:33.228Z",
+        "forcedGarbageCollection": false,
+        "totalWorkingSetBytes": 431501312,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 97030144,
+          "gpu": 125558784,
+          "network": 42770432,
+          "renderer": 157941760
+        },
+        "jsHeapUsedBytes": 7990044,
+        "jsHeapTotalBytes": 14471168,
+        "documents": 1,
+        "nodes": 1481,
+        "liveDomNodes": 744,
+        "eventListeners": 7511,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 97030144,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 125558784,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 157941760,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      },
+      "afterGarbageCollection": {
+        "label": "batch 5 after GC",
+        "capturedAt": "2026-07-19T03:43:34.830Z",
+        "forcedGarbageCollection": true,
+        "totalWorkingSetBytes": 411299840,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 97030144,
+          "gpu": 124456960,
+          "network": 42770432,
+          "renderer": 138842112
+        },
+        "jsHeapUsedBytes": 5061832,
+        "jsHeapTotalBytes": 5558272,
+        "documents": 1,
+        "nodes": 1111,
+        "liveDomNodes": 744,
+        "eventListeners": 209,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 97030144,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 124456960,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 138842112,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      }
+    },
+    {
+      "batch": 6,
+      "immediate": {
+        "label": "batch 6 immediate",
+        "capturedAt": "2026-07-19T03:43:37.121Z",
+        "forcedGarbageCollection": false,
+        "totalWorkingSetBytes": 431824896,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 97255424,
+          "gpu": 125730816,
+          "network": 42770432,
+          "renderer": 157868032
+        },
+        "jsHeapUsedBytes": 7880144,
+        "jsHeapTotalBytes": 14471168,
+        "documents": 1,
+        "nodes": 1476,
+        "liveDomNodes": 744,
+        "eventListeners": 7316,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 97255424,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 125730816,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 157868032,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      },
+      "afterGarbageCollection": {
+        "label": "batch 6 after GC",
+        "capturedAt": "2026-07-19T03:43:38.729Z",
+        "forcedGarbageCollection": true,
+        "totalWorkingSetBytes": 412786688,
+        "processCount": 5,
+        "workingSetByRole": {
+          "launcher": 8200192,
+          "main": 97255424,
+          "gpu": 124469248,
+          "network": 42770432,
+          "renderer": 140091392
+        },
+        "jsHeapUsedBytes": 5061688,
+        "jsHeapTotalBytes": 5558272,
+        "documents": 1,
+        "nodes": 1111,
+        "liveDomNodes": 744,
+        "eventListeners": 209,
+        "processMetrics": [
+          {
+            "processId": 38688,
+            "parentProcessId": 30820,
+            "name": "cmd.exe",
+            "workingSetBytes": 8200192,
+            "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+          },
+          {
+            "processId": 2096,
+            "parentProcessId": 38688,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 97255424,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+          },
+          {
+            "processId": 6896,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 124469248,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+          },
+          {
+            "processId": 38024,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 42770432,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+          },
+          {
+            "processId": 30680,
+            "parentProcessId": 2096,
+            "name": "Orquesta.exe",
+            "workingSetBytes": 140091392,
+            "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+          }
+        ]
+      }
+    }
+  ],
+  "recovery": [
+    {
+      "label": "recovery 1m",
+      "capturedAt": "2026-07-19T03:44:39.345Z",
+      "forcedGarbageCollection": false,
+      "totalWorkingSetBytes": 405151744,
+      "processCount": 5,
+      "workingSetByRole": {
+        "launcher": 8200192,
+        "main": 95236096,
+        "gpu": 123457536,
+        "network": 42618880,
+        "renderer": 135639040
+      },
+      "jsHeapUsedBytes": 5071876,
+      "jsHeapTotalBytes": 5820416,
+      "documents": 1,
+      "nodes": 1111,
+      "liveDomNodes": 744,
+      "eventListeners": 209,
+      "processMetrics": [
+        {
+          "processId": 38688,
+          "parentProcessId": 30820,
+          "name": "cmd.exe",
+          "workingSetBytes": 8200192,
+          "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+        },
+        {
+          "processId": 2096,
+          "parentProcessId": 38688,
+          "name": "Orquesta.exe",
+          "workingSetBytes": 95236096,
+          "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+        },
+        {
+          "processId": 6896,
+          "parentProcessId": 2096,
+          "name": "Orquesta.exe",
+          "workingSetBytes": 123457536,
+          "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+        },
+        {
+          "processId": 38024,
+          "parentProcessId": 2096,
+          "name": "Orquesta.exe",
+          "workingSetBytes": 42618880,
+          "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+        },
+        {
+          "processId": 30680,
+          "parentProcessId": 2096,
+          "name": "Orquesta.exe",
+          "workingSetBytes": 135639040,
+          "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+        }
+      ]
+    }
+  ],
+  "finalAfterGarbageCollection": {
+    "label": "recovery 1m after GC",
+    "capturedAt": "2026-07-19T03:44:40.947Z",
+    "forcedGarbageCollection": true,
+    "totalWorkingSetBytes": 405151744,
+    "processCount": 5,
+    "workingSetByRole": {
+      "launcher": 8200192,
+      "main": 95236096,
+      "gpu": 123457536,
+      "network": 42618880,
+      "renderer": 135639040
+    },
+    "jsHeapUsedBytes": 5061688,
+    "jsHeapTotalBytes": 5558272,
+    "documents": 1,
+    "nodes": 1111,
+    "liveDomNodes": 744,
+    "eventListeners": 209,
+    "processMetrics": [
+      {
+        "processId": 38688,
+        "parentProcessId": 30820,
+        "name": "cmd.exe",
+        "workingSetBytes": 8200192,
+        "commandLine": "C:\\WINDOWS\\system32\\cmd.exe /d /s /c \"\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\"\""
+      },
+      {
+        "processId": 2096,
+        "parentProcessId": 38688,
+        "name": "Orquesta.exe",
+        "workingSetBytes": 95236096,
+        "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\"  \"--inspect=0\" \"--remote-debugging-port=0\" \"--user-data-dir=C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" \"--lang=en-US\" \"--force-prefers-reduced-motion=reduce\""
+      },
+      {
+        "processId": 6896,
+        "parentProcessId": 2096,
+        "name": "Orquesta.exe",
+        "workingSetBytes": 123457536,
+        "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=gpu-process --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --gpu-preferences=UAAAAAAAAADgAAAEAAAAAAAAAAAAAGAAOAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAABgAAAAAAAAAGAAAAAAAAAAIAAAAAAAAAAgAAAAAAAAACAAAAAAAAAA= --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708988185955192 --mojo-platform-channel-handle=1872 /prefetch:2"
+      },
+      {
+        "processId": 38024,
+        "parentProcessId": 2096,
+        "name": "Orquesta.exe",
+        "workingSetBytes": 42618880,
+        "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708989122997041 --mojo-platform-channel-handle=1992 /prefetch:11"
+      },
+      {
+        "processId": 30680,
+        "parentProcessId": 2096,
+        "name": "Orquesta.exe",
+        "workingSetBytes": 135639040,
+        "commandLine": "\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\Orquesta.exe\" --type=renderer --user-data-dir=\"C:\\Users\\kouki\\AppData\\Local\\Temp\\orquesta-interaction-retention-keLMul\" --app-user-model-id=com.orquesta.desktop --app-path=\"C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta\\.worktrees\\orquesta-desktop-electron\\apps\\orquesta-desktop\\out\\Orquesta-win32-x64\\resources\\app.asar\" --enable-sandbox --remote-debugging-port=0 --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=4 --time-ticks-at-unix-epoch=-1784257148744964 --launch-time-ticks=175413512638 --field-trial-handle=1880,i,16295090291838733997,10631558423180348212,262144 --enable-features=PdfUseShowSaveFilePicker --disable-features=DropInputEventsWhilePaintHolding,LocalNetworkAccessChecks,NetworkServiceSandbox,ScreenAIOCREnabled,SpareRendererForSitePerProcess,TraceSiteInstanceGetProcessCreation --variations-seed-version --pseudonymization-salt-handle=1884,i,13273265238492258647,17378083455866392999,4 --trace-process-track-uuid=3190708990060038890 --mojo-platform-channel-handle=3320 /prefetch:1"
+      }
+    ]
+  },
+  "deltas": {
+    "totalWorkingSetBytes": 39886848,
+    "repeatedWorkingSetBytes": 11247616,
+    "rendererWorkingSetBytes": 34463744,
+    "gpuWorkingSetBytes": 6414336,
+    "jsHeapUsedBytes": 790028,
+    "nodes": 0,
+    "liveDomNodes": 0,
+    "eventListeners": 0
+  },
+  "gates": {
+    "stableProcessCount": true,
+    "boundedWorkingSet": true,
+    "boundedRepeatedGrowth": true,
+    "boundedReachableHeap": true,
+    "boundedDomCounters": true,
+    "stableLiveDom": true,
+    "boundedEventListeners": true
+  }
+}
