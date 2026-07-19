@@ -32,6 +32,9 @@ export type AttentionType =
 export type UserActionKind = 'answer' | 'approve' | 'review' | 'do';
 export type ProjectStatus = 'ready' | 'working' | 'blocked' | 'offline' | 'unknown';
 export type RepositoryDisplayState = 'watching' | 'snapshot' | 'offline' | 'demo' | 'error';
+export type FailureUiSeverity = 'low' | 'medium' | 'high' | 'blocker' | 'unknown';
+export type FailureUiResolution = 'open' | 'resolved' | 'unknown';
+export type FailureUiSource = 'incident' | 'candidate' | 'cluster';
 
 export interface RuntimeEvidenceUi {
   id: string;
@@ -156,6 +159,42 @@ export interface RuntimeUiEvent {
   message: string;
   taskId: string | null;
   createdAt: string;
+}
+
+export interface FailureOccurrenceUi {
+  id: string;
+  source: 'incident' | 'candidate';
+  status: string;
+  summary: string;
+  occurredAt: string | null;
+  taskId: string | null;
+  sourceAgentId: string | null;
+  evidence: string[];
+  attemptedFixes: string[];
+  outcome: string | null;
+}
+
+export interface FailureUiModel {
+  id: string;
+  source: FailureUiSource;
+  failureClass: string;
+  title: string;
+  summary: string;
+  severity: FailureUiSeverity;
+  status: string;
+  resolution: FailureUiResolution;
+  occurrenceCount: number;
+  firstOccurredAt: string | null;
+  lastOccurredAt: string | null;
+  taskIds: string[];
+  sourceAgentIds: string[];
+  suspectedOwner: string | null;
+  repairStatus: string | null;
+  cause: string | null;
+  fix: string | null;
+  prevention: string[];
+  evidence: string[];
+  occurrences: FailureOccurrenceUi[];
 }
 
 export interface V4TaskIntentUi {
@@ -437,6 +476,7 @@ export interface OrquestaUiSnapshot {
   agents: AgentUiModel[];
   tasks: TaskUiModel[];
   attention: AttentionUiItem[];
+  failures: FailureUiModel[];
   phases: ProjectPhaseUiModel[];
   recentEvents: RuntimeUiEvent[];
   v4Operations: V4OperationsSnapshot;

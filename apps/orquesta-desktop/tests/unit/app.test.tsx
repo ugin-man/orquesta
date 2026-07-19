@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import type { BridgeEvent, ConversationPage } from '../../src/contracts/bridge';
-import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import type { FailureUiModel, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { MockOrquestaBridge } from '../../src/bridges/mock-bridge';
@@ -226,6 +226,40 @@ describe('DesktopRendererApp', () => {
     await user.click(within(now).getByRole('button', { name: /T68/ }));
     expect(screen.getByRole('button', { name: 'Records' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('dialog', { name: 'Task T68 detail' })).toBeVisible();
+  });
+
+  test('uses canonical failure history in Records and preserves its view while switching record types', async () => {
+    const user = userEvent.setup();
+    const bridge = new MockOrquestaBridge('active-project');
+    const base = await bridge.getInitialSnapshot();
+    const failures: FailureUiModel[] = [
+      {
+        id: 'FC-REPEAT', source: 'cluster', failureClass: 'network.timeout', title: 'Repeated network timeout', summary: 'The source timed out twice.', severity: 'high', status: 'open', resolution: 'open', occurrenceCount: 2,
+        firstOccurredAt: '2026-07-18T09:00:00Z', lastOccurredAt: '2026-07-19T09:00:00Z', taskIds: ['T66'], sourceAgentIds: ['connector'], suspectedOwner: 'shared', repairStatus: 'waiting', cause: 'Remote source unavailable.', fix: 'Retry after recovery.', prevention: [], evidence: ['timeout'],
+        occurrences: [{ id: 'IC-1', source: 'candidate', status: 'clustered', summary: 'Timeout.', occurredAt: '2026-07-19T09:00:00Z', taskId: 'T66', sourceAgentId: 'connector', evidence: ['timeout'], attemptedFixes: [], outcome: null }]
+      },
+      {
+        id: 'failure-class:encoding.corruption', source: 'incident', failureClass: 'encoding.corruption', title: 'Encoding repaired', summary: 'The state file was rebuilt.', severity: 'medium', status: 'resolved', resolution: 'resolved', occurrenceCount: 1,
+        firstOccurredAt: '2026-07-17T09:00:00Z', lastOccurredAt: '2026-07-17T09:00:00Z', taskIds: ['T64'], sourceAgentIds: ['orchestrator'], suspectedOwner: 'codex', repairStatus: 'resolved', cause: 'Invalid encoding.', fix: 'Rebuilt as UTF-8.', prevention: ['Read explicitly as UTF-8.'], evidence: ['JSON parsed.'],
+        occurrences: [{ id: 'F-OLD', source: 'incident', status: 'resolved', summary: 'The state file was rebuilt.', occurredAt: '2026-07-17T09:00:00Z', taskId: 'T64', sourceAgentId: 'orchestrator', evidence: ['JSON parsed.'], attemptedFixes: [], outcome: 'Rebuilt as UTF-8.' }]
+      }
+    ];
+    vi.spyOn(bridge, 'getInitialSnapshot').mockResolvedValue({ ...base, failures });
+    render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Records' }));
+    await user.click(screen.getByRole('button', { name: 'Errors' }));
+    const scopes = screen.getByRole('navigation', { name: 'Failure scopes' });
+    expect(within(scopes).getByRole('button', { name: 'Unresolved 1' })).toBeVisible();
+    expect(within(scopes).getByRole('button', { name: 'Resolved 1' })).toBeVisible();
+
+    await user.click(within(scopes).getByRole('button', { name: 'Resolved 1' }));
+    await user.click(screen.getByRole('button', { name: /encoding.corruption/ }));
+    expect(screen.getByRole('region', { name: 'Failure failure-class:encoding.corruption detail' })).toHaveTextContent('Rebuilt as UTF-8.');
+
+    await user.click(screen.getByRole('button', { name: 'Tasks' }));
+    await user.click(screen.getByRole('button', { name: 'Errors' }));
+    expect(within(screen.getByRole('navigation', { name: 'Failure scopes' })).getByRole('button', { name: 'Resolved 1' })).toHaveAttribute('aria-current', 'page');
   });
 
   test('reloads and labels the conversation when the Composer target changes', async () => {

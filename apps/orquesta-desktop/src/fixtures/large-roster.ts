@@ -25,6 +25,7 @@ export const largeRosterFixture: FixtureDefinition = {
     agents,
     tasks,
     attention: [],
+    failures: [],
     phases: [phase({ id: 'L-phase', title: 'Capacity test', summary: 'Validate a 35-agent map', status: 'current', ownerAgentIds: ['orchestrator'], itemCount: 35, completedItemCount: 4 })],
     recentEvents: [],
     v4Operations: fixtureV4Operations

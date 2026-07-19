@@ -43,6 +43,7 @@ export const nestedRosterFixture: FixtureDefinition = {
     agents,
     tasks: [],
     attention: [],
+    failures: [],
     phases: [phase({ id: 'nested-phase', title: 'Hierarchy validation', summary: 'Keep every nested agent visible', status: 'current', ownerAgentIds: ['orchestrator'], itemCount: agents.length })],
     recentEvents: [],
     v4Operations: fixtureV4Operations

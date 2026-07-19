@@ -27,6 +27,7 @@ export const wideRosterFixture: FixtureDefinition = {
     agents,
     tasks: [],
     attention: [],
+    failures: [],
     phases: [phase({ id: 'wide-phase', title: 'Capacity validation', summary: 'Keep eighty agents visible', status: 'current', ownerAgentIds: ['orchestrator'], itemCount: agents.length })],
     recentEvents: [],
     v4Operations: fixtureV4Operations

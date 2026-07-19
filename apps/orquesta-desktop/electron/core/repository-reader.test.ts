@@ -59,6 +59,50 @@ describe('repository reader', () => {
     expect(snapshot.recentEvents[0]).toMatchObject({ taskId: 'T1', message: 'Reader tests are running.' });
   });
 
+  test('projects accepted incidents and repeated candidate clusters without changing user attention', () => {
+    const source = documents();
+    source.questions = { questions: [] };
+    source.incidents = {
+      incidents: [
+        {
+          incident_id: 'F-OPEN', status: 'open', severity: 'high', failure_class: 'filesystem.lock', title: 'State lock failed',
+          summary: 'The state lock could not be created.', source_agent_id: 'worker', task_id: 'T1', detected_at: '2026-07-18T10:40:00.000Z',
+          suspected_cause: 'The workspace was locked by another process.', attempted_fixes: ['Retried once.'], evidence: ['EACCES'], user_action_required: false
+        },
+        {
+          incident_id: 'F-RESOLVED', status: 'resolved', severity: 'medium', failure_class: 'encoding.corruption', title: 'Text encoding was repaired',
+          summary: 'A damaged JSON document was rebuilt.', source_agent_id: 'orchestrator', task_id: 'T0', detected_at: '2026-07-17T09:00:00.000Z',
+          resolved_at: '2026-07-17T09:30:00.000Z', fix: 'Rebuilt the file as UTF-8.', prevention: ['Read with explicit UTF-8.'], evidence: ['JSON parsed.'], user_action_required: false
+        }
+      ]
+    };
+    const snapshot = projectSnapshotFromDocuments({
+      rootPath: 'C:\\work\\sample',
+      documents: {
+        ...source,
+        incidentCandidates: {
+          candidates: [
+            { candidate_id: 'IC-1', status: 'clustered', severity: 'medium', failure_class: 'network.timeout', summary: 'First timeout.', task_id: 'T1', source_agent_id: 'worker', global_fingerprint: 'GF-NET', cluster_id: 'FC-1', created_at: '2026-07-18T10:41:00.000Z', evidence: ['timeout 1'] },
+            { candidate_id: 'IC-2', status: 'clustered', severity: 'high', failure_class: 'network.timeout', summary: 'Second timeout.', task_id: 'T2', source_agent_id: 'worker', global_fingerprint: 'GF-NET', cluster_id: 'FC-1', created_at: '2026-07-18T10:51:00.000Z', evidence: ['timeout 2'], attempted_fixes: ['Changed endpoint.'] }
+          ]
+        },
+        incidentClusters: {
+          clusters: [{ cluster_id: 'FC-1', status: 'open', primary_class: 'network.timeout', candidate_ids: ['IC-1', 'IC-2'], occurrence_count: 4, resolution_evidence: null }]
+        }
+      }
+    });
+
+    expect(snapshot.failures).toHaveLength(3);
+    expect(snapshot.failures.find((failure) => failure.id === 'FC-1')).toMatchObject({
+      source: 'cluster', failureClass: 'network.timeout', severity: 'high', resolution: 'open', occurrenceCount: 4,
+      firstOccurredAt: '2026-07-18T10:41:00.000Z', lastOccurredAt: '2026-07-18T10:51:00.000Z', taskIds: ['T1', 'T2']
+    });
+    expect(snapshot.failures.find((failure) => failure.id === 'failure-class:encoding.corruption')).toMatchObject({
+      source: 'incident', resolution: 'resolved', repairStatus: 'resolved', fix: 'Rebuilt the file as UTF-8.'
+    });
+    expect(snapshot.attention).toEqual([]);
+  });
+
   test('does not call stale active metadata proven work', () => {
     const snapshot = projectSnapshotFromDocuments({
       rootPath: 'C:\\work\\sample',

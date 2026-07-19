@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the temporary Records task list with the approved searchable task history workspace and inline detail drawer.
+**Goal:** Replace the temporary Records task list with the approved searchable task history workspace and large detail popup.
 
 **Architecture:** Add a focused `TaskRecordsWorkspace` that receives canonical `TaskUiModel[]` and a controlled per-project view state from `DesktopRendererApp`. The existing Records shell stays in place. Home and Map task entry points update that view state and open `Records > Tasks`, so the grid, filters, and selected task remain consistent.
 
@@ -11,9 +11,9 @@
 ## Global Constraints
 
 - Preserve the approved Home, User Tasks, Records, Settings, More dock and the existing workspace dimensions.
-- Default task scope is incomplete; completed means only canonical `accepted`.
+- Default task scope is all; completed means only canonical `accepted`.
 - Failed, blocked, approval-wait, and review-wait tasks remain incomplete and visibly distinct.
-- Desktop task cards use two columns; opening details shrinks the card area to one column.
+- Desktop task cards use two columns; opening details keeps the grid in place behind a large popup.
 - Search and filters operate on the canonical snapshot and remain controlled for the current project.
 - Do not add task mutation controls in this stage.
 - Run one targeted test pass, one desktop build, one package update, then stop for user review.
@@ -63,7 +63,7 @@ export interface TaskRecordView {
 }
 ```
 
-Render three prominent scope buttons, a separate compact filter row, a fixed-height card grid, empty results, and an inline right detail pane. Show task ID/title, state, owner, updated time, and one blocked/progress line on cards. Show progress, ownership, routing, dependencies, artifacts, report, acceptance checks, execution evidence, and model evidence in detail.
+Render a non-interactive summary in the order All, Completed, Incomplete. Put those choices and the detailed states into one state filter, followed by a fixed-height two-column card grid and empty results. Open task details in a large centered popup that closes by backdrop, close button, or Escape without reflowing the grid. Show task ID/title, state, owner, updated time, and one blocked/progress line on cards. Show progress, ownership, routing, dependencies, artifacts, report, acceptance checks, execution evidence, and model evidence in detail.
 
 - [x] **Step 4: Run the component test**
 

@@ -6,6 +6,10 @@ import { emptyV4OperationsSnapshot, type
   AgentUiStatus,
   AttentionUiItem,
   EvidenceLevel,
+  FailureOccurrenceUi,
+  FailureUiModel,
+  FailureUiResolution,
+  FailureUiSeverity,
   OrquestaUiSnapshot,
   ProjectPhaseUiModel,
   RuntimeUiEvent,
@@ -24,6 +28,8 @@ export interface RepositoryDocuments {
   userActions?: unknown;
   dashboardActions?: unknown;
   incidents?: unknown;
+  incidentCandidates?: unknown;
+  incidentClusters?: unknown;
   events?: unknown[];
 }
 
@@ -68,6 +74,20 @@ function string(value: unknown): string | null {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.flatMap((item) => string(item) ?? []) : [];
+}
+
+function stringList(value: unknown): string[] {
+  const single = string(value);
+  return single ? [single] : stringArray(value);
+}
+
+function groupRows(items: JsonObject[], keyOf: (item: JsonObject) => string): Map<string, JsonObject[]> {
+  const grouped = new Map<string, JsonObject[]>();
+  for (const item of items) {
+    const key = keyOf(item);
+    grouped.set(key, [...(grouped.get(key) ?? []), item]);
+  }
+  return grouped;
 }
 
 function dateValue(value: unknown): number {
@@ -127,6 +147,154 @@ function taskState(value: unknown): TaskUiState {
     case 'failed': return 'failed';
     default: return 'unknown';
   }
+}
+
+const FAILURE_SEVERITY_RANK: Record<FailureUiSeverity, number> = { unknown: 0, low: 1, medium: 2, high: 3, blocker: 4 };
+const RESOLVED_FAILURE_STATUSES = new Set(['resolved', 'mitigated', 'wontfix', 'noise', 'retired', 'promoted', 'closed']);
+const OPEN_FAILURE_STATUSES = new Set(['open', 'reopened', 'candidate', 'clustered', 'routed_codex', 'repair_card_ready', 'user_task_open', 'waiting']);
+
+function failureSeverity(value: unknown): FailureUiSeverity {
+  const normalized = string(value)?.toLowerCase();
+  if (normalized === 'critical' || normalized === 'blocker') return 'blocker';
+  if (normalized === 'high' || normalized === 'medium' || normalized === 'low') return normalized;
+  return 'unknown';
+}
+
+function strongestFailureSeverity(rowsToCompare: JsonObject[]): FailureUiSeverity {
+  return rowsToCompare.reduce<FailureUiSeverity>((strongest, row) => {
+    const candidate = failureSeverity(row.severity);
+    return FAILURE_SEVERITY_RANK[candidate] > FAILURE_SEVERITY_RANK[strongest] ? candidate : strongest;
+  }, 'unknown');
+}
+
+function failureResolution(value: unknown): FailureUiResolution {
+  const normalized = string(value)?.toLowerCase() ?? '';
+  if (RESOLVED_FAILURE_STATUSES.has(normalized)) return 'resolved';
+  if (OPEN_FAILURE_STATUSES.has(normalized)) return 'open';
+  return 'unknown';
+}
+
+function failureOccurrence(raw: JsonObject, source: FailureOccurrenceUi['source']): FailureOccurrenceUi | null {
+  const id = string(source === 'incident' ? raw.incident_id : raw.candidate_id);
+  if (!id) return null;
+  return {
+    id,
+    source,
+    status: string(raw.status) ?? 'unknown',
+    summary: string(raw.summary) ?? string(raw.title) ?? id,
+    occurredAt: string(raw.detected_at) ?? string(raw.created_at) ?? null,
+    taskId: string(raw.task_id),
+    sourceAgentId: string(raw.source_agent_id),
+    evidence: stringList(raw.evidence),
+    attemptedFixes: [...stringList(raw.attempted_fixes), ...stringList(raw.cleanup_attempts)],
+    outcome: string(raw.fix) ?? string(raw.current_action) ?? string(raw.resolution_evidence)
+  };
+}
+
+function failureRecord(input: {
+  id: string;
+  source: FailureUiModel['source'];
+  failureClass: string;
+  rows: JsonObject[];
+  occurrenceCount?: number;
+  status?: string | null;
+  repairStatus?: string | null;
+  resolutionEvidence?: unknown;
+}): FailureUiModel {
+  const rowsByNewest = [...input.rows].sort((left, right) => dateValue(right.detected_at ?? right.created_at) - dateValue(left.detected_at ?? left.created_at));
+  const latest = rowsByNewest[0] ?? {};
+  const occurrences = rowsByNewest.flatMap((row) => failureOccurrence(row, string(row.incident_id) ? 'incident' : 'candidate') ?? []);
+  const status = input.status ?? string(latest.status) ?? 'unknown';
+  const rowResolutions = rowsByNewest.map((row) => failureResolution(row.status));
+  const resolution = input.status
+    ? failureResolution(input.status)
+    : rowResolutions.length && rowResolutions.every((item) => item === 'resolved')
+      ? 'resolved'
+      : rowResolutions.some((item) => item === 'open') ? 'open' : 'unknown';
+  const timestamps = occurrences.map((item) => item.occurredAt).filter((value): value is string => Boolean(value));
+  const oldest = [...timestamps].sort((left, right) => dateValue(left) - dateValue(right))[0] ?? null;
+  const newest = [...timestamps].sort((left, right) => dateValue(right) - dateValue(left))[0] ?? null;
+  const firstIncident = rowsByNewest.find((row) => string(row.incident_id));
+  const resolutionEvidence = stringList(input.resolutionEvidence);
+  return {
+    id: input.id,
+    source: input.source,
+    failureClass: input.failureClass,
+    title: string(latest.title) ?? string(latest.summary) ?? input.failureClass,
+    summary: string(latest.summary) ?? string(latest.current_action) ?? string(latest.title) ?? input.failureClass,
+    severity: strongestFailureSeverity(rowsByNewest),
+    status,
+    resolution,
+    occurrenceCount: Math.max(input.occurrenceCount ?? occurrences.length, occurrences.length),
+    firstOccurredAt: oldest,
+    lastOccurredAt: newest,
+    taskIds: [...new Set(rowsByNewest.flatMap((row) => [string(row.task_id), ...stringArray(row.related_task_ids)].filter((value): value is string => Boolean(value))))].sort(),
+    sourceAgentIds: [...new Set(rowsByNewest.flatMap((row) => string(row.source_agent_id) ?? []))].sort(),
+    suspectedOwner: string(latest.suspected_owner) ?? string(firstIncident?.suspected_owner),
+    repairStatus: input.repairStatus ?? string(latest.repair_status) ?? string(latest.status),
+    cause: string(latest.confirmed_cause) ?? string(latest.suspected_cause) ?? string(firstIncident?.confirmed_cause) ?? string(firstIncident?.suspected_cause),
+    fix: string(latest.fix) ?? string(latest.current_action) ?? resolutionEvidence[0] ?? null,
+    prevention: [...new Set(rowsByNewest.flatMap((row) => [...stringList(row.prevention), ...stringList(row.prevention_candidates)]))],
+    evidence: [...new Set([...rowsByNewest.flatMap((row) => stringList(row.evidence)), ...resolutionEvidence])],
+    occurrences
+  };
+}
+
+function projectFailures(documents: RepositoryDocuments): FailureUiModel[] {
+  const incidents = rows(documents.incidents, 'incidents');
+  const candidates = rows(documents.incidentCandidates, 'candidates').filter((row) => !['noise', 'retired'].includes(string(row.status) ?? ''));
+  const clusters = rows(documents.incidentClusters, 'clusters');
+  const incidentById = new Map(incidents.flatMap((row) => string(row.incident_id) ? [[string(row.incident_id)!, row] as const] : []));
+  const candidateById = new Map(candidates.flatMap((row) => string(row.candidate_id) ? [[string(row.candidate_id)!, row] as const] : []));
+  const consumedIncidentIds = new Set<string>();
+  const consumedCandidateIds = new Set<string>();
+  const records: FailureUiModel[] = [];
+
+  for (const cluster of clusters) {
+    const id = string(cluster.cluster_id);
+    if (!id) continue;
+    const incidentIds = [...stringArray(cluster.incident_ids), ...stringArray(cluster.source_incident_ids)];
+    const candidateIds = stringArray(cluster.candidate_ids);
+    const clusterRows = [
+      ...incidentIds.flatMap((item) => incidentById.get(item) ?? []),
+      ...candidateIds.flatMap((item) => candidateById.get(item) ?? [])
+    ];
+    incidentIds.forEach((item) => consumedIncidentIds.add(item));
+    candidateIds.forEach((item) => consumedCandidateIds.add(item));
+    records.push(failureRecord({
+      id,
+      source: 'cluster',
+      failureClass: string(cluster.primary_class) ?? string(cluster.failure_class) ?? string(clusterRows[0]?.failure_class) ?? id,
+      rows: clusterRows.length ? clusterRows : [cluster],
+      occurrenceCount: typeof cluster.occurrence_count === 'number' && Number.isInteger(cluster.occurrence_count) ? cluster.occurrence_count : clusterRows.length,
+      status: string(cluster.status),
+      repairStatus: string(cluster.repair_status) ?? string(cluster.status),
+      resolutionEvidence: cluster.resolution_evidence
+    }));
+  }
+
+  const remainingIncidents = incidents.filter((row) => !consumedIncidentIds.has(string(row.incident_id) ?? ''));
+  const incidentsByClass = groupRows(remainingIncidents, (row) => string(row.failure_class) ?? string(row.incident_id) ?? 'unknown');
+  for (const [failureClass, grouped] of incidentsByClass) {
+    records.push(failureRecord({ id: `failure-class:${failureClass}`, source: 'incident', failureClass, rows: grouped }));
+  }
+
+  const remainingCandidates = candidates.filter((row) => !consumedCandidateIds.has(string(row.candidate_id) ?? ''));
+  const candidatesByFingerprint = groupRows(remainingCandidates, (row) => string(row.global_fingerprint) ?? string(row.fingerprint) ?? string(row.candidate_id) ?? 'unknown');
+  for (const [fingerprint, grouped] of candidatesByFingerprint) {
+    records.push(failureRecord({
+      id: grouped.length === 1 ? string(grouped[0].candidate_id) ?? `candidate:${fingerprint}` : `candidate:${fingerprint}`,
+      source: 'candidate',
+      failureClass: string(grouped[0]?.failure_class) ?? fingerprint,
+      rows: grouped
+    }));
+  }
+
+  return records.sort((left, right) => {
+    if (left.resolution !== right.resolution) return left.resolution === 'open' ? -1 : right.resolution === 'open' ? 1 : 0;
+    const severityDifference = FAILURE_SEVERITY_RANK[right.severity] - FAILURE_SEVERITY_RANK[left.severity];
+    return severityDifference || dateValue(right.lastOccurredAt) - dateValue(left.lastOccurredAt) || left.id.localeCompare(right.id);
+  });
 }
 
 function evidenceLevel(value: unknown): EvidenceLevel {
@@ -499,6 +667,7 @@ export function projectSnapshotFromDocuments({ rootPath, documents, now = new Da
   const tasksById = new Map(tasks.map((task) => [task.id, task]));
   const agents = projectAgents(rawAgents, rawTasks, tasksById, sessions, now);
   const attention = projectAttention(documents, now);
+  const failures = projectFailures(documents);
   const recentEvents = projectEvents(documents.events, now);
   const { phases, currentPhaseId } = projectPhases(tasks);
   const workingCount = agents.filter((agent) => agent.status === 'working' && agent.statusEvidence === 'proven').length;
@@ -529,6 +698,7 @@ export function projectSnapshotFromDocuments({ rootPath, documents, now = new Da
     agents,
     tasks,
     attention,
+    failures,
     phases,
     recentEvents,
     v4Operations: emptyV4OperationsSnapshot()
@@ -585,8 +755,10 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
   const userActionsPath = await confinedFile(root, path.join('.orquesta', 'failures', 'user_actions.json'));
   const dashboardActionsPath = await confinedFile(root, path.join('.orquesta', 'state', 'dashboard_actions.json'));
   const incidentsPath = await confinedFile(root, path.join('.orquesta', 'failures', 'incidents.json'));
+  const incidentCandidatesPath = await confinedFile(root, path.join('.orquesta', 'failures', 'incident_candidates.json'));
+  const incidentClustersPath = await confinedFile(root, path.join('.orquesta', 'failures', 'incident_clusters.json'));
   const eventsPath = await confinedFile(root, path.join('.orquesta', 'state', 'events.jsonl'));
-  const [agents, tasks, sessions, questions, userTasks, userActions, dashboardActions, incidents, events] = await Promise.all([
+  const [agents, tasks, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, events] = await Promise.all([
     readBoundedJson(agentsPath, true),
     readBoundedJson(tasksPath, true),
     readBoundedJson(sessionsPath, false),
@@ -595,11 +767,13 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
     readBoundedJson(userActionsPath, false),
     readBoundedJson(dashboardActionsPath, false),
     readBoundedJson(incidentsPath, false),
+    readBoundedJson(incidentCandidatesPath, false),
+    readBoundedJson(incidentClustersPath, false),
     readEvents(eventsPath)
   ]);
   return projectSnapshotFromDocuments({
     rootPath: root,
     now: options.now,
-    documents: { agents, tasks, sessions, questions, userTasks, userActions, dashboardActions, incidents, events }
+    documents: { agents, tasks, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, events }
   });
 }

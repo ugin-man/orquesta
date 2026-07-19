@@ -1,4 +1,4 @@
-import type { AgentUiModel, AttentionUiItem, ProjectPhaseUiModel, TaskUiModel, V4OperationsSnapshot } from '../contracts/orquesta-ui';
+import type { AgentUiModel, AttentionUiItem, FailureUiModel, ProjectPhaseUiModel, TaskUiModel, V4OperationsSnapshot } from '../contracts/orquesta-ui';
 
 export const observedAt = '2026-07-17T13:28:00.000Z';
 export const fixtureV4Operations: V4OperationsSnapshot = {
@@ -89,6 +89,28 @@ export function attention(input: Partial<AttentionUiItem> & Pick<AttentionUiItem
     createdAt: observedAt,
     resolvedAt: null,
     resolutionLabel: null,
+    ...input
+  };
+}
+
+export function failure(input: Partial<FailureUiModel> & Pick<FailureUiModel, 'id' | 'failureClass' | 'title' | 'summary'>): FailureUiModel {
+  return {
+    source: 'incident',
+    severity: 'medium',
+    status: 'open',
+    resolution: 'open',
+    occurrenceCount: 1,
+    firstOccurredAt: observedAt,
+    lastOccurredAt: observedAt,
+    taskIds: [],
+    sourceAgentIds: [],
+    suspectedOwner: null,
+    repairStatus: null,
+    cause: null,
+    fix: null,
+    prevention: [],
+    evidence: [],
+    occurrences: [],
     ...input
   };
 }

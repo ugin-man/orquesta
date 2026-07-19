@@ -1,5 +1,5 @@
 import type { FixtureDefinition } from './types';
-import { agent, attention, fixtureV4Operations, observedAt, phase, task } from './helpers';
+import { agent, attention, failure, fixtureV4Operations, observedAt, phase, task } from './helpers';
 
 const agents = [
   agent({
@@ -76,6 +76,30 @@ export const activeProjectFixture: FixtureDefinition = {
       attention({ id: 'A67', type: 'question', title: 'Question', summary: 'Clarify scope of analysis.', sourceAgentId: 'analyst', taskId: 'T67', primaryActionLabel: 'View' }),
       attention({ id: 'A65', type: 'approval', title: 'Approval', summary: 'Approve data access plan.', sourceAgentId: 'reviewer', taskId: 'T65', priority: 'high', blocking: true, primaryActionLabel: 'Review' }),
       attention({ id: 'A66', type: 'error', title: 'Error', summary: 'Timeout connecting to API.', sourceAgentId: 'connector', taskId: 'T66', priority: 'high', primaryActionLabel: 'Details' })
+    ],
+    failures: [
+      failure({
+        id: 'FC66', source: 'cluster', failureClass: 'network.timeout', title: 'External API timeout', summary: 'The same source timed out during three bounded attempts.',
+        severity: 'high', status: 'open', occurrenceCount: 3, firstOccurredAt: '2026-07-17T13:12:00.000Z', lastOccurredAt: observedAt,
+        taskIds: ['T66'], sourceAgentIds: ['connector'], suspectedOwner: 'shared', repairStatus: 'waiting', cause: 'The remote source stopped responding.', fix: 'Wait for recovery, then retry once.',
+        prevention: ['Keep retries bounded and preserve the original error.'], evidence: ['Three timeout responses were recorded.'],
+        occurrences: [
+          { id: 'IC66-3', source: 'candidate', status: 'clustered', summary: 'Third API timeout.', occurredAt: observedAt, taskId: 'T66', sourceAgentId: 'connector', evidence: ['timeout attempt 3'], attemptedFixes: ['Changed endpoint.'], outcome: null },
+          { id: 'IC66-2', source: 'candidate', status: 'clustered', summary: 'Second API timeout.', occurredAt: '2026-07-17T13:20:00.000Z', taskId: 'T66', sourceAgentId: 'connector', evidence: ['timeout attempt 2'], attemptedFixes: ['Retried once.'], outcome: null }
+        ]
+      }),
+      failure({
+        id: 'failure-class:encoding.corruption', failureClass: 'encoding.corruption', title: 'State encoding repaired', summary: 'The damaged JSON state was rebuilt as UTF-8.',
+        status: 'resolved', resolution: 'resolved', firstOccurredAt: '2026-07-16T08:00:00.000Z', lastOccurredAt: '2026-07-16T08:00:00.000Z',
+        taskIds: ['T64'], sourceAgentIds: ['orchestrator'], suspectedOwner: 'codex', repairStatus: 'resolved', cause: 'Text passed through a non-UTF-8 console path.', fix: 'Rebuilt the state file as UTF-8.',
+        prevention: ['Read and write Japanese JSON with explicit UTF-8.'], evidence: ['The repaired JSON parsed successfully.'],
+        occurrences: [{ id: 'F64', source: 'incident', status: 'resolved', summary: 'The damaged JSON state was rebuilt.', occurredAt: '2026-07-16T08:00:00.000Z', taskId: 'T64', sourceAgentId: 'orchestrator', evidence: ['JSON parsed.'], attemptedFixes: [], outcome: 'Rebuilt as UTF-8.' }]
+      }),
+      failure({
+        id: 'IC-BROWSER', source: 'candidate', failureClass: 'browser.runtime', title: 'Browser runtime candidate', summary: 'A browser startup error still needs classification.',
+        severity: 'low', status: 'candidate', taskIds: ['T70'], sourceAgentIds: ['reviewer'], suspectedOwner: 'unknown', repairStatus: 'candidate', evidence: ['One unclassified systemError.'],
+        occurrences: [{ id: 'IC-BROWSER', source: 'candidate', status: 'candidate', summary: 'Browser startup returned systemError.', occurredAt: observedAt, taskId: 'T70', sourceAgentId: 'reviewer', evidence: ['systemError'], attemptedFixes: [], outcome: null }]
+      })
     ],
     phases: [
       phase({ id: 'phase-foundation', title: 'Foundation', summary: 'Contracts and fixtures', status: 'done', ownerAgentIds: ['orchestrator', 'coder'], itemCount: 8, completedItemCount: 8 }),

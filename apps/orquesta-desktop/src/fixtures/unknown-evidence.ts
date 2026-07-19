@@ -19,6 +19,7 @@ export const unknownEvidenceFixture: FixtureDefinition = {
       task({ id: 'U12', title: 'Prepare migration outline', state: 'dispatch_accepted', ownerAgentId: 'planner', assignedByAgentId: 'orchestrator', handoffSent: true, dispatchAccepted: true, turnStarted: false, progressObserved: false, recommendedModel: 'gpt-5.6-pro', requestedModel: 'gpt-5.6-pro', actualModel: null, actualModelEvidence: 'unknown', expectedArtifact: 'Migration outline', acceptanceChecks: ['Dependencies are explicit.'] })
     ],
     attention: [attention({ id: 'U-A1', type: 'direction', title: 'Runtime evidence pending', summary: 'Dispatch was accepted, but no turn-start event has been observed.', sourceAgentId: 'orchestrator', taskId: 'U12', priority: 'low', primaryActionLabel: 'Inspect' })],
+    failures: [],
     phases: [phase({ id: 'phase-plan', title: 'Planning', summary: 'Prepare migration route', status: 'current', ownerAgentIds: ['planner'], itemCount: 4, completedItemCount: 0 })],
     recentEvents: [],
     v4Operations: fixtureV4Operations

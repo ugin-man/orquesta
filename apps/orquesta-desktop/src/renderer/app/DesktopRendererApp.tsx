@@ -16,6 +16,7 @@ import { MapViewport } from '../features/map/MapViewport';
 import { WorkspaceDock, type WorkspaceId } from '../features/navigation/WorkspaceDock';
 import { WorkspaceSurface, type RecordKind, type UserTaskKind } from '../features/navigation/WorkspaceSurface';
 import { createDefaultTaskRecordView, type TaskRecordView } from '../features/records/TaskRecordsWorkspace';
+import { createDefaultFailureRecordView, type FailureRecordView } from '../features/records/FailureRecordsWorkspace';
 import { NowCardStack } from '../features/now/NowCardStack';
 import { V4Operations } from '../features/operations/V4Operations';
 import { ProjectLauncher } from '../features/project/ProjectLauncher';
@@ -85,6 +86,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [userTaskKind, setUserTaskKind] = useState<UserTaskKind>('all');
   const [recordKind, setRecordKind] = useState<RecordKind>('task');
   const [taskRecordView, setTaskRecordView] = useState<TaskRecordView>(() => createDefaultTaskRecordView());
+  const [failureRecordView, setFailureRecordView] = useState<FailureRecordView>(() => createDefaultFailureRecordView());
   const [mapSelection, setMapSelection] = useState<MapSelection>(null);
   const [draft, setDraft] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('orchestrator');
@@ -159,6 +161,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     setMapSelection(null);
     setActiveWorkspace('home');
     setTaskRecordView(createDefaultTaskRecordView());
+    setFailureRecordView(createDefaultFailureRecordView());
     setOverlay(null);
     setAttachments([]);
     setDirectSendFailure(null);
@@ -453,6 +456,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           userTaskKind={userTaskKind}
           recordKind={recordKind}
           taskRecordView={taskRecordView}
+          failureRecordView={failureRecordView}
           messages={messages}
           conversationTargetLabel={conversationTargetLabel}
           conversationLoading={loadingOlderMessages}
@@ -464,6 +468,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
             if (kind === 'conversation') void openConversation();
           }}
           onTaskRecordViewChange={setTaskRecordView}
+          onFailureRecordViewChange={setFailureRecordView}
           onLoadOlderConversation={() => void loadOlderConversation()}
           onOpenAttention={openAttentionItem}
           onResolveAttention={resolveAttention}
