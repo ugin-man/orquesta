@@ -1,4 +1,4 @@
-import { ArrowRight, GitBranch } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import type { ConversationMessage, RuntimeInfoUi, UiActionResult } from '../../../contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot, TaskUiModel } from '../../../contracts/orquesta-ui';
 import { UserTasksWorkspace, type UserTaskKind } from '../attention/UserTasksWorkspace';
@@ -104,8 +104,7 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
   const title = {
     'user-tasks': t('workspaceUserTasks'),
     records: t('workspaceRecords'),
-    settings: t('workspaceSettings'),
-    more: t('workspaceMore')
+    settings: t('workspaceSettings')
   }[active];
   const recordTypes: Array<[RecordKind, string]> = [
     ['task', t('recordTasks')],
@@ -141,12 +140,7 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
         ) : null}
         {active === 'records' && recordKind === 'decision' ? <DecisionRecordsWorkspace items={decisionRecords} agents={snapshot.agents} selectedKind={decisionRecordKind} loading={decisionRecordsLoading} onSelectKind={onDecisionRecordKindChange} /> : null}
         {active === 'records' && recordKind === 'timeline' ? <TimelineRecordsWorkspace snapshot={snapshot} conversations={timelineConversations} decisions={timelineDecisions} loading={timelineLoading} onOpenRecord={onOpenTimelineRecord} /> : null}
-        {active === 'settings' ? <SettingsWorkspace project={snapshot.project} reducedMotion={reducedMotion} getRuntimeInfo={getRuntimeInfo} onOpenOperations={onOpenOperations} /> : null}
-        {active === 'more' ? (
-          <div className="workspace-more-grid">
-            <button type="button" onClick={onOpenRoute}><GitBranch size={18} /><span><strong>{t('projectRoute')}</strong><small>{snapshot.project.rootPathLabel ?? t('pathUnavailable')}</small></span></button>
-          </div>
-        ) : null}
+        {active === 'settings' ? <SettingsWorkspace project={snapshot.project} reducedMotion={reducedMotion} getRuntimeInfo={getRuntimeInfo} onOpenRoute={onOpenRoute} onOpenOperations={onOpenOperations} /> : null}
       </div>
     </section>
   );

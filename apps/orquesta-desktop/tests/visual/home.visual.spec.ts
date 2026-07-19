@@ -10,8 +10,9 @@ async function saveReviewCapture(page: Page, filename: string) {
 }
 
 async function openOperations(page: Page) {
-  await page.getByRole('button', { name: 'More' }).click();
-  await page.getByRole('button', { name: /Operations/ }).click();
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Status & diagnostics' }).click();
+  await page.getByRole('button', { name: 'Open Operations' }).click();
   return page.getByRole('dialog', { name: 'Operations' });
 }
 

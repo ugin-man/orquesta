@@ -748,6 +748,8 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .settings-language-control { display: flex; gap: 5px; padding: 3px; border: 1px solid var(--line); border-radius: 99px; background: rgba(247,244,237,.7); }
 .settings-language-control button { display: inline-flex; align-items: center; gap: 5px; min-width: 48px; padding: 6px 9px; border: 0; border-radius: 99px; background: transparent; color: var(--ink-muted); font-size: 8px; }
 .settings-language-control button[aria-pressed="true"] { background: var(--ink); color: var(--paper-strong); }
+.settings-empty-state { display: grid; place-items: center; gap: 12px; max-width: 760px; min-height: 210px; color: var(--ink-muted); text-align: center; }
+.settings-empty-state p { max-width: 390px; margin: 0; font-size: 10px; line-height: 1.55; }
 .settings-unavailable-note, .settings-runtime-error { max-width: 760px; margin: 14px 0 0; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 9px; color: var(--ink-muted); font-size: 8px; line-height: 1.45; }
 .settings-runtime-error { border-color: rgba(185,76,66,.45); color: var(--danger); }
 .settings-primary-action { display: inline-flex; align-items: center; gap: 7px; margin-top: 15px; padding: 8px 12px; border: 1px solid var(--ink); border-radius: 9px; background: var(--ink); color: var(--paper-strong); font-size: 9px; }
@@ -762,13 +764,6 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .settings-operations-card dl div { min-width: 0; padding: 10px; border: 1px solid rgba(216,210,199,.72); border-radius: 8px; background: rgba(255,253,248,.45); }
 .settings-operations-card dt { font-size: 8px; font-weight: 720; }
 .settings-operations-card dd { margin: 4px 0 0; color: var(--ink-muted); font-size: 7px; line-height: 1.4; }
-.workspace-more-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
-.workspace-more-grid > button, .workspace-more-grid > section { display: grid; grid-template-columns: 26px 1fr; gap: 10px; min-height: 82px; padding: 14px; border: 1px solid rgba(216,210,199,.85); border-radius: 11px; background: rgba(255,253,248,.5); text-align: left; }
-.workspace-more-grid > details { min-height: 82px; padding: 14px; border: 1px solid rgba(216,210,199,.85); border-radius: 11px; background: rgba(255,253,248,.5); }
-.workspace-more-grid > button:hover { border-color: var(--line-strong); background: var(--paper-strong); }
-.workspace-more-grid strong, .workspace-more-grid small { display: block; }
-.workspace-more-grid strong { font-size: 10px; }
-.workspace-more-grid small { margin-top: 5px; color: var(--ink-muted); font-size: 8px; line-height: 1.35; }
 .floating-panel, .now-card, .now-empty-card, .command-composer, .toast {
   border: 1px solid rgba(187,180,169,.74);
   background: rgba(250,248,242,.91);

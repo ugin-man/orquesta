@@ -105,7 +105,7 @@ describe('DesktopRendererApp', () => {
     await waitFor(() => expect(container.querySelectorAll('.map-edge-flow')).toHaveLength(0));
   });
 
-  test('keeps frequent workspaces in one persistent dock', async () => {
+  test('keeps four workspaces in one persistent dock', async () => {
     const user = userEvent.setup();
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="ja" />);
 
@@ -114,7 +114,7 @@ describe('DesktopRendererApp', () => {
     expect(within(navigation).getByRole('button', { name: /ユーザータスク/ })).toBeVisible();
     expect(within(navigation).getByRole('button', { name: '記録' })).toBeVisible();
     expect(within(navigation).getByRole('button', { name: '設定' })).toBeVisible();
-    expect(within(navigation).getByRole('button', { name: 'その他' })).toBeVisible();
+    expect(within(navigation).queryByRole('button', { name: 'その他' })).not.toBeInTheDocument();
 
     await user.click(within(navigation).getByRole('button', { name: /ユーザータスク/ }));
     expect(screen.getByRole('heading', { name: 'ユーザータスク' })).toBeVisible();
@@ -400,18 +400,7 @@ describe('DesktopRendererApp', () => {
     expect(screen.getByLabelText('Target agent')).toHaveValue('orchestrator');
   });
 
-  test('keeps Settings explicit and More limited to Project Route', async () => {
-    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
-    expect(screen.getByText('Display language')).toBeVisible();
-    expect(screen.getByText('Details & diagnostics')).toBeVisible();
-
-    await userEvent.click(await screen.findByRole('button', { name: 'More' }));
-    expect(screen.getByText('Project Route')).toBeVisible();
-    expect(screen.queryByText('Team Management')).not.toBeInTheDocument();
-  });
-
-  test('uses sectioned settings without presenting unsupported preferences as controls', async () => {
+  test('consolidates Settings state and Project Route without a More workspace', async () => {
     const user = userEvent.setup();
     const bridge = new MockOrquestaBridge('active-project');
     const getRuntimeInfo = vi.spyOn(bridge, 'getRuntimeInfo');
@@ -423,19 +412,29 @@ describe('DesktopRendererApp', () => {
     expect(within(sections).getByRole('button', { name: 'Notifications' })).toBeVisible();
     expect(within(sections).getByRole('button', { name: 'Codex connection' })).toBeVisible();
     expect(within(sections).getByRole('button', { name: 'Startup & project' })).toBeVisible();
-    expect(within(sections).getByRole('button', { name: 'Details & diagnostics' })).toBeVisible();
+    expect(within(sections).getByRole('button', { name: 'Status & diagnostics' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Display' })).toBeVisible();
     expect(screen.getByText('Display language')).toBeVisible();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
 
+    await user.click(within(sections).getByRole('button', { name: 'Notifications' }));
+    expect(screen.getByText('Notification settings have not been designed yet.')).toBeVisible();
+    expect(screen.queryByText('Temporary notifications')).not.toBeInTheDocument();
     await user.click(within(sections).getByRole('button', { name: 'Codex connection' }));
     expect(await screen.findByRole('heading', { name: 'Codex connection' })).toBeVisible();
-    await waitFor(() => expect(getRuntimeInfo).toHaveBeenCalledWith({ probe: false }));
-    expect(screen.getByText('Unavailable')).toBeVisible();
+    expect(screen.getByText('Codex settings have not been designed yet.')).toBeVisible();
+    expect(getRuntimeInfo).not.toHaveBeenCalled();
 
-    await user.click(within(sections).getByRole('button', { name: 'Details & diagnostics' }));
-    expect(screen.getByRole('heading', { name: 'Details & diagnostics' })).toBeVisible();
+    await user.click(within(sections).getByRole('button', { name: 'Startup & project' }));
+    await user.click(screen.getByRole('button', { name: 'Open Project Route' }));
+    expect(screen.getByRole('dialog', { name: 'Project Route' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Close Project Route' }));
+
+    await user.click(within(sections).getByRole('button', { name: 'Status & diagnostics' }));
+    expect(screen.getByRole('heading', { name: 'Status & diagnostics' })).toBeVisible();
     expect(screen.getByText('Repository status')).toBeVisible();
+    await waitFor(() => expect(getRuntimeInfo).toHaveBeenCalledWith({ probe: false }));
     await user.click(screen.getByRole('button', { name: 'Open Operations' }));
     expect(screen.getByRole('dialog', { name: 'Operations' })).toBeVisible();
   });

@@ -1,6 +1,6 @@
-import { CircleEllipsis, House, LibraryBig, ListChecks, Settings, type LucideIcon } from 'lucide-react';
+import { House, LibraryBig, ListChecks, Settings, type LucideIcon } from 'lucide-react';
 
-export type WorkspaceId = 'home' | 'user-tasks' | 'records' | 'settings' | 'more';
+export type WorkspaceId = 'home' | 'user-tasks' | 'records' | 'settings';
 
 export interface WorkspaceCounts {
   userTasks: number;
@@ -26,8 +26,7 @@ const workspaces: readonly WorkspaceDefinition[] = [
   { id: 'home', icon: House },
   { id: 'user-tasks', icon: ListChecks },
   { id: 'records', icon: LibraryBig },
-  { id: 'settings', icon: Settings },
-  { id: 'more', icon: CircleEllipsis }
+  { id: 'settings', icon: Settings }
 ];
 
 function workspaceCount(id: WorkspaceId, counts: WorkspaceCounts): number | undefined {

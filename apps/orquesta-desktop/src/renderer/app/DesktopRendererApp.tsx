@@ -499,8 +499,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     home: t('home'),
     'user-tasks': t('workspaceUserTasks'),
     records: t('workspaceRecords'),
-    settings: t('workspaceSettings'),
-    more: t('workspaceMore')
+    settings: t('workspaceSettings')
   };
   const openAttentionItem = (item: AttentionUiItem) => item.taskId && snapshot.tasks.some((task) => task.id === item.taskId)
     ? openTaskRecord(item.taskId)

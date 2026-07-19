@@ -16,24 +16,22 @@ const labels = {
   home: 'Home',
   'user-tasks': 'User Tasks',
   records: 'Records',
-  settings: 'Settings',
-  more: 'More'
+  settings: 'Settings'
 };
 
 describe('WorkspaceDock', () => {
-  test('renders five workspaces in a fixed order and exposes only the active text label', () => {
+  test('renders four workspaces in a fixed order and exposes only the active text label', () => {
     render(<WorkspaceDock active="records" counts={counts} labels={labels} onSelect={vi.fn()} />);
 
     const navigation = screen.getByRole('navigation', { name: 'Workspaces' });
     const buttons = within(navigation).getAllByRole('button');
 
-    expect(buttons).toHaveLength(5);
+    expect(buttons).toHaveLength(4);
     expect(buttons.map((button) => button.getAttribute('data-workspace'))).toEqual([
       'home',
       'user-tasks',
       'records',
-      'settings',
-      'more'
+      'settings'
     ] satisfies WorkspaceId[]);
     expect(within(buttons[2]).getByText('Records')).toBeVisible();
     expect(within(buttons[0]).queryByText('Home')).not.toBeInTheDocument();
@@ -56,7 +54,7 @@ describe('WorkspaceDock', () => {
     expect(within(navigation).queryByTestId('workspace-badge-home')).not.toBeInTheDocument();
     expect(within(navigation).queryByTestId('workspace-badge-records')).not.toBeInTheDocument();
     expect(within(navigation).queryByTestId('workspace-badge-settings')).not.toBeInTheDocument();
-    expect(within(navigation).queryByTestId('workspace-badge-more')).not.toBeInTheDocument();
+    expect(within(navigation).queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
 
     await user.click(within(navigation).getByRole('button', { name: 'Records' }));
     expect(onSelect).toHaveBeenCalledOnce();

@@ -27,7 +27,7 @@
 - Consumes: existing `WorkspaceDock`, `SettingsWorkspace`, Project Route overlay, and Operations overlay.
 - Produces: an executable user journey proving four top-level workspaces and the new Settings locations.
 
-- [ ] **Step 1: Write the failing navigation tests**
+- [x] **Step 1: Write the failing navigation tests**
 
 Update the dock test to expect exactly these IDs:
 
@@ -42,7 +42,7 @@ expect(buttons.map((button) => button.getAttribute('data-workspace'))).toEqual([
 
 Replace the old More assertion with a flow that opens Settings, verifies that More is absent, opens Startup & project and then Project Route, and opens Status & diagnostics to inspect state and Operations.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -67,11 +67,11 @@ Expected: fail because More still exists, Project Route is outside Settings, and
 - `SettingsSection = 'display' | 'notifications' | 'codex' | 'startup' | 'status'`.
 - `SettingsWorkspaceProps` gains `onOpenRoute(): void` and keeps `onOpenOperations(): void`.
 
-- [ ] **Step 1: Remove More from the persistent dock**
+- [x] **Step 1: Remove More from the persistent dock**
 
 Delete the `more` workspace definition and label. `WorkspaceSurface.active` continues to accept every non-Home `WorkspaceId`, so no replacement route is added.
 
-- [ ] **Step 2: Put low-frequency actions in their approved Settings sections**
+- [x] **Step 2: Put low-frequency actions in their approved Settings sections**
 
 Use the following section behavior:
 
@@ -84,11 +84,11 @@ Use the following section behavior:
 
 Display contains the language control only. Status & diagnostics loads cached runtime information on entry, groups all read-only repository/runtime/OS state, and keeps the existing reconnect and Operations actions.
 
-- [ ] **Step 3: Remove obsolete More styling and update the visual-test path**
+- [x] **Step 3: Remove obsolete More styling and update the visual-test path**
 
 Delete `.workspace-more-grid` rules. Change the visual Operations helper to open Settings, select Status & diagnostics, and then open Operations. Do not update screenshots in this checkpoint.
 
-- [ ] **Step 4: Run the focused tests and verify GREEN**
+- [x] **Step 4: Run the focused tests and verify GREEN**
 
 Run:
 
@@ -98,6 +98,6 @@ npm test -- tests/unit/app.test.tsx tests/unit/workspace-dock.test.tsx -t "four 
 
 Expected: all selected tests pass.
 
-- [ ] **Step 5: Build, package, commit, and stop for user review**
+- [x] **Step 5: Build, package, commit, and stop for user review**
 
 Run `npm run build:desktop`, package with `npx electron-forge package --platform win32 --arch x64`, commit the code and documents, and hand the exact executable to the user. Do not run the full suite or visual baseline in this checkpoint.
