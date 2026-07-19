@@ -96,3 +96,29 @@ test('shows a bounded first-launch project chooser instead of prototype content'
     await rm(userData, { recursive: true, force: true });
   }
 });
+
+test('shows a bounded recovery screen when the initial repository is unreadable', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-broken-'));
+  const userData = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-broken-user-'));
+  const state = path.join(root, '.orquesta', 'state');
+  await mkdir(state, { recursive: true });
+  await writeFile(path.join(state, 'agents.json'), '{ broken', 'utf8');
+  await writeFile(path.join(state, 'tasks.json'), '{"tasks":[]}', 'utf8');
+  const desktop = await electron.launch({
+    args: [`--user-data-dir=${userData}`, '--lang=en-US', '.'],
+    cwd: appRoot,
+    env: { ...process.env, ORQUESTA_E2E: '1', ORQUESTA_E2E_PROJECT_ROOT: root }
+  });
+
+  try {
+    const window = await desktop.firstWindow();
+    await expect(window.getByText('Renderer snapshot unavailable', { exact: true })).toBeVisible();
+    await expect(window.getByText(/agents\.json/u)).toBeVisible();
+    await expect(window.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await expect(window.getByRole('button', { name: 'Open project folder' })).toBeVisible();
+    await expect(window.getByRole('heading', { name: 'Open your first Orquesta project' })).toHaveCount(0);
+  } finally {
+    await desktop.close();
+    await Promise.all([rm(root, { recursive: true, force: true }), rm(userData, { recursive: true, force: true })]);
+  }
+});

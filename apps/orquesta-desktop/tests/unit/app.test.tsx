@@ -38,6 +38,21 @@ describe('DesktopRendererApp', () => {
     expect(screen.getByRole('button', { name: 'Open project folder' })).toBeVisible();
   });
 
+  test('leaves the recovery screen when opening another project publishes a valid snapshot', async () => {
+    const bridge = new MockOrquestaBridge('active-project');
+    const recovered = await bridge.getInitialSnapshot();
+    let publish!: (event: BridgeEvent) => void;
+    vi.spyOn(bridge, 'getInitialSnapshot').mockRejectedValue(new Error('agents.json is malformed'));
+    vi.spyOn(bridge, 'subscribe').mockImplementation((listener) => { publish = listener; return () => undefined; });
+    render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
+
+    expect(await screen.findByText('Renderer snapshot unavailable')).toBeVisible();
+    act(() => publish({ type: 'snapshot_changed', snapshot: recovered }));
+
+    expect(await screen.findByText('Demo data')).toBeVisible();
+    expect(screen.queryByText('Renderer snapshot unavailable')).not.toBeInTheDocument();
+  });
+
   test('recovers the first-project action when the folder picker throws', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const base = await bridge.getInitialSnapshot();

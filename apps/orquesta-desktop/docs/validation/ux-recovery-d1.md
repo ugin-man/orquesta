@@ -16,15 +16,16 @@ D1では、既存の円形HomeとElectron基盤を残したまま、表示状態
 - Mapのアイコンをズーム倍率と一緒に縮小し、pointer capture、listener、requestAnimationFrameを操作後に解放する。
 - 会話画面は選択中の相手を見出しに表示し、相手を変えたときに会話も読み直す。
 - 読み込み中、プロジェクト未選択、snapshot読取失敗を別画面にした。
+- 初回repositoryが壊れている場合は未選択へ黙って落とさず、ファイル名と再試行、別project選択を表示する。別projectの正常snapshotが届いたらerror画面を解除する。
 - Moreに表示言語とrepository診断を置いた。
 
 ## 自動検証
 
 | コマンド | 結果 |
 | --- | --- |
-| `npm test` | 36 files、178 tests、0 fail |
+| `npm test` | 36 files、180 tests、0 fail |
 | `npm run build:desktop` | TypeScript、Renderer、Electron hostすべてexit 0 |
-| `npm run test:desktop-smoke` | 6 tests、0 fail |
+| `npm run test:desktop-smoke` | 7 tests、0 fail |
 | `npm run test:interaction-retention` | 2 tests、0 fail |
 | `npm run test:visual` | 7 tests、0 fail |
 | `npm run make:win` | Windows x64 package、Setup、zip生成、exit 0 |

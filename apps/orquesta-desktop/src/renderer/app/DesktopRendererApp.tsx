@@ -122,6 +122,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           ?? event.snapshot.agents[0]?.id
           ?? 'orchestrator';
         setSnapshot(event.snapshot);
+        setLoadingError(null);
         setActionError(null);
         setTargetAgentId((current) => event.snapshot.agents.some((agent) => agent.id === current) ? current : fallbackAgentId);
         if (!event.snapshot.agents.some((agent) => agent.id === conversationTargetAgentIdRef.current)) {

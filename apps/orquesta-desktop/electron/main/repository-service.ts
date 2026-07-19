@@ -56,6 +56,7 @@ export class RepositoryService {
   readonly #registry: ProjectRegistry;
   readonly #listeners = new Set<(snapshot: OrquestaUiSnapshot) => void>();
   #snapshot = emptySnapshot();
+  #snapshotError: string | null = null;
   #unsubscribeCore: (() => void) | null = null;
 
   constructor(options: RepositoryServiceOptions) {
@@ -76,13 +77,16 @@ export class RepositoryService {
     });
 
     if (this.#options.initialRootPath) {
-      await this.selectRoot(this.#options.initialRootPath);
+      const selected = await this.selectRoot(this.#options.initialRootPath);
+      if (selected.status !== 'accepted') this.#snapshotError = selected.reason;
       return;
     }
     const current = this.#registry.currentProject();
     if (current) {
       const selected = await this.selectRoot(current.rootPath);
       if (selected.status === 'accepted') return;
+      this.#snapshotError = selected.reason;
+      return;
     }
     this.#emit();
   }
@@ -93,6 +97,7 @@ export class RepositoryService {
   }
 
   async getSnapshot(): Promise<OrquestaUiSnapshot> {
+    if (this.#snapshotError) throw new Error(this.#snapshotError);
     return structuredClone(this.#snapshot);
   }
 
@@ -118,6 +123,7 @@ export class RepositoryService {
     try {
       const next = await this.#options.coreHost.selectRepository(projectIdForRoot(rootPath), rootPath);
       this.#snapshot = structuredClone(next);
+      this.#snapshotError = null;
       await this.#registry.remember(next);
       this.#emit();
       return result('accepted');

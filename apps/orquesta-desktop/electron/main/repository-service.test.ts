@@ -90,6 +90,31 @@ describe('RepositoryService', () => {
     await projection.runtime.stop();
   });
 
+  test('exposes an unreadable initial repository instead of silently treating it as no project and can recover', async () => {
+    const temporary = await mkdtemp(path.join(os.tmpdir(), 'orquesta-initial-error-'));
+    temporaryRoots.push(temporary);
+    const broken = path.join(temporary, 'broken');
+    const brokenState = path.join(broken, '.orquesta', 'state');
+    await mkdir(brokenState, { recursive: true });
+    await writeFile(path.join(brokenState, 'agents.json'), '{ broken', 'utf8');
+    await writeFile(path.join(brokenState, 'tasks.json'), '{"tasks":[]}', 'utf8');
+    const recovered = await makeProject(temporary, 'recovered');
+    const projection = createProjectionHost();
+    const service = new RepositoryService({
+      registryPath: path.join(temporary, 'repositories.json'),
+      coreHost: projection.host,
+      initialRootPath: broken,
+      chooseDirectory: async () => recovered
+    });
+
+    await service.initialize();
+    await expect(service.getSnapshot()).rejects.toThrow('agents.json');
+    await expect(service.openProject()).resolves.toMatchObject({ status: 'accepted' });
+    await expect(service.getSnapshot()).resolves.toMatchObject({ project: { title: 'recovered' } });
+    await service.stop();
+    await projection.runtime.stop();
+  });
+
   test('keeps the last snapshot offline when a refresh becomes unreadable', async () => {
     const temporary = await mkdtemp(path.join(os.tmpdir(), 'orquesta-refresh-'));
     temporaryRoots.push(temporary);
