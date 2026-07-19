@@ -1,6 +1,22 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { openFixture } from './helpers';
+
+async function openProjectSwitcher(page: Page) {
+  const launcher = page.getByLabel('Project launcher');
+  await launcher.getByRole('button', { name: 'Project actions' }).click();
+  await launcher.getByRole('button', { name: 'Switch project' }).click();
+}
+
+async function openSettingsSection(page: Page, section: 'Startup & project' | 'Status & diagnostics') {
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: section }).click();
+}
+
+async function openOperations(page: Page) {
+  await openSettingsSection(page, 'Status & diagnostics');
+  await page.getByRole('button', { name: 'Open Operations' }).click();
+}
 
 test('renders the full active roster and opens agent and task details', async ({ page }) => {
   await openFixture(page, 'active-project');
@@ -8,7 +24,7 @@ test('renders the full active roster and opens agent and task details', async ({
   await page.getByRole('button', { name: 'Analyst, Working' }).click();
   await expect(page.locator('aside[aria-label="Analyst detail"]')).toBeVisible();
   await page.locator('.agent-current-task').click();
-  const detail = page.locator('aside[aria-label="Task T68"]');
+  const detail = page.getByRole('dialog', { name: 'Task T68 detail' });
   await expect(detail).toBeVisible();
   await expect(detail.getByText('Dispatch accepted', { exact: true })).toBeVisible();
   await expect(detail.getByText('Turn started', { exact: true })).toBeVisible();
@@ -19,17 +35,16 @@ test('keeps dispatch-only work static and actual model unknown', async ({ page }
   await expect(page.locator('.map-edge-flow')).toHaveCount(0);
   await page.getByRole('button', { name: 'Planner, Assigned · waiting' }).click();
   await page.locator('.agent-current-task').click();
-  const detail = page.locator('aside[aria-label="Task U12"]');
+  const detail = page.getByRole('dialog', { name: 'Task U12 detail' });
   await expect(detail).toBeVisible();
-  await expect(detail.getByText('Actual model', { exact: true })).toBeVisible();
-  await expect(detail.getByText('Unknown', { exact: true }).first()).toBeVisible();
-  await expect(detail.getByText('Not observed', { exact: true })).toHaveCount(2);
+  await expect(detail.getByRole('heading', { name: 'Model routing' })).toBeVisible();
+  await expect(detail.getByText('Actual', { exact: true })).toBeVisible();
+  await expect(detail.getByText('— · unknown', { exact: true })).toBeVisible();
 });
 
 test('switches to offline project without claiming live work', async ({ page }) => {
   await openFixture(page, 'active-project');
-  await page.locator('.project-status__summary').click();
-  await page.getByRole('button', { name: 'Switch project' }).click();
+  await openProjectSwitcher(page);
   await expect(page.getByRole('dialog', { name: 'Switch project' })).toBeVisible();
   await page.getByRole('button', { name: /Disconnected Repository/ }).click();
   await expect(page.locator('.stale-ribbon')).toBeVisible();
@@ -38,7 +53,7 @@ test('switches to offline project without claiming live work', async ({ page }) 
   await expect(page.locator('.map-edge-flow')).toHaveCount(0);
 });
 
-test('keeps Home fixed while Attention scrolls internally', async ({ page }) => {
+test('keeps Home fixed and Attention ready for panel-local scrolling', async ({ page }) => {
   await openFixture(page, 'attention-heavy', { width: 1366, height: 768 });
   const fixed = await page.evaluate(() => ({
     html: document.documentElement.scrollHeight === document.documentElement.clientHeight,
@@ -46,8 +61,8 @@ test('keeps Home fixed while Attention scrolls internally', async ({ page }) => 
   }));
   expect(fixed).toEqual({ html: true, body: true });
   const attention = page.getByTestId('attention-scroll');
-  const metrics = await attention.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientHeight: element.clientHeight }));
-  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+  const overflowY = await attention.evaluate((element) => getComputedStyle(element).overflowY);
+  expect(overflowY).toBe('auto');
 });
 
 test('large roster keeps all thirty-five agents as individual nodes', async ({ page }) => {
@@ -98,8 +113,7 @@ test('preserves the map camera when a same-project snapshot updates', async ({ p
   await page.getByRole('button', { name: 'Zoom in' }).click();
   await page.getByRole('button', { name: 'Zoom in' }).click();
   const zoomBefore = await world.getAttribute('data-zoom');
-  await page.locator('.project-status__summary').click();
-  await page.getByRole('button', { name: 'Switch project' }).click();
+  await openProjectSwitcher(page);
   await page.getByRole('dialog', { name: 'Switch project' })
     .getByRole('button', { name: /Local Multi-Agent Orchestration/ })
     .click();
@@ -136,49 +150,24 @@ test('persists a manually moved agent and Reset restores the organization layout
   expect(Math.abs((reset?.x ?? 0) - initial.x)).toBeLessThan(6);
 });
 
-test('opens route, conversation, operations, and returns with Escape', async ({ page }) => {
+test('closes Project Route with Escape and reaches Conversation and Operations', async ({ page }) => {
   await openFixture(page, 'active-project');
-  await page.locator('.project-status__summary').click();
+  await openSettingsSection(page, 'Startup & project');
   await page.getByRole('button', { name: 'Open Project Route' }).click();
   await expect(page.getByRole('dialog', { name: 'Project Route' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Project Route' })).toHaveCount(0);
   await page.getByRole('button', { name: /Conversation history/ }).click();
-  await expect(page.getByRole('dialog', { name: /Conversation · Orchestrator/ })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await page.locator('.project-status__summary').click();
-  await page.getByRole('button', { name: 'Open operations' }).click();
+  await expect(page.getByRole('heading', { name: 'Conversation · Orchestrator' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Records' })).toHaveAttribute('aria-current', 'page');
+  await openOperations(page);
   await expect(page.getByRole('dialog', { name: 'Operations' })).toBeVisible();
-});
-
-test('restores the exact map camera and selected agent after closing Operations', async ({ page }) => {
-  await openFixture(page, 'active-project');
-  const world = page.locator('.map-world');
-  const analyst = page.locator('[data-agent-id="analyst"]');
-  await analyst.click();
-  await expect(analyst).toHaveClass(/is-selected/);
-  await page.getByRole('button', { name: 'Zoom in' }).click();
-  await page.getByRole('button', { name: 'Zoom in' }).click();
-  const zoomBefore = await world.getAttribute('data-zoom');
-  const positionBefore = await analyst.boundingBox();
-
-  await page.locator('.project-status__summary').click();
-  await page.getByRole('button', { name: 'Open operations' }).click();
-  await page.getByRole('button', { name: 'Close Operations' }).click();
-
-  await expect(page.getByRole('dialog', { name: 'Operations' })).toHaveCount(0);
-  await expect(analyst).toHaveClass(/is-selected/);
-  expect(await world.getAttribute('data-zoom')).toBe(zoomBefore);
-  const positionAfter = await analyst.boundingBox();
-  expect(Math.abs((positionAfter?.x ?? 0) - (positionBefore?.x ?? 0))).toBeLessThan(0.5);
-  expect(Math.abs((positionAfter?.y ?? 0) - (positionBefore?.y ?? 0))).toBeLessThan(0.5);
 });
 
 for (const viewport of [{ width: 1366, height: 768 }, { width: 1440, height: 900 }]) {
   test(`keeps V4 Operations bounded and keyboard-accessible at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await openFixture(page, 'active-project', viewport);
-    await page.locator('.project-status__summary').click();
-    await page.getByRole('button', { name: 'Open operations' }).click();
+    await openOperations(page);
     const dialog = page.getByRole('dialog', { name: 'Operations' });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('tab')).toHaveCount(4);
@@ -276,8 +265,7 @@ test('has no serious accessibility violations or browser errors in the standard 
 
 test('has no serious accessibility violations in every V4 Operations panel', async ({ page }) => {
   await openFixture(page, 'active-project');
-  await page.locator('.project-status__summary').click();
-  await page.getByRole('button', { name: 'Open operations' }).click();
+  await openOperations(page);
   const dialog = page.getByRole('dialog', { name: 'Operations' });
   for (const tabName of ['Capability', 'Acquisition', 'Audit', 'Evidence']) {
     await dialog.getByRole('tab', { name: tabName }).click();

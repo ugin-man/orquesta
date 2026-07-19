@@ -55,19 +55,20 @@ describe('FailureRecordsWorkspace', () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    const scopes = screen.getByRole('navigation', { name: 'Failure scopes' });
-    expect(within(scopes).getByRole('button', { name: 'Unresolved 3' })).toHaveAttribute('aria-current', 'page');
-    expect(within(scopes).getByRole('button', { name: 'Repeated 1' })).toBeVisible();
-    expect(within(scopes).getByRole('button', { name: 'Resolved 1' })).toBeVisible();
-    expect(within(scopes).getByRole('button', { name: 'All 4' })).toBeVisible();
+    const scope = screen.getByRole('combobox', { name: 'Failure scope' });
+    expect(scope).toHaveValue('open');
+    expect(screen.getByRole('option', { name: 'Unresolved (3)' })).toBeVisible();
+    expect(screen.getByRole('option', { name: 'Repeated (1)' })).toBeVisible();
+    expect(screen.getByRole('option', { name: 'Resolved (1)' })).toBeVisible();
+    expect(screen.getByRole('option', { name: 'All (4)' })).toBeVisible();
     expect(screen.getByRole('button', { name: /FC1 · Network timeout/ })).toBeVisible();
     expect(screen.queryByRole('button', { name: /encoding.corruption/ })).not.toBeInTheDocument();
 
-    await user.click(within(scopes).getByRole('button', { name: 'Repeated 1' }));
+    await user.selectOptions(scope, 'repeated');
     expect(screen.getByRole('button', { name: /FC1 · Network timeout/ })).toBeVisible();
     expect(screen.queryByRole('button', { name: /filesystem.lock/ })).not.toBeInTheDocument();
 
-    await user.click(within(scopes).getByRole('button', { name: 'Resolved 1' }));
+    await user.selectOptions(scope, 'resolved');
     expect(screen.getByRole('button', { name: /encoding.corruption/ })).toBeVisible();
     expect(screen.queryByRole('button', { name: /FC1 · Network timeout/ })).not.toBeInTheDocument();
   });
@@ -87,7 +88,7 @@ describe('FailureRecordsWorkspace', () => {
 
     await user.clear(screen.getByRole('searchbox', { name: 'Search errors' }));
     await user.click(screen.getByRole('button', { name: /FC1 · Network timeout/ }));
-    const detail = screen.getByRole('region', { name: 'Failure FC1 detail' });
+    const detail = screen.getByRole('dialog', { name: 'Failure FC1 detail' });
     expect(within(detail).getByText('4 occurrences')).toBeVisible();
     expect(within(detail).getByText('Changed endpoint.')).toBeVisible();
     expect(within(detail).getByText('Retry after the source recovers.')).toBeVisible();

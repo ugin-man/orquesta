@@ -40,7 +40,7 @@ test('sends a composer instruction to a Codex App Server thread and reads its hi
     await expect(window.getByText('Fake coordinator accepted the desktop instruction.')).toBeVisible();
 
     await window.getByRole('button', { name: 'Conversation history · Coordinator' }).click();
-    const history = window.getByRole('region', { name: 'Conversation', exact: true });
+    const history = window.getByRole('region', { name: 'Conversation records', exact: true });
     await expect(history).toBeVisible();
     await expect(history.getByRole('heading', { name: 'Conversation · Coordinator' })).toBeVisible();
     await expect(history.getByText('Continue from desktop.')).toBeVisible();

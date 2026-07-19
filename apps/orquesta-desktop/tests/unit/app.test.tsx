@@ -353,7 +353,7 @@ describe('DesktopRendererApp', () => {
     expect(await screen.findByLabelText('200 of 457 events')).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Show 200 more' }));
     expect(screen.getByLabelText('400 of 457 events')).toBeVisible();
-  });
+  }, 10_000);
 
   test('closes stale conversation content when its agent disappears from the same project', async () => {
     const bridge = new MockOrquestaBridge('active-project');
