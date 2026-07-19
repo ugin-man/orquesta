@@ -384,9 +384,9 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
   position: fixed;
   z-index: 10;
   top: 66px;
-  right: clamp(270px, 21vw, 330px);
+  right: clamp(72px, 8vw, 150px);
   bottom: 124px;
-  left: clamp(270px, 21vw, 330px);
+  left: clamp(72px, 8vw, 150px);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -407,12 +407,12 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .workspace-surface__body { min-height: 0; padding: 10px 17px 18px; overflow-y: auto; overscroll-behavior: contain; }
 .workspace-surface__body--user-tasks { flex: 1; padding: 0; overflow: hidden; }
 .user-tasks-workspace { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.user-task-filters { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 6px; flex: 0 0 auto; padding: 11px 15px; border-bottom: 1px solid var(--line); background: rgba(247,244,237,.55); }
-.user-task-filters button { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-width: 0; padding: 8px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--ink-muted); font-size: 8px; text-align: left; }
+.user-task-filters { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; flex: 0 0 auto; padding: 14px 18px; border-bottom: 1px solid var(--line); background: rgba(247,244,237,.55); }
+.user-task-filters button { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 40px; padding: 10px 12px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--ink-muted); font-size: 10px; text-align: left; }
 .user-task-filters button:hover { border-color: var(--line); background: rgba(255,253,248,.72); color: var(--ink); }
 .user-task-filters button[aria-current="page"] { border-color: var(--line-strong); background: var(--paper-strong); color: var(--ink); box-shadow: 0 3px 9px rgba(40,34,26,.06); }
 .user-task-filters button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-task-filters button strong { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px; background: rgba(20,20,20,.065); font-size: 8px; }
+.user-task-filters button strong { display: grid; place-items: center; min-width: 23px; height: 23px; padding: 0 6px; border-radius: 99px; background: rgba(20,20,20,.065); font-size: 9px; }
 .user-task-filters button[aria-current="page"] strong { background: var(--ink); color: var(--paper-strong); }
 .user-task-split { display: grid; grid-template-columns: 38% 62%; flex: 1; min-height: 0; }
 .user-task-list, .user-task-detail { min-width: 0; min-height: 0; overflow: hidden; }
@@ -563,16 +563,16 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
   right: clamp(24px, 2.6vw, 46px);
   display: flex;
   flex-direction: column;
-  width: 252px;
+  width: 276px;
   max-height: min(430px, calc(100vh - 350px));
   border-radius: 13px;
   overflow: hidden;
 }
-.attention-card__header { display: flex; flex-direction: column; flex: 0 0 auto; width: 100%; padding: 10px 12px 9px; border-bottom: 1px solid var(--line); }
-.attention-card__heading { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 2px 3px 5px; border: 0; background: transparent; text-align: left; }
-.attention-card__title { display: block; font-size: 10px; font-weight: 820; text-transform: uppercase; }
-.attention-card__counts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; color: var(--ink-muted); }
-.attention-card__counts button { padding: 3px 5px; border: 1px solid rgba(216,210,199,.8); border-radius: 7px; background: rgba(255,253,248,.48); color: inherit; font-size: 7px; font-weight: 650; text-align: left; }
+.attention-card__header { display: flex; flex-direction: column; flex: 0 0 auto; width: 100%; padding: 12px 14px 11px; border-bottom: 1px solid var(--line); }
+.attention-card__heading { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 2px 3px 7px; border: 0; background: transparent; text-align: left; }
+.attention-card__title { display: block; font-size: 11px; font-weight: 820; text-transform: uppercase; }
+.attention-card__counts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; color: var(--ink-muted); }
+.attention-card__counts button { min-height: 30px; padding: 6px 8px; border: 1px solid rgba(216,210,199,.8); border-radius: 8px; background: rgba(255,253,248,.58); color: inherit; font-size: 9px; font-weight: 680; text-align: left; }
 .attention-card__counts button:hover { color: var(--ink); border-color: var(--line-strong); }
 .attention-card__scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #bcb5aa transparent; }
 .attention-item { display: grid; grid-template-columns: 34px 1fr; gap: 10px; padding: 13px 14px; border-bottom: 1px solid rgba(216,210,199,.8); }
@@ -941,7 +941,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
   .now-card__content { padding-top: 8px; }
   .now-card__copy p { min-height: 18px; margin: 4px 0 6px; }
   .project-status { top: 61px; width: 210px; }
-  .attention-card { top: 205px; width: 238px; max-height: calc(100vh - 305px); }
+  .attention-card { top: 205px; width: 260px; max-height: calc(100vh - 305px); }
   .attention-item { padding: 10px 12px; }
   .command-composer { bottom: 12px; padding: 9px 13px 8px; }
   .toast-stack { bottom: 12px; }
@@ -953,10 +953,10 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 @media (max-width: 1280px) {
   .project-launcher { left: 18px; width: 205px; }
   .workspace-dock { left: 18px; }
-  .workspace-surface { right: 240px; left: 240px; }
+  .workspace-surface { right: 72px; left: 72px; }
   .now-stack { left: 18px; width: 205px; }
   .project-status { right: 20px; width: 205px; }
-  .attention-card { right: 18px; width: 226px; }
+  .attention-card { right: 18px; width: 250px; }
   .command-composer { min-width: 570px; width: 58vw; }
   .composer-history span { display: none; }
   .agent-detail { left: 240px; }
