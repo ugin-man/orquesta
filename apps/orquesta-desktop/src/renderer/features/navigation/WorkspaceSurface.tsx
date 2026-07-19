@@ -7,6 +7,7 @@ import { useI18n } from '../i18n/I18nProvider';
 import { TaskRecordsWorkspace, type TaskRecordView } from '../records/TaskRecordsWorkspace';
 import { FailureRecordsWorkspace, type FailureRecordView } from '../records/FailureRecordsWorkspace';
 import { ConversationRecordsWorkspace } from '../records/ConversationRecordsWorkspace';
+import { DecisionRecordsWorkspace, type DecisionRecordKind } from '../records/DecisionRecordsWorkspace';
 import type { WorkspaceId } from './WorkspaceDock';
 
 export type { UserTaskKind } from '../attention/UserTasksWorkspace';
@@ -65,13 +66,16 @@ function TaskList({ tasks, onOpen }: { tasks: TaskUiModel[]; onOpen(taskId: stri
   );
 }
 
-export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, taskRecordView, failureRecordView, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, canResolveAttention, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenRoute, onOpenOperations }: {
+export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, taskRecordView, failureRecordView, decisionRecords, decisionRecordKind, decisionRecordsLoading, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, canResolveAttention, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onDecisionRecordKindChange, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenRoute, onOpenOperations }: {
   active: Exclude<WorkspaceId, 'home'>;
   snapshot: OrquestaUiSnapshot;
   userTaskKind: UserTaskKind;
   recordKind: RecordKind;
   taskRecordView: TaskRecordView;
   failureRecordView: FailureRecordView;
+  decisionRecords: AttentionUiItem[];
+  decisionRecordKind: DecisionRecordKind;
+  decisionRecordsLoading: boolean;
   messages: ConversationMessage[];
   conversationTargetAgentId: string;
   conversationLoading: boolean;
@@ -81,6 +85,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
   onSelectRecordKind(kind: RecordKind): void;
   onTaskRecordViewChange(view: TaskRecordView): void;
   onFailureRecordViewChange(view: FailureRecordView): void;
+  onDecisionRecordKindChange(kind: DecisionRecordKind): void;
   onSelectConversationTarget(agentId: string): void;
   onLoadOlderConversation(): void;
   onOpenAttention(item: AttentionUiItem): void;
@@ -111,7 +116,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
           {recordTypes.map(([kind, label]) => <button type="button" key={kind} aria-current={recordKind === kind ? 'page' : undefined} onClick={() => onSelectRecordKind(kind)}>{label}</button>)}
         </nav>
       ) : null}
-      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}${active === 'records' && recordKind === 'task' ? ' workspace-surface__body--task-records' : ''}${active === 'records' && recordKind === 'error' ? ' workspace-surface__body--failure-records' : ''}${active === 'records' && recordKind === 'conversation' ? ' workspace-surface__body--conversation-records' : ''}`}>
+      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}${active === 'records' && recordKind === 'task' ? ' workspace-surface__body--task-records' : ''}${active === 'records' && recordKind === 'error' ? ' workspace-surface__body--failure-records' : ''}${active === 'records' && recordKind === 'conversation' ? ' workspace-surface__body--conversation-records' : ''}${active === 'records' && recordKind === 'decision' ? ' workspace-surface__body--decision-records' : ''}`}>
         {active === 'user-tasks' ? (
           <UserTasksWorkspace
             items={snapshot.attention}
@@ -127,7 +132,8 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
         {active === 'records' && recordKind === 'conversation' ? (
           <ConversationRecordsWorkspace agents={snapshot.agents} targetAgentId={conversationTargetAgentId} messages={messages} loading={conversationLoading} hasOlder={conversationHasOlder} onSelectTarget={onSelectConversationTarget} onLoadOlder={onLoadOlderConversation} />
         ) : null}
-        {active === 'records' && (recordKind === 'decision' || recordKind === 'timeline') ? <p className="workspace-empty"><Clock3 size={20} />{t('workspacePreview')}</p> : null}
+        {active === 'records' && recordKind === 'decision' ? <DecisionRecordsWorkspace items={decisionRecords} agents={snapshot.agents} selectedKind={decisionRecordKind} loading={decisionRecordsLoading} onSelectKind={onDecisionRecordKindChange} /> : null}
+        {active === 'records' && recordKind === 'timeline' ? <p className="workspace-empty"><Clock3 size={20} />{t('workspacePreview')}</p> : null}
         {active === 'settings' ? (
           <div className="workspace-settings-grid">
             <section><Settings size={18} /><div><strong>{t('displayLanguage')}</strong><small>{t('languageDetail')}</small><span className="workspace-language"><button type="button" aria-label="日本語" aria-pressed={locale === 'ja'} onClick={() => setLocale('ja')}><Languages size={13} />JA</button><button type="button" aria-label="English" aria-pressed={locale === 'en'} onClick={() => setLocale('en')}>EN</button></span></div></section>

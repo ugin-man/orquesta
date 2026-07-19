@@ -283,6 +283,34 @@ describe('DesktopRendererApp', () => {
     expect(screen.getByLabelText('Target agent')).toHaveValue('analyst');
   });
 
+  test('shows resolved user decisions with filters and the recorded outcome', async () => {
+    const user = userEvent.setup();
+    const bridge = new MockOrquestaBridge('active-project');
+    const listAttentionHistory = vi.spyOn(bridge, 'listAttentionHistory');
+    render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Records' }));
+    await user.click(screen.getByRole('button', { name: 'Decisions' }));
+
+    const filters = await screen.findByRole('navigation', { name: 'Decision types' });
+    expect(within(filters).getByRole('button', { name: 'All 2' })).toBeVisible();
+    expect(within(filters).getByRole('button', { name: 'Answers 1' })).toBeVisible();
+    expect(within(filters).getByRole('button', { name: 'Approvals 0' })).toBeVisible();
+    expect(within(filters).getByRole('button', { name: 'Reviews 1' })).toBeVisible();
+    expect(within(filters).getByRole('button', { name: 'Manual work 0' })).toBeVisible();
+    expect(listAttentionHistory).toHaveBeenCalledOnce();
+
+    const detail = screen.getByRole('region', { name: 'Decision detail' });
+    expect(within(detail).getByRole('heading', { name: 'Question answered' })).toBeVisible();
+    expect(within(detail).getByText('Confirm the approved reference image.')).toBeVisible();
+    expect(within(detail).getByText('Image attached')).toBeVisible();
+    expect(within(detail).getByText('T69')).toBeVisible();
+    expect(within(detail).getAllByText('Not recorded')).toHaveLength(2);
+
+    await user.click(within(filters).getByRole('button', { name: 'Reviews 1' }));
+    expect(within(detail).getByRole('heading', { name: 'Report accepted' })).toBeVisible();
+  });
+
   test('closes stale conversation content when its agent disappears from the same project', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const base = await bridge.getInitialSnapshot();

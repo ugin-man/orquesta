@@ -17,6 +17,7 @@ import { WorkspaceDock, type WorkspaceId } from '../features/navigation/Workspac
 import { WorkspaceSurface, type RecordKind, type UserTaskKind } from '../features/navigation/WorkspaceSurface';
 import { createDefaultTaskRecordView, type TaskRecordView } from '../features/records/TaskRecordsWorkspace';
 import { createDefaultFailureRecordView, type FailureRecordView } from '../features/records/FailureRecordsWorkspace';
+import type { DecisionRecordKind } from '../features/records/DecisionRecordsWorkspace';
 import { NowCardStack } from '../features/now/NowCardStack';
 import { V4Operations } from '../features/operations/V4Operations';
 import { ProjectLauncher } from '../features/project/ProjectLauncher';
@@ -87,6 +88,9 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [recordKind, setRecordKind] = useState<RecordKind>('task');
   const [taskRecordView, setTaskRecordView] = useState<TaskRecordView>(() => createDefaultTaskRecordView());
   const [failureRecordView, setFailureRecordView] = useState<FailureRecordView>(() => createDefaultFailureRecordView());
+  const [decisionRecords, setDecisionRecords] = useState<AttentionUiItem[]>([]);
+  const [decisionRecordKind, setDecisionRecordKind] = useState<DecisionRecordKind>('all');
+  const [decisionRecordsLoading, setDecisionRecordsLoading] = useState(false);
   const [mapSelection, setMapSelection] = useState<MapSelection>(null);
   const [draft, setDraft] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('orchestrator');
@@ -106,6 +110,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const draftProjectId = useRef<string | null>(null);
   const rendererReadyReported = useRef(false);
   const conversationRequest = useRef(0);
+  const decisionHistoryRequest = useRef(0);
   const conversationTargetAgentIdRef = useRef('orchestrator');
   const availableAgentIdsRef = useRef<Set<string>>(new Set());
 
@@ -164,6 +169,10 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     setActiveWorkspace('home');
     setTaskRecordView(createDefaultTaskRecordView());
     setFailureRecordView(createDefaultFailureRecordView());
+    setDecisionRecords([]);
+    setDecisionRecordKind('all');
+    setDecisionRecordsLoading(false);
+    decisionHistoryRequest.current += 1;
     setOverlay(null);
     setAttachments([]);
     setDirectSendFailure(null);
@@ -229,6 +238,25 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       if (request === conversationRequest.current) setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       if (request === conversationRequest.current) setLoadingConversation(false);
+    }
+  };
+  const openDecisionHistory = async () => {
+    const request = ++decisionHistoryRequest.current;
+    setDecisionRecords([]);
+    setDecisionRecordsLoading(true);
+    setActionError(null);
+    setOverlay(null);
+    setMapSelection(null);
+    setRecordKind('decision');
+    setActiveWorkspace('records');
+    try {
+      const items = await bridge.listAttentionHistory();
+      if (request !== decisionHistoryRequest.current) return;
+      setDecisionRecords(items);
+    } catch (error) {
+      if (request === decisionHistoryRequest.current) setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (request === decisionHistoryRequest.current) setDecisionRecordsLoading(false);
     }
   };
   const selectWorkspace = (workspace: WorkspaceId) => {
@@ -467,6 +495,9 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           recordKind={recordKind}
           taskRecordView={taskRecordView}
           failureRecordView={failureRecordView}
+          decisionRecords={decisionRecords}
+          decisionRecordKind={decisionRecordKind}
+          decisionRecordsLoading={decisionRecordsLoading}
           messages={messages}
           conversationTargetAgentId={conversationTargetAgentId}
           conversationLoading={loadingConversation || loadingOlderMessages}
@@ -474,11 +505,13 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           canResolveAttention={bridge.capabilities.attentionResolution}
           onSelectUserTaskKind={setUserTaskKind}
           onSelectRecordKind={(kind) => {
-            setRecordKind(kind);
             if (kind === 'conversation') void openConversation();
+            else if (kind === 'decision') void openDecisionHistory();
+            else setRecordKind(kind);
           }}
           onTaskRecordViewChange={setTaskRecordView}
           onFailureRecordViewChange={setFailureRecordView}
+          onDecisionRecordKindChange={setDecisionRecordKind}
           onSelectConversationTarget={(agentId) => void openConversation(agentId)}
           onLoadOlderConversation={() => void loadOlderConversation()}
           onOpenAttention={openAttentionItem}
