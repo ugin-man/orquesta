@@ -2,6 +2,7 @@ import type { AgentUiModel, TaskUiModel } from '../../../contracts/orquesta-ui';
 import { OverlayFrame } from '../../components/OverlayFrame';
 import { statusLabel } from '../../components/format';
 import { useI18n } from '../i18n/I18nProvider';
+import { activeItems } from './NowCardStack';
 
 export function NowListOverlay({ agents, tasks, onOpenTask, onClose }: {
   agents: AgentUiModel[];
@@ -10,8 +11,7 @@ export function NowListOverlay({ agents, tasks, onOpenTask, onClose }: {
   onClose(): void;
 }) {
   const { t } = useI18n();
-  const byId = new Map(tasks.map((task) => [task.id, task]));
-  const active = agents.filter((agent) => agent.currentTaskId).map((agent) => ({ agent, task: byId.get(agent.currentTaskId!) })).filter((item): item is { agent: AgentUiModel; task: TaskUiModel } => Boolean(item.task));
+  const active = activeItems(agents, tasks, true);
   return (
     <OverlayFrame title={t('activeWork')} ariaLabel={t('activeWork')} className="now-list-overlay" onClose={onClose}>
       <div className="overlay-list">

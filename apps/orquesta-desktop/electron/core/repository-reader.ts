@@ -34,6 +34,17 @@ const MAX_JSON_BYTES = 16 * 1024 * 1024;
 const FRESH_RUNTIME_MS = 10 * 60 * 1000;
 const TERMINAL_TASK_STATES = new Set(['accepted', 'retired', 'superseded', 'cancelled']);
 const REVIEW_TASK_STATES = new Set(['completed', 'needs_orchestrator_review', 'needs_revision', 'changes_requested', 'report_ready', 'needs_review']);
+const FALLBACK_CURRENT_TASK_STATES = new Set([
+  'queued',
+  'assigned',
+  'dispatch_accepted',
+  'turn_started',
+  'in_progress',
+  'active',
+  'working',
+  'blocked',
+  'approval_wait'
+]);
 
 function object(value: unknown): JsonObject | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : null;
@@ -186,6 +197,10 @@ function rawTaskIsCurrent(raw: JsonObject): boolean {
   return !TERMINAL_TASK_STATES.has(string(raw.state) ?? 'unknown');
 }
 
+function rawTaskCanBeCurrentFallback(raw: JsonObject): boolean {
+  return FALLBACK_CURRENT_TASK_STATES.has(string(raw.state) ?? 'unknown');
+}
+
 function statusLabel(status: AgentUiStatus): string {
   switch (status) {
     case 'working': return 'Working';
@@ -210,7 +225,7 @@ function projectAgents(
   const tasksByOwner = new Map<string, JsonObject[]>();
   for (const task of rawTasks) {
     const owner = string(task.owner_agent_id);
-    if (!owner || !rawTaskIsCurrent(task)) continue;
+    if (!owner || !rawTaskCanBeCurrentFallback(task)) continue;
     const list = tasksByOwner.get(owner) ?? [];
     list.push(task);
     tasksByOwner.set(owner, list);
@@ -414,6 +429,7 @@ export function projectSnapshotFromDocuments({ rootPath, documents, now = new Da
       status: blocked ? 'blocked' : workingCount ? 'working' : 'ready',
       connectionLabel: blocked ? 'Canonical state loaded · blockers present' : workingCount ? 'Canonical state loaded · live evidence present' : 'Canonical state loaded · no proven active work',
       isDemoData: false,
+      repositoryDisplayState: 'snapshot',
       lastSyncedAt: newestTimestamp([agentDocument?.updated_at, taskDocument?.updated_at, sessionDocument?.synced_at]),
       currentPhaseId,
       agentCount: agents.length,

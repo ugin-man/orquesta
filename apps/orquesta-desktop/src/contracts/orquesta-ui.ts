@@ -30,6 +30,7 @@ export type AttentionType =
   | 'error'
   | 'direction';
 export type ProjectStatus = 'ready' | 'working' | 'blocked' | 'offline' | 'unknown';
+export type RepositoryDisplayState = 'watching' | 'snapshot' | 'offline' | 'demo' | 'error';
 
 export interface RuntimeEvidenceUi {
   id: string;
@@ -137,6 +138,7 @@ export interface ProjectUiModel {
   status: ProjectStatus;
   connectionLabel: string;
   isDemoData: boolean;
+  repositoryDisplayState: RepositoryDisplayState;
   lastSyncedAt: string | null;
   currentPhaseId: string | null;
   agentCount: number;

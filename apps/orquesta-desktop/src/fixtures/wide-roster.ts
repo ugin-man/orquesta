@@ -20,7 +20,7 @@ export const wideRosterFixture: FixtureDefinition = {
   snapshot: {
     project: {
       id: 'wide-roster', title: 'Wide Roster Simulation', rootPathLabel: '~/projects/wide-roster',
-      status: 'ready', connectionLabel: 'Prototype snapshot ready', isDemoData: true, lastSyncedAt: observedAt,
+      status: 'ready', connectionLabel: 'Prototype snapshot ready', isDemoData: true, repositoryDisplayState: 'demo', lastSyncedAt: observedAt,
       currentPhaseId: 'wide-phase', agentCount: agents.length, provenWorkingAgentCount: 0,
       summary: 'Eighty individual agents in one wide organization', nextMilestone: 'Wide fit validation'
     },

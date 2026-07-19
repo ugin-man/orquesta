@@ -20,6 +20,7 @@ function snapshot(id: string, title: string, rootPath: string): OrquestaUiSnapsh
       status: 'ready',
       connectionLabel: 'Live repository',
       isDemoData: false,
+      repositoryDisplayState: 'snapshot',
       lastSyncedAt: null,
       currentPhaseId: null,
       agentCount: 0,

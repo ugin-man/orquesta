@@ -21,7 +21,7 @@ for (let index = 1; index < 35; index += 1) {
 
 export const largeRosterFixture: FixtureDefinition = {
   snapshot: {
-    project: { id: 'large-roster', title: 'Large Roster Simulation', rootPathLabel: '~/projects/large-roster', status: 'working', connectionLabel: 'Prototype snapshot ready', isDemoData: true, lastSyncedAt: observedAt, currentPhaseId: 'L-phase', agentCount: 35, provenWorkingAgentCount: 6, summary: 'Thirty-five individual agents; no aggregation', nextMilestone: 'Fit and navigation validation' },
+    project: { id: 'large-roster', title: 'Large Roster Simulation', rootPathLabel: '~/projects/large-roster', status: 'working', connectionLabel: 'Prototype snapshot ready', isDemoData: true, repositoryDisplayState: 'demo', lastSyncedAt: observedAt, currentPhaseId: 'L-phase', agentCount: 35, provenWorkingAgentCount: 6, summary: 'Thirty-five individual agents; no aggregation', nextMilestone: 'Fit and navigation validation' },
     agents,
     tasks,
     attention: [],

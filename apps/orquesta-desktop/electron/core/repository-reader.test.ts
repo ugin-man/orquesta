@@ -43,7 +43,14 @@ describe('repository reader', () => {
       documents: documents()
     });
 
-    expect(snapshot.project).toMatchObject({ title: 'sample', isDemoData: false, agentCount: 3, provenWorkingAgentCount: 1, status: 'working' });
+    expect(snapshot.project).toMatchObject({
+      title: 'sample',
+      isDemoData: false,
+      repositoryDisplayState: 'snapshot',
+      agentCount: 3,
+      provenWorkingAgentCount: 1,
+      status: 'working'
+    });
     expect(snapshot.agents.find((agent) => agent.id === 'worker')).toMatchObject({
       status: 'working', statusEvidence: 'proven', currentTaskId: 'T1', assignedByAgentId: 'orchestrator'
     });
@@ -61,6 +68,24 @@ describe('repository reader', () => {
 
     expect(snapshot.project.provenWorkingAgentCount).toBe(0);
     expect(snapshot.agents.find((agent) => agent.id === 'worker')).toMatchObject({ status: 'stale', statusEvidence: 'reported' });
+  });
+
+  test('does not infer a completed review task as an agent current task', () => {
+    const source = documents();
+    source.agents.agents[1].current_task = null;
+    source.agents.agents[1].status = 'standby';
+    source.tasks.tasks[0].state = 'completed';
+
+    const snapshot = projectSnapshotFromDocuments({
+      rootPath: 'C:\\work\\sample',
+      now: new Date('2026-07-18T11:00:00.000Z'),
+      documents: source
+    });
+
+    expect(snapshot.agents.find((agent) => agent.id === 'worker')).toMatchObject({
+      currentTaskId: null,
+      status: 'standby'
+    });
   });
 
   test('does not turn an in_progress label into runtime or progress evidence', () => {

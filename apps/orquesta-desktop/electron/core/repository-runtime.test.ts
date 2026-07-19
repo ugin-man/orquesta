@@ -15,6 +15,7 @@ function snapshot(id: string, rootPath: string): OrquestaUiSnapshot {
       status: 'ready',
       connectionLabel: 'Live repository',
       isDemoData: false,
+      repositoryDisplayState: 'snapshot',
       lastSyncedAt: '2026-07-18T00:00:00.000Z',
       currentPhaseId: null,
       agentCount: 1,
@@ -54,6 +55,38 @@ function snapshot(id: string, rootPath: string): OrquestaUiSnapshot {
 }
 
 describe('RepositoryRuntime', () => {
+  test('marks repository state watching only after a canonical watcher starts', async () => {
+    const first = snapshot('repo-first', 'C:\\first');
+    const runtime = new RepositoryRuntime({
+      readSnapshot: vi.fn(async () => first),
+      watchDirectory: vi.fn(() => ({ close: vi.fn() }))
+    });
+
+    const selected = await runtime.select({ projectId: 'repo-first', rootPath: 'C:\\first' });
+
+    expect(selected.project.repositoryDisplayState).toBe('watching');
+  });
+
+  test('stops claiming a live watcher after the watcher reports an error', async () => {
+    const first = snapshot('repo-first', 'C:\\first');
+    let reportWatchError = (_error: Error) => undefined;
+    const runtime = new RepositoryRuntime({
+      readSnapshot: vi.fn(async () => first),
+      watchDirectory: vi.fn((...args: unknown[]) => {
+        reportWatchError = (args[2] as ((error: Error) => void) | undefined) ?? reportWatchError;
+        return { close: vi.fn() };
+      })
+    });
+
+    await runtime.select({ projectId: 'repo-first', rootPath: 'C:\\first' });
+    reportWatchError(new Error('watcher failed'));
+
+    expect(runtime.getSnapshot().project).toMatchObject({
+      repositoryDisplayState: 'snapshot',
+      connectionLabel: 'Watcher stopped · watcher failed'
+    });
+  });
+
   test('merges canonical V4 operations on selection and refresh without changing the base snapshot', async () => {
     const first = snapshot('repo-first', 'C:\\first');
     const readSnapshot = vi.fn(async () => first);
@@ -101,7 +134,10 @@ describe('RepositoryRuntime', () => {
     const watchDirectory = vi.fn((_directory: string, _onChange: () => void) => ({ close }));
     const runtime = new RepositoryRuntime({ readSnapshot, watchDirectory, debounceMs: 1 });
 
-    await expect(runtime.select({ projectId: 'repo-first', rootPath: 'C:\\first' })).resolves.toEqual(first);
+    await expect(runtime.select({ projectId: 'repo-first', rootPath: 'C:\\first' })).resolves.toMatchObject({
+      project: { id: 'repo-first', repositoryDisplayState: 'watching' }
+    });
+    expect(first.project.repositoryDisplayState).toBe('snapshot');
     expect(watchDirectory.mock.calls.map(([directory]) => directory)).toEqual([
       path.join('C:\\first', '.orquesta', 'state'),
       path.join('C:\\first', '.orquesta', 'vision'),

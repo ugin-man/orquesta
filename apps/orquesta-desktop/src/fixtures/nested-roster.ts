@@ -36,7 +36,7 @@ export const nestedRosterFixture: FixtureDefinition = {
   snapshot: {
     project: {
       id: 'nested-roster', title: 'Nested Delegation Simulation', rootPathLabel: '~/projects/nested-roster',
-      status: 'ready', connectionLabel: 'Prototype snapshot ready', isDemoData: true, lastSyncedAt: observedAt,
+      status: 'ready', connectionLabel: 'Prototype snapshot ready', isDemoData: true, repositoryDisplayState: 'demo', lastSyncedAt: observedAt,
       currentPhaseId: 'nested-phase', agentCount: agents.length, provenWorkingAgentCount: 0,
       summary: 'Deep, repeated, and malformed delegation without hidden agents', nextMilestone: 'Hierarchy recovery validation'
     },

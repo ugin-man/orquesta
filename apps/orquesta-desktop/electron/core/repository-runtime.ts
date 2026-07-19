@@ -13,13 +13,13 @@ interface CloseableWatcher {
 export interface RepositoryRuntimeOptions {
   readSnapshot?: (rootPath: string) => Promise<OrquestaUiSnapshot>;
   readV4Operations?: (rootPath: string) => Promise<V4OperationsSnapshot>;
-  watchDirectory?: (directory: string, onChange: () => void) => CloseableWatcher;
+  watchDirectory?: (directory: string, onChange: () => void, onError: (error: Error) => void) => CloseableWatcher;
   debounceMs?: number;
 }
 
-function defaultWatchDirectory(directory: string, onChange: () => void): FSWatcher {
+function defaultWatchDirectory(directory: string, onChange: () => void, onError: (error: Error) => void): FSWatcher {
   const watcher = watch(directory, { persistent: false }, onChange);
-  watcher.on('error', () => undefined);
+  watcher.on('error', onError);
   return watcher;
 }
 
@@ -29,6 +29,7 @@ function offlineSnapshot(snapshot: OrquestaUiSnapshot, reason: string): Orquesta
     project: {
       ...snapshot.project,
       status: 'offline',
+      repositoryDisplayState: 'offline',
       provenWorkingAgentCount: 0,
       connectionLabel: `State read failed · ${reason.slice(0, 160)}`
     },
@@ -44,7 +45,7 @@ function offlineSnapshot(snapshot: OrquestaUiSnapshot, reason: string): Orquesta
 export class RepositoryRuntime {
   readonly #readSnapshot: (rootPath: string) => Promise<OrquestaUiSnapshot>;
   readonly #readV4Operations: (rootPath: string) => Promise<V4OperationsSnapshot>;
-  readonly #watchDirectory: (directory: string, onChange: () => void) => CloseableWatcher;
+  readonly #watchDirectory: (directory: string, onChange: () => void, onError: (error: Error) => void) => CloseableWatcher;
   readonly #debounceMs: number;
   readonly #listeners = new Set<(snapshot: OrquestaUiSnapshot) => void>();
   readonly #runtimeApprovals = new Map<string, RuntimeApprovalRequest>();
@@ -75,7 +76,9 @@ export class RepositoryRuntime {
     this.#projectId = next.project.id;
     this.#snapshot = this.#withRuntimeApprovals(next);
     this.#rootPath = next.project.rootPathLabel ?? input.rootPath;
-    this.#startWatching(this.#rootPath);
+    if (this.#startWatching(this.#rootPath)) {
+      this.#snapshot.project.repositoryDisplayState = 'watching';
+    }
     return structuredClone(this.#snapshot);
   }
 
@@ -127,6 +130,7 @@ export class RepositoryRuntime {
     if (!this.#rootPath || !this.#snapshot) throw new Error('No Orquesta repository is selected');
     try {
       this.#snapshot = this.#withRuntimeApprovals(await this.#projectSnapshot(this.#rootPath));
+      if (this.#watchers.length) this.#snapshot.project.repositoryDisplayState = 'watching';
     } catch (error) {
       this.#snapshot = offlineSnapshot(this.#snapshot, error instanceof Error ? error.message : String(error));
     }
@@ -146,17 +150,28 @@ export class RepositoryRuntime {
     this.#snapshot = null;
   }
 
-  #startWatching(rootPath: string): void {
+  #startWatching(rootPath: string): boolean {
     for (const directory of ['state', 'vision', 'failures', 'v4']) {
       try {
         this.#watchers.push(this.#watchDirectory(
           path.join(rootPath, '.orquesta', directory),
-          () => this.#scheduleRefresh()
+          () => this.#scheduleRefresh(),
+          (error) => this.#handleWatchError(error)
         ));
       } catch {
         // Optional canonical directories can be absent in a minimum project.
       }
     }
+    return this.#watchers.length > 0;
+  }
+
+  #handleWatchError(error: Error): void {
+    if (!this.#snapshot) return;
+    this.#closeWatchers();
+    this.#snapshot = structuredClone(this.#snapshot);
+    this.#snapshot.project.repositoryDisplayState = 'snapshot';
+    this.#snapshot.project.connectionLabel = `Watcher stopped · ${error.message.slice(0, 160)}`;
+    this.#emit();
   }
 
   async #projectSnapshot(rootPath: string): Promise<OrquestaUiSnapshot> {

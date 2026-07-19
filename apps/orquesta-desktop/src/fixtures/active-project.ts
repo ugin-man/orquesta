@@ -67,7 +67,7 @@ export const activeProjectFixture: FixtureDefinition = {
   snapshot: {
     project: {
       id: 'active-project', title: 'Local Multi-Agent Orchestration', rootPathLabel: '~/projects/orquesta-v4', status: 'working', connectionLabel: 'Local bridge ready',
-      isDemoData: true, lastSyncedAt: observedAt, currentPhaseId: 'phase-build', agentCount: 6, provenWorkingAgentCount: 3,
+      isDemoData: true, repositoryDisplayState: 'demo', lastSyncedAt: observedAt, currentPhaseId: 'phase-build', agentCount: 6, provenWorkingAgentCount: 3,
       summary: 'Renderer handoff and local orchestration workflow', nextMilestone: 'Visual review and Electron intake'
     },
     agents,

@@ -34,6 +34,7 @@ function emptySnapshot(): OrquestaUiSnapshot {
       status: 'offline',
       connectionLabel: 'Choose a project folder to begin',
       isDemoData: false,
+      repositoryDisplayState: 'offline',
       lastSyncedAt: null,
       currentPhaseId: null,
       agentCount: 0,
