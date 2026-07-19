@@ -1,30 +1,30 @@
 # Orquesta Desktop Interaction Retention
 
-Measured on 2026-07-19T07:23:08.921Z with the packaged Windows x64 app and the 35-agent fixture. Six identical batches exercised map pan, wheel zoom, native agent-detail open/close, Fit, and zoom controls. CDP garbage collection was used only for diagnosis, not to change product behavior.
+Measured on 2026-07-19T08:09:08.479Z with the packaged Windows x64 app and the 35-agent fixture. Six identical batches exercised map pan, wheel zoom, native agent-detail open/close, Fit, and zoom controls. CDP garbage collection was used only for diagnosis, not to change product behavior.
 
 | Sample | Total working set | Renderer | GPU | JS heap used | DOM counter | Live DOM | Event listeners |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| baseline after 30s + GC | 350.39 MiB | 99.78 MiB | 112.77 MiB | 4.14 MiB | 1153 | 783 | 217 |
-| batch 1 immediate | 417.46 MiB | 154.96 MiB | 123.61 MiB | 5.90 MiB | 1153 | 783 | 459 |
-| batch 1 after GC | 384.39 MiB | 122.56 MiB | 122.94 MiB | 4.73 MiB | 1153 | 783 | 217 |
-| batch 2 immediate | 420.09 MiB | 154.77 MiB | 126.27 MiB | 7.05 MiB | 1525 | 783 | 7385 |
-| batch 2 after GC | 393.62 MiB | 129.50 MiB | 125.06 MiB | 4.80 MiB | 1153 | 783 | 217 |
-| batch 3 immediate | 423.04 MiB | 158.33 MiB | 126.37 MiB | 5.46 MiB | 1153 | 783 | 334 |
-| batch 3 after GC | 396.48 MiB | 132.99 MiB | 125.16 MiB | 4.89 MiB | 1153 | 783 | 217 |
-| batch 4 immediate | 420.79 MiB | 155.64 MiB | 126.75 MiB | 6.68 MiB | 1525 | 783 | 7463 |
-| batch 4 after GC | 398.27 MiB | 134.41 MiB | 125.46 MiB | 4.91 MiB | 1153 | 783 | 217 |
-| batch 5 immediate | 427.00 MiB | 160.22 MiB | 128.01 MiB | 4.98 MiB | 1153 | 783 | 217 |
-| batch 5 after GC | 401.59 MiB | 135.88 MiB | 126.95 MiB | 4.92 MiB | 1153 | 783 | 217 |
-| batch 6 immediate | 428.63 MiB | 159.87 MiB | 129.75 MiB | 6.35 MiB | 1518 | 783 | 7384 |
-| batch 6 after GC | 406.20 MiB | 138.93 MiB | 128.27 MiB | 4.93 MiB | 1153 | 783 | 217 |
-| recovery 1m | 395.93 MiB | 133.63 MiB | 125.69 MiB | 4.93 MiB | 1153 | 783 | 217 |
-| recovery 1m after GC | 395.94 MiB | 133.63 MiB | 125.69 MiB | 4.93 MiB | 1153 | 783 | 217 |
+| baseline after 30s + GC | 350.77 MiB | 99.84 MiB | 111.96 MiB | 4.17 MiB | 1153 | 783 | 217 |
+| batch 1 immediate | 418.16 MiB | 156.10 MiB | 122.66 MiB | 6.60 MiB | 1227 | 783 | 1354 |
+| batch 1 after GC | 383.78 MiB | 122.79 MiB | 121.58 MiB | 4.75 MiB | 1153 | 783 | 217 |
+| batch 2 immediate | 413.80 MiB | 151.20 MiB | 123.11 MiB | 8.43 MiB | 1525 | 783 | 7463 |
+| batch 2 after GC | 389.40 MiB | 128.59 MiB | 121.32 MiB | 4.82 MiB | 1153 | 783 | 217 |
+| batch 3 immediate | 420.12 MiB | 156.66 MiB | 123.90 MiB | 7.04 MiB | 1530 | 783 | 7658 |
+| batch 3 after GC | 395.29 MiB | 132.40 MiB | 123.34 MiB | 4.91 MiB | 1153 | 783 | 217 |
+| batch 4 immediate | 420.96 MiB | 155.34 MiB | 126.22 MiB | 6.72 MiB | 1525 | 783 | 7463 |
+| batch 4 after GC | 396.76 MiB | 133.09 MiB | 124.26 MiB | 4.93 MiB | 1153 | 783 | 217 |
+| batch 5 immediate | 418.96 MiB | 154.53 MiB | 124.79 MiB | 7.04 MiB | 1523 | 783 | 7618 |
+| batch 5 after GC | 397.71 MiB | 134.74 MiB | 123.32 MiB | 4.94 MiB | 1153 | 783 | 217 |
+| batch 6 immediate | 424.68 MiB | 158.29 MiB | 126.61 MiB | 6.20 MiB | 1518 | 783 | 7423 |
+| batch 6 after GC | 402.07 MiB | 136.51 MiB | 125.76 MiB | 4.94 MiB | 1153 | 783 | 217 |
+| recovery 1m | 390.18 MiB | 130.86 MiB | 122.16 MiB | 4.94 MiB | 1153 | 783 | 217 |
+| recovery 1m after GC | 390.12 MiB | 130.86 MiB | 122.10 MiB | 4.94 MiB | 1153 | 783 | 217 |
 
-- Final retained total working set: 45.55 MiB
-- Working-set growth after the first warmed interaction batch: 11.55 MiB
-- Final retained Renderer working set: 33.85 MiB
-- Final retained GPU working set: 12.92 MiB
-- Final retained JS heap after forced collection: 0.79 MiB
+- Final retained total working set: 39.36 MiB
+- Working-set growth after the first warmed interaction batch: 6.34 MiB
+- Final retained Renderer working set: 31.03 MiB
+- Final retained GPU working set: 10.14 MiB
+- Final retained JS heap after forced collection: 0.77 MiB
 - Final DOM-counter delta: 0
 - Final live-DOM delta: 0
 - Final event-listener delta: 0
