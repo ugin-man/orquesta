@@ -1,7 +1,6 @@
-import { ArrowRight, GitBranch, Languages, Settings, Stethoscope, Wrench } from 'lucide-react';
-import type { ConversationMessage, UiActionResult } from '../../../contracts/bridge';
+import { ArrowRight, GitBranch } from 'lucide-react';
+import type { ConversationMessage, RuntimeInfoUi, UiActionResult } from '../../../contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot, TaskUiModel } from '../../../contracts/orquesta-ui';
-import { formatDateTime } from '../../components/format';
 import { UserTasksWorkspace, type UserTaskKind } from '../attention/UserTasksWorkspace';
 import { useI18n } from '../i18n/I18nProvider';
 import { TaskRecordsWorkspace, type TaskRecordView } from '../records/TaskRecordsWorkspace';
@@ -9,6 +8,7 @@ import { FailureRecordsWorkspace, type FailureRecordView } from '../records/Fail
 import { ConversationRecordsWorkspace } from '../records/ConversationRecordsWorkspace';
 import { DecisionRecordsWorkspace, type DecisionRecordKind } from '../records/DecisionRecordsWorkspace';
 import { TimelineRecordsWorkspace, type TimelineRecord } from '../records/TimelineRecordsWorkspace';
+import { SettingsWorkspace } from '../settings/SettingsWorkspace';
 import type { WorkspaceId } from './WorkspaceDock';
 
 export type { UserTaskKind } from '../attention/UserTasksWorkspace';
@@ -67,9 +67,10 @@ function TaskList({ tasks, onOpen }: { tasks: TaskUiModel[]; onOpen(taskId: stri
   );
 }
 
-export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, taskRecordView, failureRecordView, decisionRecords, decisionRecordKind, decisionRecordsLoading, timelineConversations, timelineDecisions, timelineLoading, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, canResolveAttention, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onDecisionRecordKindChange, onOpenTimelineRecord, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenRoute, onOpenOperations }: {
+export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind, recordKind, taskRecordView, failureRecordView, decisionRecords, decisionRecordKind, decisionRecordsLoading, timelineConversations, timelineDecisions, timelineLoading, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, canResolveAttention, getRuntimeInfo, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onDecisionRecordKindChange, onOpenTimelineRecord, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenRoute, onOpenOperations }: {
   active: Exclude<WorkspaceId, 'home'>;
   snapshot: OrquestaUiSnapshot;
+  reducedMotion: boolean;
   userTaskKind: UserTaskKind;
   recordKind: RecordKind;
   taskRecordView: TaskRecordView;
@@ -85,6 +86,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
   conversationLoading: boolean;
   conversationHasOlder: boolean;
   canResolveAttention: boolean;
+  getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
   onSelectUserTaskKind(kind: UserTaskKind): void;
   onSelectRecordKind(kind: RecordKind): void;
   onTaskRecordViewChange(view: TaskRecordView): void;
@@ -98,7 +100,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
   onOpenRoute(): void;
   onOpenOperations(): void;
 }) {
-  const { locale, setLocale, t } = useI18n();
+  const { t } = useI18n();
   const title = {
     'user-tasks': t('workspaceUserTasks'),
     records: t('workspaceRecords'),
@@ -121,7 +123,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
           {recordTypes.map(([kind, label]) => <button type="button" key={kind} aria-current={recordKind === kind ? 'page' : undefined} onClick={() => onSelectRecordKind(kind)}>{label}</button>)}
         </nav>
       ) : null}
-      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}${active === 'records' && recordKind === 'task' ? ' workspace-surface__body--task-records' : ''}${active === 'records' && recordKind === 'error' ? ' workspace-surface__body--failure-records' : ''}${active === 'records' && recordKind === 'conversation' ? ' workspace-surface__body--conversation-records' : ''}${active === 'records' && recordKind === 'decision' ? ' workspace-surface__body--decision-records' : ''}${active === 'records' && recordKind === 'timeline' ? ' workspace-surface__body--timeline-records' : ''}`}>
+      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}${active === 'records' && recordKind === 'task' ? ' workspace-surface__body--task-records' : ''}${active === 'records' && recordKind === 'error' ? ' workspace-surface__body--failure-records' : ''}${active === 'records' && recordKind === 'conversation' ? ' workspace-surface__body--conversation-records' : ''}${active === 'records' && recordKind === 'decision' ? ' workspace-surface__body--decision-records' : ''}${active === 'records' && recordKind === 'timeline' ? ' workspace-surface__body--timeline-records' : ''}${active === 'settings' ? ' workspace-surface__body--settings' : ''}`}>
         {active === 'user-tasks' ? (
           <UserTasksWorkspace
             items={snapshot.attention}
@@ -139,13 +141,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
         ) : null}
         {active === 'records' && recordKind === 'decision' ? <DecisionRecordsWorkspace items={decisionRecords} agents={snapshot.agents} selectedKind={decisionRecordKind} loading={decisionRecordsLoading} onSelectKind={onDecisionRecordKindChange} /> : null}
         {active === 'records' && recordKind === 'timeline' ? <TimelineRecordsWorkspace snapshot={snapshot} conversations={timelineConversations} decisions={timelineDecisions} loading={timelineLoading} onOpenRecord={onOpenTimelineRecord} /> : null}
-        {active === 'settings' ? (
-          <div className="workspace-settings-grid">
-            <section><Settings size={18} /><div><strong>{t('displayLanguage')}</strong><small>{t('languageDetail')}</small><span className="workspace-language"><button type="button" aria-label="日本語" aria-pressed={locale === 'ja'} onClick={() => setLocale('ja')}><Languages size={13} />JA</button><button type="button" aria-label="English" aria-pressed={locale === 'en'} onClick={() => setLocale('en')}>EN</button></span></div></section>
-            <button type="button" onClick={onOpenOperations}><Wrench size={18} /><span><strong>{t('operationsTitle')}</strong><small>{t('operationsIntro')}</small></span></button>
-            <details className="workspace-diagnostics"><summary><Stethoscope size={18} /><span><strong>{t('diagnostics')}</strong><small>{snapshot.project.connectionLabel}</small></span></summary><dl><div><dt>{t('status')}</dt><dd>{snapshot.project.repositoryDisplayState}</dd></div><div><dt>{t('projectRoot')}</dt><dd>{snapshot.project.rootPathLabel ?? t('pathUnavailable')}</dd></div><div><dt>{t('lastSynced')}</dt><dd>{formatDateTime(snapshot.project.lastSyncedAt)}</dd></div></dl></details>
-          </div>
-        ) : null}
+        {active === 'settings' ? <SettingsWorkspace project={snapshot.project} reducedMotion={reducedMotion} getRuntimeInfo={getRuntimeInfo} onOpenOperations={onOpenOperations} /> : null}
         {active === 'more' ? (
           <div className="workspace-more-grid">
             <button type="button" onClick={onOpenRoute}><GitBranch size={18} /><span><strong>{t('projectRoute')}</strong><small>{snapshot.project.rootPathLabel ?? t('pathUnavailable')}</small></span></button>

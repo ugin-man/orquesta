@@ -386,11 +386,40 @@ describe('DesktopRendererApp', () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
     await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
     expect(screen.getByText('Display language')).toBeVisible();
-    expect(screen.getByText('Diagnostics')).toBeVisible();
+    expect(screen.getByText('Details & diagnostics')).toBeVisible();
 
     await userEvent.click(await screen.findByRole('button', { name: 'More' }));
     expect(screen.getByText('Project Route')).toBeVisible();
     expect(screen.queryByText('Team Management')).not.toBeInTheDocument();
+  });
+
+  test('uses sectioned settings without presenting unsupported preferences as controls', async () => {
+    const user = userEvent.setup();
+    const bridge = new MockOrquestaBridge('active-project');
+    const getRuntimeInfo = vi.spyOn(bridge, 'getRuntimeInfo');
+    render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Settings' }));
+    const sections = screen.getByRole('navigation', { name: 'Settings sections' });
+    expect(within(sections).getByRole('button', { name: 'Display' })).toHaveAttribute('aria-current', 'page');
+    expect(within(sections).getByRole('button', { name: 'Notifications' })).toBeVisible();
+    expect(within(sections).getByRole('button', { name: 'Codex connection' })).toBeVisible();
+    expect(within(sections).getByRole('button', { name: 'Startup & project' })).toBeVisible();
+    expect(within(sections).getByRole('button', { name: 'Details & diagnostics' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Display' })).toBeVisible();
+    expect(screen.getByText('Display language')).toBeVisible();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+
+    await user.click(within(sections).getByRole('button', { name: 'Codex connection' }));
+    expect(await screen.findByRole('heading', { name: 'Codex connection' })).toBeVisible();
+    await waitFor(() => expect(getRuntimeInfo).toHaveBeenCalledWith({ probe: false }));
+    expect(screen.getByText('Unavailable')).toBeVisible();
+
+    await user.click(within(sections).getByRole('button', { name: 'Details & diagnostics' }));
+    expect(screen.getByRole('heading', { name: 'Details & diagnostics' })).toBeVisible();
+    expect(screen.getByText('Repository status')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Open Operations' }));
+    expect(screen.getByRole('dialog', { name: 'Operations' })).toBeVisible();
   });
 
   test('keeps project switching discoverable in the top-left launcher', async () => {

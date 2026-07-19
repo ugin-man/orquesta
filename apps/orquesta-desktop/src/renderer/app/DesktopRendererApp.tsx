@@ -549,6 +549,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
         <WorkspaceSurface
           active={activeWorkspace}
           snapshot={snapshot}
+          reducedMotion={reducedMotion}
           userTaskKind={userTaskKind}
           recordKind={recordKind}
           taskRecordView={taskRecordView}
@@ -564,6 +565,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           conversationLoading={loadingConversation || loadingOlderMessages}
           conversationHasOlder={Boolean(conversationCursor)}
           canResolveAttention={bridge.capabilities.attentionResolution}
+          getRuntimeInfo={getRuntimeInfo}
           onSelectUserTaskKind={setUserTaskKind}
           onSelectRecordKind={(kind) => {
             if (kind === 'conversation') void openConversation();
