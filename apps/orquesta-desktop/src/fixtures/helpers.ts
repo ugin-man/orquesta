@@ -72,7 +72,15 @@ export function task(input: Partial<TaskUiModel> & Pick<TaskUiModel, 'id' | 'tit
 }
 
 export function attention(input: Partial<AttentionUiItem> & Pick<AttentionUiItem, 'id' | 'type' | 'title' | 'summary'>): AttentionUiItem {
+  const actionKind = input.type === 'question'
+    ? 'answer'
+    : input.type === 'approval'
+      ? 'approve'
+      : input.type === 'report_review' || input.type === 'user_capability_review'
+        ? 'review'
+        : 'do';
   return {
+    actionKind,
     priority: 'medium',
     sourceAgentId: null,
     taskId: null,

@@ -4,10 +4,20 @@ import { activeProjectFixture } from './active-project';
 
 const fixture = structuredClone(activeProjectFixture);
 const types: AttentionUiItem['type'][] = ['approval', 'question', 'error', 'report_review', 'repair', 'direction'];
+const actionKindFor = (type: AttentionUiItem['type']): AttentionUiItem['actionKind'] => type === 'question'
+  ? 'answer'
+  : type === 'approval'
+    ? 'approve'
+    : type === 'report_review' || type === 'user_capability_review'
+      ? 'review'
+      : 'do';
 fixture.snapshot.project = { ...fixture.snapshot.project, id: 'attention-heavy', title: 'Release Review Queue', status: 'blocked', connectionLabel: 'Blocked by user review', summary: 'High-volume review fixture' };
-fixture.snapshot.attention = Array.from({ length: 45 }, (_, index) => ({
+fixture.snapshot.attention = Array.from({ length: 45 }, (_, index) => {
+  const type = types[index % types.length];
+  return {
   id: `HEAVY-${index + 1}`,
-  type: types[index % types.length],
+  type,
+  actionKind: actionKindFor(type),
   priority: index < 3 ? 'blocker' : index < 12 ? 'high' : 'medium',
   title: index % 3 === 0 ? 'Approval required' : index % 3 === 1 ? 'Question' : 'Review item',
   summary: `User action ${index + 1} needs a bounded decision before this route can continue.`,
@@ -18,10 +28,14 @@ fixture.snapshot.attention = Array.from({ length: 45 }, (_, index) => ({
   createdAt: `2026-07-17T12:${String(index % 60).padStart(2, '0')}:00.000Z`,
   resolvedAt: null,
   resolutionLabel: null
-}));
-fixture.attentionHistory = Array.from({ length: 120 }, (_, index) => ({
+  };
+});
+fixture.attentionHistory = Array.from({ length: 120 }, (_, index) => {
+  const type = types[index % types.length];
+  return {
   id: `HISTORY-${index + 1}`,
-  type: types[index % types.length],
+  type,
+  actionKind: actionKindFor(type),
   priority: 'low',
   title: `Resolved item ${index + 1}`,
   summary: `Archived user action ${index + 1}.`,
@@ -32,7 +46,8 @@ fixture.attentionHistory = Array.from({ length: 120 }, (_, index) => ({
   createdAt: `2026-07-16T10:${String(index % 60).padStart(2, '0')}:00.000Z`,
   resolvedAt: `2026-07-16T11:${String(index % 60).padStart(2, '0')}:00.000Z`,
   resolutionLabel: 'Resolved in prototype'
-}));
+  };
+});
 fixture.snapshot.recentEvents = [];
 fixture.lastOpenedAt = '2026-07-17T12:59:00.000Z';
 

@@ -56,6 +56,7 @@ export class RepositoryRuntime {
   #rootPath: string | null = null;
   #watchers: CloseableWatcher[] = [];
   #refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  #watchGeneration = 0;
 
   constructor(options: RepositoryRuntimeOptions = {}) {
     this.#readSnapshot = options.readSnapshot ?? ((rootPath) => readRepositorySnapshot(rootPath));
@@ -70,13 +71,14 @@ export class RepositoryRuntime {
   }
 
   async select(input: { projectId: string; rootPath: string }): Promise<OrquestaUiSnapshot> {
+    const watchGeneration = ++this.#watchGeneration;
     this.#closeWatchers();
     this.#clearRefreshTimer();
     const next = await this.#projectSnapshot(input.rootPath);
     this.#projectId = next.project.id;
     this.#snapshot = this.#withRuntimeApprovals(next);
     this.#rootPath = next.project.rootPathLabel ?? input.rootPath;
-    if (this.#startWatching(this.#rootPath)) {
+    if (this.#startWatching(this.#rootPath, watchGeneration)) {
       this.#snapshot.project.repositoryDisplayState = 'watching';
     }
     return structuredClone(this.#snapshot);
@@ -139,6 +141,7 @@ export class RepositoryRuntime {
   }
 
   async stop(): Promise<void> {
+    this.#watchGeneration += 1;
     this.#clearRefreshTimer();
     this.#closeWatchers();
     this.#listeners.clear();
@@ -150,13 +153,15 @@ export class RepositoryRuntime {
     this.#snapshot = null;
   }
 
-  #startWatching(rootPath: string): boolean {
-    for (const directory of ['state', 'vision', 'failures', 'v4']) {
+  #startWatching(rootPath: string, watchGeneration: number): boolean {
+    for (const directory of ['state', 'vision', 'user_tasks', 'failures', 'v4']) {
       try {
         this.#watchers.push(this.#watchDirectory(
           path.join(rootPath, '.orquesta', directory),
-          () => this.#scheduleRefresh(),
-          (error) => this.#handleWatchError(error)
+          () => {
+            if (watchGeneration === this.#watchGeneration) this.#scheduleRefresh();
+          },
+          (error) => this.#handleWatchError(error, watchGeneration)
         ));
       } catch {
         // Optional canonical directories can be absent in a minimum project.
@@ -165,8 +170,9 @@ export class RepositoryRuntime {
     return this.#watchers.length > 0;
   }
 
-  #handleWatchError(error: Error): void {
-    if (!this.#snapshot) return;
+  #handleWatchError(error: Error, watchGeneration: number): void {
+    if (!this.#snapshot || watchGeneration !== this.#watchGeneration) return;
+    this.#watchGeneration += 1;
     this.#closeWatchers();
     this.#snapshot = structuredClone(this.#snapshot);
     this.#snapshot.project.repositoryDisplayState = 'snapshot';
@@ -223,6 +229,7 @@ export class RepositoryRuntime {
     return {
       id: attentionId,
       type: 'approval',
+      actionKind: 'approve',
       priority: 'blocker',
       title: 'Codex approval required',
       summary: approval.reason ?? 'Codex requires an explicit response before continuing.',

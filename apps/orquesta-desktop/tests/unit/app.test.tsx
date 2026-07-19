@@ -26,6 +26,24 @@ describe('DesktopRendererApp', () => {
     expect(screen.getByLabelText('Analyst detail')).toBeVisible();
   });
 
+  test('uses repository display state instead of real-data presence for the top status', async () => {
+    const bridge = new MockOrquestaBridge('active-project');
+    const base = await bridge.getInitialSnapshot();
+    vi.spyOn(bridge, 'getInitialSnapshot').mockResolvedValue({
+      ...base,
+      project: {
+        ...base.project,
+        isDemoData: false,
+        repositoryDisplayState: 'snapshot'
+      }
+    });
+
+    const { container } = render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
+
+    expect(await screen.findByText('Repository state loaded')).toBeVisible();
+    expect(container.querySelector('.prototype-badge.live-state-badge')).toBeNull();
+  });
+
   test('does not expose active edge motion for dispatch-only evidence', async () => {
     const { container } = render(<DesktopRendererApp bridge={new MockOrquestaBridge('unknown-evidence')} />);
     await screen.findByText('Prototype data');

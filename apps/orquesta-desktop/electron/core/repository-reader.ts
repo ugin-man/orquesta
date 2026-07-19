@@ -20,6 +20,9 @@ export interface RepositoryDocuments {
   tasks: unknown;
   sessions?: unknown;
   questions?: unknown;
+  userTasks?: unknown;
+  userActions?: unknown;
+  dashboardActions?: unknown;
   incidents?: unknown;
   events?: unknown[];
 }
@@ -268,7 +271,7 @@ function projectAgents(
     } else if (rawStatus === 'active' && !fresh) {
       status = 'stale'; statusEvidence = 'reported';
     } else if (rawStatus === 'active') {
-      status = 'assigned_waiting'; statusEvidence = 'reported';
+      status = 'standby'; statusEvidence = 'reported';
     } else {
       status = 'unknown'; statusEvidence = 'unknown';
     }
@@ -322,46 +325,128 @@ function priority(value: unknown): AttentionUiItem['priority'] {
   return ['low', 'medium', 'high', 'blocker'].includes(String(value)) ? value as AttentionUiItem['priority'] : 'medium';
 }
 
-function projectAttention(documents: RepositoryDocuments, rawTasks: JsonObject[], now: Date): AttentionUiItem[] {
+const CLOSED_USER_ACTION_STATES = new Set(['answered', 'applied', 'cancelled', 'closed', 'dismissed', 'done', 'rejected', 'resolved']);
+
+function actionIsOpen(value: unknown): boolean {
+  return !CLOSED_USER_ACTION_STATES.has(string(value) ?? 'pending');
+}
+
+function dashboardActionKind(type: string): AttentionUiItem['actionKind'] {
+  if (type === 'fallback_approval' || type === 'wake_defer') return 'approve';
+  if (type === 'report_review' || type === 'model_route_review' || type === 'incident_review') return 'review';
+  return 'do';
+}
+
+function actionAttentionType(kind: AttentionUiItem['actionKind']): AttentionUiItem['type'] {
+  if (kind === 'answer') return 'question';
+  if (kind === 'approve') return 'approval';
+  if (kind === 'review') return 'report_review';
+  return 'direction';
+}
+
+function projectAttention(documents: RepositoryDocuments, now: Date): AttentionUiItem[] {
   const questions = rows(documents.questions, 'questions')
-    .filter((item) => !['answered', 'closed', 'resolved'].includes(string(item.status) ?? 'pending'))
+    .filter((item) => actionIsOpen(item.status))
     .flatMap((item) => {
-      const id = string(item.question_id);
+      const id = string(item.question_id) ?? string(item.id);
       return id ? [{
-        id, type: 'question' as const, priority: priority(item.priority), title: 'Question',
-        summary: string(item.question) ?? 'A user decision is waiting.', sourceAgentId: string(item.source_agent_id), taskId: string(item.source_task_id),
+        id, type: 'question' as const, actionKind: 'answer' as const, priority: priority(item.priority), title: string(item.title) ?? 'Question',
+        summary: string(item.question) ?? 'A user decision is waiting.', sourceAgentId: string(item.source_agent_id), taskId: string(item.source_task_id) ?? string(item.task_id),
         blocking: Boolean(item.blocking), primaryActionLabel: 'Review', createdAt: string(item.created_at) ?? now.toISOString(), resolvedAt: null, resolutionLabel: null
       }] : [];
     });
   const incidents = rows(documents.incidents, 'incidents')
-    .filter((item) => !['resolved', 'mitigated', 'closed'].includes(string(item.status) ?? 'open'))
+    .filter((item) => actionIsOpen(item.status) && item.user_action_required === true)
     .flatMap((item) => {
       const id = string(item.incident_id);
-      const userAction = item.user_action_required === true;
       return id ? [{
-        id, type: userAction ? 'repair' as const : 'error' as const,
+        id, type: 'repair' as const, actionKind: 'do' as const,
         priority: string(item.severity) === 'critical' ? 'blocker' as const : priority(item.severity),
         title: string(item.title) ?? 'Runtime incident', summary: string(item.current_action) ?? string(item.suspected_cause) ?? 'An unresolved incident is recorded.',
         sourceAgentId: string(item.source_agent_id), taskId: string(item.task_id), blocking: string(item.severity) === 'critical',
         primaryActionLabel: 'Inspect', createdAt: string(item.detected_at) ?? now.toISOString(), resolvedAt: null, resolutionLabel: null
       }] : [];
     });
-  const taskItems = rawTasks
-    .filter((item) => ['blocked', 'needs_orchestrator_review', 'needs_revision', 'changes_requested'].includes(string(item.state) ?? ''))
-    .slice(-30)
-    .reverse()
+  const userTasks = rows(documents.userTasks, 'tasks')
+    .filter((item) => actionIsOpen(item.status))
     .flatMap((item) => {
-      const id = string(item.task_id);
-      const state = string(item.state) ?? '';
-      return id ? [{
-        id: `task-${id}`, type: state === 'blocked' ? 'error' as const : state === 'changes_requested' ? 'direction' as const : 'report_review' as const,
-        priority: state === 'blocked' ? 'high' as const : 'medium' as const,
-        title: state === 'blocked' ? 'Blocked task' : 'Review required', summary: `${id} · ${string(item.title) ?? id}`,
-        sourceAgentId: string(item.owner_agent_id), taskId: id, blocking: state === 'blocked', primaryActionLabel: 'Inspect',
-        createdAt: newestTimestamp([item.updated_at, item.completed_at, item.started_at, item.created_at]) ?? now.toISOString(), resolvedAt: null, resolutionLabel: null
-      }] : [];
+      const id = string(item.user_task_id) ?? string(item.task_id);
+      if (!id) return [];
+      const source = string(item.source) ?? '';
+      const kind: AttentionUiItem['actionKind'] = source === 'approval_wait' || Boolean(string(item.approval_type))
+        ? 'approve'
+        : /review/u.test(source)
+          ? 'review'
+          : 'do';
+      return [{
+        id,
+        type: actionAttentionType(kind),
+        actionKind: kind,
+        priority: priority(item.priority),
+        title: string(item.title) ?? 'User task',
+        summary: string(item.prompt) ?? string(item.requested_action) ?? string(item.resume_instruction) ?? 'A user action is waiting.',
+        sourceAgentId: string(item.source_agent_id) ?? string(item.support_agent_id),
+        taskId: stringArray(item.source_ids)[0] ?? null,
+        blocking: source === 'approval_wait',
+        primaryActionLabel: kind === 'approve' ? 'Review request' : kind === 'review' ? 'Review' : 'Open',
+        createdAt: string(item.created_at) ?? now.toISOString(),
+        resolvedAt: null,
+        resolutionLabel: null
+      }];
     });
-  return [...questions, ...incidents, ...taskItems];
+  const userActions = rows(documents.userActions, 'actions')
+    .filter((item) => actionIsOpen(item.status))
+    .flatMap((item) => {
+      const id = string(item.action_id);
+      if (!id) return [];
+      const steps = stringArray(item.user_steps);
+      return [{
+        id,
+        type: 'repair' as const,
+        actionKind: 'do' as const,
+        priority: priority(item.priority ?? item.risk),
+        title: string(item.title) ?? 'Repair action',
+        summary: string(item.why_this_helps) ?? steps[0] ?? 'A user-side repair is ready.',
+        sourceAgentId: string(item.source_agent_id) ?? 'error-concierge',
+        taskId: string(item.task_id),
+        blocking: item.requires_user_approval === true,
+        primaryActionLabel: 'Open',
+        createdAt: string(item.created_at) ?? now.toISOString(),
+        resolvedAt: null,
+        resolutionLabel: null
+      }];
+    });
+  const dashboardActions = rows(documents.dashboardActions, 'actions')
+    .filter((item) => actionIsOpen(item.status))
+    .flatMap((item) => {
+      const id = string(item.action_id);
+      if (!id) return [];
+      const type = string(item.type) ?? 'dashboard_action';
+      const kind = dashboardActionKind(type);
+      const payload = object(item.payload);
+      return [{
+        id,
+        type: actionAttentionType(kind),
+        actionKind: kind,
+        priority: priority(item.priority ?? payload?.priority),
+        title: string(payload?.title) ?? type.replaceAll('_', ' '),
+        summary: string(payload?.summary) ?? string(payload?.reason) ?? 'A recorded dashboard action is waiting.',
+        sourceAgentId: string(item.agent_id),
+        taskId: string(item.task_id),
+        blocking: kind === 'approve',
+        primaryActionLabel: kind === 'approve' ? 'Review request' : 'Review',
+        createdAt: string(item.created_at) ?? now.toISOString(),
+        resolvedAt: null,
+        resolutionLabel: null
+      }];
+    });
+  const projected = [...questions, ...userTasks, ...userActions, ...dashboardActions, ...incidents];
+  const seen = new Set<string>();
+  return projected.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
 }
 
 function projectEvents(events: unknown[] | undefined, now: Date): RuntimeUiEvent[] {
@@ -409,7 +494,7 @@ export function projectSnapshotFromDocuments({ rootPath, documents, now = new Da
   const tasks = rawTasks.flatMap((task) => mapTask(task, progressedTaskIds.has(string(task.task_id) ?? '')) ?? []);
   const tasksById = new Map(tasks.map((task) => [task.id, task]));
   const agents = projectAgents(rawAgents, rawTasks, tasksById, sessions, now);
-  const attention = projectAttention(documents, rawTasks, now);
+  const attention = projectAttention(documents, now);
   const recentEvents = projectEvents(documents.events, now);
   const { phases, currentPhaseId } = projectPhases(tasks);
   const workingCount = agents.filter((agent) => agent.status === 'working' && agent.statusEvidence === 'proven').length;
@@ -492,15 +577,25 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
   const tasksPath = await confinedFile(root, path.join('.orquesta', 'state', 'tasks.json'));
   const sessionsPath = await confinedFile(root, path.join('.orquesta', 'state', 'sessions.json'));
   const questionsPath = await confinedFile(root, path.join('.orquesta', 'vision', 'questions.json'));
+  const userTasksPath = await confinedFile(root, path.join('.orquesta', 'user_tasks', 'queue.json'));
+  const userActionsPath = await confinedFile(root, path.join('.orquesta', 'failures', 'user_actions.json'));
+  const dashboardActionsPath = await confinedFile(root, path.join('.orquesta', 'state', 'dashboard_actions.json'));
   const incidentsPath = await confinedFile(root, path.join('.orquesta', 'failures', 'incidents.json'));
   const eventsPath = await confinedFile(root, path.join('.orquesta', 'state', 'events.jsonl'));
-  const [agents, tasks, sessions, questions, incidents, events] = await Promise.all([
+  const [agents, tasks, sessions, questions, userTasks, userActions, dashboardActions, incidents, events] = await Promise.all([
     readBoundedJson(agentsPath, true),
     readBoundedJson(tasksPath, true),
     readBoundedJson(sessionsPath, false),
     readBoundedJson(questionsPath, false),
+    readBoundedJson(userTasksPath, false),
+    readBoundedJson(userActionsPath, false),
+    readBoundedJson(dashboardActionsPath, false),
     readBoundedJson(incidentsPath, false),
     readEvents(eventsPath)
   ]);
-  return projectSnapshotFromDocuments({ rootPath: root, now: options.now, documents: { agents, tasks, sessions, questions, incidents, events } });
+  return projectSnapshotFromDocuments({
+    rootPath: root,
+    now: options.now,
+    documents: { agents, tasks, sessions, questions, userTasks, userActions, dashboardActions, incidents, events }
+  });
 }

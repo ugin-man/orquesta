@@ -8,6 +8,7 @@ fixture.snapshot.project = {
   title: 'Disconnected Repository',
   status: 'offline',
   connectionLabel: 'Offline · repository snapshot only',
+  repositoryDisplayState: 'offline',
   lastSyncedAt: '2026-07-17T11:42:00.000Z',
   provenWorkingAgentCount: 0,
   summary: 'Last known snapshot retained; live state unavailable'
@@ -22,7 +23,7 @@ fixture.snapshot.agents = fixture.snapshot.agents.map((agent) => ({
 fixture.snapshot.recentEvents = [];
 fixture.snapshot.attention = [
   {
-    id: 'OFFLINE-1', type: 'repair', priority: 'blocker', title: 'Connection unavailable', summary: 'Reconnect the project bridge to refresh runtime evidence.',
+    id: 'OFFLINE-1', type: 'repair', actionKind: 'do', priority: 'blocker', title: 'Connection unavailable', summary: 'Reconnect the project bridge to refresh runtime evidence.',
     sourceAgentId: 'orchestrator', taskId: null, blocking: true, primaryActionLabel: 'Details', createdAt: '2026-07-17T11:43:00.000Z', resolvedAt: null, resolutionLabel: null
   }
 ];

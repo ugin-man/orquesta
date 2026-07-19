@@ -55,7 +55,7 @@ describe('repository reader', () => {
       status: 'working', statusEvidence: 'proven', currentTaskId: 'T1', assignedByAgentId: 'orchestrator'
     });
     expect(snapshot.tasks[0]).toMatchObject({ turnStarted: true, progressObserved: true, actualModel: null, actualModelEvidence: 'unknown' });
-    expect(snapshot.attention.map((item) => item.id)).toEqual(['Q1', 'F1']);
+    expect(snapshot.attention).toMatchObject([{ id: 'Q1', actionKind: 'answer' }]);
     expect(snapshot.recentEvents[0]).toMatchObject({ taskId: 'T1', message: 'Reader tests are running.' });
   });
 
@@ -73,7 +73,6 @@ describe('repository reader', () => {
   test('does not infer a completed review task as an agent current task', () => {
     const source = documents();
     source.agents.agents[1].current_task = null;
-    source.agents.agents[1].status = 'standby';
     source.tasks.tasks[0].state = 'completed';
 
     const snapshot = projectSnapshotFromDocuments({
@@ -86,6 +85,62 @@ describe('repository reader', () => {
       currentTaskId: null,
       status: 'standby'
     });
+  });
+
+  test('still infers an execution-state task when current_task is empty', () => {
+    const source = documents();
+    source.agents.agents[1].current_task = null;
+    source.tasks.tasks[0].state = 'assigned';
+
+    const snapshot = projectSnapshotFromDocuments({
+      rootPath: 'C:\\work\\sample',
+      now: new Date('2026-07-18T11:00:00.000Z'),
+      documents: source
+    });
+
+    expect(snapshot.agents.find((agent) => agent.id === 'worker')).toMatchObject({
+      currentTaskId: 'T1',
+      status: 'working'
+    });
+  });
+
+  test('projects open user-facing ledgers into four action kinds', () => {
+    const source = documents();
+    const snapshot = projectSnapshotFromDocuments({
+      rootPath: 'C:\\work\\sample',
+      documents: {
+        ...source,
+        questions: {
+          questions: [{ question_id: 'Q-action', status: 'pending', question: 'Choose a direction.', task_id: 'T1' }]
+        },
+        userTasks: {
+          tasks: [{ user_task_id: 'UT1', status: 'pending', priority: 'high', title: 'Run locally', prompt: 'Open the packaged app.' }]
+        },
+        userActions: {
+          actions: [{ action_id: 'UA1', status: 'ready', title: 'Repair permission', why_this_helps: 'Runtime access is blocked.', user_steps: ['Grant access.'] }]
+        },
+        dashboardActions: {
+          actions: [
+            { action_id: 'DA1', status: 'requested', type: 'report_review', task_id: 'T1', payload: { title: 'Review UI' } },
+            { action_id: 'DA2', status: 'requested', type: 'fallback_approval', task_id: 'T1', payload: { title: 'Approve fallback' } }
+          ]
+        }
+      }
+    });
+
+    expect(snapshot.attention.map((item) => item.actionKind)).toEqual(
+      expect.arrayContaining(['answer', 'approve', 'review', 'do'])
+    );
+  });
+
+  test('does not expose internal task review states as user attention', () => {
+    const source = documents();
+    source.questions = { questions: [] };
+    source.tasks.tasks[0].state = 'changes_requested';
+
+    const snapshot = projectSnapshotFromDocuments({ rootPath: 'C:\\work\\sample', documents: source });
+
+    expect(snapshot.attention).toEqual([]);
   });
 
   test('does not turn an in_progress label into runtime or progress evidence', () => {
@@ -145,6 +200,33 @@ describe('repository reader', () => {
     expect(snapshot.v4Operations).toMatchObject({ available: false, revision: 0 });
     expect(await readFile(path.join(state, 'agents.json'), 'utf8')).toBe(agentsText);
     expect(await readFile(path.join(state, 'tasks.json'), 'utf8')).toBe(tasksText);
+  });
+
+  test('reads optional user-facing ledgers from their canonical paths', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-reader-attention-'));
+    temporaryRoots.push(root);
+    const state = path.join(root, '.orquesta', 'state');
+    const vision = path.join(root, '.orquesta', 'vision');
+    const userTasks = path.join(root, '.orquesta', 'user_tasks');
+    const failures = path.join(root, '.orquesta', 'failures');
+    await Promise.all([
+      mkdir(state, { recursive: true }),
+      mkdir(vision, { recursive: true }),
+      mkdir(userTasks, { recursive: true }),
+      mkdir(failures, { recursive: true })
+    ]);
+    await Promise.all([
+      writeFile(path.join(state, 'agents.json'), JSON.stringify({ agents: [] }), 'utf8'),
+      writeFile(path.join(state, 'tasks.json'), JSON.stringify({ tasks: [] }), 'utf8'),
+      writeFile(path.join(state, 'dashboard_actions.json'), JSON.stringify({ actions: [{ action_id: 'DA1', status: 'requested', type: 'report_review' }] }), 'utf8'),
+      writeFile(path.join(vision, 'questions.json'), JSON.stringify({ questions: [{ question_id: 'Q1', status: 'pending', question: 'Choose.' }] }), 'utf8'),
+      writeFile(path.join(userTasks, 'queue.json'), JSON.stringify({ tasks: [{ user_task_id: 'UT1', status: 'pending', title: 'Run locally' }] }), 'utf8'),
+      writeFile(path.join(failures, 'user_actions.json'), JSON.stringify({ actions: [{ action_id: 'UA1', status: 'ready', title: 'Repair locally' }] }), 'utf8')
+    ]);
+
+    const snapshot = await readRepositorySnapshot(root);
+
+    expect(snapshot.attention.map((item) => item.id)).toEqual(['Q1', 'UT1', 'UA1', 'DA1']);
   });
 
   test('rejects malformed required JSON with a bounded filename', async () => {

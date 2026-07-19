@@ -286,7 +286,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     return (
       <main className="desktop-shell project-onboarding-shell" role="application" aria-label="Orquesta Desktop">
         <div className="paper-grain" aria-hidden="true" />
-        <span className="prototype-badge live-state-badge"><i />{t('liveState')}</span>
+        <span className="prototype-badge"><i />{t('projectNotSelected')}</span>
         <section className="project-onboarding" aria-labelledby="project-onboarding-title">
           <span className="project-onboarding__mark" aria-hidden="true"><FolderOpen size={27} /></span>
           <p>{t('orquestaDesktop')}</p>
@@ -313,11 +313,18 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     setMapSelection({ kind: 'task', taskId });
     setOverlay({ kind: 'task', taskId });
   };
+  const repositoryBadge = {
+    watching: { label: t('repositoryWatching'), live: true },
+    snapshot: { label: t('repositorySnapshot'), live: false },
+    offline: { label: t('repositoryOffline'), live: false },
+    demo: { label: t('prototype'), live: false },
+    error: { label: t('repositoryError'), live: false }
+  }[snapshot.project.repositoryDisplayState];
 
   return (
     <main className={`desktop-shell project-${snapshot.project.status}`} role="application" aria-label="Orquesta Desktop">
       <div className="paper-grain" aria-hidden="true" />
-      <span className={`prototype-badge${snapshot.project.isDemoData ? '' : ' live-state-badge'}`}><i />{snapshot.project.isDemoData ? t('prototype') : t('liveState')}</span>
+      <span className={`prototype-badge${repositoryBadge.live ? ' live-state-badge' : ''}`}><i />{repositoryBadge.label}</span>
       {snapshot.project.status === 'offline' ? (
         <div className="stale-ribbon" role="status">{t('offlineSnapshot')} · {t('lastSynced')} {snapshot.project.lastSyncedAt ? new Date(snapshot.project.lastSyncedAt).toLocaleTimeString() : t('unknown')}</div>
       ) : null}

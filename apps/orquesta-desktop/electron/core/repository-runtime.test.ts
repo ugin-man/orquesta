@@ -87,6 +87,31 @@ describe('RepositoryRuntime', () => {
     });
   });
 
+  test('ignores a delayed watcher error from the previously selected project', async () => {
+    const first = snapshot('repo-first', 'C:\\first');
+    const second = snapshot('repo-second', 'C:\\second');
+    const callbacks: Array<(error: Error) => void> = [];
+    const close = vi.fn();
+    const runtime = new RepositoryRuntime({
+      readSnapshot: vi.fn(async (rootPath: string) => rootPath === 'C:\\first' ? first : second),
+      watchDirectory: vi.fn((_directory, _onChange, onError) => {
+        callbacks.push(onError);
+        return { close };
+      })
+    });
+
+    await runtime.select({ projectId: 'repo-first', rootPath: 'C:\\first' });
+    await runtime.select({ projectId: 'repo-second', rootPath: 'C:\\second' });
+    callbacks[0](new Error('late failure from first project'));
+
+    expect(close).toHaveBeenCalledTimes(5);
+    expect(runtime.getSnapshot().project).toMatchObject({
+      id: 'repo-second',
+      repositoryDisplayState: 'watching',
+      connectionLabel: 'Live repository'
+    });
+  });
+
   test('merges canonical V4 operations on selection and refresh without changing the base snapshot', async () => {
     const first = snapshot('repo-first', 'C:\\first');
     const readSnapshot = vi.fn(async () => first);
@@ -141,14 +166,15 @@ describe('RepositoryRuntime', () => {
     expect(watchDirectory.mock.calls.map(([directory]) => directory)).toEqual([
       path.join('C:\\first', '.orquesta', 'state'),
       path.join('C:\\first', '.orquesta', 'vision'),
+      path.join('C:\\first', '.orquesta', 'user_tasks'),
       path.join('C:\\first', '.orquesta', 'failures'),
       path.join('C:\\first', '.orquesta', 'v4')
     ]);
 
     await runtime.select({ projectId: 'repo-second', rootPath: 'C:\\second' });
-    expect(close).toHaveBeenCalledTimes(4);
+    expect(close).toHaveBeenCalledTimes(5);
     await runtime.stop();
-    expect(close).toHaveBeenCalledTimes(8);
+    expect(close).toHaveBeenCalledTimes(10);
   });
 
   test('debounces changes and retains the last snapshot as offline when a read fails', async () => {

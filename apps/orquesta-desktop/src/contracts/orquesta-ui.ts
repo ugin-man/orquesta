@@ -29,6 +29,7 @@ export type AttentionType =
   | 'repair'
   | 'error'
   | 'direction';
+export type UserActionKind = 'answer' | 'approve' | 'review' | 'do';
 export type ProjectStatus = 'ready' | 'working' | 'blocked' | 'offline' | 'unknown';
 export type RepositoryDisplayState = 'watching' | 'snapshot' | 'offline' | 'demo' | 'error';
 
@@ -102,6 +103,7 @@ export interface TaskUiModel {
 export interface AttentionUiItem {
   id: string;
   type: AttentionType;
+  actionKind: UserActionKind;
   priority: 'low' | 'medium' | 'high' | 'blocker';
   title: string;
   summary: string;
