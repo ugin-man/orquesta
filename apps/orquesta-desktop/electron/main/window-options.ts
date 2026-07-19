@@ -7,7 +7,7 @@ export function createMainWindowOptions(preloadPath: string): BrowserWindowConst
     minWidth: 1180,
     minHeight: 720,
     show: false,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f3f0e8',
     autoHideMenuBar: true,
     webPreferences: {
       preload: preloadPath,

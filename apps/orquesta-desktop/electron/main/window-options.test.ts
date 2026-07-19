@@ -22,7 +22,7 @@ describe('createMainWindowOptions', () => {
       minWidth: 1180,
       minHeight: 720,
       show: false,
-      backgroundColor: '#ffffff'
+      backgroundColor: '#f3f0e8'
     });
   });
 });

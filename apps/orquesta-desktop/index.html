@@ -17,12 +17,28 @@
         display: grid;
         place-items: center;
         overflow: hidden;
-        background: #ffffff;
+        isolation: isolate;
+        background:
+          radial-gradient(circle at 50% 45%, rgba(255,253,248,.94), rgba(250,247,239,.76) 46%, rgba(243,240,232,.96) 100%),
+          #f3f0e8;
         opacity: 1;
         pointer-events: auto;
         transition: opacity 300ms ease-out;
       }
+      .startup-curtain::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        background-image: url('./reference/paper-grain.png');
+        background-size: 256px 256px;
+        opacity: .27;
+        mix-blend-mode: multiply;
+        pointer-events: none;
+      }
       .startup-curtain__logo {
+        position: relative;
+        z-index: 1;
         display: block;
         width: min(420px, 52vw, 52vh);
         height: auto;
@@ -51,7 +67,7 @@
   </head>
   <body>
     <div id="startup-curtain" class="startup-curtain" aria-hidden="true">
-      <img class="startup-curtain__logo" src="./brand/orquesta-startup.jpg" alt="" />
+      <img class="startup-curtain__logo" src="./brand/orquesta-startup.png" alt="" />
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
