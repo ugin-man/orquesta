@@ -112,7 +112,7 @@ npm run test:interaction-retention --prefix apps/orquesta-desktop
 - post-GC JS heap +0.74 MiB、上限8 MiB
 - DOM counter、live DOM、event listenerの最終増加0
 
-これは操作後のWorking Set増加が最初の描画容量確保で、その後は頭打ちになることを示します。詳しいprocess別証拠は[desktop-interaction-retention.md](./docs/validation/desktop-interaction-retention.md)にあります。
+最終増加の内訳はRenderer +33.68 MiB、GPU +6.55 MiBです。Mainとnetworkはbaselineより微減しました。これは操作後のWorking Set増加が最初の描画／V8容量確保に集中し、その後は頭打ちになることを示します。予約されたWorking SetはすぐにはOSへ返らない場合がありますが、処理中のtask、DOM、listener、到達可能なJS objectが操作回数に比例して残っている状態ではありません。詳しいprocess別証拠は[desktop-interaction-retention.md](./docs/validation/desktop-interaction-retention.md)にあります。
 
 ## Security boundary
 

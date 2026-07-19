@@ -36,4 +36,4 @@ Measured on 2026-07-19T04:11:52.904Z with the packaged Windows x64 app and the 3
 - Live-DOM growth = 0: PASS
 - Event-listener growth <= 20: PASS
 
-The process working set is reported separately from reachable JavaScript heap. A first-use working-set increase that plateaus across repeated batches while post-GC heap, DOM nodes, and listeners stay bounded is retained Chromium/V8 capacity or graphics caching, not an accumulating product leak.
+The process working set is reported separately from reachable JavaScript heap. Of the final 39.05 MiB increase, Renderer accounts for 33.68 MiB and GPU for 6.55 MiB; Main and network are slightly below baseline. Chromium may retain this reserved rendering/V8 capacity instead of returning it to Windows immediately. It is therefore honest to call the memory retained, but repeated batches plateau and post-GC heap, DOM nodes, listeners, and process count stay bounded. The evidence does not show unfinished interaction work or an accumulating product leak.
