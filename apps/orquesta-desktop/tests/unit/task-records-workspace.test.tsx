@@ -32,20 +32,27 @@ function Harness({ initialView = createDefaultTaskRecordView() }: { initialView?
 }
 
 describe('TaskRecordsWorkspace', () => {
-  test('separates incomplete, completed, and all tasks', async () => {
+  test('uses one state filter for all, completed, and incomplete tasks', async () => {
     const user = userEvent.setup();
     render(<Harness />);
 
-    const scopes = screen.getByRole('navigation', { name: 'Task scopes' });
-    expect(within(scopes).getByRole('button', { name: 'Incomplete 3' })).toHaveAttribute('aria-current', 'page');
-    expect(within(scopes).getByRole('button', { name: 'Completed 1' })).toBeVisible();
-    expect(within(scopes).getByRole('button', { name: 'All 4' })).toBeVisible();
+    expect(screen.queryByRole('navigation', { name: 'Task scopes' })).not.toBeInTheDocument();
+    const summary = screen.getByLabelText('Task summary');
+    expect(summary).toHaveTextContent('All4');
+    expect(summary).toHaveTextContent('Completed1');
+    expect(summary).toHaveTextContent('Incomplete3');
+    const state = screen.getByRole('combobox', { name: 'State' });
+    expect(state).toHaveValue('all');
     expect(screen.getByRole('button', { name: /T1 · Implement task records/ })).toBeVisible();
-    expect(screen.queryByRole('button', { name: /T3 · Accepted foundation/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /T3 · Accepted foundation/ })).toBeVisible();
 
-    await user.click(within(scopes).getByRole('button', { name: 'Completed 1' }));
+    await user.selectOptions(state, 'complete');
     expect(screen.getByRole('button', { name: /T3 · Accepted foundation/ })).toBeVisible();
     expect(screen.queryByRole('button', { name: /T1 · Implement task records/ })).not.toBeInTheDocument();
+
+    await user.selectOptions(state, 'incomplete');
+    expect(screen.getByRole('button', { name: /T1 · Implement task records/ })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /T3 · Accepted foundation/ })).not.toBeInTheDocument();
   });
 
   test('filters, searches, and opens task details inside Records', async () => {
@@ -64,11 +71,11 @@ describe('TaskRecordsWorkspace', () => {
 
     await user.clear(screen.getByRole('searchbox', { name: 'Search tasks' }));
     await user.click(screen.getByRole('button', { name: /T2 · Blocked sync/ }));
-    const detail = screen.getByRole('region', { name: 'Task T2 detail' });
+    const detail = screen.getByRole('dialog', { name: 'Task T2 detail' });
     expect(within(detail).getByText('API unavailable')).toBeVisible();
-    expect(screen.getByTestId('task-record-layout')).toHaveClass('task-record-layout--detail-open');
+    expect(screen.getByTestId('task-record-layout')).not.toHaveClass('task-record-layout--detail-open');
 
-    await user.click(within(detail).getByRole('button', { name: 'Close task detail' }));
-    expect(screen.queryByRole('region', { name: 'Task T2 detail' })).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('task-record-modal-backdrop'));
+    expect(screen.queryByRole('dialog', { name: 'Task T2 detail' })).not.toBeInTheDocument();
   });
 });

@@ -216,16 +216,16 @@ describe('DesktopRendererApp', () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
 
     await user.click(await screen.findByRole('button', { name: 'Records' }));
-    expect(screen.getByRole('navigation', { name: 'Task scopes' })).toBeVisible();
+    expect(screen.getByLabelText('Task summary')).toBeVisible();
     await user.click(screen.getByRole('button', { name: /T70 · Implement parser/ }));
-    expect(screen.getByRole('region', { name: 'Task T70 detail' })).toBeVisible();
+    expect(screen.getByRole('dialog', { name: 'Task T70 detail' })).toBeVisible();
     expect(screen.queryByLabelText('Task T70')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Home' }));
     const now = await screen.findByLabelText('NOW');
     await user.click(within(now).getByRole('button', { name: /T68/ }));
     expect(screen.getByRole('button', { name: 'Records' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('region', { name: 'Task T68 detail' })).toBeVisible();
+    expect(screen.getByRole('dialog', { name: 'Task T68 detail' })).toBeVisible();
   });
 
   test('reloads and labels the conversation when the Composer target changes', async () => {
