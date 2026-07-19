@@ -911,9 +911,9 @@
 - Verify: `docs/superpowers/specs/2026-07-18-orquesta-v4-desktop-integration-design.md`
 - Verify: `docs/superpowers/plans/2026-07-18-orquesta-v4-desktop-integration.md`
 
-- [ ] Add documentation tests or link checks proving all validation commands and artifact paths in README/VALIDATION exist. Document the one-runtime architecture, project switching, approval relay, history, V4 Operations, fallback semantics, package size split, memory gates, and known limits.
+- [x] Add documentation tests or link checks proving all validation commands and artifact paths in README/VALIDATION exist. Document the one-runtime architecture, project switching, approval relay, history, V4 Operations, fallback semantics, package size split, memory gates, and known limits.
 
-- [ ] Run the complete deterministic suite from both dependency roots:
+- [x] Run the complete deterministic suite from both dependency roots:
 
   ```powershell
   npm run check:v4:phase1
@@ -928,7 +928,7 @@
   npm run test:packaged-runtime --prefix apps/orquesta-desktop
   ```
 
-- [ ] Run a source-boundary audit:
+- [x] Run a source-boundary audit:
 
   ```powershell
   rg -n "ORQUESTA_CODEX_PATH|WindowsApps|where\.exe|shell:\s*true|approvalPolicy:\s*'never'|approvalPolicy:\s*\"never\"" apps/orquesta-desktop packages/codex-adapter
@@ -938,16 +938,16 @@
 
   Expected result: only tests/docs explaining forbidden cases; no forbidden production discovery, Main projection imports, or applied-to-actual model assignment.
 
-- [ ] Re-run the Electron security-boundary tests and inspect the production BrowserWindow configuration. Require `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`, packaged local content only, denied arbitrary navigation/new-window requests, opaque attachment IDs, IPC input bounds, and no `process`, `require`, filesystem, or child-process API reachable from Renderer:
+- [x] Re-run the Electron security-boundary tests and inspect the production BrowserWindow configuration. Require `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`, packaged local content only, denied arbitrary navigation/new-window requests, opaque attachment IDs, IPC input bounds, and no `process`, `require`, filesystem, or child-process API reachable from Renderer:
 
   ```powershell
   npm run test:desktop-unit --prefix apps/orquesta-desktop -- window-options.test.ts host-api.test.ts ipc-handlers.test.ts
   npm run test:desktop-smoke --prefix apps/orquesta-desktop
   ```
 
-- [ ] Compare every approved design requirement to a test, command, screenshot, measurement, or explicit known limitation in `v4-desktop-integration.md`. A deterministic test is not browser proof; a fake App Server test is not real bundled-runtime proof. If the Setup/ZIP are not code-signed, state that limitation plainly in the review document and README.
+- [x] Compare every approved design requirement to a test, command, screenshot, measurement, or explicit known limitation in `v4-desktop-integration.md`. A deterministic test is not browser proof; a fake App Server test is not real bundled-runtime proof. If the Setup/ZIP are not code-signed, state that limitation plainly in the review document and README.
 
-- [ ] Run `git diff --check`, inspect `git status --short`, and verify the installer/ZIP plus validation artifacts exist:
+- [x] Run `git diff --check`, inspect `git status --short`, and verify the installer/ZIP plus validation artifacts exist:
 
   ```powershell
   git diff --check
@@ -955,10 +955,10 @@
   Get-ChildItem apps/orquesta-desktop/docs/validation -File
   ```
 
-- [ ] Commit the review packet:
+- [x] Commit the review packet:
 
   ```powershell
-  git add apps/orquesta-desktop/README.md apps/orquesta-desktop/VALIDATION.md apps/orquesta-desktop/docs/validation/v4-desktop-integration.md
+  git add apps/orquesta-desktop/README.md apps/orquesta-desktop/VALIDATION.md apps/orquesta-desktop/package.json apps/orquesta-desktop/scripts/documentation-contract.test.mjs apps/orquesta-desktop/docs/validation docs/superpowers/plans/2026-07-18-orquesta-v4-desktop-integration.md
   git commit -m "docs: publish V4 desktop review evidence"
   ```
 

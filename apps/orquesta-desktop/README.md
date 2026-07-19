@@ -1,101 +1,110 @@
 # Orquesta Desktop
 
-Orquesta V4のWindows向けElectronアプリです。中央のOrquesta Map、Now、Project Status、Attention、Composer、各種overlayをReact Rendererで表示します。Electron Main、sandboxed Preload、別utility processのOrquesta Coreで構成しています。
+Orquesta V4をWindowsで使うためのElectronアプリです。中央のOrquesta Mapを残したまま、プロジェクトの状態、Codexとの会話、承認要求、V4の判断記録を一つの画面から扱えます。
 
-製品起動時は選択したプロジェクトの`.orquesta` stateを読み取り、変更を自動反映します。Composerからの指示と画像はCodex App Serverでプロジェクト専用の統括スレッドへ送り、会話履歴も同じスレッドから読みます。fixtureはレイアウトと回帰テストだけに使います。
+このアプリは単なるRendererではありません。Electron Main、sandboxed Preload、別utility processのOrquesta Core、同梱したCodex App Serverで動きます。`.orquesta`の読取とCodex接続はCoreが担当し、Rendererからfilesystemや子processへ直接触れません。
 
-通常起動では透明なOrquestaロゴを短く表示してから本体を開きます。日本語Windowsでは日本語を初期選択し、言語設定とプロジェクトごとのComposer下書きを次回起動まで保持します。
+## できること
+
+- Orquesta projectを開き、最近使ったprojectを切り替える
+- agentとtaskを35体以上でも省略せずMapへ表示し、パン、ズーム、個別配置を行う
+- Composerから統括者または選択したagent宛てに文章と画像を送る
+- 同じproject threadの会話履歴をアプリ内で読む
+- Codexから届いた承認要求をAttentionで確認し、提示された選択肢だけを返す
+- Capability、Acquisition、Audit、EvidenceをV4 Operationsで確認する
+- Codexが起動できない場合、repository-onlyとして表示し、送信成功を偽らない
+- 必要な場合だけCodex Desktopへ下書きを開く。これは自動送信ではない
+
+projectごとのthread ID、最近使ったproject、言語、Composer下書きはアプリ用のregistryへ保存します。project切り替え時は古いwatcher、subscription、runtime bindingを終了します。
+
+## Codex runtime
+
+Windows x64向けruntimeをOrquestaの配布物へ固定して同梱します。
+
+- `@openai/codex-sdk@0.144.5`
+- `@openai/codex@0.144.5`
+- `@openai/codex-win32-x64@0.144.5-win32-x64`
+
+PATH、`ORQUESTA_CODEX_PATH`、WindowsApps、任意の`codex.exe`は使いません。package時に3つのmetadataと実行ファイルのSHA-256をmanifestへ記録し、起動前にも同じresources内にあることを検査します。Coreは`spawn(..., { shell: false })`で一つのApp Serverを遅延起動します。
+
+Codexのsandboxと通常のapproval boundaryをそのまま使います。Orquestaが別のcommand risk parserやsandboxを重ねることはありません。アプリはAPI keyを要求せず、ユーザーの通常のCodex sessionを使います。
 
 ## 利用環境
 
-- Windows 10または11
-- Codex Desktopまたはstandalone Codex CLI
-
-SetupまたはZIP版を使うだけならNode.jsとnpmは不要です。sourceからbuildする場合だけNode.js 22.12.0以上とnpmが必要です。
-
-Codexの実行ファイルは、standalone CLI、インストール済みCodex Desktopの順で探します。自動検出できない場合は`ORQUESTA_CODEX_PATH`へ`codex.exe`の絶対パスを指定できます。Codex runtimeをOrquestaのpackageへ重複同梱はしません。
+- Windows 10または11、x64
+- SetupまたはZIP版の利用にはNode.jsとnpmは不要
+- sourceからbuildする場合はNode.js 22.12.0以上とnpm
+- Codex操作には利用可能な通常のCodex sessionが必要
 
 ## 配布物
 
-- `out/make/squirrel.windows/x64/OrquestaSetup.exe`: 通常のWindowsインストーラー
-- `out/make/zip/win32/x64/Orquesta-win32-x64-0.1.0.zip`: 展開して使う版
-- `out/Orquesta-win32-x64/Orquesta.exe`: build確認用の展開済み実行ファイル
+- `out/make/squirrel.windows/x64/OrquestaSetup.exe`：Windows installer、267,076,096 bytes、254.70 MiB
+- `out/make/zip/win32/x64/Orquesta-win32-x64-0.1.0.zip`：展開して使う版、275,598,166 bytes、262.83 MiB
+- `out/Orquesta-win32-x64/Orquesta.exe`：build確認用の展開済み実行ファイル
 
-現在の0.1.0開発buildはコード署名していません。Windowsが発行元の警告を出す場合があります。一般公開で警告をなくすには、別途コード署名証明書と署名工程が必要です。
+同じ`npm run make:win`からSetup、ZIP、展開packageを生成します。展開packageの内訳はUI/Core 306.28 MiB、Codex runtime 390.28 MiB、合計696.56 MiBです。圧縮後のZIPサイズとは別の値です。
 
-## 起動
+現在の0.1.0開発buildはコード署名していません。Windowsが発行元の警告を出す場合があります。一般配布にはコード署名証明書と署名工程が別途必要です。
 
-```bash
+## 起動と開発
+
+source checkoutから起動する場合は、repository rootで依存を入れます。
+
+```powershell
 npm ci --no-audit --no-fund
-npm run dev:desktop
+npm ci --no-audit --no-fund --prefix apps/orquesta-desktop
+npm run dev:desktop --prefix apps/orquesta-desktop
 ```
 
-`dev:desktop`は内部でViteを起動し、外部browserではなくElectron windowを開きます。
+`dev:desktop`はViteとElectronを一緒に起動します。外部browserは製品実行環境ではありません。
 
-## Commands
+よく使うcommandは次の通りです。
 
-```bash
-npm run dev:desktop        # ViteとElectronを一緒に起動
-npm run build:desktop      # Renderer、Main、Preload、Coreをbuild
-npm run start:desktop      # production buildをElectronで起動
-npm run test               # Vitest unit / component / host test
-npm run test:desktop-smoke # 実Electronの起動、Preload、Core疎通test
-npm run package:win        # out/Orquesta-win32-x64を生成
-npm run make:win           # Windows installerとzipを生成
-npm run measure:desktop    # package済みexeの起動、memory、sizeを実測
-npm run validate:lockfile  # lockfileのdependency sourceを検証
+```powershell
+npm run build:desktop --prefix apps/orquesta-desktop
+npm run start:desktop --prefix apps/orquesta-desktop
+npm run test:desktop-smoke --prefix apps/orquesta-desktop
+npm run make:win --prefix apps/orquesta-desktop
+npm run verify:packaged-runtime --prefix apps/orquesta-desktop
+npm run test:packaged-runtime --prefix apps/orquesta-desktop
+npm run test:interaction-retention --prefix apps/orquesta-desktop
+npm run measure:desktop --prefix apps/orquesta-desktop
+npm run validate:lockfile --prefix apps/orquesta-desktop
 ```
 
-Browser testとvisual regressionはRenderer fixtureの補助検証として残しています。製品の正式な実行環境ではありません。
-
-```bash
-npm run test:browser
-npm run test:visual
-```
-
-## Fixture切り替え
-
-URL queryの`fixture`で状態を切り替えます。
-
-```text
-?fixture=active-project
-?fixture=all-idle
-?fixture=attention-heavy
-?fixture=large-roster
-?fixture=offline-project
-?fixture=unknown-evidence
-?fixture=long-japanese-text
-```
-
-日本語表示は`lang=ja`です。
-
-```text
-?fixture=long-japanese-text&lang=ja
-```
+V4とDesktopはlockfileを分けています。最終確認ではrootのV4 verifierとDesktop suiteを別々に実行します。詳しいcommandと証拠の違いは[VALIDATION.md](./VALIDATION.md)にあります。
 
 ## 主な構成
 
 ```text
 src/
-  renderer/
-    app/                 画面全体のstateとbridge呼び出し
-    features/map/        2D Map、stable layout、pan / zoom / fit / reset
-    features/now/        現在作業の要約
-    features/attention/  未処理項目と履歴
-    features/project/    Project Status、Route、Switcher
-    features/composer/   命令入力と会話履歴への入口
-    features/details/    Agent Detail、Task Detail
-    features/team/       Team Management
-    features/operations/ 言語とデスクトップ統合状態
-    styles/              desktop固定layoutとvisual tokens
+  renderer/              画面、入力、選択、表示用state
   contracts/             UI projectionとbridge interface
-  bridges/               Electronとfixtureのbridge
-  fixtures/              検証用snapshot
+  bridges/               Electron bridgeとfixture bridge
+  fixtures/              layoutと回帰検証用snapshot
 electron/
-  main/                  native window、splash、画像選択、IPC、Core lifecycle
+  main/                  window、splash、picker、IPC、Core lifecycle
   preload/               Rendererへ公開する限定API
-  core/                  projectとCodex接続を担うutility process
+  core/                  repository projectionとCodex接続
   shared/                host contract
 ```
 
-Renderer componentはNode.js APIやfilesystemへ直接アクセスしません。読み取り統合は[`docs/validation/repository-integration.md`](./docs/validation/repository-integration.md)、Codex接続は[`docs/validation/codex-runtime.md`](./docs/validation/codex-runtime.md)、当初の実測値は[`docs/validation/desktop-foundation.md`](./docs/validation/desktop-foundation.md)にあります。
+Coreはroot packageの`@orquesta/codex-adapter`、EventStore、V4 projectionを使います。Mainに重複したApp Server clientや`.orquesta`判定は置きません。
+
+## 検証資料
+
+- [V4 Desktop統合レビュー](./docs/validation/v4-desktop-integration.md)
+- [実Codex runtime検証](./docs/validation/packaged-runtime.md)
+- [Codex接続の構成](./docs/validation/codex-runtime.md)
+- [起動、idle memory、package内訳](./docs/validation/desktop-foundation.md)
+- [操作後メモリ保持](./docs/validation/desktop-interaction-retention.md)
+- [repository読取と切り替え](./docs/validation/repository-integration.md)
+
+## 現在の制限
+
+- Windows x64だけをpackageする
+- code signing、auto update、Microsoft Store公開は未実施
+- macOS、Linux、cloud worker、enterprise SSOは対象外
+- Phase 3のExperience LedgerとIntent Graphは今回含めない
+- V4 Operationsは読取を中心にし、正規commandとrevision bindingがない操作ボタンは出さない
+- `codex://` fallbackは下書きを開くだけで、自動送信しない
