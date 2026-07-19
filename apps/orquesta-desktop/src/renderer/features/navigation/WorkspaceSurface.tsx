@@ -4,6 +4,7 @@ import type { AttentionUiItem, OrquestaUiSnapshot, TaskUiModel } from '../../../
 import { formatDateTime } from '../../components/format';
 import { UserTasksWorkspace, type UserTaskKind } from '../attention/UserTasksWorkspace';
 import { useI18n } from '../i18n/I18nProvider';
+import { TaskRecordsWorkspace, type TaskRecordView } from '../records/TaskRecordsWorkspace';
 import type { WorkspaceId } from './WorkspaceDock';
 
 export type { UserTaskKind } from '../attention/UserTasksWorkspace';
@@ -82,11 +83,12 @@ function ConversationList({ messages, loading, hasOlder, onLoadOlder }: {
   );
 }
 
-export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, messages, conversationTargetLabel, conversationLoading, conversationHasOlder, canResolveAttention, onSelectUserTaskKind, onSelectRecordKind, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenTask, onOpenRoute, onOpenOperations }: {
+export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, taskRecordView, messages, conversationTargetLabel, conversationLoading, conversationHasOlder, canResolveAttention, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenRoute, onOpenOperations }: {
   active: Exclude<WorkspaceId, 'home'>;
   snapshot: OrquestaUiSnapshot;
   userTaskKind: UserTaskKind;
   recordKind: RecordKind;
+  taskRecordView: TaskRecordView;
   messages: ConversationMessage[];
   conversationTargetLabel: string;
   conversationLoading: boolean;
@@ -94,10 +96,10 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, m
   canResolveAttention: boolean;
   onSelectUserTaskKind(kind: UserTaskKind): void;
   onSelectRecordKind(kind: RecordKind): void;
+  onTaskRecordViewChange(view: TaskRecordView): void;
   onLoadOlderConversation(): void;
   onOpenAttention(item: AttentionUiItem): void;
   onResolveAttention(item: AttentionUiItem, decision: string): Promise<UiActionResult>;
-  onOpenTask(taskId: string): void;
   onOpenRoute(): void;
   onOpenOperations(): void;
 }) {
@@ -125,7 +127,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, m
           {recordTypes.map(([kind, label]) => <button type="button" key={kind} aria-current={recordKind === kind ? 'page' : undefined} onClick={() => onSelectRecordKind(kind)}>{label}</button>)}
         </nav>
       ) : null}
-      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}`}>
+      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}${active === 'records' && recordKind === 'task' ? ' workspace-surface__body--task-records' : ''}`}>
         {active === 'user-tasks' ? (
           <UserTasksWorkspace
             items={snapshot.attention}
@@ -136,7 +138,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, m
             onSubmit={onResolveAttention}
           />
         ) : null}
-        {active === 'records' && recordKind === 'task' ? <TaskList tasks={snapshot.tasks} onOpen={onOpenTask} /> : null}
+        {active === 'records' && recordKind === 'task' ? <TaskRecordsWorkspace tasks={snapshot.tasks} agents={snapshot.agents} view={taskRecordView} onViewChange={onTaskRecordViewChange} /> : null}
         {active === 'records' && recordKind === 'error' ? (
           failures.length ? <AttentionList items={failures} onOpen={onOpenAttention} /> : <p className="workspace-empty"><ShieldAlert size={20} />{t('noFailures')}</p>
         ) : null}

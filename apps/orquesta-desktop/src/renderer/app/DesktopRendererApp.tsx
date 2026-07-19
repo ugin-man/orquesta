@@ -15,6 +15,7 @@ import type { Locale } from '../features/i18n/messages';
 import { MapViewport } from '../features/map/MapViewport';
 import { WorkspaceDock, type WorkspaceId } from '../features/navigation/WorkspaceDock';
 import { WorkspaceSurface, type RecordKind, type UserTaskKind } from '../features/navigation/WorkspaceSurface';
+import { createDefaultTaskRecordView, type TaskRecordView } from '../features/records/TaskRecordsWorkspace';
 import { NowCardStack } from '../features/now/NowCardStack';
 import { V4Operations } from '../features/operations/V4Operations';
 import { ProjectLauncher } from '../features/project/ProjectLauncher';
@@ -83,6 +84,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>('home');
   const [userTaskKind, setUserTaskKind] = useState<UserTaskKind>('all');
   const [recordKind, setRecordKind] = useState<RecordKind>('task');
+  const [taskRecordView, setTaskRecordView] = useState<TaskRecordView>(() => createDefaultTaskRecordView());
   const [mapSelection, setMapSelection] = useState<MapSelection>(null);
   const [draft, setDraft] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('orchestrator');
@@ -156,6 +158,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     draftProjectId.current = projectId;
     setMapSelection(null);
     setActiveWorkspace('home');
+    setTaskRecordView(createDefaultTaskRecordView());
     setOverlay(null);
     setAttachments([]);
     setDirectSendFailure(null);
@@ -376,9 +379,17 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     setMapSelection({ kind: 'agent', agentId });
     setOverlay({ kind: 'agent', agentId });
   };
-  const selectTask = (taskId: string) => {
-    setMapSelection({ kind: 'task', taskId });
-    setOverlay({ kind: 'task', taskId });
+  const openTaskRecord = (taskId: string) => {
+    const task = snapshot.tasks.find((candidate) => candidate.id === taskId);
+    setTaskRecordView((current) => ({
+      ...current,
+      scope: task?.state === 'accepted' ? 'complete' : 'incomplete',
+      selectedTaskId: taskId
+    }));
+    setMapSelection(null);
+    setOverlay(null);
+    setRecordKind('task');
+    setActiveWorkspace('records');
   };
   const workspaceCounts = {
     userTasks: snapshot.attention.length
@@ -392,7 +403,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     more: t('workspaceMore')
   };
   const openAttentionItem = (item: AttentionUiItem) => item.taskId && snapshot.tasks.some((task) => task.id === item.taskId)
-    ? selectTask(item.taskId)
+    ? openTaskRecord(item.taskId)
     : setOverlay({ kind: 'attention', attentionId: item.id });
   const conversationTargetLabel = snapshot.agents.find((agent) => agent.id === conversationTargetAgentId)?.displayName ?? conversationTargetAgentId;
   const changeTargetAgent = (agentId: string) => {
@@ -404,6 +415,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     selectWorkspace('user-tasks');
   };
   const openRecords = (kind: RecordKind) => {
+    if (kind === 'task') setTaskRecordView((current) => ({ ...current, scope: 'incomplete', selectedTaskId: null }));
     setRecordKind(kind);
     selectWorkspace('records');
   };
@@ -430,7 +442,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           selectedTaskId={mapSelection?.kind === 'task' ? mapSelection.taskId : null}
           reducedMotion={reducedMotion}
           onSelectAgent={selectAgent}
-          onSelectTask={selectTask}
+          onSelectTask={openTaskRecord}
           onClearSelection={clearMapSelection}
           onOpenTeam={() => void openTeam()}
         />
@@ -440,6 +452,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           snapshot={snapshot}
           userTaskKind={userTaskKind}
           recordKind={recordKind}
+          taskRecordView={taskRecordView}
           messages={messages}
           conversationTargetLabel={conversationTargetLabel}
           conversationLoading={loadingOlderMessages}
@@ -450,10 +463,10 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
             setRecordKind(kind);
             if (kind === 'conversation') void openConversation();
           }}
+          onTaskRecordViewChange={setTaskRecordView}
           onLoadOlderConversation={() => void loadOlderConversation()}
           onOpenAttention={openAttentionItem}
           onResolveAttention={resolveAttention}
-          onOpenTask={selectTask}
           onOpenRoute={() => setOverlay({ kind: 'project-route' })}
           onOpenOperations={() => setOverlay({ kind: 'operations' })}
         />
@@ -468,7 +481,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
               allowActive={snapshot.project.status !== 'offline'}
               onOpenTask={(taskId, agentId) => {
                 setTargetAgentId(agentId);
-                selectTask(taskId);
+                openTaskRecord(taskId);
               }}
               onOpenAll={() => openRecords('task')}
             />
@@ -507,7 +520,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
         <WorkspaceDock active={activeWorkspace} counts={workspaceCounts} labels={workspaceLabels} onSelect={selectWorkspace} />
       </div>
 
-      {selectedAgent ? <AgentDetail agent={selectedAgent} task={selectedAgentTask} onOpenTask={selectTask} onClose={clearMapSelection} /> : null}
+      {selectedAgent ? <AgentDetail agent={selectedAgent} task={selectedAgentTask} onOpenTask={openTaskRecord} onClose={clearMapSelection} /> : null}
       {selectedTask ? <TaskDetail task={selectedTask} agents={snapshot.agents} onClose={clearMapSelection} /> : null}
       {selectedAttention ? <AttentionDetail item={selectedAttention} sourceLabel={selectedAttention.sourceAgentId ? snapshot.agents.find((agent) => agent.id === selectedAttention.sourceAgentId)?.displayName ?? selectedAttention.sourceAgentId : 'System'} canResolve={bridge.capabilities.attentionResolution} onResolve={(decision) => void resolveAttention(selectedAttention, decision)} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'project-route' ? <ProjectRoute project={snapshot.project} phases={snapshot.phases} onClose={closeOverlay} /> : null}
