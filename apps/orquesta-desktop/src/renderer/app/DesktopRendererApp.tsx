@@ -387,11 +387,13 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     <main className={`desktop-shell project-${snapshot.project.status}`} role="application" aria-label="Orquesta Desktop">
       <div className="paper-grain" aria-hidden="true" />
       <RepositoryStatusPill project={snapshot.project} />
-      <ProjectLauncher
-        project={snapshot.project}
-        onSwitchProject={() => void openProjects()}
-        onOpenProject={() => void openProjectFolder()}
-      />
+      {activeWorkspace === 'home' ? (
+        <ProjectLauncher
+          project={snapshot.project}
+          onSwitchProject={() => void openProjects()}
+          onOpenProject={() => void openProjectFolder()}
+        />
+      ) : null}
       {snapshot.project.status === 'offline' ? (
         <div className="stale-ribbon" role="status">{t('offlineSnapshot')} · {t('lastSynced')} {snapshot.project.lastSyncedAt ? new Date(snapshot.project.lastSyncedAt).toLocaleTimeString() : t('unknown')}</div>
       ) : null}

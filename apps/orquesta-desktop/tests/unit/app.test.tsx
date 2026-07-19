@@ -128,6 +128,18 @@ describe('DesktopRendererApp', () => {
     expect(within(navigation).getByRole('button', { name: 'Records' })).toBeVisible();
   });
 
+  test('keeps project switching on Home instead of competing with workspace headings', async () => {
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
+    const navigation = await screen.findByRole('navigation', { name: 'Workspaces' });
+    expect(screen.getByLabelText('Project launcher')).toBeVisible();
+
+    await userEvent.click(within(navigation).getByRole('button', { name: /User Tasks/ }));
+    expect(screen.queryByLabelText('Project launcher')).not.toBeInTheDocument();
+
+    await userEvent.click(within(navigation).getByRole('button', { name: 'Home' }));
+    expect(screen.getByLabelText('Project launcher')).toBeVisible();
+  });
+
   test('shows taskless canonical attention in the inline User Tasks detail', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const base = await bridge.getInitialSnapshot();
