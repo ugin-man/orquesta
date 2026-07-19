@@ -8,6 +8,26 @@ import { attention } from '../../src/fixtures/helpers';
 import { DesktopRendererApp, resolveInitialLocale } from '../../src/renderer/app/DesktopRendererApp';
 
 describe('DesktopRendererApp', () => {
+  test('reports startup readiness once after the snapshot is prepared', async () => {
+    const onStartupReady = vi.fn();
+
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} onStartupReady={onStartupReady} />);
+
+    await screen.findByText('Demo data');
+    expect(onStartupReady).toHaveBeenCalledTimes(1);
+  });
+
+  test('reports startup readiness when the recovery screen is prepared', async () => {
+    const bridge = new MockOrquestaBridge('active-project');
+    vi.spyOn(bridge, 'getInitialSnapshot').mockRejectedValue(new Error('broken snapshot'));
+    const onStartupReady = vi.fn();
+
+    render(<DesktopRendererApp bridge={bridge} initialLocale="en" onStartupReady={onStartupReady} />);
+
+    await screen.findByText('Renderer snapshot unavailable');
+    expect(onStartupReady).toHaveBeenCalledTimes(1);
+  });
+
   test('uses a persisted locale unless an explicit locale is supplied', () => {
     window.localStorage.setItem('orquesta.desktop.locale', 'ja');
     expect(resolveInitialLocale()).toBe('ja');

@@ -9,8 +9,50 @@
     />
     <meta name="color-scheme" content="light" />
     <title>Orquesta Desktop Renderer</title>
+    <style>
+      .startup-curtain {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: #ffffff;
+        opacity: 1;
+        pointer-events: auto;
+        transition: opacity 300ms ease-out;
+      }
+      .startup-curtain__logo {
+        display: block;
+        width: min(420px, 52vw, 52vh);
+        height: auto;
+        object-fit: contain;
+        transform: translateY(0);
+        transition: opacity 300ms ease-out, transform 300ms ease-out;
+      }
+      .startup-curtain--exiting {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .startup-curtain--exiting .startup-curtain__logo {
+        opacity: 0;
+        transform: translateY(-24px);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .startup-curtain,
+        .startup-curtain__logo {
+          transition-duration: 160ms;
+        }
+        .startup-curtain--exiting .startup-curtain__logo {
+          transform: none;
+        }
+      }
+    </style>
   </head>
   <body>
+    <div id="startup-curtain" class="startup-curtain" aria-hidden="true">
+      <img class="startup-curtain__logo" src="./brand/orquesta-startup.jpg" alt="" />
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

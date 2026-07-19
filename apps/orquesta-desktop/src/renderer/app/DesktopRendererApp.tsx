@@ -78,7 +78,7 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
-function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
+function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge; onStartupReady?: () => void }) {
   const { t } = useI18n();
   const reducedMotion = useReducedMotion();
   const [snapshot, setSnapshot] = useState<OrquestaUiSnapshot | null>(null);
@@ -112,7 +112,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [proposals, setProposals] = useState<AgentProposal[]>([]);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const draftProjectId = useRef<string | null>(null);
-  const rendererReadyReported = useRef(false);
+  const startupReadyReported = useRef(false);
   const conversationRequest = useRef(0);
   const decisionHistoryRequest = useRef(0);
   const timelineRequest = useRef(0);
@@ -159,12 +159,10 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   }, [bridge]);
 
   useEffect(() => {
-    if (rendererReadyReported.current || (!snapshot && !loadingError) || !window.orquestaDesktop?.notifyRendererReady) return;
-    rendererReadyReported.current = true;
-    void window.orquestaDesktop.notifyRendererReady().catch(() => {
-      rendererReadyReported.current = false;
-    });
-  }, [loadingError, snapshot]);
+    if (startupReadyReported.current || (!snapshot && !loadingError)) return;
+    startupReadyReported.current = true;
+    onStartupReady?.();
+  }, [loadingError, onStartupReady, snapshot]);
 
   useEffect(() => {
     const projectId = snapshot?.project.id ?? null;
@@ -655,11 +653,19 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   );
 }
 
-export function DesktopRendererApp({ bridge, initialLocale }: { bridge?: OrquestaRendererBridge; initialLocale?: Locale }) {
+export function DesktopRendererApp({
+  bridge,
+  initialLocale,
+  onStartupReady
+}: {
+  bridge?: OrquestaRendererBridge;
+  initialLocale?: Locale;
+  onStartupReady?: () => void;
+}) {
   useLayoutEffect(() => {
     document.documentElement.classList.add('orquesta-root');
     return () => document.documentElement.classList.remove('orquesta-root');
   }, []);
   const rendererBridge = useMemo(() => bridge ?? createDefaultBridge(), [bridge]);
-  return <I18nProvider initialLocale={resolveInitialLocale(initialLocale)}><Workspace bridge={rendererBridge} /></I18nProvider>;
+  return <I18nProvider initialLocale={resolveInitialLocale(initialLocale)}><Workspace bridge={rendererBridge} onStartupReady={onStartupReady} /></I18nProvider>;
 }
