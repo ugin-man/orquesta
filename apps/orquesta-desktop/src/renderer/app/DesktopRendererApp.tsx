@@ -417,6 +417,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           conversationTargetLabel={conversationTargetLabel}
           conversationLoading={loadingOlderMessages}
           conversationHasOlder={Boolean(conversationCursor)}
+          canResolveAttention={bridge.capabilities.attentionResolution}
           onSelectUserTaskKind={setUserTaskKind}
           onSelectRecordKind={(kind) => {
             setRecordKind(kind);
@@ -424,6 +425,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           }}
           onLoadOlderConversation={() => void loadOlderConversation()}
           onOpenAttention={openAttentionItem}
+          onResolveAttention={(item, decision) => void resolveAttention(item, decision)}
           onOpenTask={selectTask}
           onOpenRoute={() => setOverlay({ kind: 'project-route' })}
           onOpenOperations={() => setOverlay({ kind: 'operations' })}

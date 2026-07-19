@@ -1,11 +1,12 @@
 import { ArrowRight, Bot, Clock3, GitBranch, Languages, Settings, ShieldAlert, Stethoscope, UserRound, Wrench } from 'lucide-react';
 import type { ConversationMessage } from '../../../contracts/bridge';
-import type { AttentionUiItem, OrquestaUiSnapshot, TaskUiModel, UserActionKind } from '../../../contracts/orquesta-ui';
+import type { AttentionUiItem, OrquestaUiSnapshot, TaskUiModel } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
+import { UserTasksWorkspace, type UserTaskKind } from '../attention/UserTasksWorkspace';
 import { useI18n } from '../i18n/I18nProvider';
 import type { WorkspaceId } from './WorkspaceDock';
 
-export type UserTaskKind = UserActionKind | 'all';
+export type { UserTaskKind } from '../attention/UserTasksWorkspace';
 export type RecordKind = 'task' | 'error' | 'conversation' | 'decision' | 'timeline';
 
 const taskRank: Record<TaskUiModel['state'], number> = {
@@ -81,7 +82,7 @@ function ConversationList({ messages, loading, hasOlder, onLoadOlder }: {
   );
 }
 
-export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, messages, conversationTargetLabel, conversationLoading, conversationHasOlder, onSelectUserTaskKind, onSelectRecordKind, onLoadOlderConversation, onOpenAttention, onOpenTask, onOpenRoute, onOpenOperations }: {
+export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, messages, conversationTargetLabel, conversationLoading, conversationHasOlder, canResolveAttention, onSelectUserTaskKind, onSelectRecordKind, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenTask, onOpenRoute, onOpenOperations }: {
   active: Exclude<WorkspaceId, 'home'>;
   snapshot: OrquestaUiSnapshot;
   userTaskKind: UserTaskKind;
@@ -90,10 +91,12 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, m
   conversationTargetLabel: string;
   conversationLoading: boolean;
   conversationHasOlder: boolean;
+  canResolveAttention: boolean;
   onSelectUserTaskKind(kind: UserTaskKind): void;
   onSelectRecordKind(kind: RecordKind): void;
   onLoadOlderConversation(): void;
   onOpenAttention(item: AttentionUiItem): void;
+  onResolveAttention(item: AttentionUiItem, decision: string): void;
   onOpenTask(taskId: string): void;
   onOpenRoute(): void;
   onOpenOperations(): void;
@@ -106,14 +109,6 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, m
     more: t('workspaceMore')
   }[active];
   const failures = snapshot.attention.filter((item) => item.type === 'error' || item.type === 'repair');
-  const filteredUserTasks = userTaskKind === 'all' ? snapshot.attention : snapshot.attention.filter((item) => item.actionKind === userTaskKind);
-  const userTaskTypes: Array<[UserTaskKind, string]> = [
-    ['all', t('all')],
-    ['answer', t('questions')],
-    ['approve', t('approvals')],
-    ['review', t('reviews')],
-    ['do', t('manualWork')]
-  ];
   const recordTypes: Array<[RecordKind, string]> = [
     ['task', t('recordTasks')],
     ['error', t('recordErrors')],
@@ -125,18 +120,22 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, m
   return (
     <section className={`workspace-surface workspace-surface--${active}`} aria-label={title}>
       <header className="workspace-surface__header"><div><small>{snapshot.project.title}</small><h1>{title}</h1></div><span>{active === 'user-tasks' ? snapshot.attention.length : ''}</span></header>
-      {active === 'user-tasks' ? (
-        <nav className="workspace-tabs" aria-label={t('userTaskTypes')}>
-          {userTaskTypes.map(([kind, label]) => <button type="button" key={kind} aria-current={userTaskKind === kind ? 'page' : undefined} onClick={() => onSelectUserTaskKind(kind)}>{label}</button>)}
-        </nav>
-      ) : null}
       {active === 'records' ? (
         <nav className="workspace-tabs" aria-label={t('recordTypes')}>
           {recordTypes.map(([kind, label]) => <button type="button" key={kind} aria-current={recordKind === kind ? 'page' : undefined} onClick={() => onSelectRecordKind(kind)}>{label}</button>)}
         </nav>
       ) : null}
-      <div className="workspace-surface__body">
-        {active === 'user-tasks' ? <AttentionList items={filteredUserTasks} onOpen={onOpenAttention} /> : null}
+      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}`}>
+        {active === 'user-tasks' ? (
+          <UserTasksWorkspace
+            items={snapshot.attention}
+            agents={snapshot.agents}
+            selectedKind={userTaskKind}
+            canResolve={canResolveAttention}
+            onSelectKind={onSelectUserTaskKind}
+            onResolve={onResolveAttention}
+          />
+        ) : null}
         {active === 'records' && recordKind === 'task' ? <TaskList tasks={snapshot.tasks} onOpen={onOpenTask} /> : null}
         {active === 'records' && recordKind === 'error' ? (
           failures.length ? <AttentionList items={failures} onOpen={onOpenAttention} /> : <p className="workspace-empty"><ShieldAlert size={20} />{t('noFailures')}</p>

@@ -128,7 +128,7 @@ describe('DesktopRendererApp', () => {
     expect(within(navigation).getByRole('button', { name: 'Records' })).toBeVisible();
   });
 
-  test('opens a local detail for taskless canonical attention instead of a dead bridge action', async () => {
+  test('shows taskless canonical attention in the inline User Tasks detail', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const base = await bridge.getInitialSnapshot();
     vi.spyOn(bridge, 'getInitialSnapshot').mockResolvedValue({
@@ -138,11 +138,12 @@ describe('DesktopRendererApp', () => {
     render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'User Tasks 1' }));
-    await userEvent.click(screen.getByRole('button', { name: /Run local check/ }));
-    expect(screen.getByLabelText('Attention action UT1')).toBeVisible();
+    const detail = screen.getByRole('region', { name: 'User task detail' });
+    expect(within(detail).getByRole('heading', { name: 'Run local check' })).toBeVisible();
+    expect(screen.queryByLabelText('Attention action UT1')).not.toBeInTheDocument();
   });
 
-  test('falls back to local attention detail when a referenced task is missing', async () => {
+  test('keeps a task visible in User Tasks when its referenced task is missing', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const base = await bridge.getInitialSnapshot();
     vi.spyOn(bridge, 'getInitialSnapshot').mockResolvedValue({
@@ -152,8 +153,9 @@ describe('DesktopRendererApp', () => {
     render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'User Tasks 1' }));
-    await userEvent.click(screen.getByRole('button', { name: /Clarify pruned work/ }));
-    expect(screen.getByLabelText('Attention action UT-DANGLING')).toBeVisible();
+    const detail = screen.getByRole('region', { name: 'User task detail' });
+    expect(within(detail).getByRole('heading', { name: 'Clarify pruned work' })).toBeVisible();
+    expect(within(detail).getByText('PRUNED-9')).toBeVisible();
   });
 
   test('keeps tasks, errors, conversation, decisions, and timeline inside Records', async () => {
