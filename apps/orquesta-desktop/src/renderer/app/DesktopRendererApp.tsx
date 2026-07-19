@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FolderOpen } from 'lucide-react';
 import type { AgentProposal, ComposerAttachment, ConversationMessage, OrquestaRendererBridge, ProjectSummary } from '../../contracts/bridge';
-import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent } from '../../contracts/orquesta-ui';
+import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent, UserActionKind } from '../../contracts/orquesta-ui';
 import { DesktopRepositoryBridge } from '../../bridges/desktop-repository-bridge';
 import { MockOrquestaBridge } from '../../bridges/mock-bridge';
 import { fixtureKeys, type FixtureId } from '../../fixtures';
 import { AttentionCard } from '../features/attention/AttentionCard';
-import { AttentionHistory } from '../features/attention/AttentionHistory';
 import { CommandComposer } from '../features/composer/CommandComposer';
 import { AgentDetail } from '../features/details/AgentDetail';
 import { AttentionDetail } from '../features/details/AttentionDetail';
@@ -15,7 +14,7 @@ import { I18nProvider, useI18n } from '../features/i18n/I18nProvider';
 import type { Locale } from '../features/i18n/messages';
 import { MapViewport } from '../features/map/MapViewport';
 import { WorkspaceDock, type WorkspaceId } from '../features/navigation/WorkspaceDock';
-import { WorkspaceSurface } from '../features/navigation/WorkspaceSurface';
+import { WorkspaceSurface, type RecordKind, type UserTaskKind } from '../features/navigation/WorkspaceSurface';
 import { NowCardStack } from '../features/now/NowCardStack';
 import { V4Operations } from '../features/operations/V4Operations';
 import { ProjectLauncher } from '../features/project/ProjectLauncher';
@@ -32,7 +31,6 @@ export type OpenOverlay =
   | { kind: 'attention'; attentionId: string }
   | { kind: 'project-route' }
   | { kind: 'project-switcher' }
-  | { kind: 'attention-history' }
   | { kind: 'team-management' }
   | { kind: 'operations' }
   | null;
@@ -83,6 +81,8 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<OpenOverlay>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>('home');
+  const [userTaskKind, setUserTaskKind] = useState<UserTaskKind>('all');
+  const [recordKind, setRecordKind] = useState<RecordKind>('task');
   const [mapSelection, setMapSelection] = useState<MapSelection>(null);
   const [draft, setDraft] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('orchestrator');
@@ -96,7 +96,6 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [conversationTargetAgentId, setConversationTargetAgentId] = useState('orchestrator');
   const [conversationCursor, setConversationCursor] = useState<string | null>(null);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
-  const [history, setHistory] = useState<AttentionUiItem[]>([]);
   const [proposals, setProposals] = useState<AgentProposal[]>([]);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const draftProjectId = useRef<string | null>(null);
@@ -209,16 +208,13 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       setConversationTargetAgentId(requestedTargetAgentId);
       setOverlay(null);
       setMapSelection(null);
-      setActiveWorkspace('conversation');
+      setRecordKind('conversation');
+      setActiveWorkspace('records');
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
     }
   };
   const selectWorkspace = (workspace: WorkspaceId) => {
-    if (workspace === 'conversation') {
-      void openConversation();
-      return;
-    }
     setOverlay(null);
     setMapSelection(null);
     setActiveWorkspace(workspace);
@@ -237,14 +233,6 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setLoadingOlderMessages(false);
-    }
-  };
-  const openHistory = async () => {
-    try {
-      setHistory(await bridge.listAttentionHistory());
-      setOverlay({ kind: 'attention-history' });
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
     }
   };
   const openTeam = async () => {
@@ -368,18 +356,14 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     setOverlay({ kind: 'task', taskId });
   };
   const workspaceCounts = {
-    attention: snapshot.attention.length,
-    tasks: snapshot.tasks.filter((task) => ['blocked', 'needs_review', 'report_ready', 'approval_wait'].includes(task.state)).length,
-    failures: snapshot.attention.filter((item) => item.type === 'error' || item.type === 'repair').length,
-    conversation: 0
+    userTasks: snapshot.attention.length
   };
   const workspaceLabels = {
     navigation: t('workspace'),
     home: t('home'),
-    attention: t('workspaceAttention'),
-    tasks: t('tasks'),
-    failures: t('workspaceFailures'),
-    conversation: t('workspaceConversation'),
+    'user-tasks': t('workspaceUserTasks'),
+    records: t('workspaceRecords'),
+    settings: t('workspaceSettings'),
     more: t('workspaceMore')
   };
   const openAttentionItem = (item: AttentionUiItem) => item.taskId && snapshot.tasks.some((task) => task.id === item.taskId)
@@ -388,7 +372,15 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const conversationTargetLabel = snapshot.agents.find((agent) => agent.id === conversationTargetAgentId)?.displayName ?? conversationTargetAgentId;
   const changeTargetAgent = (agentId: string) => {
     setTargetAgentId(agentId);
-    if (activeWorkspace === 'conversation') void openConversation(agentId);
+    if (activeWorkspace === 'records' && recordKind === 'conversation') void openConversation(agentId);
+  };
+  const openUserTasks = (kind: UserTaskKind = 'all') => {
+    setUserTaskKind(kind);
+    selectWorkspace('user-tasks');
+  };
+  const openRecords = (kind: RecordKind) => {
+    setRecordKind(kind);
+    selectWorkspace('records');
   };
 
   return (
@@ -399,7 +391,6 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
         project={snapshot.project}
         onSwitchProject={() => void openProjects()}
         onOpenProject={() => void openProjectFolder()}
-        onOpenRoute={() => setOverlay({ kind: 'project-route' })}
       />
       {snapshot.project.status === 'offline' ? (
         <div className="stale-ribbon" role="status">{t('offlineSnapshot')} · {t('lastSynced')} {snapshot.project.lastSyncedAt ? new Date(snapshot.project.lastSyncedAt).toLocaleTimeString() : t('unknown')}</div>
@@ -420,16 +411,22 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
         <WorkspaceSurface
           active={activeWorkspace}
           snapshot={snapshot}
+          userTaskKind={userTaskKind}
+          recordKind={recordKind}
           messages={messages}
           conversationTargetLabel={conversationTargetLabel}
           conversationLoading={loadingOlderMessages}
           conversationHasOlder={Boolean(conversationCursor)}
+          onSelectUserTaskKind={setUserTaskKind}
+          onSelectRecordKind={(kind) => {
+            setRecordKind(kind);
+            if (kind === 'conversation') void openConversation();
+          }}
           onLoadOlderConversation={() => void loadOlderConversation()}
           onOpenAttention={openAttentionItem}
           onOpenTask={selectTask}
           onOpenRoute={() => setOverlay({ kind: 'project-route' })}
           onOpenOperations={() => setOverlay({ kind: 'operations' })}
-          onOpenTeam={() => void openTeam()}
         />
       )}
 
@@ -444,7 +441,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
                 setTargetAgentId(agentId);
                 selectTask(taskId);
               }}
-              onOpenAll={() => selectWorkspace('tasks')}
+              onOpenAll={() => openRecords('task')}
             />
             <ProjectStatusCard project={snapshot.project} agentCount={snapshot.agents.length} />
             <AttentionCard
@@ -453,8 +450,8 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
               canResolve={bridge.capabilities.attentionResolution}
               onOpenItem={openAttentionItem}
               onResolve={(item, decision) => void resolveAttention(item, decision)}
-              onOpenAll={() => selectWorkspace('attention')}
-              onViewHistory={() => void openHistory()}
+              onOpenAll={() => openUserTasks()}
+              onOpenKind={(kind: UserActionKind) => openUserTasks(kind)}
             />
           </>
         ) : null}
@@ -486,7 +483,6 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
       {selectedAttention ? <AttentionDetail item={selectedAttention} sourceLabel={selectedAttention.sourceAgentId ? snapshot.agents.find((agent) => agent.id === selectedAttention.sourceAgentId)?.displayName ?? selectedAttention.sourceAgentId : 'System'} canResolve={bridge.capabilities.attentionResolution} onResolve={(decision) => void resolveAttention(selectedAttention, decision)} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'project-route' ? <ProjectRoute project={snapshot.project} phases={snapshot.phases} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'project-switcher' ? <ProjectSwitcher projects={projects} currentProjectId={snapshot.project.id} onSwitch={(id) => bridge.switchProject(id)} onOpenProject={() => bridge.requestOpenProject()} onClose={closeOverlay} /> : null}
-      {overlay?.kind === 'attention-history' ? <AttentionHistory items={history} agents={snapshot.agents} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'team-management' ? (
         <TeamManagement
           agents={snapshot.agents}

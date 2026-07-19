@@ -1,20 +1,9 @@
-import {
-  Bell,
-  CircleEllipsis,
-  House,
-  ListTodo,
-  MessageCircle,
-  TriangleAlert,
-  type LucideIcon
-} from 'lucide-react';
+import { CircleEllipsis, House, LibraryBig, ListChecks, Settings, type LucideIcon } from 'lucide-react';
 
-export type WorkspaceId = 'home' | 'attention' | 'tasks' | 'failures' | 'conversation' | 'more';
+export type WorkspaceId = 'home' | 'user-tasks' | 'records' | 'settings' | 'more';
 
 export interface WorkspaceCounts {
-  attention: number;
-  tasks: number;
-  failures: number;
-  conversation: number;
+  userTasks: number;
 }
 
 export interface WorkspaceLabels extends Record<WorkspaceId, string> {
@@ -35,18 +24,14 @@ interface WorkspaceDefinition {
 
 const workspaces: readonly WorkspaceDefinition[] = [
   { id: 'home', icon: House },
-  { id: 'attention', icon: Bell },
-  { id: 'tasks', icon: ListTodo },
-  { id: 'failures', icon: TriangleAlert },
-  { id: 'conversation', icon: MessageCircle },
+  { id: 'user-tasks', icon: ListChecks },
+  { id: 'records', icon: LibraryBig },
+  { id: 'settings', icon: Settings },
   { id: 'more', icon: CircleEllipsis }
 ];
 
 function workspaceCount(id: WorkspaceId, counts: WorkspaceCounts): number | undefined {
-  if (id === 'home' || id === 'more') {
-    return undefined;
-  }
-  return counts[id] > 0 ? counts[id] : undefined;
+  return id === 'user-tasks' && counts.userTasks > 0 ? counts.userTasks : undefined;
 }
 
 export function WorkspaceDock({ active, counts, labels, onSelect }: WorkspaceDockProps) {

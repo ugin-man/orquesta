@@ -18,7 +18,7 @@ describe('AttentionCard', () => {
           onOpenItem={vi.fn()}
           onResolve={vi.fn()}
           onOpenAll={vi.fn()}
-          onViewHistory={vi.fn()}
+          onOpenKind={vi.fn()}
         />
       </I18nProvider>
     );
@@ -49,7 +49,7 @@ describe('AttentionCard', () => {
           onOpenItem={vi.fn()}
           onResolve={onResolve}
           onOpenAll={vi.fn()}
-          onViewHistory={vi.fn()}
+          onOpenKind={vi.fn()}
         />
       </I18nProvider>
     );
@@ -62,8 +62,9 @@ describe('AttentionCard', () => {
     expect(onResolve).toHaveBeenCalledWith(approval, 'acceptForSession');
   });
 
-  test('shows total, non-zero action counts, and only the highest-priority five items', async () => {
+  test('shows every User Tasks count and only the highest-priority three items', async () => {
     const onOpenAll = vi.fn();
+    const onOpenKind = vi.fn();
     const items = [
       attention({ id: 'q1', type: 'question', actionKind: 'answer', title: 'Question 1', summary: 'One' }),
       attention({ id: 'q2', type: 'question', actionKind: 'answer', title: 'Question 2', summary: 'Two' }),
@@ -74,17 +75,34 @@ describe('AttentionCard', () => {
     ];
     render(
       <I18nProvider initialLocale="ja">
-        <AttentionCard items={items} agents={[]} canResolve={false} onOpenItem={vi.fn()} onResolve={vi.fn()} onOpenAll={onOpenAll} onViewHistory={vi.fn()} />
+        <AttentionCard items={items} agents={[]} canResolve={false} onOpenItem={vi.fn()} onResolve={vi.fn()} onOpenAll={onOpenAll} onOpenKind={onOpenKind} />
       </I18nProvider>
     );
 
-    expect(screen.getByText('要対応 6')).toBeVisible();
-    expect(screen.getByText('回答 2')).toBeVisible();
-    expect(screen.getByText('確認 1')).toBeVisible();
-    expect(screen.queryByText(/承認 0/)).not.toBeInTheDocument();
-    expect(screen.getAllByRole('article')).toHaveLength(5);
+    expect(screen.getByText('ユーザータスク 6')).toBeVisible();
+    expect(screen.getByRole('button', { name: '質問 2' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '承認 0' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '確認 1' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '手動作業 3' })).toBeVisible();
+    expect(screen.getAllByRole('article')).toHaveLength(3);
     expect(screen.queryByText('Task 3')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: '要対応をすべて開く' }));
+    await userEvent.click(screen.getByRole('button', { name: '質問 2' }));
+    expect(onOpenKind).toHaveBeenCalledWith('answer');
+    await userEvent.click(screen.getByRole('button', { name: 'ユーザータスクをすべて開く' }));
     expect(onOpenAll).toHaveBeenCalledOnce();
+  });
+
+  test('keeps every User Tasks count discoverable when no work is waiting', () => {
+    render(
+      <I18nProvider initialLocale="ja">
+        <AttentionCard items={[]} agents={[]} canResolve={false} onOpenItem={vi.fn()} onResolve={vi.fn()} onOpenAll={vi.fn()} onOpenKind={vi.fn()} />
+      </I18nProvider>
+    );
+
+    expect(screen.getByText('ユーザータスク 0')).toBeVisible();
+    expect(screen.getByRole('button', { name: '質問 0' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '承認 0' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '確認 0' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '手動作業 0' })).toBeVisible();
   });
 });

@@ -1,9 +1,12 @@
-import { ArrowRight, Bot, GitBranch, Languages, Network, Settings, ShieldAlert, Stethoscope, UserRound, Wrench } from 'lucide-react';
+import { ArrowRight, Bot, Clock3, GitBranch, Languages, Settings, ShieldAlert, Stethoscope, UserRound, Wrench } from 'lucide-react';
 import type { ConversationMessage } from '../../../contracts/bridge';
-import type { AttentionUiItem, OrquestaUiSnapshot, TaskUiModel } from '../../../contracts/orquesta-ui';
+import type { AttentionUiItem, OrquestaUiSnapshot, TaskUiModel, UserActionKind } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
 import { useI18n } from '../i18n/I18nProvider';
 import type { WorkspaceId } from './WorkspaceDock';
+
+export type UserTaskKind = UserActionKind | 'all';
+export type RecordKind = 'task' | 'error' | 'conversation' | 'decision' | 'timeline';
 
 const taskRank: Record<TaskUiModel['state'], number> = {
   blocked: 0,
@@ -78,48 +81,83 @@ function ConversationList({ messages, loading, hasOlder, onLoadOlder }: {
   );
 }
 
-export function WorkspaceSurface({ active, snapshot, messages, conversationTargetLabel, conversationLoading, conversationHasOlder, onLoadOlderConversation, onOpenAttention, onOpenTask, onOpenRoute, onOpenOperations, onOpenTeam }: {
+export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, messages, conversationTargetLabel, conversationLoading, conversationHasOlder, onSelectUserTaskKind, onSelectRecordKind, onLoadOlderConversation, onOpenAttention, onOpenTask, onOpenRoute, onOpenOperations }: {
   active: Exclude<WorkspaceId, 'home'>;
   snapshot: OrquestaUiSnapshot;
+  userTaskKind: UserTaskKind;
+  recordKind: RecordKind;
   messages: ConversationMessage[];
   conversationTargetLabel: string;
   conversationLoading: boolean;
   conversationHasOlder: boolean;
+  onSelectUserTaskKind(kind: UserTaskKind): void;
+  onSelectRecordKind(kind: RecordKind): void;
   onLoadOlderConversation(): void;
   onOpenAttention(item: AttentionUiItem): void;
   onOpenTask(taskId: string): void;
   onOpenRoute(): void;
   onOpenOperations(): void;
-  onOpenTeam(): void;
 }) {
   const { locale, setLocale, t } = useI18n();
   const title = {
-    attention: t('workspaceAttention'),
-    tasks: t('tasks'),
-    failures: t('workspaceFailures'),
-    conversation: t('workspaceConversation'),
+    'user-tasks': t('workspaceUserTasks'),
+    records: t('workspaceRecords'),
+    settings: t('workspaceSettings'),
     more: t('workspaceMore')
   }[active];
   const failures = snapshot.attention.filter((item) => item.type === 'error' || item.type === 'repair');
-  const visibleTitle = active === 'conversation' ? `${title} · ${conversationTargetLabel}` : title;
+  const filteredUserTasks = userTaskKind === 'all' ? snapshot.attention : snapshot.attention.filter((item) => item.actionKind === userTaskKind);
+  const userTaskTypes: Array<[UserTaskKind, string]> = [
+    ['all', t('all')],
+    ['answer', t('questions')],
+    ['approve', t('approvals')],
+    ['review', t('reviews')],
+    ['do', t('manualWork')]
+  ];
+  const recordTypes: Array<[RecordKind, string]> = [
+    ['task', t('recordTasks')],
+    ['error', t('recordErrors')],
+    ['conversation', t('recordConversation')],
+    ['decision', t('recordDecisions')],
+    ['timeline', t('recordTimeline')]
+  ];
 
   return (
     <section className={`workspace-surface workspace-surface--${active}`} aria-label={title}>
-      <header className="workspace-surface__header"><div><small>{snapshot.project.title}</small><h1>{visibleTitle}</h1></div><span>{active === 'tasks' ? snapshot.tasks.length : active === 'attention' ? snapshot.attention.length : ''}</span></header>
+      <header className="workspace-surface__header"><div><small>{snapshot.project.title}</small><h1>{title}</h1></div><span>{active === 'user-tasks' ? snapshot.attention.length : ''}</span></header>
+      {active === 'user-tasks' ? (
+        <nav className="workspace-tabs" aria-label={t('userTaskTypes')}>
+          {userTaskTypes.map(([kind, label]) => <button type="button" key={kind} aria-current={userTaskKind === kind ? 'page' : undefined} onClick={() => onSelectUserTaskKind(kind)}>{label}</button>)}
+        </nav>
+      ) : null}
+      {active === 'records' ? (
+        <nav className="workspace-tabs" aria-label={t('recordTypes')}>
+          {recordTypes.map(([kind, label]) => <button type="button" key={kind} aria-current={recordKind === kind ? 'page' : undefined} onClick={() => onSelectRecordKind(kind)}>{label}</button>)}
+        </nav>
+      ) : null}
       <div className="workspace-surface__body">
-        {active === 'attention' ? <AttentionList items={snapshot.attention} onOpen={onOpenAttention} /> : null}
-        {active === 'tasks' ? <TaskList tasks={snapshot.tasks} onOpen={onOpenTask} /> : null}
-        {active === 'failures' ? (
+        {active === 'user-tasks' ? <AttentionList items={filteredUserTasks} onOpen={onOpenAttention} /> : null}
+        {active === 'records' && recordKind === 'task' ? <TaskList tasks={snapshot.tasks} onOpen={onOpenTask} /> : null}
+        {active === 'records' && recordKind === 'error' ? (
           failures.length ? <AttentionList items={failures} onOpen={onOpenAttention} /> : <p className="workspace-empty"><ShieldAlert size={20} />{t('noFailures')}</p>
         ) : null}
-        {active === 'conversation' ? <ConversationList messages={messages} loading={conversationLoading} hasOlder={conversationHasOlder} onLoadOlder={onLoadOlderConversation} /> : null}
+        {active === 'records' && recordKind === 'conversation' ? (
+          <section className="workspace-record-pane" aria-label={t('recordConversation')}>
+            <h2>{t('recordConversation')} · {conversationTargetLabel}</h2>
+            <ConversationList messages={messages} loading={conversationLoading} hasOlder={conversationHasOlder} onLoadOlder={onLoadOlderConversation} />
+          </section>
+        ) : null}
+        {active === 'records' && (recordKind === 'decision' || recordKind === 'timeline') ? <p className="workspace-empty"><Clock3 size={20} />{t('workspacePreview')}</p> : null}
+        {active === 'settings' ? (
+          <div className="workspace-settings-grid">
+            <section><Settings size={18} /><div><strong>{t('displayLanguage')}</strong><small>{t('languageDetail')}</small><span className="workspace-language"><button type="button" aria-label="日本語" aria-pressed={locale === 'ja'} onClick={() => setLocale('ja')}><Languages size={13} />JA</button><button type="button" aria-label="English" aria-pressed={locale === 'en'} onClick={() => setLocale('en')}>EN</button></span></div></section>
+            <button type="button" onClick={onOpenOperations}><Wrench size={18} /><span><strong>{t('operationsTitle')}</strong><small>{t('operationsIntro')}</small></span></button>
+            <details className="workspace-diagnostics"><summary><Stethoscope size={18} /><span><strong>{t('diagnostics')}</strong><small>{snapshot.project.connectionLabel}</small></span></summary><dl><div><dt>{t('status')}</dt><dd>{snapshot.project.repositoryDisplayState}</dd></div><div><dt>{t('projectRoot')}</dt><dd>{snapshot.project.rootPathLabel ?? t('pathUnavailable')}</dd></div><div><dt>{t('lastSynced')}</dt><dd>{formatDateTime(snapshot.project.lastSyncedAt)}</dd></div></dl></details>
+          </div>
+        ) : null}
         {active === 'more' ? (
           <div className="workspace-more-grid">
             <button type="button" onClick={onOpenRoute}><GitBranch size={18} /><span><strong>{t('projectRoute')}</strong><small>{snapshot.project.rootPathLabel ?? t('pathUnavailable')}</small></span></button>
-            <button type="button" onClick={onOpenOperations}><Wrench size={18} /><span><strong>{t('operationsTitle')}</strong><small>{t('operationsIntro')}</small></span></button>
-            <button type="button" onClick={onOpenTeam}><Network size={18} /><span><strong>{t('teamManagement')}</strong><small>{snapshot.agents.length} {t('agents')}</small></span></button>
-            <section><Settings size={18} /><div><strong>{t('displayLanguage')}</strong><small>{t('languageDetail')}</small><span className="workspace-language"><button type="button" aria-label="日本語" aria-pressed={locale === 'ja'} onClick={() => setLocale('ja')}><Languages size={13} />JA</button><button type="button" aria-label="English" aria-pressed={locale === 'en'} onClick={() => setLocale('en')}>EN</button></span></div></section>
-            <details className="workspace-diagnostics"><summary><Stethoscope size={18} /><span><strong>{t('diagnostics')}</strong><small>{snapshot.project.connectionLabel}</small></span></summary><dl><div><dt>{t('status')}</dt><dd>{snapshot.project.repositoryDisplayState}</dd></div><div><dt>{t('projectRoot')}</dt><dd>{snapshot.project.rootPathLabel ?? t('pathUnavailable')}</dd></div><div><dt>{t('lastSynced')}</dt><dd>{formatDateTime(snapshot.project.lastSyncedAt)}</dd></div></dl></details>
           </div>
         ) : null}
       </div>

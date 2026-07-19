@@ -1,5 +1,5 @@
-import { AlertCircle, ArrowRight, CheckCircle2, Expand, HelpCircle, History, ShieldAlert, Wrench } from 'lucide-react';
-import type { AgentUiModel, AttentionType, AttentionUiItem } from '../../../contracts/orquesta-ui';
+import { AlertCircle, ArrowRight, CheckCircle2, Expand, HelpCircle, ShieldAlert, Wrench } from 'lucide-react';
+import type { AgentUiModel, AttentionType, AttentionUiItem, UserActionKind } from '../../../contracts/orquesta-ui';
 import { useI18n } from '../i18n/I18nProvider';
 import { summarizeAttention } from './attention-summary';
 
@@ -14,14 +14,14 @@ function AttentionIcon({ type }: { type: AttentionType }) {
 
 const priorityRank: Record<AttentionUiItem['priority'], number> = { blocker: 0, high: 1, medium: 2, low: 3 };
 
-export function AttentionCard({ items, agents, canResolve, onOpenItem, onResolve, onOpenAll, onViewHistory }: {
+export function AttentionCard({ items, agents, canResolve, onOpenItem, onResolve, onOpenAll, onOpenKind }: {
   items: AttentionUiItem[];
   agents: AgentUiModel[];
   canResolve: boolean;
   onOpenItem(item: AttentionUiItem): void;
   onResolve(item: AttentionUiItem, decision: string): void;
   onOpenAll(): void;
-  onViewHistory(): void;
+  onOpenKind(kind: UserActionKind): void;
 }) {
   const { t } = useI18n();
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
@@ -30,20 +30,25 @@ export function AttentionCard({ items, agents, canResolve, onOpenItem, onResolve
     || priorityRank[a.priority] - priorityRank[b.priority]
     || Date.parse(b.createdAt) - Date.parse(a.createdAt));
   const actionCounts = [
-    ['answer', t('answerAction')],
-    ['approve', t('approve')],
-    ['review', t('reviewAction')],
-    ['do', t('doAction')]
+    ['answer', t('questions')],
+    ['approve', t('approvals')],
+    ['review', t('reviews')],
+    ['do', t('manualWork')]
   ] as const;
   return (
-    <section className={`floating-panel attention-card${items.length ? '' : ' attention-card--clear'}`} aria-label={t('attention')}>
-      <button type="button" className="attention-card__header" onClick={onOpenAll} aria-label={t('openAllAttention')}>
-        <div><span className="attention-card__title">{t('attention')} {summary.total}</span>{items.length ? <span className="attention-card__counts">{actionCounts.flatMap(([kind, label]) => summary[kind] ? [<em key={kind}>{label} {summary[kind]}</em>] : [])}</span> : null}</div>
-        <Expand size={13} aria-hidden="true" />
-      </button>
+    <section className={`floating-panel attention-card${items.length ? '' : ' attention-card--clear'}`} aria-label={t('userTasks')}>
+      <header className="attention-card__header">
+        <button type="button" className="attention-card__heading" onClick={onOpenAll} aria-label={t('openAllUserTasks')}>
+          <span className="attention-card__title">{t('userTasks')} {summary.total}</span>
+          <Expand size={13} aria-hidden="true" />
+        </button>
+        <span className="attention-card__counts">
+          {actionCounts.map(([kind, label]) => <button type="button" key={kind} onClick={() => onOpenKind(kind)}>{label} {summary[kind]}</button>)}
+        </span>
+      </header>
       {items.length ? (
         <div className="attention-card__scroll" data-testid="attention-scroll">
-          {sorted.slice(0, 5).map((item) => (
+          {sorted.slice(0, 3).map((item) => (
             <article key={item.id} className={`attention-item attention-item--${item.type} attention-item--${item.priority}`}>
               <span className="attention-item__icon"><AttentionIcon type={item.type} /></span>
               <div className="attention-item__copy">
@@ -65,7 +70,6 @@ export function AttentionCard({ items, agents, canResolve, onOpenItem, onResolve
       ) : (
         <div className="attention-clear"><CheckCircle2 size={22} /><div><strong>{t('allClear')}</strong><p>{t('allClearDetail')}</p></div></div>
       )}
-      <button type="button" className="attention-history-link" onClick={onViewHistory}><History size={14} />{t('viewHistory')}</button>
     </section>
   );
 }

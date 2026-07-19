@@ -111,20 +111,21 @@ describe('DesktopRendererApp', () => {
 
     const navigation = await screen.findByRole('navigation', { name: 'ワークスペース' });
     expect(within(navigation).getByRole('button', { name: 'Home' })).toBeVisible();
-    expect(within(navigation).getByRole('button', { name: /要対応/ })).toBeVisible();
-    expect(within(navigation).getByRole('button', { name: /Tasks/ })).toBeVisible();
-    expect(within(navigation).getByRole('button', { name: /Failures/ })).toBeVisible();
-    expect(within(navigation).getByRole('button', { name: '会話' })).toBeVisible();
+    expect(within(navigation).getByRole('button', { name: /ユーザータスク/ })).toBeVisible();
+    expect(within(navigation).getByRole('button', { name: '記録' })).toBeVisible();
+    expect(within(navigation).getByRole('button', { name: '設定' })).toBeVisible();
+    expect(within(navigation).getByRole('button', { name: 'その他' })).toBeVisible();
 
-    await user.click(within(navigation).getByRole('button', { name: /Tasks/ }));
-    expect(screen.getByRole('heading', { name: 'Tasks' })).toBeVisible();
+    await user.click(within(navigation).getByRole('button', { name: /ユーザータスク/ }));
+    expect(screen.getByRole('heading', { name: 'ユーザータスク' })).toBeVisible();
     expect(screen.queryByLabelText('Orquesta map')).not.toBeInTheDocument();
   });
 
-  test('uses canonical task review states for the Tasks badge', async () => {
+  test('uses the unresolved user task count for the only dock badge', async () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
     const navigation = await screen.findByRole('navigation', { name: 'Workspaces' });
-    expect(within(navigation).getByRole('button', { name: 'Tasks 3' })).toBeVisible();
+    expect(within(navigation).getByRole('button', { name: 'User Tasks 3' })).toBeVisible();
+    expect(within(navigation).getByRole('button', { name: 'Records' })).toBeVisible();
   });
 
   test('opens a local detail for taskless canonical attention instead of a dead bridge action', async () => {
@@ -136,7 +137,7 @@ describe('DesktopRendererApp', () => {
     });
     render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Attention 1' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'User Tasks 1' }));
     await userEvent.click(screen.getByRole('button', { name: /Run local check/ }));
     expect(screen.getByLabelText('Attention action UT1')).toBeVisible();
   });
@@ -150,21 +151,26 @@ describe('DesktopRendererApp', () => {
     });
     render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Attention 1' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'User Tasks 1' }));
     await userEvent.click(screen.getByRole('button', { name: /Clarify pruned work/ }));
     expect(screen.getByLabelText('Attention action UT-DANGLING')).toBeVisible();
   });
 
-  test('keeps the Failures badge and current list on the same item set', async () => {
+  test('keeps tasks, errors, conversation, decisions, and timeline inside Records', async () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Failures 1' }));
-    const failures = screen.getByLabelText('Failures');
-    expect(within(failures).getAllByRole('button')).toHaveLength(1);
+    await userEvent.click(await screen.findByRole('button', { name: 'Records' }));
+    const types = screen.getByRole('navigation', { name: 'Record types' });
+    expect(within(types).getByRole('button', { name: 'Tasks' })).toBeVisible();
+    expect(within(types).getByRole('button', { name: 'Errors' })).toBeVisible();
+    expect(within(types).getByRole('button', { name: 'Conversation' })).toBeVisible();
+    expect(within(types).getByRole('button', { name: 'Decisions' })).toBeVisible();
+    expect(within(types).getByRole('button', { name: 'Timeline' })).toBeVisible();
   });
 
   test('reloads and labels the conversation when the Composer target changes', async () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Conversation' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Records' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Conversation' }));
     expect(await screen.findByRole('heading', { name: 'Conversation · Orchestrator' })).toBeVisible();
 
     await userEvent.selectOptions(screen.getByLabelText('Target agent'), 'analyst');
@@ -178,7 +184,8 @@ describe('DesktopRendererApp', () => {
     vi.spyOn(bridge, 'subscribe').mockImplementation((listener) => { publish = listener; return () => undefined; });
     render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Conversation' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Records' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Conversation' }));
     await userEvent.selectOptions(screen.getByLabelText('Target agent'), 'analyst');
     expect(await screen.findByRole('heading', { name: 'Conversation · Analyst' })).toBeVisible();
 
@@ -200,7 +207,8 @@ describe('DesktopRendererApp', () => {
       : listConversation(query));
     render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Conversation' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Records' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Conversation' }));
     expect(await screen.findByRole('heading', { name: 'Conversation · Orchestrator' })).toBeVisible();
     await userEvent.selectOptions(screen.getByLabelText('Target agent'), 'analyst');
     act(() => publish({ type: 'snapshot_changed', snapshot: { ...base, agents: base.agents.filter((agent) => agent.id !== 'analyst') } }));
@@ -214,11 +222,15 @@ describe('DesktopRendererApp', () => {
     expect(screen.getByLabelText('Target agent')).toHaveValue('orchestrator');
   });
 
-  test('exposes repository diagnostics from More without a dead navigation item', async () => {
+  test('keeps Settings explicit and More limited to Project Route', async () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
-    await userEvent.click(await screen.findByRole('button', { name: 'More' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+    expect(screen.getByText('Display language')).toBeVisible();
     expect(screen.getByText('Diagnostics')).toBeVisible();
-    expect(screen.getByText('Local bridge ready')).toBeVisible();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'More' }));
+    expect(screen.getByText('Project Route')).toBeVisible();
+    expect(screen.queryByText('Team Management')).not.toBeInTheDocument();
   });
 
   test('keeps project switching discoverable in the top-left launcher', async () => {
@@ -230,7 +242,14 @@ describe('DesktopRendererApp', () => {
     await user.click(within(launcher).getByRole('button', { name: 'Project actions' }));
     expect(within(launcher).getByRole('button', { name: 'Switch project' })).toBeVisible();
     expect(within(launcher).getByRole('button', { name: 'Open project folder' })).toBeVisible();
-    expect(within(launcher).getByRole('button', { name: 'Open Project Route' })).toBeVisible();
+    expect(within(launcher).queryByRole('button', { name: 'Open Project Route' })).not.toBeInTheDocument();
+  });
+
+  test('opens the selected conversation from the persistent Composer history button', async () => {
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Conversation history · Orchestrator' }));
+    expect(await screen.findByRole('heading', { name: 'Conversation · Orchestrator' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Records' })).toHaveAttribute('aria-current', 'page');
   });
 
 
@@ -240,14 +259,14 @@ describe('DesktopRendererApp', () => {
     expect(container.querySelector('.project-status .status-dot--success')).not.toBeNull();
   });
 
-  test('switches Japanese and English from More settings', async () => {
+  test('switches Japanese and English from Settings', async () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
     await screen.findByText('Demo data');
-    await userEvent.click(screen.getByRole('button', { name: 'More' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
     await userEvent.click(screen.getByRole('button', { name: '日本語' }));
-    expect(screen.getByRole('heading', { name: 'その他' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '設定' })).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'English' }));
-    expect(screen.getByRole('heading', { name: 'More' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
   });
 
   test('does not reload the project snapshot when the composer target changes', async () => {
