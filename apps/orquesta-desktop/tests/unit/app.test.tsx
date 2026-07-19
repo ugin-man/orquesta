@@ -14,7 +14,7 @@ describe('DesktopRendererApp', () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} onStartupReady={onStartupReady} />);
 
     await screen.findByText('Demo data');
-    expect(onStartupReady).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onStartupReady).toHaveBeenCalledTimes(1));
   });
 
   test('reports startup readiness when the recovery screen is prepared', async () => {
@@ -25,7 +25,7 @@ describe('DesktopRendererApp', () => {
     render(<DesktopRendererApp bridge={bridge} initialLocale="en" onStartupReady={onStartupReady} />);
 
     await screen.findByText('Renderer snapshot unavailable');
-    expect(onStartupReady).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onStartupReady).toHaveBeenCalledTimes(1));
   });
 
   test('uses a persisted locale unless an explicit locale is supplied', () => {

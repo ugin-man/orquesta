@@ -9,7 +9,6 @@ describe('DesktopRepositoryBridge', () => {
     const subscription: { listener: ((next: typeof snapshot) => void) | null } = { listener: null };
     const runtimeSubscription: { listener: Parameters<DesktopHostApi['subscribeRuntime']>[0] | null } = { listener: null };
     const host = {
-      notifyRendererReady: vi.fn(async () => undefined),
       getRepositorySnapshot: vi.fn(async () => snapshot),
       listRepositories: vi.fn(async () => []),
       switchRepository: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'switch-1' })),

@@ -3,11 +3,10 @@ import { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } from 'elec
 import squirrelStartup from 'electron-squirrel-startup';
 import { CoreHost } from './core-host';
 import { registerDesktopIpc } from './ipc-handlers';
-import { createMainWindowOptions, createSplashWindowOptions, splashDocument } from './window-options';
+import { createMainWindowOptions } from './window-options';
 import { RepositoryService } from './repository-service';
 import { DESKTOP_IPC } from '../shared/host-contract';
 import { AttachmentService } from './attachment-service';
-import { createWindowReadinessGate, type WindowReadinessGate } from './window-readiness';
 import { useFakeRuntimeCore } from './startup-mode';
 
 if (squirrelStartup) app.quit();
@@ -22,40 +21,15 @@ const coreHost = new CoreHost({
 });
 
 let mainWindow: BrowserWindow | null = null;
-let splashWindow: BrowserWindow | null = null;
 let repositories: RepositoryService | null = null;
 let quittingAfterServiceStop = false;
-let splashStartedAt = 0;
-let readinessGate: WindowReadinessGate | null = null;
-
-function createSplashWindow(): BrowserWindow {
-  const window = new BrowserWindow(createSplashWindowOptions());
-  splashStartedAt = Date.now();
-  window.once('ready-to-show', () => window.show());
-  window.on('closed', () => {
-    if (splashWindow === window) splashWindow = null;
-  });
-  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashDocument())}`);
-  return window;
-}
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow(createMainWindowOptions(preloadPath));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
-  readinessGate = createWindowReadinessGate(() => {
-    const reveal = () => {
-      splashWindow?.close();
-      splashWindow = null;
-      window.show();
-    };
-    if (!splashWindow) reveal();
-    else setTimeout(reveal, Math.max(0, 420 - (Date.now() - splashStartedAt)));
-  });
-  window.once('ready-to-show', () => readinessGate?.markWindowReady());
+  window.once('ready-to-show', () => window.show());
   window.on('closed', () => {
-    readinessGate?.dispose();
-    readinessGate = null;
     if (mainWindow === window) mainWindow = null;
   });
 
@@ -66,7 +40,10 @@ function createMainWindow(): BrowserWindow {
     const requestedFixture = process.env.ORQUESTA_E2E === '1' ? process.env.ORQUESTA_E2E_FIXTURE : undefined;
     const fixture = requestedFixture && /^[a-z0-9-]+$/.test(requestedFixture) ? requestedFixture : undefined;
     const query: Record<string, string> = {};
-    if (process.env.ORQUESTA_E2E === '1') query.lang = 'en';
+    if (process.env.ORQUESTA_E2E === '1') {
+      query.lang = 'en';
+      query.startup = 'instant';
+    }
     if (fixture) query.fixture = fixture;
     void window.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'), Object.keys(query).length ? { query } : undefined);
   }
@@ -85,7 +62,6 @@ if (!hasSingleInstanceLock) {
 
   void app.whenReady().then(async () => {
     app.setAppUserModelId('com.orquesta.desktop');
-    if (process.env.ORQUESTA_E2E !== '1') splashWindow = createSplashWindow();
     repositories = new RepositoryService({
       registryPath: path.join(app.getPath('userData'), 'repositories.json'),
       coreHost,
@@ -110,10 +86,6 @@ if (!hasSingleInstanceLock) {
     });
     registerDesktopIpc(ipcMain, coreHost, repositories, attachments, {
       openExternal: (url) => shell.openExternal(url)
-    });
-    ipcMain.handle(DESKTOP_IPC.rendererReady, async () => {
-      readinessGate?.markRendererReady();
-      return { accepted: true };
     });
     mainWindow = createMainWindow();
     repositories.subscribe((snapshot) => {
