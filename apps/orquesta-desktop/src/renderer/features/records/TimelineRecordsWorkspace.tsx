@@ -1,5 +1,5 @@
 import { AlertTriangle, ArrowRight, CheckCircle2, Clock3, ListTodo, MessageCircle, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ConversationMessage } from '../../../contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
@@ -30,6 +30,7 @@ interface TimelineRecordsWorkspaceProps {
 }
 
 const GROUP_WINDOW_MS = 30 * 60 * 1000;
+const RENDER_STEP = 200;
 
 function timestampValue(value: string | null): number {
   if (!value) return Number.NEGATIVE_INFINITY;
@@ -122,6 +123,7 @@ export function TimelineRecordsWorkspace({ snapshot, conversations, decisions, l
   const [period, setPeriod] = useState<TimelinePeriod>('all');
   const [agentId, setAgentId] = useState('all');
   const [taskQuery, setTaskQuery] = useState('');
+  const [renderLimit, setRenderLimit] = useState(RENDER_STEP);
   const copy = locale === 'ja' ? {
     types: 'タイムラインの種類', tasks: 'タスク', errors: 'エラー', conversation: '会話', decisions: 'ユーザー判断',
     period: '期間', agent: 'エージェント', task: 'タスクID', allTime: '全期間', day: '24時間', week: '7日間', month: '30日間',
@@ -159,6 +161,14 @@ export function TimelineRecordsWorkspace({ snapshot, conversations, decisions, l
       && (!normalizedTask || record.taskId?.toLowerCase().includes(normalizedTask))
     ));
   }, [agentId, allRecords, kind, period, taskQuery]);
+  useEffect(() => setRenderLimit(RENDER_STEP), [agentId, kind, period, taskQuery]);
+  const renderedRecords = visibleRecords.slice(0, renderLimit);
+  const remainingRecords = Math.max(0, visibleRecords.length - renderedRecords.length);
+  const countLabel = locale === 'ja'
+    ? `${visibleRecords.length}件中${renderedRecords.length}件を表示`
+    : `${renderedRecords.length} of ${visibleRecords.length} events`;
+  const nextCount = Math.min(RENDER_STEP, remainingRecords);
+  const moreLabel = locale === 'ja' ? `さらに${nextCount}件表示` : `Show ${nextCount} more`;
   const filters: Array<[TimelineKindFilter, string]> = [['all', t('all')], ['task', copy.tasks], ['error', copy.errors], ['conversation', copy.conversation], ['decision', copy.decisions]];
 
   return (
@@ -176,9 +186,9 @@ export function TimelineRecordsWorkspace({ snapshot, conversations, decisions, l
         <label><span>{copy.task}</span><span className="timeline-task-search"><Search size={13} /><input aria-label={copy.task} value={taskQuery} placeholder={copy.taskPlaceholder} onChange={(event) => setTaskQuery(event.target.value)} /></span></label>
       </div>
       <section className="timeline-record-list" aria-label={copy.list}>
-        <header><strong>{visibleRecords.length}</strong><span>{copy.events}</span></header>
+        <header aria-label={countLabel}><strong>{renderedRecords.length}</strong><span>/ {visibleRecords.length} {copy.events}</span></header>
         <div className="timeline-record-list__scroll">
-          {visibleRecords.map((record) => (
+          {renderedRecords.map((record) => (
             <button type="button" key={record.id} aria-label={`${singularLabels[record.kind]} · ${record.sourceId} · ${record.title}`} onClick={() => onOpenRecord(record)}>
               <time>{record.timestamp ? formatDateTime(record.timestamp) : copy.unknownTime}</time>
               <span className={`timeline-record-marker timeline-record-marker--${record.kind}`}><TimelineIcon kind={record.kind} /></span>
@@ -187,6 +197,7 @@ export function TimelineRecordsWorkspace({ snapshot, conversations, decisions, l
               <ArrowRight size={15} aria-hidden="true" />
             </button>
           ))}
+          {remainingRecords ? <button type="button" className="timeline-load-more" onClick={() => setRenderLimit((current) => current + RENDER_STEP)}>{moreLabel}</button> : null}
           {!loading && !visibleRecords.length ? <p className="timeline-record-empty"><Clock3 size={17} />{copy.empty}</p> : null}
           {loading && !visibleRecords.length ? <p className="timeline-record-empty">{copy.loading}</p> : null}
         </div>

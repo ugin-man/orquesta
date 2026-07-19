@@ -1,4 +1,5 @@
-import { AlertTriangle, CheckCircle2, Clock3, Repeat2, Search, ShieldAlert, Wrench, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, Repeat2, Search, Wrench, X } from 'lucide-react';
+import { useEffect } from 'react';
 import type { FailureUiModel, FailureUiSeverity } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
 import { useI18n } from '../i18n/I18nProvider';
@@ -32,7 +33,7 @@ function FailureDetail({ failure, onClose }: { failure: FailureUiModel; onClose(
     : { close: 'Close error detail', occurrences: 'occurrences', affected: 'Affected work', tasks: 'Tasks', agents: 'Agents', first: 'First', last: 'Last', owner: 'Suspected owner', cause: 'Cause', repair: 'Repair state', fix: 'Repair or next action', evidence: 'Evidence', prevention: 'Prevention', history: 'Occurrence history', attempted: 'Attempted fixes', outcome: 'Outcome', candidate: 'Candidate', incident: 'Accepted incident', cluster: 'Repeated cluster' };
   const sourceLabel = copy[failure.source];
   return (
-    <aside className="failure-record-detail" role="region" aria-label={`Failure ${failure.id} detail`}>
+    <aside className="failure-record-detail" role="dialog" aria-modal="true" aria-label={`Failure ${failure.id} detail`}>
       <header>
         <div><span className={`failure-source failure-source--${failure.source}`}>{sourceLabel}</span><small>{failure.id}</small></div>
         <button type="button" aria-label={copy.close} onClick={onClose}><X size={16} /></button>
@@ -78,8 +79,8 @@ export function FailureRecordsWorkspace({ failures, view, onViewChange }: {
 }) {
   const { locale } = useI18n();
   const copy = locale === 'ja'
-    ? { scopes: 'エラー表示', open: '未解決', repeated: '反復', resolved: '解決済み', all: 'すべて', filters: 'エラーの絞り込み', search: 'エラーを検索', placeholder: 'class、説明、タスク、agentで検索', severity: '重大度', everySeverity: 'すべての重大度', sort: '並び順', newest: '最終発生が新しい順', mostRepeated: '発生回数が多い順', strongest: '重大度が高い順', results: '件', empty: '条件に合うエラー記録はありません', error: 'エラー', state: '状態', count: '回数', last: '最終発生', repair: '修復', select: 'エラーを選ぶと、発生履歴と修復結果を確認できます。', candidate: '候補', incident: '受理済み', cluster: '反復', unknown: '不明', low: '低', medium: '中', high: '高', blocker: '最優先' }
-    : { scopes: 'Failure scopes', open: 'Unresolved', repeated: 'Repeated', resolved: 'Resolved', all: 'All', filters: 'Failure filters', search: 'Search errors', placeholder: 'Search class, summary, task, or agent', severity: 'Severity', everySeverity: 'All severities', sort: 'Sort', newest: 'Newest occurrence', mostRepeated: 'Most occurrences', strongest: 'Highest severity', results: 'records', empty: 'No error records match these filters.', error: 'Error', state: 'State', count: 'Count', last: 'Last occurrence', repair: 'Repair', select: 'Select an error to inspect its occurrences and repair result.', candidate: 'Candidate', incident: 'Incident', cluster: 'Repeated', unknown: 'Unknown', low: 'Low', medium: 'Medium', high: 'High', blocker: 'Blocker' };
+    ? { summary: 'エラー集計', scope: '表示範囲', open: '未解決', repeated: '反復', resolved: '解決済み', all: 'すべて', filters: 'エラーの絞り込み', search: 'エラーを検索', placeholder: 'class、説明、タスク、agentで検索', severity: '重大度', everySeverity: 'すべての重大度', sort: '並び順', newest: '最終発生が新しい順', mostRepeated: '発生回数が多い順', strongest: '重大度が高い順', results: '件', empty: '条件に合うエラー記録はありません', count: '回数', last: '最終発生', task: 'タスク', repair: '修復', candidate: '候補', incident: '受理済み', cluster: '反復', unknown: '不明', low: '低', medium: '中', high: '高', blocker: '最優先' }
+    : { summary: 'Failure summary', scope: 'Failure scope', open: 'Unresolved', repeated: 'Repeated', resolved: 'Resolved', all: 'All', filters: 'Failure filters', search: 'Search errors', placeholder: 'Search class, summary, task, or agent', severity: 'Severity', everySeverity: 'All severities', sort: 'Sort', newest: 'Newest occurrence', mostRepeated: 'Most occurrences', strongest: 'Highest severity', results: 'records', empty: 'No error records match these filters.', count: 'Count', last: 'Last occurrence', task: 'Task', repair: 'Repair', candidate: 'Candidate', incident: 'Incident', cluster: 'Repeated', unknown: 'Unknown', low: 'Low', medium: 'Medium', high: 'High', blocker: 'Blocker' };
   const counts: Record<FailureRecordScope, number> = {
     open: failures.filter((failure) => failure.resolution !== 'resolved').length,
     repeated: failures.filter((failure) => failure.occurrenceCount >= 2).length,
@@ -102,35 +103,49 @@ export function FailureRecordsWorkspace({ failures, view, onViewChange }: {
   const scopeOptions: Array<[FailureRecordScope, string]> = [['open', copy.open], ['repeated', copy.repeated], ['resolved', copy.resolved], ['all', copy.all]];
   const sourceLabel = (source: FailureUiModel['source']) => copy[source];
 
+  useEffect(() => {
+    if (!selected) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') update({ selectedFailureId: null });
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [selected?.id]);
+
   return (
     <div className="failure-records-workspace">
-      <nav className="failure-record-scopes" aria-label={copy.scopes}>
-        {scopeOptions.map(([scope, label]) => <button type="button" key={scope} aria-current={view.scope === scope ? 'page' : undefined} aria-label={`${label} ${counts[scope]}`} onClick={() => update({ scope })}><span>{label}</span><strong>{counts[scope]}</strong></button>)}
-      </nav>
+      <div className="failure-record-summary" aria-label={copy.summary}>
+        {[['all', copy.all], ['open', copy.open], ['repeated', copy.repeated], ['resolved', copy.resolved]].map(([scope, label]) => <span key={scope}><small>{label}</small><strong>{counts[scope as FailureRecordScope]}</strong></span>)}
+      </div>
       <div className="failure-record-filters" aria-label={copy.filters}>
         <label className="failure-record-search"><Search size={14} /><input type="search" aria-label={copy.search} placeholder={copy.placeholder} value={view.query} onChange={(event) => update({ query: event.target.value })} /></label>
+        <label><span>{copy.scope}</span><select aria-label={copy.scope} value={view.scope} onChange={(event) => update({ scope: event.target.value as FailureRecordScope })}>{scopeOptions.map(([scope, label]) => <option key={scope} value={scope}>{label} ({counts[scope]})</option>)}</select></label>
         <label><span>{copy.severity}</span><select aria-label={copy.severity} value={view.severity} onChange={(event) => update({ severity: event.target.value as FailureRecordView['severity'] })}><option value="all">{copy.everySeverity}</option><option value="blocker">{copy.blocker}</option><option value="high">{copy.high}</option><option value="medium">{copy.medium}</option><option value="low">{copy.low}</option><option value="unknown">{copy.unknown}</option></select></label>
         <label><span>{copy.sort}</span><select aria-label={copy.sort} value={view.sort} onChange={(event) => update({ sort: event.target.value as FailureRecordSort })}><option value="last_desc">{copy.newest}</option><option value="occurrences_desc">{copy.mostRepeated}</option><option value="severity_desc">{copy.strongest}</option></select></label>
       </div>
-      <div className={`failure-record-layout${selected ? ' failure-record-layout--detail-open' : ''}`}>
+      <div className="failure-record-layout">
         <section className="failure-record-results" aria-label={`${visible.length} ${copy.results}`}>
-          <header><span><strong>{visible.length}</strong> {copy.results}</span><div><span>{copy.error}</span><span>{copy.state}</span><span>{copy.count}</span><span>{copy.last}</span><span>{copy.repair}</span></div></header>
-          <div className="failure-record-list">
+          <header><strong>{visible.length}</strong> {copy.results}</header>
+          <div className="failure-record-grid" data-testid="failure-record-grid">
             {visible.map((failure) => (
               <button type="button" key={failure.id} aria-label={`${failure.id} · ${failure.title}`} aria-current={selected?.id === failure.id ? 'true' : undefined} onClick={() => update({ selectedFailureId: failure.id })}>
-                <span className="failure-record-main"><small className={`failure-source failure-source--${failure.source}`}>{sourceLabel(failure.source)}</small><strong>{failure.failureClass}</strong><em>{failure.title}</em></span>
-                <span><i className={`failure-severity failure-severity--${failure.severity}`} />{copy[failure.severity]}</span>
-                <span>{failure.status}</span>
-                <strong className={failure.occurrenceCount >= 2 ? 'is-repeated' : undefined}>{failure.occurrenceCount}</strong>
-                <time>{formatDateTime(failure.lastOccurredAt)}</time>
-                <span>{failure.repairStatus ?? '—'}</span>
+                <header><small className={`failure-source failure-source--${failure.source}`}>{sourceLabel(failure.source)}</small><span><i className={`failure-severity failure-severity--${failure.severity}`} />{copy[failure.severity]}</span></header>
+                <h3>{failure.title}</h3>
+                <small className="failure-record-class">{failure.failureClass}</small>
+                <dl>
+                  <div><dt>{copy.count}</dt><dd className={failure.occurrenceCount >= 2 ? 'is-repeated' : undefined}>{failure.occurrenceCount}</dd></div>
+                  <div><dt>{copy.last}</dt><dd>{formatDateTime(failure.lastOccurredAt)}</dd></div>
+                  <div><dt>{copy.task}</dt><dd>{failure.taskIds[0] ?? '—'}</dd></div>
+                  <div><dt>{copy.repair}</dt><dd>{failure.repairStatus ?? failure.status}</dd></div>
+                </dl>
+                <p>{failure.summary}</p>
               </button>
             ))}
             {!visible.length ? <p className="failure-record-empty"><CheckCircle2 size={20} />{copy.empty}</p> : null}
           </div>
         </section>
-        {selected ? <FailureDetail failure={selected} onClose={() => update({ selectedFailureId: null })} /> : <aside className="failure-record-placeholder"><ShieldAlert size={27} /><p>{copy.select}</p></aside>}
       </div>
+      {selected ? <div className="failure-record-modal-layer" data-testid="failure-record-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) update({ selectedFailureId: null }); }}><FailureDetail failure={selected} onClose={() => update({ selectedFailureId: null })} /></div> : null}
     </div>
   );
 }

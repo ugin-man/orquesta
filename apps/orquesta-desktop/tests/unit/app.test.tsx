@@ -228,7 +228,7 @@ describe('DesktopRendererApp', () => {
     expect(screen.getByRole('dialog', { name: 'Task T68 detail' })).toBeVisible();
   });
 
-  test('uses canonical failure history in Records and preserves its view while switching record types', async () => {
+  test('review revision uses failure cards with modal detail and preserves the selected scope', async () => {
     const user = userEvent.setup();
     const bridge = new MockOrquestaBridge('active-project');
     const base = await bridge.getInitialSnapshot();
@@ -249,17 +249,18 @@ describe('DesktopRendererApp', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Records' }));
     await user.click(screen.getByRole('button', { name: 'Errors' }));
-    const scopes = screen.getByRole('navigation', { name: 'Failure scopes' });
-    expect(within(scopes).getByRole('button', { name: 'Unresolved 1' })).toBeVisible();
-    expect(within(scopes).getByRole('button', { name: 'Resolved 1' })).toBeVisible();
-
-    await user.click(within(scopes).getByRole('button', { name: 'Resolved 1' }));
+    const scope = screen.getByLabelText('Failure scope');
+    expect(scope).toHaveValue('open');
+    await user.selectOptions(scope, 'resolved');
+    expect(screen.getByTestId('failure-record-grid')).toBeVisible();
     await user.click(screen.getByRole('button', { name: /encoding.corruption/ }));
-    expect(screen.getByRole('region', { name: 'Failure failure-class:encoding.corruption detail' })).toHaveTextContent('Rebuilt as UTF-8.');
+    expect(screen.getByRole('dialog', { name: 'Failure failure-class:encoding.corruption detail' })).toHaveTextContent('Rebuilt as UTF-8.');
+    await user.click(screen.getByTestId('failure-record-modal-backdrop'));
+    expect(screen.queryByRole('dialog', { name: 'Failure failure-class:encoding.corruption detail' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Tasks' }));
     await user.click(screen.getByRole('button', { name: 'Errors' }));
-    expect(within(screen.getByRole('navigation', { name: 'Failure scopes' })).getByRole('button', { name: 'Resolved 1' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByLabelText('Failure scope')).toHaveValue('resolved');
   });
 
   test('uses the conversation workspace to switch logical targets and show the real delivery route', async () => {
@@ -334,7 +335,24 @@ describe('DesktopRendererApp', () => {
     await user.click(screen.getByRole('button', { name: 'Error · FC66 · External API timeout' }));
 
     expect(screen.getByRole('button', { name: 'Errors' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('region', { name: 'Failure FC66 detail' })).toBeVisible();
+    expect(screen.getByRole('dialog', { name: 'Failure FC66 detail' })).toBeVisible();
+  });
+
+  test('review revision bounds a large timeline to 200 rendered records at a time', async () => {
+    const user = userEvent.setup();
+    const bridge = new MockOrquestaBridge('active-project');
+    const base = await bridge.getInitialSnapshot();
+    const seed = base.tasks[0]!;
+    const tasks = Array.from({ length: 450 }, (_, index) => ({ ...seed, id: `TL${String(index + 1).padStart(4, '0')}`, title: `Timeline task ${index + 1}` }));
+    vi.spyOn(bridge, 'getInitialSnapshot').mockResolvedValue({ ...base, tasks });
+    render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Records' }));
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+
+    expect(await screen.findByLabelText('200 of 457 events')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Show 200 more' }));
+    expect(screen.getByLabelText('400 of 457 events')).toBeVisible();
   });
 
   test('closes stale conversation content when its agent disappears from the same project', async () => {
