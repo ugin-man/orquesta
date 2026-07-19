@@ -59,6 +59,8 @@ package内のCodex実行ファイルは`resources/codex-runtime/node_modules/@op
 
 最終packageを実repositoryへ接続した確認では、`Watching state files`、英語locale、`2 more notifications`、画面全体overflow 0を確認した。Project Launcherのroot pathは8pxで表示され、英語画面へ日本語の省略件数が混ざっていない。E2E用のlocale強制を使わない通常起動でも、日本語から英語へ切り替えた設定が完全終了後の再起動で保持されることを確認した。
 
+別々の台帳へ同じ`SHARED-1`を持つ質問とユーザー作業を入れたpackage確認では、Homeに2件が表示され、Dockも`Attention 2`、画面全体overflow 0になった。
+
 最終差分は独立reviewを2回行った。最初の指摘を直した後、非同期会話の競合も遅延responseのtestで再現して修正した。最後のreview結果はCritical 0、Important 0だった。
 
 ## ユーザー確認が必要な項目
