@@ -262,14 +262,25 @@ describe('DesktopRendererApp', () => {
     expect(within(screen.getByRole('navigation', { name: 'Failure scopes' })).getByRole('button', { name: 'Resolved 1' })).toHaveAttribute('aria-current', 'page');
   });
 
-  test('reloads and labels the conversation when the Composer target changes', async () => {
+  test('uses the conversation workspace to switch logical targets and show the real delivery route', async () => {
+    const user = userEvent.setup();
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Records' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Conversation' }));
-    expect(await screen.findByRole('heading', { name: 'Conversation · Orchestrator' })).toBeVisible();
+    await user.click(await screen.findByRole('button', { name: 'Records' }));
+    await user.click(screen.getByRole('button', { name: 'Conversation' }));
 
-    await userEvent.selectOptions(screen.getByLabelText('Target agent'), 'analyst');
+    const channels = await screen.findByRole('navigation', { name: 'Conversation channels' });
+    expect(within(channels).getByText('Coordinator')).toBeVisible();
+    expect(within(channels).getByText('Agent routes')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Conversation · Orchestrator' })).toBeVisible();
+    expect(screen.getByText('Actual delivery')).toBeVisible();
+    expect(screen.getByText('Coordinator Codex thread')).toBeVisible();
+    expect(screen.getByText('Direct coordinator message')).toBeVisible();
+
+    await user.click(within(channels).getByRole('button', { name: 'Analyst · Analyst' }));
     expect(await screen.findByRole('heading', { name: 'Conversation · Analyst' })).toBeVisible();
+    expect(screen.getByText('agent_id=analyst')).toBeVisible();
+    expect(screen.getByText('The analysis route is active.')).toBeVisible();
+    expect(screen.getByLabelText('Target agent')).toHaveValue('analyst');
   });
 
   test('closes stale conversation content when its agent disappears from the same project', async () => {
@@ -312,7 +323,7 @@ describe('DesktopRendererApp', () => {
       nextCursor: null
     }));
 
-    expect(screen.getByRole('heading', { name: 'Conversation · Orchestrator' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
     expect(screen.queryByText('Stale response')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Target agent')).toHaveValue('orchestrator');
   });

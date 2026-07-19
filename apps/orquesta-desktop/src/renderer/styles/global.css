@@ -406,7 +406,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .workspace-tabs button[aria-current="page"] { border-color: var(--ink); background: var(--ink); color: var(--paper-strong); }
 .workspace-surface__body { min-height: 0; padding: 10px 17px 18px; overflow-y: auto; overscroll-behavior: contain; }
 .workspace-surface__body--user-tasks { flex: 1; padding: 0; overflow: hidden; }
-.workspace-surface__body--task-records, .workspace-surface__body--failure-records { flex: 1; padding: 0; overflow: hidden; }
+.workspace-surface__body--task-records, .workspace-surface__body--failure-records, .workspace-surface__body--conversation-records { flex: 1; padding: 0; overflow: hidden; }
 .user-tasks-workspace { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .user-task-filters { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; flex: 0 0 auto; padding: 14px 18px; border-bottom: 1px solid var(--line); background: rgba(247,244,237,.55); }
 .user-task-filters button { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 40px; padding: 10px 12px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--ink-muted); font-size: 10px; text-align: left; }
@@ -615,6 +615,43 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:f
 .workspace-message p { margin: 6px 0 0; white-space: pre-wrap; font-size: 9px; line-height: 1.45; }
 .workspace-load-older { align-self: center; padding: 5px 10px; border: 1px solid var(--line); border-radius: 99px; background: var(--paper-strong); font-size: 8px; }
 .workspace-record-pane h2 { margin: 2px 0 12px; font-family: Georgia, 'Yu Mincho', serif; font-size: 15px; font-weight: 540; }
+.conversation-records-workspace { display: grid; grid-template-columns: minmax(224px, 29%) minmax(0, 1fr); height: 100%; min-height: 0; }
+.conversation-channels { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--line); background: rgba(247,244,237,.42); }
+.conversation-channel-search { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin: 13px 13px 9px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,253,248,.74); color: var(--ink-muted); }
+.conversation-channel-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 9px; }
+.conversation-channel-list { min-height: 0; padding: 0 9px 14px; overflow-y: auto; overscroll-behavior: contain; }
+.conversation-channel-group { margin-top: 8px; }
+.conversation-channel-group h3 { margin: 0; padding: 6px 7px; color: var(--ink-muted); font-size: 7px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.conversation-channel { display: grid; grid-template-columns: 31px minmax(0,1fr) 7px auto; gap: 8px; align-items: center; width: 100%; min-height: 52px; padding: 8px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--ink); text-align: left; }
+.conversation-channel:hover { border-color: var(--line); background: rgba(255,253,248,.64); }
+.conversation-channel[aria-current="page"] { border-color: var(--line-strong); background: var(--paper-strong); box-shadow: 0 3px 10px rgba(40,34,26,.055); }
+.conversation-channel__icon { display: grid; place-items: center; width: 29px; height: 29px; border: 1px solid var(--line); border-radius: 50%; background: rgba(255,253,248,.62); }
+.conversation-channel__copy { min-width: 0; }
+.conversation-channel__copy strong, .conversation-channel__copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-channel__copy strong { font-size: 9px; }
+.conversation-channel__copy small, .conversation-channel__state { margin-top: 3px; color: var(--ink-muted); font-size: 7px; }
+.conversation-channel__status { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
+.conversation-channel__status--working { background: var(--success); }
+.conversation-channel__status--blocked { background: var(--danger); }
+.conversation-channel__status--waiting { background: var(--warning); }
+.conversation-channel__state { margin: 0; white-space: nowrap; }
+.conversation-channel-empty { margin: 20px 8px; color: var(--ink-muted); font-size: 8px; line-height: 1.45; }
+.conversation-history { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.conversation-history__header { display: grid; grid-template-columns: minmax(150px,.72fr) minmax(0,1.75fr); gap: 18px; align-items: center; flex: 0 0 auto; min-height: 88px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: rgba(255,253,248,.36); }
+.conversation-history__header > div > small { color: var(--ink-muted); font-size: 7px; }
+.conversation-history__header h2 { margin: 4px 0 0; font-family: Georgia, 'Yu Mincho', serif; font-size: 15px; font-weight: 540; }
+.conversation-history__header dl { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 9px; margin: 0; }
+.conversation-history__header dl div { min-width: 0; }
+.conversation-history__header dt { color: var(--ink-muted); font-size: 7px; }
+.conversation-history__header dd { margin: 4px 0 0; overflow: hidden; font-size: 8px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-history__header dd span { margin-left: 3px; color: var(--ink-muted); font-size: 7px; font-weight: 500; }
+.conversation-history__messages { display: flex; flex-direction: column; gap: 9px; min-height: 0; padding: 14px 16px 18px; overflow-y: auto; overscroll-behavior: contain; }
+.conversation-history__messages .workspace-message { width: min(720px,93%); }
+.conversation-history__messages .workspace-message--user { align-self: flex-end; background: rgba(241,237,228,.68); }
+.conversation-history__messages .workspace-message--system { width: min(620px,88%); align-self: center; border-style: dashed; background: rgba(247,244,237,.5); }
+.conversation-history__messages .workspace-message strong { font-size: 10px; }
+.conversation-history__messages .workspace-message p { font-size: 10px; line-height: 1.52; }
+.workspace-message__evidence { display: block; margin-top: 7px; color: var(--ink-muted); font-size: 7px; }
 .workspace-settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 .workspace-settings-grid > button, .workspace-settings-grid > section { display: grid; grid-template-columns: 26px 1fr; gap: 10px; min-height: 96px; padding: 14px; border: 1px solid rgba(216,210,199,.85); border-radius: 11px; background: rgba(255,253,248,.5); text-align: left; }
 .workspace-settings-grid > details { min-height: 96px; padding: 14px; border: 1px solid rgba(216,210,199,.85); border-radius: 11px; background: rgba(255,253,248,.5); }

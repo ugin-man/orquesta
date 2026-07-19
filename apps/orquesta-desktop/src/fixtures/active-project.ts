@@ -115,6 +115,9 @@ export const activeProjectFixture: FixtureDefinition = {
       { id: 'C1', role: 'user', targetAgentId: 'orchestrator', authorLabel: 'You', text: 'Build the approved desktop Renderer and keep the Electron boundary clean.', createdAt: '2026-07-17T13:18:00.000Z', evidenceLabel: null },
       { id: 'C2', role: 'agent', targetAgentId: 'orchestrator', authorLabel: 'Orchestrator', text: 'Renderer work is delegated. I will only mark work active where runtime evidence exists.', createdAt: '2026-07-17T13:20:00.000Z', evidenceLabel: 'Prototype conversation' },
       { id: 'C3', role: 'system', targetAgentId: 'orchestrator', authorLabel: 'System event', text: 'T68 turn started and progress was observed.', createdAt: observedAt, evidenceLabel: 'Mock evidence' }
+    ],
+    analyst: [
+      { id: 'C4', role: 'agent', targetAgentId: 'analyst', authorLabel: 'Analyst', text: 'The analysis route is active.', createdAt: observedAt, evidenceLabel: 'Prototype conversation' }
     ]
   },
   attentionHistory: [

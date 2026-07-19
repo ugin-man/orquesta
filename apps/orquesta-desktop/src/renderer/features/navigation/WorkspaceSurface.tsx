@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, Clock3, GitBranch, Languages, Settings, Stethoscope, UserRound, Wrench } from 'lucide-react';
+import { ArrowRight, Clock3, GitBranch, Languages, Settings, Stethoscope, Wrench } from 'lucide-react';
 import type { ConversationMessage, UiActionResult } from '../../../contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot, TaskUiModel } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
@@ -6,6 +6,7 @@ import { UserTasksWorkspace, type UserTaskKind } from '../attention/UserTasksWor
 import { useI18n } from '../i18n/I18nProvider';
 import { TaskRecordsWorkspace, type TaskRecordView } from '../records/TaskRecordsWorkspace';
 import { FailureRecordsWorkspace, type FailureRecordView } from '../records/FailureRecordsWorkspace';
+import { ConversationRecordsWorkspace } from '../records/ConversationRecordsWorkspace';
 import type { WorkspaceId } from './WorkspaceDock';
 
 export type { UserTaskKind } from '../attention/UserTasksWorkspace';
@@ -64,27 +65,7 @@ function TaskList({ tasks, onOpen }: { tasks: TaskUiModel[]; onOpen(taskId: stri
   );
 }
 
-function ConversationList({ messages, loading, hasOlder, onLoadOlder }: {
-  messages: ConversationMessage[];
-  loading: boolean;
-  hasOlder: boolean;
-  onLoadOlder(): void;
-}) {
-  const { t } = useI18n();
-  return (
-    <div className="workspace-conversation">
-      {hasOlder ? <button type="button" className="workspace-load-older" disabled={loading} onClick={onLoadOlder}>{loading ? t('loadingOlder') : t('loadOlder')}</button> : null}
-      {messages.length ? messages.map((message) => (
-        <article key={message.id} className={`workspace-message workspace-message--${message.role}`}>
-          <span>{message.role === 'user' ? <UserRound size={15} /> : <Bot size={15} />}</span>
-          <div><header><strong>{message.authorLabel}</strong><time>{formatDateTime(message.createdAt)}</time></header><p>{message.text}</p></div>
-        </article>
-      )) : <p className="workspace-empty">{t('noMessages')}</p>}
-    </div>
-  );
-}
-
-export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, taskRecordView, failureRecordView, messages, conversationTargetLabel, conversationLoading, conversationHasOlder, canResolveAttention, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenRoute, onOpenOperations }: {
+export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, taskRecordView, failureRecordView, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, canResolveAttention, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenRoute, onOpenOperations }: {
   active: Exclude<WorkspaceId, 'home'>;
   snapshot: OrquestaUiSnapshot;
   userTaskKind: UserTaskKind;
@@ -92,7 +73,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
   taskRecordView: TaskRecordView;
   failureRecordView: FailureRecordView;
   messages: ConversationMessage[];
-  conversationTargetLabel: string;
+  conversationTargetAgentId: string;
   conversationLoading: boolean;
   conversationHasOlder: boolean;
   canResolveAttention: boolean;
@@ -100,6 +81,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
   onSelectRecordKind(kind: RecordKind): void;
   onTaskRecordViewChange(view: TaskRecordView): void;
   onFailureRecordViewChange(view: FailureRecordView): void;
+  onSelectConversationTarget(agentId: string): void;
   onLoadOlderConversation(): void;
   onOpenAttention(item: AttentionUiItem): void;
   onResolveAttention(item: AttentionUiItem, decision: string): Promise<UiActionResult>;
@@ -129,7 +111,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
           {recordTypes.map(([kind, label]) => <button type="button" key={kind} aria-current={recordKind === kind ? 'page' : undefined} onClick={() => onSelectRecordKind(kind)}>{label}</button>)}
         </nav>
       ) : null}
-      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}${active === 'records' && recordKind === 'task' ? ' workspace-surface__body--task-records' : ''}${active === 'records' && recordKind === 'error' ? ' workspace-surface__body--failure-records' : ''}`}>
+      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}${active === 'records' && recordKind === 'task' ? ' workspace-surface__body--task-records' : ''}${active === 'records' && recordKind === 'error' ? ' workspace-surface__body--failure-records' : ''}${active === 'records' && recordKind === 'conversation' ? ' workspace-surface__body--conversation-records' : ''}`}>
         {active === 'user-tasks' ? (
           <UserTasksWorkspace
             items={snapshot.attention}
@@ -143,10 +125,7 @@ export function WorkspaceSurface({ active, snapshot, userTaskKind, recordKind, t
         {active === 'records' && recordKind === 'task' ? <TaskRecordsWorkspace tasks={snapshot.tasks} agents={snapshot.agents} view={taskRecordView} onViewChange={onTaskRecordViewChange} /> : null}
         {active === 'records' && recordKind === 'error' ? <FailureRecordsWorkspace failures={snapshot.failures} view={failureRecordView} onViewChange={onFailureRecordViewChange} /> : null}
         {active === 'records' && recordKind === 'conversation' ? (
-          <section className="workspace-record-pane" aria-label={t('recordConversation')}>
-            <h2>{t('recordConversation')} · {conversationTargetLabel}</h2>
-            <ConversationList messages={messages} loading={conversationLoading} hasOlder={conversationHasOlder} onLoadOlder={onLoadOlderConversation} />
-          </section>
+          <ConversationRecordsWorkspace agents={snapshot.agents} targetAgentId={conversationTargetAgentId} messages={messages} loading={conversationLoading} hasOlder={conversationHasOlder} onSelectTarget={onSelectConversationTarget} onLoadOlder={onLoadOlderConversation} />
         ) : null}
         {active === 'records' && (recordKind === 'decision' || recordKind === 'timeline') ? <p className="workspace-empty"><Clock3 size={20} />{t('workspacePreview')}</p> : null}
         {active === 'settings' ? (

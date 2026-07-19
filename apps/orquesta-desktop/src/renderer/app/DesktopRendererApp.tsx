@@ -99,6 +99,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [conversationTargetAgentId, setConversationTargetAgentId] = useState('orchestrator');
   const [conversationCursor, setConversationCursor] = useState<string | null>(null);
+  const [loadingConversation, setLoadingConversation] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [proposals, setProposals] = useState<AgentProposal[]>([]);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
@@ -134,6 +135,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           setConversationTargetAgentId(fallbackAgentId);
           setMessages([]);
           setConversationCursor(null);
+          setLoadingConversation(false);
           setActiveWorkspace('home');
         }
       } else {
@@ -170,6 +172,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     setConversationTargetAgentId('orchestrator');
     conversationRequest.current += 1;
     setConversationCursor(null);
+    setLoadingConversation(false);
     setDraft(window.localStorage.getItem(`orquesta.desktop.draft.${projectId}`) ?? '');
   }, [snapshot?.project.id]);
 
@@ -204,20 +207,28 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
     }
   };
   const openConversation = async (requestedTargetAgentId = targetAgentId) => {
+    if (!availableAgentIdsRef.current.has(requestedTargetAgentId)) return;
     const request = ++conversationRequest.current;
+    conversationTargetAgentIdRef.current = requestedTargetAgentId;
+    setConversationTargetAgentId(requestedTargetAgentId);
+    setTargetAgentId(requestedTargetAgentId);
+    setMessages([]);
+    setConversationCursor(null);
+    setLoadingConversation(true);
+    setActionError(null);
+    setOverlay(null);
+    setMapSelection(null);
+    setRecordKind('conversation');
+    setActiveWorkspace('records');
     try {
       const page = await bridge.listConversation({ targetAgentId: requestedTargetAgentId, cursor: null, limit: 100 });
       if (request !== conversationRequest.current || !availableAgentIdsRef.current.has(requestedTargetAgentId)) return;
       setMessages(page.items);
       setConversationCursor(page.nextCursor);
-      conversationTargetAgentIdRef.current = requestedTargetAgentId;
-      setConversationTargetAgentId(requestedTargetAgentId);
-      setOverlay(null);
-      setMapSelection(null);
-      setRecordKind('conversation');
-      setActiveWorkspace('records');
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      if (request === conversationRequest.current) setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (request === conversationRequest.current) setLoadingConversation(false);
     }
   };
   const selectWorkspace = (workspace: WorkspaceId) => {
@@ -408,7 +419,6 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
   const openAttentionItem = (item: AttentionUiItem) => item.taskId && snapshot.tasks.some((task) => task.id === item.taskId)
     ? openTaskRecord(item.taskId)
     : setOverlay({ kind: 'attention', attentionId: item.id });
-  const conversationTargetLabel = snapshot.agents.find((agent) => agent.id === conversationTargetAgentId)?.displayName ?? conversationTargetAgentId;
   const changeTargetAgent = (agentId: string) => {
     setTargetAgentId(agentId);
     if (activeWorkspace === 'records' && recordKind === 'conversation') void openConversation(agentId);
@@ -458,8 +468,8 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           taskRecordView={taskRecordView}
           failureRecordView={failureRecordView}
           messages={messages}
-          conversationTargetLabel={conversationTargetLabel}
-          conversationLoading={loadingOlderMessages}
+          conversationTargetAgentId={conversationTargetAgentId}
+          conversationLoading={loadingConversation || loadingOlderMessages}
           conversationHasOlder={Boolean(conversationCursor)}
           canResolveAttention={bridge.capabilities.attentionResolution}
           onSelectUserTaskKind={setUserTaskKind}
@@ -469,6 +479,7 @@ function Workspace({ bridge }: { bridge: OrquestaRendererBridge }) {
           }}
           onTaskRecordViewChange={setTaskRecordView}
           onFailureRecordViewChange={setFailureRecordView}
+          onSelectConversationTarget={(agentId) => void openConversation(agentId)}
           onLoadOlderConversation={() => void loadOlderConversation()}
           onOpenAttention={openAttentionItem}
           onResolveAttention={resolveAttention}
