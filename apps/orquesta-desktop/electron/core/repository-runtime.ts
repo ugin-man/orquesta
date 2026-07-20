@@ -4,6 +4,7 @@ import { emptyV4OperationsSnapshot, type OrquestaUiSnapshot, type V4OperationsSn
 import type { AttentionUiItem } from '../../src/contracts/orquesta-ui';
 import type { RuntimeApprovalRequest } from './protocol';
 import { readRepositorySnapshot } from './repository-reader';
+import { readProvisioningBatch, type ProvisioningBatch } from './specialist-provisioner';
 import { projectV4Operations } from './v4-operations-projection';
 
 interface CloseableWatcher {
@@ -14,6 +15,8 @@ export interface RepositoryRuntimeOptions {
   readSnapshot?: (rootPath: string) => Promise<OrquestaUiSnapshot>;
   readV4Operations?: (rootPath: string) => Promise<V4OperationsSnapshot>;
   watchDirectory?: (directory: string, onChange: () => void, onError: (error: Error) => void) => CloseableWatcher;
+  readProvisioningBatch?: (rootPath: string) => Promise<ProvisioningBatch | null>;
+  provisionSetupSpecialists?: (input: { projectId: string; rootPath: string; batch: ProvisioningBatch }) => Promise<void>;
   debounceMs?: number;
 }
 
@@ -46,6 +49,8 @@ export class RepositoryRuntime {
   readonly #readSnapshot: (rootPath: string) => Promise<OrquestaUiSnapshot>;
   readonly #readV4Operations: (rootPath: string) => Promise<V4OperationsSnapshot>;
   readonly #watchDirectory: (directory: string, onChange: () => void, onError: (error: Error) => void) => CloseableWatcher;
+  readonly #readProvisioningBatch: (rootPath: string) => Promise<ProvisioningBatch | null>;
+  readonly #provisionSetupSpecialists: RepositoryRuntimeOptions['provisionSetupSpecialists'];
   readonly #debounceMs: number;
   readonly #listeners = new Set<(snapshot: OrquestaUiSnapshot) => void>();
   readonly #runtimeApprovals = new Map<string, RuntimeApprovalRequest>();
@@ -57,11 +62,14 @@ export class RepositoryRuntime {
   #watchers: CloseableWatcher[] = [];
   #refreshTimer: ReturnType<typeof setTimeout> | null = null;
   #watchGeneration = 0;
+  #provisioning: Promise<void> | null = null;
 
   constructor(options: RepositoryRuntimeOptions = {}) {
     this.#readSnapshot = options.readSnapshot ?? ((rootPath) => readRepositorySnapshot(rootPath));
     this.#readV4Operations = options.readV4Operations ?? projectV4Operations;
     this.#watchDirectory = options.watchDirectory ?? defaultWatchDirectory;
+    this.#readProvisioningBatch = options.readProvisioningBatch ?? readProvisioningBatch;
+    this.#provisionSetupSpecialists = options.provisionSetupSpecialists;
     this.#debounceMs = options.debounceMs ?? 180;
   }
 
@@ -74,6 +82,9 @@ export class RepositoryRuntime {
     const watchGeneration = ++this.#watchGeneration;
     this.#closeWatchers();
     this.#clearRefreshTimer();
+    this.#projectId = input.projectId;
+    this.#rootPath = input.rootPath;
+    await this.provisionSetupSpecialists();
     const next = await this.#projectSnapshot(input.rootPath);
     this.#projectId = next.project.id;
     this.#snapshot = this.#withRuntimeApprovals(next);
@@ -131,6 +142,7 @@ export class RepositoryRuntime {
   async refresh(): Promise<OrquestaUiSnapshot> {
     if (!this.#rootPath || !this.#snapshot) throw new Error('No Orquesta repository is selected');
     try {
+      await this.provisionSetupSpecialists();
       this.#snapshot = this.#withRuntimeApprovals(await this.#projectSnapshot(this.#rootPath));
       if (this.#watchers.length) this.#snapshot.project.repositoryDisplayState = 'watching';
     } catch (error) {
@@ -153,8 +165,25 @@ export class RepositoryRuntime {
     this.#snapshot = null;
   }
 
+  async provisionSetupSpecialists(): Promise<void> {
+    if (!this.#rootPath || !this.#projectId || !this.#provisionSetupSpecialists) return;
+    if (this.#provisioning) return this.#provisioning;
+    this.#provisioning = (async () => {
+      const batch = await this.#readProvisioningBatch(this.#rootPath!);
+      if (!batch?.requests.some((request) => request.status === 'pending' || request.status === 'reuse_ready')) return;
+      await this.#provisionSetupSpecialists({
+        projectId: this.#projectId!,
+        rootPath: this.#rootPath!,
+        batch
+      });
+    })().finally(() => {
+      this.#provisioning = null;
+    });
+    return this.#provisioning;
+  }
+
   #startWatching(rootPath: string, watchGeneration: number): boolean {
-    for (const directory of ['state', 'vision', 'user_tasks', 'failures', 'v4']) {
+    for (const directory of ['state', 'vision', 'user_tasks', 'failures', 'v4', 'setup']) {
       try {
         this.#watchers.push(this.#watchDirectory(
           path.join(rootPath, '.orquesta', directory),

@@ -55,6 +55,35 @@ function snapshot(id: string, rootPath: string): OrquestaUiSnapshot {
 }
 
 describe('RepositoryRuntime', () => {
+  test('provisions pending setup specialists before projecting the selected repository', async () => {
+    const first = snapshot('repo-first', 'C:\\first');
+    const events: string[] = [];
+    const runtime = new RepositoryRuntime({
+      readSnapshot: vi.fn(async () => {
+        events.push('snapshot');
+        return first;
+      }),
+      readProvisioningBatch: vi.fn(async () => ({
+        provisioning_batch_id: 'PB-0123456789ab',
+        organization_revision: 2,
+        max_concurrent_provisioning: 3,
+        created_at: '2026-07-20T15:00:00.000Z',
+        requests: [{
+          agent_id: 'implementation-001', role_id: 'implementation', team_id: 'desktop-team', line_id: 'desktop-line',
+          task_id: 'T001', status: 'pending', created_at: '2026-07-20T15:00:00.000Z'
+        }]
+      })),
+      provisionSetupSpecialists: vi.fn(async () => {
+        events.push('provision');
+      }),
+      watchDirectory: vi.fn(() => ({ close: vi.fn() }))
+    });
+
+    await runtime.select({ projectId: 'repo-first', rootPath: 'C:\\first' });
+
+    expect(events).toEqual(['provision', 'snapshot']);
+  });
+
   test('marks repository state watching only after a canonical watcher starts', async () => {
     const first = snapshot('repo-first', 'C:\\first');
     const runtime = new RepositoryRuntime({
@@ -104,7 +133,7 @@ describe('RepositoryRuntime', () => {
     await runtime.select({ projectId: 'repo-second', rootPath: 'C:\\second' });
     callbacks[0](new Error('late failure from first project'));
 
-    expect(close).toHaveBeenCalledTimes(5);
+    expect(close).toHaveBeenCalledTimes(6);
     expect(runtime.getSnapshot().project).toMatchObject({
       id: 'repo-second',
       repositoryDisplayState: 'watching',
@@ -168,13 +197,14 @@ describe('RepositoryRuntime', () => {
       path.join('C:\\first', '.orquesta', 'vision'),
       path.join('C:\\first', '.orquesta', 'user_tasks'),
       path.join('C:\\first', '.orquesta', 'failures'),
-      path.join('C:\\first', '.orquesta', 'v4')
+      path.join('C:\\first', '.orquesta', 'v4'),
+      path.join('C:\\first', '.orquesta', 'setup')
     ]);
 
     await runtime.select({ projectId: 'repo-second', rootPath: 'C:\\second' });
-    expect(close).toHaveBeenCalledTimes(5);
+    expect(close).toHaveBeenCalledTimes(6);
     await runtime.stop();
-    expect(close).toHaveBeenCalledTimes(10);
+    expect(close).toHaveBeenCalledTimes(12);
   });
 
   test('debounces changes and retains the last snapshot as offline when a read fails', async () => {

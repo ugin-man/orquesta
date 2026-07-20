@@ -2,12 +2,17 @@ import type { DesktopCodexService } from './desktop-codex-service';
 import { handleCoreRequest } from './handler';
 import type { CoreDispatchRequest, CoreEvent } from './protocol';
 import { RepositoryRuntime } from './repository-runtime';
+import { provisionSpecialists } from './specialist-provisioner';
 
 export function runDesktopCore(runtime: DesktopCodexService): void {
   const parentPort = process.parentPort;
   if (!parentPort) throw new Error('Orquesta Core must run as an Electron utility process');
 
-  const repository = new RepositoryRuntime();
+  const repository = new RepositoryRuntime({
+    provisionSetupSpecialists: async ({ projectId, rootPath, batch }) => {
+      await provisionSpecialists({ root: rootPath, projectId, batch, runtime });
+    }
+  });
   const send = (event: CoreEvent) => parentPort.postMessage(event);
   runtime.subscribe((notification) => send({ type: 'runtime.notification', notification }));
   runtime.subscribeApprovals((approval) => repository.addRuntimeApproval(approval));
