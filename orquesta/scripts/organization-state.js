@@ -100,6 +100,35 @@ function newUserSupport(now) {
   };
 }
 
+function newFoundationAgent(agentId, now) {
+  if (agentId === "user-support") return newUserSupport(now);
+  const working = agentId === "orchestrator" || agentId === "orquesta-admin";
+  const names = displayName(agentId);
+  const missions = {
+    orchestrator: "Coordinate the project, compile task intent, route work, integrate evidence, and preserve the user authority boundary.",
+    "orquesta-admin": "Maintain Orquesta setup, state integrity, diagnostics, and user-facing explanations of Orquesta operation.",
+  };
+  return {
+    agent_id: agentId,
+    role: agentId,
+    role_id: agentId,
+    role_version: 1,
+    thread_id: null,
+    status: working ? "active" : "standby",
+    mission: missions[agentId],
+    organization_scope: "project",
+    lifecycle_state: "active",
+    operational_status: working ? "working" : "standby",
+    superseded_by: null,
+    migration_review_required: false,
+    display_name: names.ja,
+    display_name_ja: names.ja,
+    display_name_en: names.en,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
 function migrateLegacyOrganization({
   projectId,
   agentsState,
@@ -123,8 +152,10 @@ function migrateLegacyOrganization({
   }
 
   const migratedAgents = agentsState.agents.map((agent) => migratedAgent(agent, now));
-  if (!migratedAgents.some((agent) => agent.agent_id === "user-support")) {
-    migratedAgents.push(newUserSupport(now));
+  for (const agentId of FOUNDATION_AGENT_IDS) {
+    if (!migratedAgents.some((agent) => agent.agent_id === agentId)) {
+      migratedAgents.push(newFoundationAgent(agentId, now));
+    }
   }
   migratedAgents.sort((left, right) => compareText(left.agent_id, right.agent_id));
 

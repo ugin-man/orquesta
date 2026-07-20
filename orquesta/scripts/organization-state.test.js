@@ -107,6 +107,22 @@ test("legacy migration is idempotent and canonicalizes one role definition per r
   assert.equal(first.agentsState.agents.filter((agent) => agent.agent_id === "user-support").length, 1);
 });
 
+test("a new repository receives exactly the three unconditional foundation agents", () => {
+  const migrated = migrateLegacyOrganization({
+    projectId: "new-project",
+    agentsState: { version: 1, agents: [] },
+    sessionsState: emptySessions(),
+    tasksState: emptyTasks(),
+    now: NOW,
+  });
+
+  assert.deepEqual(
+    migrated.organizationState.agents.map((agent) => agent.agent_id).sort(),
+    ["orchestrator", "orquesta-admin", "user-support"].sort(),
+  );
+  assert.equal(migrated.organizationState.agents.some((agent) => agent.agent_id === "bootstrap-qa-001"), false);
+});
+
 test("an invalid transition writes no organization files", () => {
   const { root, stateRoot } = makeRepository();
   try {
