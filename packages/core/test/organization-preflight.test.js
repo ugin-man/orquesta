@@ -76,3 +76,20 @@ test("preflight never creates a cross-line temporary assignment", () => {
   assert.equal(decision.selected_action, "add_member");
   assert.equal(JSON.stringify(decision).includes("temporary_assignment"), false);
 });
+
+test("an independent deliverable already assigned to an active line does not propose another line", () => {
+  const existingLine = input({ work_items: [{
+    work_item_id: "work-desktop",
+    acceptance_root_id: "CM-DESKTOP",
+    deliverable_id: "desktop",
+    line_id: "desktop-line",
+    scope_boundaries: ["apps/orquesta-desktop"],
+    durable: true,
+    independent_deliverable: true
+  }] });
+
+  const decision = createOrganizationPreflight(existingLine);
+
+  assert.equal(decision.selected_action, "reuse_agent");
+  assert.equal(decision.requires_user_approval, false);
+});

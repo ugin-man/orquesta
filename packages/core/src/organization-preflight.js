@@ -33,7 +33,11 @@ function analyzeTaskStructure(input) {
   if (input && input.evidence_complete === false || items.length === 0) {
     return { mode: "deep", selected_action: "blocked_unknown", reason_codes: ["USER_DECISION_REQUIRED"] };
   }
-  if (items.some((item) => item && item.independent_deliverable && item.durable)) {
+  const activeLineIds = new Set((input?.organization?.lines || [])
+    .filter((line) => line && line.status === "active")
+    .map((line) => line.line_id));
+  if (items.some((item) => item && item.independent_deliverable && item.durable
+    && (!item.line_id || !activeLineIds.has(item.line_id)))) {
     return { mode: "deep", selected_action: "propose_line", reason_codes: ["INDEPENDENT_DELIVERABLE", "NEW_LINE_CANDIDATE"] };
   }
   const roots = new Set(items.map((item) => item && item.acceptance_root_id).filter(Boolean));
