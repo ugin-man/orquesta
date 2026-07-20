@@ -4,6 +4,8 @@
 
 **Goal:** Replace Orquesta's fixed first-run roster with a three-agent foundation, project-derived specialists, and a task-time organization preflight that changes every organizational element autonomously except creating a new production line.
 
+**Status:** Complete on 2026-07-20. Final implementation includes post-provisioning setup completion and one formal organization revision per terminal provisioning batch. Independent review accepted with zero unresolved findings.
+
 **Architecture:** Add strict durable contracts first, then implement a pure Core organization model and two-pass preflight. A thin atomic state adapter will migrate legacy projects and connect the Core decisions to the existing setup server. Desktop will consume the resulting explicit organization projection and will use the existing bundled Codex App Server adapter to provision specialist threads.
 
 **Tech Stack:** Node.js 20 CommonJS packages, JSON Schema through `@orquesta/contracts`, `node:test`, Electron 43, TypeScript 5.7, React 19, Vitest 4, existing `@orquesta/codex-adapter`.
