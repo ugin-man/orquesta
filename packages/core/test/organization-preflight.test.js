@@ -77,6 +77,26 @@ test("preflight never creates a cross-line temporary assignment", () => {
   assert.equal(JSON.stringify(decision).includes("temporary_assignment"), false);
 });
 
+test("preflight selects an autonomous permanent transfer only for a fully released agent", () => {
+  const fixture = input({
+    work_items: [{ work_item_id: "work-core", acceptance_root_id: "CM-CORE", deliverable_id: "core", line_id: "core-line", scope_boundaries: ["packages/core"], durable: true }],
+    agent_profiles: [{
+      agent_id: "implementation-001",
+      availability: "available",
+      organization_revision: 3,
+      current_task_id: null,
+      open_ownership_count: 0,
+      pending_handoff_count: 0,
+      capabilities: [{ capability_id: "code.change", status: "verified", evidence_refs: ["evidence:code"], scope: ["packages/core"] }]
+    }]
+  });
+
+  const decision = createOrganizationPreflight(fixture);
+  assert.equal(decision.selected_action, "permanent_transfer");
+  assert.equal(decision.requires_user_approval, false);
+  assert.equal(JSON.stringify(decision).includes("temporary_assignment"), false);
+});
+
 test("an independent deliverable already assigned to an active line does not propose another line", () => {
   const existingLine = input({ work_items: [{
     work_item_id: "work-desktop",

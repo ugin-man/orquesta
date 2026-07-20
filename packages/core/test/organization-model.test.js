@@ -101,3 +101,22 @@ test("canonical roles, capability providers, and decision application stay deter
 
   assert.throws(() => applyOrganizationDecision({ state, decision: decision("propose_line", { approval_state: "pending_user" }), changes: {} }), /approved/);
 });
+
+test("permanent transfer closes the old membership and adds the new membership atomically", () => {
+  const state = fixtureOrganization();
+  const transfer = decision("permanent_transfer");
+  const oldMembership = state.memberships[0];
+  const result = applyOrganizationDecision({
+    state,
+    decision: transfer,
+    changes: {
+      teams: [{ team_id: "core-implementation", line_id: "core-line", display_name: "Core implementation", purpose: "Core work", lifecycle_state: "active" }],
+      lines: [{ line_id: "core-line", display_name: "Core", goal: "Core deliverable", deliverable_ids: ["core"], completion_root_ids: ["CM-CORE"], scope: ["packages/core"], owner_agent_id: "orchestrator", dedicated_lead_agent_id: null, status: "active", approval_source: "user_approval" }],
+      replace_memberships: [{ ...oldMembership, active_to: timestamp }],
+      memberships: [{ membership_id: "membership-implementation-core", agent_id: oldMembership.agent_id, team_id: "core-implementation", position: "member", ordinal: 1, active_from: timestamp, active_to: null }]
+    }
+  });
+
+  assert.equal(result.state.memberships.find((item) => item.membership_id === oldMembership.membership_id).active_to, timestamp);
+  assert.equal(result.state.memberships.find((item) => item.membership_id === "membership-implementation-core").active_to, null);
+});

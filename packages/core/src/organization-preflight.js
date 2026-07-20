@@ -73,6 +73,13 @@ function evaluateStaffing(input, structure = analyzeTaskStructure(input)) {
     && profile.availability === "available"
     && needs.every((need) => (profile.capabilities || []).some((capability) => capability.status === "verified" && capability.capability_id === need.capability_id)));
   const sameLine = matching.filter((profile) => membershipLine(input.organization, profile.agent_id) === targetLine);
+  const transferable = matching.filter((profile) => membershipLine(input.organization, profile.agent_id) !== targetLine
+    && profile.current_task_id === null
+    && profile.open_ownership_count === 0
+    && profile.pending_handoff_count === 0);
+  if (transferable.length > 0) {
+    return { mode: "deep", selected_action: "permanent_transfer", reason_codes: ["PERMANENT_TRANSFER_SAFE"] };
+  }
   if (input.capacity_gap === "durable" && (sameLine.length > 0 || matching.length > 0)) {
     return { mode: "deep", selected_action: "add_member", reason_codes: ["CAPACITY_DURABLE"] };
   }

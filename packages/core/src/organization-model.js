@@ -80,6 +80,15 @@ function mergeRecords(current, additions, field) {
   return values.sort((left, right) => compareText(left[field], right[field]));
 }
 
+function replaceRecords(current, replacements, field) {
+  const byId = new Map(current.map((value) => [value[field], clone(value)]));
+  for (const replacement of replacements || []) {
+    if (!byId.has(replacement[field])) throw new TypeError(`organization replacement is missing ${field}`);
+    byId.set(replacement[field], clone(replacement));
+  }
+  return [...byId.values()].sort((left, right) => compareText(left[field], right[field]));
+}
+
 function applyOrganizationDecision({ state, decision, changes = {} }) {
   assertOrganizationInvariants(state);
   assertContract("organization-decision", decision);
@@ -93,14 +102,24 @@ function applyOrganizationDecision({ state, decision, changes = {} }) {
   if (decision.selected_action === "propose_line" && decision.approval_state !== "approved") {
     throw new TypeError("propose_line decision must be approved before application");
   }
+  const replacementKeys = ["replace_agents", "replace_teams", "replace_memberships", "replace_relationships", "replace_lines"];
+  if (!new Set(["permanent_transfer", "assign_lead"]).has(decision.selected_action)
+    && replacementKeys.some((key) => Array.isArray(changes[key]) && changes[key].length)) {
+    throw new TypeError("organization replacements are limited to permanent transfer and lead assignment");
+  }
+  const agents = replaceRecords(state.agents, changes.replace_agents, "agent_id");
+  const teams = replaceRecords(state.teams, changes.replace_teams, "team_id");
+  const memberships = replaceRecords(state.memberships, changes.replace_memberships, "membership_id");
+  const relationships = replaceRecords(state.relationships, changes.replace_relationships, "relationship_id");
+  const lines = replaceRecords(state.lines, changes.replace_lines, "line_id");
   const next = {
     ...clone(state),
     revision: state.revision + 1,
-    agents: mergeRecords(state.agents, changes.agents, "agent_id"),
-    teams: mergeRecords(state.teams, changes.teams, "team_id"),
-    memberships: mergeRecords(state.memberships, changes.memberships, "membership_id"),
-    relationships: mergeRecords(state.relationships, changes.relationships, "relationship_id"),
-    lines: mergeRecords(state.lines, changes.lines, "line_id"),
+    agents: mergeRecords(agents, changes.agents, "agent_id"),
+    teams: mergeRecords(teams, changes.teams, "team_id"),
+    memberships: mergeRecords(memberships, changes.memberships, "membership_id"),
+    relationships: mergeRecords(relationships, changes.relationships, "relationship_id"),
+    lines: mergeRecords(lines, changes.lines, "line_id"),
     applied_decision_ids: [...state.applied_decision_ids, decision.decision_id].sort(compareText)
   };
   assertOrganizationInvariants(next);
