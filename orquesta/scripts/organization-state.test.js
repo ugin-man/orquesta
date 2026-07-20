@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { assertContract } = require("@orquesta/contracts");
 
 const {
   commitOrganizationTransition,
@@ -78,7 +79,8 @@ test("legacy support agents are superseded by one active user-support agent with
   }
 
   assert.equal(migrated.agentsState.agents.some((agent) => agent.agent_id === "bootstrap-qa-001"), true);
-  assert.equal(migrated.organizationState.migration.status, "review_required");
+  assert.equal(migrated.agentsState.organization_migration.status, "review_required");
+  assert.doesNotThrow(() => assertContract("organization-state", migrated.organizationState));
   assert.equal(JSON.stringify(migrated).includes("temporary_assignment"), false);
 });
 
@@ -152,4 +154,3 @@ test("a valid transition commits roles, agents, and organization at one revision
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
-

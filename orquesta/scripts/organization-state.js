@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { assertContract } = require("@orquesta/contracts");
 const {
   readJsonFile,
   writeJsonAtomic,
@@ -140,13 +141,22 @@ function migrateLegacyOrganization({
     schema_version: 2,
     organization_revision: revision,
     agents: migratedAgents,
+    organization_migration: {
+      status: "review_required",
+      migrated_at: now,
+      superseded_agent_ids: ["error-concierge", "user-liaison", "vision-curator"]
+        .filter((agentId) => migratedAgents.some((agent) => agent.agent_id === agentId)),
+      unassigned_production_agent_ids: migratedAgents
+        .filter((agent) => agent.migration_review_required)
+        .map((agent) => agent.agent_id),
+      diagnostics: ["legacy_production_membership_requires_explicit_line_mapping"],
+    },
     updated_at: now,
   };
   const foundationMembers = ["orchestrator", "orquesta-admin", "user-support"]
     .filter((agentId) => migratedAgents.some((agent) => agent.agent_id === agentId));
   const nextOrganizationState = {
     schema_version: 2,
-    project_id: projectId,
     revision,
     policy: {
       organization_changes: "autonomous_except_new_line",
@@ -154,6 +164,13 @@ function migrateLegacyOrganization({
       require_executable_task_per_new_agent: true,
       require_no_file_ownership_conflict: true,
     },
+    agents: migratedAgents.map((agent) => ({
+      agent_id: agent.agent_id,
+      role_id: agent.role_id,
+      organization_scope: agent.organization_scope,
+      lifecycle_state: agent.lifecycle_state,
+      operational_status: agent.operational_status,
+    })),
     teams: [{
       team_id: "foundation",
       line_id: null,
@@ -180,17 +197,6 @@ function migrateLegacyOrganization({
       })),
     lines: [],
     applied_decision_ids: [],
-    migration: {
-      status: "review_required",
-      migrated_at: now,
-      superseded_agent_ids: ["error-concierge", "user-liaison", "vision-curator"]
-        .filter((agentId) => migratedAgents.some((agent) => agent.agent_id === agentId)),
-      unassigned_production_agent_ids: migratedAgents
-        .filter((agent) => agent.migration_review_required)
-        .map((agent) => agent.agent_id),
-      diagnostics: ["legacy_production_membership_requires_explicit_line_mapping"],
-    },
-    updated_at: now,
   };
 
   return {
@@ -232,6 +238,7 @@ function assertBundle(bundle, expectedRevision) {
   if (JSON.stringify(bundle).includes("temporary_assignment")) {
     throw new Error("temporary_assignment is forbidden");
   }
+  assertContract("organization-state", bundle.organizationState);
 }
 
 function statePaths(root) {
@@ -252,7 +259,22 @@ function readOrganizationBundle(root) {
   return {
     rolesState: readJsonFile(paths.roles, { schema_version: 1, organization_revision: 0, roles: [], updated_at: null }),
     agentsState: readJsonFile(paths.agents, { version: 1, agents: [] }),
-    organizationState: readJsonFile(paths.organization, { schema_version: 2, project_id: path.basename(root), revision: 0, teams: [], memberships: [], relationships: [], lines: [] }),
+    organizationState: readJsonFile(paths.organization, {
+      schema_version: 2,
+      revision: 0,
+      policy: {
+        organization_changes: "autonomous_except_new_line",
+        max_concurrent_provisioning: 3,
+        require_executable_task_per_new_agent: true,
+        require_no_file_ownership_conflict: true,
+      },
+      agents: [],
+      teams: [],
+      memberships: [],
+      relationships: [],
+      lines: [],
+      applied_decision_ids: [],
+    }),
     sessionsState: readJsonFile(paths.sessions, { version: 1, sessions: [] }),
     tasksState: readJsonFile(paths.tasks, { version: 1, tasks: [] }),
   };
@@ -317,4 +339,3 @@ module.exports = {
   migrateLegacyOrganization,
   readOrganizationBundle,
 };
-
