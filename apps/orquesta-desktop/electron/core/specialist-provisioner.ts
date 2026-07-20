@@ -120,6 +120,13 @@ function boundedError(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 2_000);
 }
 
+function batchIsTerminal(batch: ProvisioningBatch): boolean {
+  return batch.requests.every((request) => (
+    (request.handoff_status === 'accepted' && Boolean(request.thread_id && request.turn_id))
+    || request.status === 'provisioning_failed'
+  ));
+}
+
 function updateOrganizationRuntime(
   organizationState: JsonRecord,
   completed: ProvisioningRequest[]
@@ -225,11 +232,7 @@ function updateInitialSetupProjection(setupState: JsonRecord, batch: Provisionin
     || currentPhase === 'specialists';
   if (!setupIsActive) return setupState;
 
-  const terminal = batch.requests.every((request) => (
-    (request.handoff_status === 'accepted' && Boolean(request.thread_id && request.turn_id))
-    || request.status === 'provisioning_failed'
-  ));
-  if (!terminal) return { ...setupState, status: 'running', current_phase: 'specialists', updated_at: now };
+  if (!batchIsTerminal(batch)) return { ...setupState, status: 'running', current_phase: 'specialists', updated_at: now };
 
   const failures = batch.requests
     .filter((request) => request.status === 'provisioning_failed')
@@ -387,9 +390,9 @@ async function persistChunk(root: string, batch: ProvisioningBatch, completed: P
   }
 
   const nextAgentsState = { ...agentsState, agents, updated_at: now };
-  if (organizationState) {
+  if (organizationState && batchIsTerminal(batch)) {
     if (!rolesState) throw new Error('Explicit organization state requires roles.json');
-    const organizationUpdate = updateOrganizationRuntime(organizationState, completed);
+    const organizationUpdate = updateOrganizationRuntime(organizationState, batch.requests);
     if (organizationUpdate.changed) {
       await writeOrganizationRuntimeTransition({
         root,

@@ -361,5 +361,16 @@ describe('provisionSpecialists', () => {
       status: 'provisioning_failed',
       handoff_status: 'failed'
     });
+    await expect(json(root, '.orquesta/state/organization.json')).resolves.toMatchObject({
+      revision: 3,
+      agents: expect.arrayContaining([
+        expect.objectContaining({ agent_id: 'implementation-001', lifecycle_state: 'active' }),
+        expect.objectContaining({ agent_id: 'design-001', operational_status: 'provisioning_failed' }),
+        expect.objectContaining({ agent_id: 'test-001', lifecycle_state: 'active' }),
+        expect.objectContaining({ agent_id: 'docs-001', lifecycle_state: 'active' })
+      ])
+    });
+    await expect(json(root, '.orquesta/state/roles.json')).resolves.toMatchObject({ organization_revision: 3 });
+    await expect(json(root, '.orquesta/state/agents.json')).resolves.toMatchObject({ organization_revision: 3 });
   });
 });
