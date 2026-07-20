@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 type JsonRecord = Record<string, unknown>;
@@ -67,6 +67,15 @@ async function readJson(filePath: string, fallback: JsonRecord): Promise<JsonRec
   }
 }
 
+async function readOptionalJson(filePath: string): Promise<JsonRecord | null> {
+  try {
+    return object(JSON.parse(await readFile(filePath, 'utf8')));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
 export async function readProvisioningBatch(root: string): Promise<ProvisioningBatch | null> {
   try {
     const parsed = object(JSON.parse(await readFile(path.join(root, '.orquesta', 'setup', 'provisioning_batch.json'), 'utf8')));
@@ -109,6 +118,165 @@ function handoffText(request: ProvisioningRequest): string {
 
 function boundedError(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 2_000);
+}
+
+function updateOrganizationRuntime(
+  organizationState: JsonRecord,
+  completed: ProvisioningRequest[]
+): { state: JsonRecord; changed: boolean } {
+  const completedByAgent = new Map(completed.map((request) => [request.agent_id, request]));
+  const found = new Set<string>();
+  let changed = false;
+  const agents = rows(organizationState, 'agents').map((agent) => {
+    const agentId = String(agent.agent_id ?? '');
+    const request = completedByAgent.get(agentId);
+    if (!request) return agent;
+    found.add(agentId);
+    const accepted = request.handoff_status === 'accepted' && Boolean(request.thread_id && request.turn_id);
+    const lifecycleState = accepted ? 'active' : 'provisioning';
+    const operationalStatus = accepted ? 'standby' : 'provisioning_failed';
+    if (agent.lifecycle_state === lifecycleState && agent.operational_status === operationalStatus) return agent;
+    changed = true;
+    return {
+      ...agent,
+      lifecycle_state: lifecycleState,
+      operational_status: operationalStatus
+    };
+  });
+  const missing = [...completedByAgent.keys()].filter((agentId) => !found.has(agentId));
+  if (missing.length > 0) {
+    throw new Error(`Organization state is missing provisioned agent: ${missing.join(', ')}`);
+  }
+  return { state: {
+    ...organizationState,
+    agents
+  }, changed };
+}
+
+async function snapshotText(filePaths: string[]): Promise<Map<string, string | null>> {
+  const snapshot = new Map<string, string | null>();
+  for (const filePath of filePaths) {
+    try {
+      snapshot.set(filePath, await readFile(filePath, 'utf8'));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      snapshot.set(filePath, null);
+    }
+  }
+  return snapshot;
+}
+
+async function restoreSnapshot(snapshot: Map<string, string | null>): Promise<void> {
+  for (const [filePath, content] of snapshot) {
+    if (content === null) await rm(filePath, { force: true });
+    else await writeJsonAtomic(filePath, JSON.parse(content));
+  }
+}
+
+async function writeOrganizationRuntimeTransition(input: {
+  root: string;
+  rolesState: JsonRecord;
+  agentsState: JsonRecord;
+  organizationState: JsonRecord;
+  now: string;
+}): Promise<void> {
+  const stateRoot = path.join(input.root, '.orquesta', 'state');
+  const rolesPath = path.join(stateRoot, 'roles.json');
+  const agentsPath = path.join(stateRoot, 'agents.json');
+  const organizationPath = path.join(stateRoot, 'organization.json');
+  const transitionPath = path.join(stateRoot, 'organization-transition.json');
+  const expectedRevision = Number(input.organizationState.revision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new Error('Invalid organization revision');
+  if (input.rolesState.organization_revision !== expectedRevision || input.agentsState.organization_revision !== expectedRevision) {
+    throw new Error('Organization, role, and agent revisions diverged before provisioning transition');
+  }
+  const nextRevision = expectedRevision + 1;
+  const nextRoles = { ...input.rolesState, organization_revision: nextRevision, updated_at: input.now };
+  const nextAgents = { ...input.agentsState, organization_revision: nextRevision, updated_at: input.now };
+  const nextOrganization = { ...input.organizationState, revision: nextRevision };
+  const targetPaths = [rolesPath, agentsPath, organizationPath];
+  const snapshot = await snapshotText([...targetPaths, transitionPath]);
+  const manifest = {
+    schema_version: 1,
+    status: 'prepared',
+    transition_kind: 'provisioning_lifecycle',
+    from_revision: expectedRevision,
+    to_revision: nextRevision,
+    prepared_at: input.now,
+    committed_at: null,
+    target_paths: targetPaths.map((filePath) => path.relative(input.root, filePath).replaceAll('\\', '/'))
+  };
+  try {
+    await writeJsonAtomic(transitionPath, manifest);
+    await writeJsonAtomic(rolesPath, nextRoles);
+    await writeJsonAtomic(agentsPath, nextAgents);
+    await writeJsonAtomic(organizationPath, nextOrganization);
+    await writeJsonAtomic(transitionPath, { ...manifest, status: 'committed', committed_at: input.now });
+  } catch (error) {
+    await restoreSnapshot(snapshot);
+    throw error;
+  }
+}
+
+function updateInitialSetupProjection(setupState: JsonRecord, batch: ProvisioningBatch, now: string): JsonRecord {
+  const status = String(setupState.status ?? '');
+  const currentPhase = String(setupState.current_phase ?? '');
+  const setupIsActive = ['preparing', 'running', 'provisioning', 'in_progress', 'blocked'].includes(status)
+    || currentPhase === 'specialists';
+  if (!setupIsActive) return setupState;
+
+  const terminal = batch.requests.every((request) => (
+    (request.handoff_status === 'accepted' && Boolean(request.thread_id && request.turn_id))
+    || request.status === 'provisioning_failed'
+  ));
+  if (!terminal) return { ...setupState, status: 'running', current_phase: 'specialists', updated_at: now };
+
+  const failures = batch.requests
+    .filter((request) => request.status === 'provisioning_failed')
+    .map((request) => ({
+      agent_id: request.agent_id,
+      task_id: request.task_id,
+      error: request.error ?? 'Unknown provisioning failure'
+    }));
+  const recent = Array.isArray(setupState.recent_activities) ? setupState.recent_activities : [];
+  if (failures.length > 0) {
+    const activity = {
+      id: 'setup-specialists-blocked',
+      title: 'Specialist provisioning blocked',
+      detail: `${failures.length} specialist handoff${failures.length === 1 ? '' : 's'} failed.`,
+      status: 'failed',
+      observed_at: now
+    };
+    return {
+      ...setupState,
+      status: 'blocked',
+      current_phase: 'specialists',
+      current_activity: activity,
+      recent_activities: [...recent, activity].slice(-16),
+      next_activity: null,
+      provisioning_failures: failures,
+      updated_at: now
+    };
+  }
+
+  const activity = {
+    id: 'setup-operation-ready',
+    title: 'Operation ready',
+    detail: 'All specialist handoffs were accepted. Orquesta is ready for normal operation.',
+    status: 'complete',
+    observed_at: now
+  };
+  return {
+    ...setupState,
+    status: 'completed',
+    current_phase: 'operation',
+    current_activity: activity,
+    recent_activities: [...recent, activity].slice(-16),
+    next_activity: null,
+    provisioning_failures: [],
+    completed_at: setupState.completed_at ?? now,
+    updated_at: now
+  };
 }
 
 async function attemptRequest(
@@ -162,10 +330,16 @@ async function persistChunk(root: string, batch: ProvisioningBatch, completed: P
   const agentsPath = path.join(stateRoot, 'agents.json');
   const sessionsPath = path.join(stateRoot, 'sessions.json');
   const tasksPath = path.join(stateRoot, 'tasks.json');
+  const rolesPath = path.join(stateRoot, 'roles.json');
+  const organizationPath = path.join(stateRoot, 'organization.json');
+  const setupStatePath = path.join(setupRoot, 'setup_state.json');
   const batchPath = path.join(setupRoot, 'provisioning_batch.json');
   const agentsState = await readJson(agentsPath, { version: 1, agents: [] });
   const sessionsState = await readJson(sessionsPath, { version: 1, sessions: [] });
   const tasksState = await readJson(tasksPath, { version: 1, tasks: [] });
+  const rolesState = await readOptionalJson(rolesPath);
+  const organizationState = await readOptionalJson(organizationPath);
+  const setupState = await readOptionalJson(setupStatePath);
   let agents = rows(agentsState, 'agents');
   let sessions = rows(sessionsState, 'sessions');
   let tasks = rows(tasksState, 'tasks');
@@ -212,9 +386,29 @@ async function persistChunk(root: string, batch: ProvisioningBatch, completed: P
       : task);
   }
 
-  await writeJsonAtomic(agentsPath, { ...agentsState, agents, updated_at: now });
+  const nextAgentsState = { ...agentsState, agents, updated_at: now };
+  if (organizationState) {
+    if (!rolesState) throw new Error('Explicit organization state requires roles.json');
+    const organizationUpdate = updateOrganizationRuntime(organizationState, completed);
+    if (organizationUpdate.changed) {
+      await writeOrganizationRuntimeTransition({
+        root,
+        rolesState,
+        agentsState: nextAgentsState,
+        organizationState: organizationUpdate.state,
+        now
+      });
+    } else {
+      await writeJsonAtomic(agentsPath, nextAgentsState);
+    }
+  } else {
+    await writeJsonAtomic(agentsPath, nextAgentsState);
+  }
   await writeJsonAtomic(sessionsPath, { ...sessionsState, sessions, updated_at: now });
   await writeJsonAtomic(tasksPath, { ...tasksState, tasks, updated_at: now });
+  if (setupState) {
+    await writeJsonAtomic(setupStatePath, updateInitialSetupProjection(setupState, batch, now));
+  }
   await writeJsonAtomic(batchPath, { ...batch, updated_at: now });
 }
 
