@@ -236,6 +236,84 @@ describe('repository reader', () => {
     expect(explicit.agents.find((agent) => agent.id === 'worker')?.assignedByAgentId).toBe('idle');
   });
 
+  test('projects explicit v2 roles, teams, lines, and organization parent without name inference', () => {
+    const source = documents();
+    source.agents.agents[1] = {
+      ...source.agents.agents[1],
+      agent_id: 'alpha',
+      role: 'opaque-label',
+      display_name: 'Alpha',
+      current_task: 'T1'
+    };
+    source.tasks.tasks[0].owner_agent_id = 'alpha';
+    const snapshot = projectSnapshotFromDocuments({
+      rootPath: 'C:\\work\\sample',
+      documents: {
+        ...source,
+        roles: {
+          schema_version: 1,
+          organization_revision: 4,
+          roles: [{ role_id: 'implementation', display_names: { en: 'Implementation', ja: '実装係' } }]
+        },
+        organization: {
+          schema_version: 2,
+          revision: 4,
+          agents: [{ agent_id: 'alpha', role_id: 'implementation', organization_scope: 'line', lifecycle_state: 'active', operational_status: 'working' }],
+          teams: [{ team_id: 'desktop-implementation', line_id: 'desktop-line' }],
+          memberships: [{ membership_id: 'M1', agent_id: 'alpha', team_id: 'desktop-implementation', position: 'lead', ordinal: 1, active_to: null }],
+          relationships: [{ relationship_id: 'R1', type: 'reports_to', from_agent_id: 'alpha', to_agent_id: 'orchestrator' }],
+          lines: [{ line_id: 'desktop-line' }]
+        }
+      } as never
+    });
+
+    expect(snapshot.organization).toMatchObject({ revision: 4, source: 'explicit', diagnostics: [] });
+    expect(snapshot.agents.find((agent) => agent.id === 'alpha')).toMatchObject({
+      role: 'implementation',
+      roleId: 'implementation',
+      teamId: 'desktop-implementation',
+      lineId: 'desktop-line',
+      position: 'lead',
+      organizationParentAgentId: 'orchestrator',
+      delegatedByAgentId: 'orchestrator',
+      organizationScope: 'line',
+      lifecycleState: 'active',
+      operationalStatus: 'working',
+      organizationRevision: 4
+    });
+  });
+
+  test('marks legacy organization inference and projects real six-phase setup state', () => {
+    const snapshot = projectSnapshotFromDocuments({
+      rootPath: 'C:\\work\\sample',
+      documents: {
+        ...documents(),
+        setupState: {
+          schema_version: 1,
+          project_id: 'sample',
+          status: 'running',
+          current_phase: 'specialists',
+          phases: ['environment', 'understanding', 'foundation', 'planning', 'specialists', 'operation'],
+          created_at: '2026-07-18T10:00:00.000Z',
+          updated_at: '2026-07-18T11:00:00.000Z'
+        },
+        provisioningBatch: {
+          provisioning_batch_id: 'PB-1',
+          max_concurrent_provisioning: 3,
+          requests: [{ agent_id: 'implementation-001', task_id: 'T1', status: 'pending' }]
+        }
+      } as never
+    });
+
+    expect(snapshot.organization?.diagnostics).toContain('legacy_inferred_organization');
+    expect(snapshot.setup).toMatchObject({ status: 'running', currentPhaseId: 'specialists' });
+    expect(snapshot.setup?.phases).toHaveLength(6);
+    expect(snapshot.setup?.phases.find((phase) => phase.id === 'specialists')?.status).toBe('active');
+    expect(snapshot.setup?.technicalDetails).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'provisioning-batch', value: 'PB-1' })
+    ]));
+  });
+
   test('keeps actual model unknown unless separate evidence is recorded', () => {
     const source = documents();
     source.tasks.tasks[0].model_route = { requested_model: 'gpt-5.6-terra', actual_model: 'gpt-5.6-sol' };

@@ -34,13 +34,14 @@ export interface OrganizationProjection {
 const FOUNDATION_IDS = new Set([
   'orchestrator',
   'orquesta-admin',
+  'user-support',
   'user-liaison',
   'vision-curator',
   'error-concierge'
 ]);
 
 function signal(agent: AgentUiModel): string {
-  return `${agent.id} ${agent.role}`.toLowerCase();
+  return `${agent.roleId ?? ''} ${agent.id} ${agent.role}`.toLowerCase();
 }
 
 export function productionGroupFor(agent: AgentUiModel): ProductionGroupId {
@@ -54,10 +55,11 @@ export function productionGroupFor(agent: AgentUiModel): ProductionGroupId {
   return 'other';
 }
 
-function laneFor(agentId: string): OrganizationLane {
-  if (agentId === 'orchestrator') return 'authority';
-  if (agentId === 'orquesta-admin') return 'utility';
-  if (agentId === 'user-liaison' || agentId === 'vision-curator' || agentId === 'error-concierge') return 'support';
+function laneFor(agent: AgentUiModel): OrganizationLane {
+  const roleId = agent.roleId ?? agent.role;
+  if (agent.id === 'orchestrator' || roleId === 'orchestrator') return 'authority';
+  if (agent.id === 'orquesta-admin' || roleId === 'orquesta-admin') return 'utility';
+  if (agent.id === 'user-support' || roleId === 'user-support' || agent.id === 'user-liaison' || agent.id === 'vision-curator' || agent.id === 'error-concierge') return 'support';
   return 'production';
 }
 
@@ -77,9 +79,11 @@ export function buildOrganizationProjection(agents: AgentUiModel[]): Organizatio
   const laneByAgentId = new Map<string, OrganizationLane>();
 
   for (const item of uniqueAgents) {
-    const lane = laneFor(item.id);
+    const lane = laneFor(item);
     laneByAgentId.set(item.id, lane);
-    if (item.id === 'orchestrator') {
+    if (item.organizationParentAgentId && (item.organizationParentAgentId === 'user' || agentById.has(item.organizationParentAgentId))) {
+      parentByAgentId.set(item.id, item.organizationParentAgentId);
+    } else if (item.id === 'orchestrator') {
       parentByAgentId.set(item.id, 'user');
     } else if (item.id === 'orquesta-admin' || item.id === 'user-liaison') {
       parentByAgentId.set(item.id, 'user');

@@ -10,9 +10,13 @@ import { emptyV4OperationsSnapshot, type
   FailureUiModel,
   FailureUiResolution,
   FailureUiSeverity,
+  OrganizationUiSnapshot,
   OrquestaUiSnapshot,
   ProjectPhaseUiModel,
   RuntimeUiEvent,
+  SetupActivityUiModel,
+  SetupPhaseUiModel,
+  SetupUiSnapshot,
   TaskUiModel,
   TaskUiState
 } from '../../src/contracts/orquesta-ui';
@@ -22,6 +26,10 @@ type JsonObject = Record<string, unknown>;
 export interface RepositoryDocuments {
   agents: unknown;
   tasks: unknown;
+  roles?: unknown;
+  organization?: unknown;
+  setupState?: unknown;
+  provisioningBatch?: unknown;
   sessions?: unknown;
   questions?: unknown;
   userTasks?: unknown;
@@ -385,11 +393,51 @@ function statusLabel(status: AgentUiStatus): string {
   }
 }
 
+interface ExplicitOrganizationProjection {
+  snapshot: OrganizationUiSnapshot;
+  agentById: Map<string, JsonObject>;
+  membershipByAgentId: Map<string, JsonObject>;
+  teamById: Map<string, JsonObject>;
+  parentByAgentId: Map<string, string>;
+  roleById: Map<string, JsonObject>;
+}
+
+function projectOrganization(documents: RepositoryDocuments): ExplicitOrganizationProjection {
+  const organization = object(documents.organization);
+  if (organization && organization.schema_version === 2 && Number.isInteger(organization.revision)) {
+    const organizationAgents = rows(organization, 'agents');
+    const memberships = rows(organization, 'memberships').filter((item) => item.active_to === null || item.active_to === undefined);
+    const teams = rows(organization, 'teams');
+    const relationships = rows(organization, 'relationships').filter((item) => string(item.type) === 'reports_to');
+    return {
+      snapshot: { revision: Number(organization.revision), source: 'explicit', diagnostics: [] },
+      agentById: new Map(organizationAgents.flatMap((item) => string(item.agent_id) ? [[string(item.agent_id)!, item] as const] : [])),
+      membershipByAgentId: new Map(memberships.flatMap((item) => string(item.agent_id) ? [[string(item.agent_id)!, item] as const] : [])),
+      teamById: new Map(teams.flatMap((item) => string(item.team_id) ? [[string(item.team_id)!, item] as const] : [])),
+      parentByAgentId: new Map(relationships.flatMap((item) => {
+        const from = string(item.from_agent_id);
+        const to = string(item.to_agent_id);
+        return from && to ? [[from, to] as const] : [];
+      })),
+      roleById: new Map(rows(documents.roles, 'roles').flatMap((item) => string(item.role_id) ? [[string(item.role_id)!, item] as const] : []))
+    };
+  }
+  return {
+    snapshot: { revision: 0, source: 'legacy', diagnostics: ['legacy_inferred_organization'] },
+    agentById: new Map(),
+    membershipByAgentId: new Map(),
+    teamById: new Map(),
+    parentByAgentId: new Map(),
+    roleById: new Map()
+  };
+}
+
 function projectAgents(
   rawAgents: JsonObject[],
   rawTasks: JsonObject[],
   tasksById: Map<string, TaskUiModel>,
   sessions: JsonObject[],
+  organization: ExplicitOrganizationProjection,
   now: Date
 ): AgentUiModel[] {
   const rawTaskById = new Map(rawTasks.flatMap((item) => string(item.task_id) ? [[string(item.task_id)!, item] as const] : []));
@@ -415,10 +463,17 @@ function projectAgents(
     const currentRawTask = validDeclaredTask ?? fallbackTask;
     const currentTaskId = currentRawTask ? string(currentRawTask.task_id) : null;
     const currentTask = currentTaskId ? tasksById.get(currentTaskId) : undefined;
+    const organizationAgent = organization.agentById.get(id);
+    const membership = organization.membershipByAgentId.get(id);
+    const teamId = string(membership?.team_id) ?? string(raw.team_id);
+    const team = teamId ? organization.teamById.get(teamId) : undefined;
+    const organizationParentAgentId = organization.parentByAgentId.get(id)
+      ?? string(raw.organization_parent_agent_id)
+      ?? (id === 'orchestrator' ? 'user' : null);
     const session = sessionByAgent.get(id);
     const heartbeat = newestTimestamp([session?.last_seen, session?.updated_at, raw.last_heartbeat]);
     const fresh = isFresh(heartbeat, now) && (!session || ['active', 'working', 'ready'].includes(string(session.status) ?? ''));
-    const rawStatus = string(raw.status) ?? 'unknown';
+    const rawStatus = string(organizationAgent?.operational_status) ?? string(raw.operational_status) ?? string(raw.status) ?? 'unknown';
     let status: AgentUiStatus;
     let statusEvidence: EvidenceLevel;
 
@@ -444,7 +499,11 @@ function projectAgents(
       status = 'unknown'; statusEvidence = 'unknown';
     }
 
-    const role = string(raw.role) ?? 'specialist';
+    const roleId = string(organizationAgent?.role_id) ?? string(raw.role_id) ?? string(raw.role) ?? 'specialist';
+    const roleDefinition = organization.roleById.get(roleId);
+    const roleNames = object(roleDefinition?.display_names);
+    const role = organization.snapshot.source === 'explicit' ? roleId : string(raw.role) ?? roleId;
+    const delegatedByAgentId = string(currentRawTask?.assigned_by_agent_id) ?? string(raw.delegated_by_agent_id) ?? string(raw.assigned_by_agent_id);
     const history = rawTasks
       .filter((task) => string(task.owner_agent_id) === id && TERMINAL_TASK_STATES.has(string(task.state) ?? ''))
       .sort((left, right) => dateValue(right.accepted_at) - dateValue(left.accepted_at))
@@ -463,7 +522,7 @@ function projectAgents(
 
     return [{
       id,
-      displayName: string(raw.display_name) ?? string(raw.display_name_ja) ?? string(raw.display_name_en) ?? id,
+      displayName: string(raw.display_name) ?? string(raw.display_name_ja) ?? string(raw.display_name_en) ?? string(roleNames?.ja) ?? string(roleNames?.en) ?? id,
       role,
       roleSummary: string(raw.role_summary) ?? string(raw.mission) ?? role.replaceAll('-', ' '),
       iconKey: roleIcon(role),
@@ -472,9 +531,23 @@ function projectAgents(
       statusEvidence,
       currentTaskId: currentTask?.id ?? null,
       currentTaskTitle: currentTask?.title ?? null,
-      assignedByAgentId: id === 'orchestrator'
-        ? 'user'
-        : string(raw.organization_parent_agent_id) ?? string(raw.assigned_by_agent_id) ?? 'orchestrator',
+      assignedByAgentId: organizationParentAgentId ?? (id === 'orchestrator' ? 'user' : string(raw.assigned_by_agent_id) ?? 'orchestrator'),
+      roleId,
+      teamId,
+      lineId: string(team?.line_id) ?? string(raw.line_id),
+      position: ['member', 'lead'].includes(string(membership?.position) ?? '') ? string(membership?.position) as 'member' | 'lead' : null,
+      organizationParentAgentId,
+      delegatedByAgentId,
+      organizationScope: ['project', 'line'].includes(string(organizationAgent?.organization_scope) ?? string(raw.organization_scope) ?? '')
+        ? (string(organizationAgent?.organization_scope) ?? string(raw.organization_scope)) as 'project' | 'line'
+        : null,
+      lifecycleState: ['proposed', 'provisioning', 'active', 'retired', 'superseded'].includes(string(organizationAgent?.lifecycle_state) ?? string(raw.lifecycle_state) ?? '')
+        ? (string(organizationAgent?.lifecycle_state) ?? string(raw.lifecycle_state)) as AgentUiModel['lifecycleState']
+        : null,
+      operationalStatus: string(organizationAgent?.operational_status) ?? string(raw.operational_status),
+      organizationRevision: organization.snapshot.source === 'explicit'
+        ? organization.snapshot.revision
+        : typeof raw.organization_revision === 'number' && Number.isInteger(raw.organization_revision) ? raw.organization_revision : null,
       blockedReason: string(raw.blocked_reason) ?? (currentTask?.state === 'blocked' ? currentTask.progressSummary : null),
       waitingOn: string(raw.waiting_on),
       contextScope: string(raw.context_scope),
@@ -579,7 +652,7 @@ function projectAttention(documents: RepositoryDocuments, now: Date): AttentionU
         priority: priority(item.priority ?? item.risk),
         title: string(item.title) ?? 'Repair action',
         summary: string(item.why_this_helps) ?? steps[0] ?? 'A user-side repair is ready.',
-        sourceAgentId: string(item.source_agent_id) ?? 'error-concierge',
+        sourceAgentId: string(item.source_agent_id) ?? 'user-support',
         taskId: string(item.task_id),
         blocking: item.requires_user_approval === true,
         primaryActionLabel: 'Open',
@@ -653,6 +726,96 @@ function projectPhases(tasks: TaskUiModel[]): { phases: ProjectPhaseUiModel[]; c
   return { phases, currentPhaseId: blocked.length ? 'blocked-work' : active.length ? 'active-work' : review.length ? 'review-work' : 'completed-work' };
 }
 
+const SETUP_PHASE_LABELS: Record<string, { title: string; summary: string }> = {
+  environment: { title: 'Environment', summary: 'Confirm the selected project and required runtime.' },
+  understanding: { title: 'Understanding', summary: 'Read bounded project evidence and build the project understanding.' },
+  foundation: { title: 'Foundation', summary: 'Create the three project-wide foundation agents.' },
+  planning: { title: 'Planning', summary: 'Build the Completion Map and first executable work.' },
+  specialists: { title: 'Specialists', summary: 'Form the initial teams and provision their Codex tasks.' },
+  operation: { title: 'Operation', summary: 'Confirm operational state and open the Home screen.' }
+};
+
+function setupStatus(value: unknown): SetupUiSnapshot['status'] {
+  const normalized = string(value) ?? 'preparing';
+  if (normalized === 'completed' || normalized === 'ready' || normalized === 'ready_for_operation') return 'completed';
+  if (normalized === 'blocked' || normalized === 'failed') return 'blocked';
+  if (normalized === 'paused') return 'paused';
+  if (normalized === 'cancelled') return 'cancelled';
+  if (normalized === 'running' || normalized === 'provisioning' || normalized === 'in_progress') return 'running';
+  return 'preparing';
+}
+
+function setupActivity(value: unknown, fallbackId: string, fallbackStatus: SetupActivityUiModel['status']): SetupActivityUiModel | null {
+  const raw = object(value);
+  if (!raw) return null;
+  return {
+    id: string(raw.id) ?? string(raw.activity_id) ?? fallbackId,
+    title: string(raw.title) ?? string(raw.label) ?? fallbackId,
+    detail: string(raw.detail) ?? string(raw.summary) ?? '',
+    status: ['complete', 'active', 'waiting', 'failed'].includes(string(raw.status) ?? '')
+      ? string(raw.status) as SetupActivityUiModel['status']
+      : fallbackStatus,
+    observedAt: string(raw.observed_at) ?? string(raw.updated_at) ?? string(raw.created_at)
+  };
+}
+
+function projectSetup(documents: RepositoryDocuments, rootPath: string, now: Date): SetupUiSnapshot | null {
+  const state = object(documents.setupState);
+  if (!state) return null;
+  const status = setupStatus(state.status);
+  const rawPhases = Array.isArray(state.phases) ? state.phases : [];
+  const phaseIds = rawPhases.map((phase) => string(phase) ?? string(object(phase)?.id) ?? string(object(phase)?.phase_id)).filter((id): id is string => Boolean(id));
+  const normalizedPhaseIds = phaseIds.length === 6 ? phaseIds : Object.keys(SETUP_PHASE_LABELS);
+  const currentPhaseId = string(state.current_phase) ?? string(state.currentPhaseId) ?? null;
+  const currentIndex = currentPhaseId ? normalizedPhaseIds.indexOf(currentPhaseId) : -1;
+  const phases: SetupPhaseUiModel[] = normalizedPhaseIds.map((id, index) => {
+    const raw = object(rawPhases[index]);
+    const explicit = string(raw?.status);
+    let phaseStatus: SetupPhaseUiModel['status'];
+    if (['complete', 'completed', 'done'].includes(explicit ?? '') || status === 'completed' || (currentIndex >= 0 && index < currentIndex)) phaseStatus = 'complete';
+    else if (['blocked', 'failed'].includes(explicit ?? '') || (status === 'blocked' && id === currentPhaseId)) phaseStatus = 'blocked';
+    else if (['active', 'running', 'in_progress'].includes(explicit ?? '') || id === currentPhaseId) phaseStatus = 'active';
+    else phaseStatus = 'waiting';
+    return {
+      id,
+      order: index + 1,
+      title: string(raw?.title) ?? SETUP_PHASE_LABELS[id]?.title ?? id,
+      summary: string(raw?.summary) ?? SETUP_PHASE_LABELS[id]?.summary ?? '',
+      status: phaseStatus
+    };
+  });
+  const batch = object(documents.provisioningBatch);
+  const requests = rows(batch, 'requests');
+  const failedRequests = requests.filter((request) => string(request.status) === 'provisioning_failed');
+  const currentPhase = phases.find((phase) => phase.id === currentPhaseId) ?? null;
+  const currentActivity = setupActivity(state.current_activity, `setup-${currentPhaseId ?? 'preparing'}`, 'active')
+    ?? (currentPhase ? { id: `phase-${currentPhase.id}`, title: currentPhase.title, detail: currentPhase.summary, status: currentPhase.status === 'blocked' ? 'failed' : 'active', observedAt: string(state.updated_at) } : null);
+  const recentActivities = (Array.isArray(state.recent_activities) ? state.recent_activities : [])
+    .flatMap((activity, index) => setupActivity(activity, `recent-${index}`, 'complete') ?? [])
+    .slice(0, 16);
+  const nextPhase = phases.find((phase) => phase.status === 'waiting') ?? null;
+  const nextActivity = setupActivity(state.next_activity, 'setup-next', 'waiting')
+    ?? (nextPhase ? { id: `phase-${nextPhase.id}`, title: nextPhase.title, detail: nextPhase.summary, status: 'waiting', observedAt: null } : null);
+  return {
+    status,
+    projectTitle: string(state.project_title) ?? string(object(state.project_understanding)?.goal) ?? path.basename(rootPath),
+    projectRootLabel: path.resolve(rootPath),
+    currentPhaseId,
+    startedAt: string(state.started_at) ?? string(state.created_at) ?? string(state.updated_at) ?? now.toISOString(),
+    updatedAt: string(state.updated_at) ?? string(state.created_at) ?? now.toISOString(),
+    phases,
+    currentActivity,
+    recentActivities,
+    nextActivity,
+    technicalDetails: [
+      ...(string(batch?.provisioning_batch_id) ? [{ id: 'provisioning-batch', label: 'Provisioning batch', value: string(batch?.provisioning_batch_id)!, tone: 'neutral' as const }] : []),
+      ...(requests.length ? [{ id: 'provisioning-progress', label: 'Specialist requests', value: `${requests.filter((request) => ['accepted', 'reuse_ready'].includes(string(request.status) ?? '')).length}/${requests.length}`, tone: failedRequests.length ? 'warning' as const : 'neutral' as const }] : []),
+      ...(failedRequests.length ? [{ id: 'provisioning-failures', label: 'Provisioning failures', value: String(failedRequests.length), tone: 'danger' as const }] : [])
+    ],
+    canCancel: status === 'running' || status === 'preparing'
+  };
+}
+
 export function projectSnapshotFromDocuments({ rootPath, documents, now = new Date() }: SnapshotProjectionInput): OrquestaUiSnapshot {
   const rawAgents = rows(documents.agents, 'agents', true);
   const rawTasks = rows(documents.tasks, 'tasks', true);
@@ -665,7 +828,8 @@ export function projectSnapshotFromDocuments({ rootPath, documents, now = new Da
   }));
   const tasks = rawTasks.flatMap((task) => mapTask(task, progressedTaskIds.has(string(task.task_id) ?? '')) ?? []);
   const tasksById = new Map(tasks.map((task) => [task.id, task]));
-  const agents = projectAgents(rawAgents, rawTasks, tasksById, sessions, now);
+  const organization = projectOrganization(documents);
+  const agents = projectAgents(rawAgents, rawTasks, tasksById, sessions, organization, now);
   const attention = projectAttention(documents, now);
   const failures = projectFailures(documents);
   const recentEvents = projectEvents(documents.events, now);
@@ -701,7 +865,9 @@ export function projectSnapshotFromDocuments({ rootPath, documents, now = new Da
     failures,
     phases,
     recentEvents,
-    v4Operations: emptyV4OperationsSnapshot()
+    v4Operations: emptyV4OperationsSnapshot(),
+    organization: organization.snapshot,
+    setup: projectSetup(documents, rootPath, now)
   };
 }
 
@@ -749,6 +915,8 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
   const root = await realpath(path.resolve(rootPath));
   const agentsPath = await confinedFile(root, path.join('.orquesta', 'state', 'agents.json'));
   const tasksPath = await confinedFile(root, path.join('.orquesta', 'state', 'tasks.json'));
+  const rolesPath = await confinedFile(root, path.join('.orquesta', 'state', 'roles.json'));
+  const organizationPath = await confinedFile(root, path.join('.orquesta', 'state', 'organization.json'));
   const sessionsPath = await confinedFile(root, path.join('.orquesta', 'state', 'sessions.json'));
   const questionsPath = await confinedFile(root, path.join('.orquesta', 'vision', 'questions.json'));
   const userTasksPath = await confinedFile(root, path.join('.orquesta', 'user_tasks', 'queue.json'));
@@ -758,9 +926,13 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
   const incidentCandidatesPath = await confinedFile(root, path.join('.orquesta', 'failures', 'incident_candidates.json'));
   const incidentClustersPath = await confinedFile(root, path.join('.orquesta', 'failures', 'incident_clusters.json'));
   const eventsPath = await confinedFile(root, path.join('.orquesta', 'state', 'events.jsonl'));
-  const [agents, tasks, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, events] = await Promise.all([
+  const setupStatePath = await confinedFile(root, path.join('.orquesta', 'setup', 'setup_state.json'));
+  const provisioningBatchPath = await confinedFile(root, path.join('.orquesta', 'setup', 'provisioning_batch.json'));
+  const [agents, tasks, roles, organization, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, events] = await Promise.all([
     readBoundedJson(agentsPath, true),
     readBoundedJson(tasksPath, true),
+    readBoundedJson(rolesPath, false),
+    readBoundedJson(organizationPath, false),
     readBoundedJson(sessionsPath, false),
     readBoundedJson(questionsPath, false),
     readBoundedJson(userTasksPath, false),
@@ -769,11 +941,13 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
     readBoundedJson(incidentsPath, false),
     readBoundedJson(incidentCandidatesPath, false),
     readBoundedJson(incidentClustersPath, false),
+    readBoundedJson(setupStatePath, false),
+    readBoundedJson(provisioningBatchPath, false),
     readEvents(eventsPath)
   ]);
   return projectSnapshotFromDocuments({
     rootPath: root,
     now: options.now,
-    documents: { agents, tasks, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, events }
+    documents: { agents, tasks, roles, organization, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, events }
   });
 }

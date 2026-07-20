@@ -35,6 +35,10 @@ export type RepositoryDisplayState = 'watching' | 'snapshot' | 'offline' | 'demo
 export type FailureUiSeverity = 'low' | 'medium' | 'high' | 'blocker' | 'unknown';
 export type FailureUiResolution = 'open' | 'resolved' | 'unknown';
 export type FailureUiSource = 'incident' | 'candidate' | 'cluster';
+export type SetupUiStatus = 'preparing' | 'running' | 'paused' | 'blocked' | 'completed' | 'cancelled';
+export type SetupPhaseUiStatus = 'complete' | 'active' | 'waiting' | 'blocked';
+export type SetupActivityUiStatus = 'complete' | 'active' | 'waiting' | 'failed';
+export type SetupTechnicalDetailTone = 'neutral' | 'success' | 'warning' | 'danger';
 
 export interface RuntimeEvidenceUi {
   id: string;
@@ -63,6 +67,16 @@ export interface AgentUiModel {
   currentTaskId: string | null;
   currentTaskTitle: string | null;
   assignedByAgentId: string | null;
+  roleId?: string | null;
+  teamId?: string | null;
+  lineId?: string | null;
+  position?: 'member' | 'lead' | null;
+  organizationParentAgentId?: string | null;
+  delegatedByAgentId?: string | null;
+  organizationScope?: 'project' | 'line' | null;
+  lifecycleState?: 'proposed' | 'provisioning' | 'active' | 'retired' | 'superseded' | null;
+  operationalStatus?: string | null;
+  organizationRevision?: number | null;
   blockedReason: string | null;
   waitingOn: string | null;
   contextScope: string | null;
@@ -134,6 +148,50 @@ export interface ProjectPhaseUiModel {
   ownerAgentIds: string[];
   itemCount: number;
   completedItemCount: number;
+}
+
+export interface OrganizationUiSnapshot {
+  revision: number;
+  source: 'explicit' | 'legacy';
+  diagnostics: string[];
+}
+
+export interface SetupPhaseUiModel {
+  id: string;
+  order: number;
+  title: string;
+  summary: string;
+  status: SetupPhaseUiStatus;
+}
+
+export interface SetupActivityUiModel {
+  id: string;
+  title: string;
+  detail: string;
+  status: SetupActivityUiStatus;
+  observedAt: string | null;
+}
+
+export interface SetupTechnicalDetailUiModel {
+  id: string;
+  label: string;
+  value: string;
+  tone: SetupTechnicalDetailTone;
+}
+
+export interface SetupUiSnapshot {
+  status: SetupUiStatus;
+  projectTitle: string;
+  projectRootLabel: string;
+  currentPhaseId: string | null;
+  startedAt: string;
+  updatedAt: string;
+  phases: SetupPhaseUiModel[];
+  currentActivity: SetupActivityUiModel | null;
+  recentActivities: SetupActivityUiModel[];
+  nextActivity: SetupActivityUiModel | null;
+  technicalDetails: SetupTechnicalDetailUiModel[];
+  canCancel: boolean;
 }
 
 export interface ProjectUiModel {
@@ -471,6 +529,44 @@ export function isV4OperationsSnapshot(value: unknown): value is V4OperationsSna
     && v4Array(value.auditTimeline, 500, isTimelineItem) && reviewsValid && v4NullableText(value.limitation);
 }
 
+function isSetupActivity(value: unknown): value is SetupActivityUiModel {
+  if (!v4Record(value)) return false;
+  return v4Text(value.id, 256)
+    && v4Text(value.title, 512)
+    && v4Text(value.detail, 4_096)
+    && ['complete', 'active', 'waiting', 'failed'].includes(String(value.status))
+    && v4NullableText(value.observedAt, 256);
+}
+
+export function isSetupUiSnapshot(value: unknown): value is SetupUiSnapshot {
+  if (!v4Record(value)) return false;
+  if (!['preparing', 'running', 'paused', 'blocked', 'completed', 'cancelled'].includes(String(value.status))) return false;
+  if (!v4Text(value.projectTitle, 512) || !v4Text(value.projectRootLabel, 32_768)) return false;
+  if (!v4NullableText(value.currentPhaseId, 256) || !v4Text(value.startedAt, 256) || !v4Text(value.updatedAt, 256)) return false;
+  if (typeof value.canCancel !== 'boolean' || !Array.isArray(value.phases) || value.phases.length !== 6) return false;
+
+  const phaseIds = new Set<string>();
+  let activePhaseCount = 0;
+  for (const [index, phase] of value.phases.entries()) {
+    if (!v4Record(phase) || !v4Text(phase.id, 256) || !v4Text(phase.title, 512) || !v4Text(phase.summary, 2_048)) return false;
+    if (phase.order !== index + 1 || !['complete', 'active', 'waiting', 'blocked'].includes(String(phase.status))) return false;
+    if (phaseIds.has(String(phase.id))) return false;
+    phaseIds.add(String(phase.id));
+    if (phase.status === 'active') activePhaseCount += 1;
+  }
+
+  if (value.status === 'running' && activePhaseCount !== 1) return false;
+  if (value.currentPhaseId !== null && !phaseIds.has(String(value.currentPhaseId))) return false;
+  if (value.currentActivity !== null && !isSetupActivity(value.currentActivity)) return false;
+  if (!v4Array(value.recentActivities, 16, isSetupActivity)) return false;
+  if (value.nextActivity !== null && !isSetupActivity(value.nextActivity)) return false;
+  return v4Array(value.technicalDetails, 32, (detail) => v4Record(detail)
+    && v4Text(detail.id, 256)
+    && v4Text(detail.label, 512)
+    && v4Text(detail.value, 32_768)
+    && ['neutral', 'success', 'warning', 'danger'].includes(String(detail.tone)));
+}
+
 export interface OrquestaUiSnapshot {
   project: ProjectUiModel;
   agents: AgentUiModel[];
@@ -480,4 +576,6 @@ export interface OrquestaUiSnapshot {
   phases: ProjectPhaseUiModel[];
   recentEvents: RuntimeUiEvent[];
   v4Operations: V4OperationsSnapshot;
+  organization?: OrganizationUiSnapshot;
+  setup?: SetupUiSnapshot | null;
 }
