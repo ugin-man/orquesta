@@ -13,9 +13,18 @@ const {
   createExecutionPlan,
   escalateExecutionPlan
 } = require("./execution-policy");
+const {
+  ORGANIZATION_POLICY,
+  createOrganizationState,
+  canonicalRoleId,
+  assertOrganizationInvariants,
+  applyOrganizationDecision,
+  agentCapabilityProviders
+} = require("./organization-model");
 
 module.exports = {
   COMMAND_NAMES, REQUIRED_PACKET_FIELDS, createCommandBoundary, createInstallApprovalTarget, createPhaseReview, createProjectors, createReviewPacket, createTaskIntent,
   assessExecutionBudget, decidePhaseReview, EXECUTION_BUDGETS, EXECUTION_LANES, createExecutionPlan, escalateExecutionPlan,
+  ORGANIZATION_POLICY, createOrganizationState, canonicalRoleId, assertOrganizationInvariants, applyOrganizationDecision, agentCapabilityProviders,
   initialProjection, projectionHash, replayProjection,
 };
