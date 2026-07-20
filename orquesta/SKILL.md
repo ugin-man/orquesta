@@ -50,7 +50,7 @@ The current Workbench remains a Phase 1 review surface. Phase 2A and 2B add no d
 When Orquesta is invoked in a repository:
 
 1. Check for `.orquesta/CURRENT_ORCHESTRA.md`.
-2. If it is missing, use `references/initial-setup.md`: make the calling chat the orchestrator foundation agent, rename it to `★ Orquesta 統括` and pin it when thread tools are available, create the state skeleton, create or reuse the foundation sessions, start or explain the dashboard at `http://127.0.0.1:4177/`, and present setup option packs before creating production specialists.
+2. If it is missing, use `references/initial-setup.md`: make the calling chat the orchestrator, create or reuse the three-agent foundation, collect the project folder, name, and description, then derive the first executable work and its specialists. Setup questions are optional and option packs are not a first-run gate.
 3. Check `.orquesta/setup/options.json` for bootstrap status. Resume incomplete setup from this file instead of creating duplicate foundation agents.
 4. Check `.orquesta/state/agents.json`, `sessions.json`, `tasks.json`, `directives.json`, and `events.jsonl`.
 5. If missing, create them from the schema in `references/state-schema.md`.
@@ -59,21 +59,17 @@ When Orquesta is invoked in a repository:
 8. Read only the Orquesta state and the task-relevant project docs. Do not load every specialist document into the orchestrator context.
 9. Use `references/orchestration-protocol.md` for the workflow.
 10. Use `references/agent-contract.md` when appointing or steering a specialist thread.
-11. Use `references/vision-alignment.md` when user taste, implicit vision, art direction, story tone, game feel, or creative ambiguity affects the work.
-12. Use `references/failure-concierge.md` when command failures, permission errors, server startup failures, missing local dependencies, repeated retries, or quality-lowering fallbacks may require user-side action.
-13. Use `references/user-liaison.md` when accepted user-facing asks need batching, sequencing, dashboard visibility, or a user-side task queue.
+11. Use `references/user-support.md` when user taste, questions, tacit knowledge, repeated failures, approval waits, or user-side work need one coordinated route. The older vision, failure-concierge, and liaison documents are migration references only.
 
 ## Bootstrap Foundation
 
 The first Orquesta invocation in a project should create this foundation before production planning:
 
 - Current calling chat: `orchestrator`, title `★ Orquesta 統括`, pinned when possible.
-- `user-liaison`: user-facing work queue and user-side ask coordination.
-- `vision-curator`: event-driven vision question curation and answer interpretation.
-- `error-concierge`: event-driven failure clustering and repair-card preparation.
+- `user-support`: event-driven question curation, answer interpretation, failure triage, and user-side task coordination.
 - `orquesta-admin`: Orquesta setup, dashboard handoff, option packs, and configuration.
 
-These foundation roles are allowed to exist immediately because they protect the operating system itself. Production specialists should still be created or awakened only after the user's actual task is classified.
+These three foundation agents are registered immediately. Production specialists are derived from the first executable work; do not create a minimum or fixed roster. `bootstrap-qa` is a normal conditional specialist, never a foundation agent.
 
 Use ASCII-only machine IDs for foundation agents. Star marks and Japanese labels belong in human-visible thread titles and dashboard display names only, not in JSON keys, file names, or agent IDs. Existing projects that already use `*-001` foundation IDs may keep them until a deliberate migration updates state and dashboard code together.
 
@@ -94,13 +90,13 @@ Every new Orquesta project should include `orquesta-admin` during bootstrap.
 
 This role manages Orquesta itself: first-run setup, dashboard handoff, option-pack explanation, feature toggles, and Orquesta tuning. It is not the production orchestrator and should not own product implementation, story, art, QA, or raw user answer interpretation.
 
-The first setup response should include:
+The first setup experience should include:
 - what Orquesta can do in the project
 - the dashboard URL
-- enabled and available option packs
-- the next setup choice the user can make
-- a short first-run sequence: describe the project, answer generated questions, then let Orquesta prepare the initial map and team
-- a clear instruction that the dashboard's first setup panel is where the project title and project description are entered
+- the selected project folder, project name, and project description
+- zero to three optional clarification questions only when the evidence is insufficient
+- a six-phase progress view backed by real setup state
+- the generated first executable work, initial organization, and provisioning result
 
 ## Direct User Conversations
 
@@ -118,40 +114,37 @@ When a specialist receives direct user guidance:
 
 Orquesta treats the user's unspoken creative vision as project state. Use the Vision Alignment Layer when the work depends on taste, aesthetics, game feel, tone, world fantasy, or repeated "not like that" feedback.
 
-Do not keep a question-curation agent running continuously. Specialists may propose questions as they work, but `vision-curator` wakes only on triggers such as project kickoff, 10 or more uncurated questions, a high-priority question, a user request to answer questions, or a major direction change.
+Do not keep the support agent running continuously. Specialists may propose questions as they work, but `user-support` wakes only on meaningful question, repeated-failure, or user-task triggers.
 
 The responsibility split is:
 - Specialist threads propose domain-specific questions.
-- `vision-curator` merges, prioritizes, rewrites, and interprets question batches.
+- `user-support` merges, prioritizes, rewrites, and interprets question batches.
 - The orchestrator accepts or rejects the curator's proposed updates, but does not independently interpret raw user answers into direction.
 - Specialist threads read only adopted vision documents relevant to their role.
 
 Store this layer under `.orquesta/vision/`. Raw answers are not adopted direction until the orchestrator reflects them into `profile.md`, `anti_vision.md`, `decisions.md`, or a specialist vision file.
 
-Treat user answers as thinking seeds, not commands. Questions exist to help the user notice and refine ideas, including ideas they had not consciously formed yet. Unless the user explicitly marks an answer as a hard requirement, `vision-curator` should turn answers into discussion seeds, strong signals, candidate rules, counterproposals, and review-needed items before the orchestrator adopts anything as implementation direction.
+Treat user answers as thinking seeds, not commands. Unless the user explicitly marks an answer as a hard requirement, `user-support` turns answers into discussion seeds, strong signals, candidate rules, counterproposals, and review-needed items before the orchestrator adopts anything as implementation direction.
 
 ## Failure Concierge
 
 Orquesta treats repeated tool, environment, permission, and local runtime failures as project state, not disposable terminal noise. Use the Failure Concierge Layer when Codex hits a failure that might be solved faster or better by user-side action.
 
-Do not keep an error-monitoring agent running continuously. Specialists and the orchestrator record incidents as they happen, but `error-concierge` wakes only on triggers such as repeated equivalent failures, permission or admin-rights denial, missing PATH or dependency setup, local server startup failure, a blocked task caused by environment state, or a proposed fallback that would reduce output quality.
+Do not keep an error-monitoring agent running continuously. Specialists and the orchestrator record incidents as they happen, but `user-support` wakes when repeated equivalent failures, environment blockers, or a quality-lowering fallback may need user knowledge or action.
 
 The responsibility split is:
 - Specialist threads and the orchestrator record concise failure incidents with evidence and attempted fixes.
-- `error-concierge` clusters incidents, distinguishes Codex-fixable work from user-actionable environment work, and prepares repair cards for the user.
+- `user-support` clusters incidents, distinguishes Codex-fixable work from user-actionable environment work, and prepares repair cards for the user.
 - The orchestrator accepts or rejects concierge reports, then routes Codex-fixable work to the right specialist or exposes user-actionable work in the dashboard/user task queue.
 - Specialists should not silently keep retrying the same class of failure after a concierge wake trigger is met.
 
 Store this layer under `.orquesta/failures/`. Raw logs stay as incidents; user-facing repair proposals belong in `user_actions.json` and concierge reports.
 
-## User Liaison
+## User Support
 
-Orquesta treats user-side work as a first-class queue. Use `user-liaison` when the orchestrator needs to ask the user for action, approval, clarification, prioritization, or a machine-side repair step.
+Orquesta treats user-side work as a first-class queue. Use `user-support` when the orchestrator needs to ask the user for action, approval, clarification, prioritization, or a machine-side repair step.
 
-`user-liaison` is the user-facing desk for Orquesta. It coordinates user-visible tasks from the orchestrator, `vision-curator`, and `error-concierge`, but it must not replace their specialist judgment:
-- `vision-curator` owns raw answer interpretation and creative/taste synthesis.
-- `error-concierge` owns failure clustering and repair-card proposal.
-- `user-liaison` owns making accepted user-side work visible, sequenced, humane, and actionable.
+`user-support` is the single user-facing support desk. It owns question curation, raw answer interpretation, failure clustering, repair-card proposals, and making accepted user-side work visible and actionable. These responsibilities are one long-lived role, not three separately generated agents.
 
 When a specialist is blocked by a Codex approval prompt, permission request, scope confirmation, destructive-action confirmation, or user-direction decision, create or update a `.orquesta/user_tasks/queue.json` task with `source: "approval_wait"`, an `approval_type`, the waiting `source_agent_id`, the blocked task id in `source_ids`, the requested user action, and the resume instruction. Also mark the blocked Orquesta task with a user approval blocker such as `blocked_by: ["user_approval_required"]`. Do not let approval waits live only inside a specialist chat.
 
@@ -170,7 +163,7 @@ Before creating or steering a specialist thread, define:
 - `done_signal`
 - `requires_user_approval`
 
-If an existing specialist can do the work, reuse that thread. Create a new thread only when the role, context scope, or ownership boundary truly differs.
+If an existing specialist can do the work, reuse that thread. The organization preflight may autonomously split a task, add a member, add a role, assign a lead, or permanently transfer an agent between existing lines. Creating a new line is the only Orquesta organization change that requires product-level user approval. Codex harness approvals remain separate and are never bypassed. Temporary cross-line assignments are forbidden.
 
 ## State Rule
 

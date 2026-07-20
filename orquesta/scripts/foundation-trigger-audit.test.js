@@ -20,14 +20,14 @@ function writeBaseState(root, candidates, failureState = {}) {
     version: 1,
     agents: [
       {
-        agent_id: "vision-curator",
-        role: "vision-curator",
+        agent_id: "user-support",
+        role: "user-support",
         status: "standby",
         last_heartbeat: NOW.toISOString()
       },
       {
-        agent_id: "error-concierge",
-        role: "error-concierge",
+        agent_id: "orquesta-admin",
+        role: "orquesta-admin",
         status: "standby",
         last_heartbeat: NOW.toISOString()
       }
@@ -83,7 +83,7 @@ function runCase(candidates) {
   try {
     writeBaseState(root, candidates);
     const audit = buildAudit(root, NOW);
-    return audit.foundation_agents.find((agent) => agent.agent_id === "vision-curator");
+    return audit.foundation_agents.find((agent) => agent.agent_id === "user-support");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -94,7 +94,7 @@ function runFailureCase(failureState) {
   try {
     writeBaseState(root, [], failureState);
     const audit = buildAudit(root, NOW);
-    return audit.foundation_agents.find((agent) => agent.agent_id === "error-concierge");
+    return audit.foundation_agents.find((agent) => agent.agent_id === "user-support");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -114,7 +114,7 @@ function incident(id, status) {
   const curator = runCase([candidate("QC-HIGH", { priority: "high" })]);
   assert.strictEqual(curator.trigger_status, "trigger_ready");
   assert(curator.reason_codes.includes("pending_high_priority_question_candidate"));
-  assert.strictEqual(curator.recommended_action, "wake_vision_curator_for_question_candidate_batch_or_record_deferred_wake_reason");
+  assert.strictEqual(curator.recommended_action, "wake_user_support_for_combined_triage_or_record_deferred_wake_reason");
 }
 
 {
@@ -135,7 +135,19 @@ function incident(id, status) {
   assert.strictEqual(curator.trigger_status, "wake_needed");
   assert.strictEqual(curator.wake_required, true);
   assert(curator.reason_codes.includes("question_candidate_blocks_acceptance"));
-  assert.strictEqual(curator.recommended_action, "hold_affected_acceptance_and_wake_vision_curator_for_blocking_question_candidate");
+  assert.strictEqual(curator.recommended_action, "hold_affected_acceptance_and_wake_user_support");
+}
+
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-trigger-foundation-audit-"));
+  try {
+    writeBaseState(root, []);
+    const audit = buildAudit(root, NOW);
+    assert.deepStrictEqual(audit.foundation_agents.map((agent) => agent.agent_id), ["user-support", "orquesta-admin"]);
+    assert.strictEqual(audit.foundation_agents.some((agent) => ["vision-curator", "error-concierge", "user-liaison"].includes(agent.agent_id)), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 }
 
 {
@@ -145,7 +157,7 @@ function incident(id, status) {
   ]);
   assert.strictEqual(curator.trigger_status, "clear");
   assert.deepStrictEqual(curator.reason_codes, []);
-  assert.strictEqual(curator.recommended_action, "no_wake_required_batch_candidates_until_threshold_or_user_request");
+  assert.strictEqual(curator.recommended_action, "no_wake_required_batch_support_events_until_threshold_or_user_request");
   const summary = curator.evidence.find((item) => item.type === "question_candidate_wake_summary");
   assert.strictEqual(summary.pending_count, 1);
   const excerpt = curator.evidence.find((item) => item.type === "question_candidate");

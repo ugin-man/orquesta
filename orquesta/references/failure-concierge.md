@@ -1,5 +1,7 @@
 # Failure Concierge Layer
 
+Migration note: the behaviors in this document are now owned by `user-support`. See `user-support.md`. Keep this file only so older reports and state references remain understandable; do not generate an `error-concierge` agent for new projects.
+
 ## Purpose
 
 Prevent repeated Codex retries, hidden local-environment blockers, and quality-lowering fallbacks from becoming invisible project drag. The Failure Concierge Layer turns tool failures into inspectable incidents and, when useful, user-actionable repair cards.

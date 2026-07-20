@@ -17,6 +17,17 @@ const {
 const { reviewTaskControl } = require("./scripts/control-audit");
 const { createEmptyCapacityLedger } = require("./scripts/capacity-gate");
 const { defaultModelPolicy } = require("./scripts/model-policy");
+const { createAdaptiveSpecialistPlan } = require("@orquesta/core");
+const {
+  createInitialRosterTransition,
+  createSetupStateBundle,
+  prepareProvisioningBatch
+} = require("./scripts/adaptive-setup-state");
+const {
+  commitOrganizationTransition,
+  migrateLegacyOrganization,
+  readOrganizationBundle
+} = require("./scripts/organization-state");
 
 const root = path.resolve(__dirname, "..");
 const dashboardRoot = path.join(__dirname, "assets", "dashboard");
@@ -320,7 +331,7 @@ function buildHandoffPrompt({ task, agent, candidate, productionStart, mode }) {
     `At the end of your report, include a structured \`question_candidates\` JSON block.`,
     `Submit 0-3 useful candidates that would clarify user intent, future plans, quality risk, design direction, or task scope.`,
     `If there are no useful candidates, set \`status: "none"\`, include a valid \`none_reason\`, and add a one-sentence \`none_rationale\`.`,
-    `Do not ask the user directly; vision-curator will curate raw candidates before any user-facing question is created.`,
+    `Do not ask the user directly; user-support will curate raw candidates before any user-facing question is created.`,
     ``,
     `## Current Artifacts`,
     ...(artifacts.length ? artifacts.map((item) => `- ${item}`) : ["- None yet."]),
@@ -415,13 +426,13 @@ function defaultSetupWizard() {
     steps: [
       { step_id: "welcome", title: "ようこそOrquestaへ", summary: "Orquestaが何をするか、どの順番で進むかをユーザーに説明する。", status: "active" },
       { step_id: "project_intake", title: "プロジェクト説明", summary: "ユーザーが作りたいものを説明する。", status: "queued" },
-      { step_id: "question_gate", title: "必須質問への回答", summary: "必要質問に答えて方向性を固める。", status: "queued" },
+      { step_id: "question_gate", title: "任意の補完質問", summary: "必要なら質問に答える。飛ばしてもセットアップは続行できる。", status: "queued" },
       { step_id: "auto_finalize", title: "初期セットアップ自動完了", summary: "Orquestaが初期完成マップ、専門AI候補、開発ステップを自動で用意する。", status: "queued" },
       { step_id: "operation_ready", title: "運用開始", summary: "ユーザーは必要に応じて体制や進め方を後から調整できる。", status: "queued" }
     ],
     gates: {
       project_intake_required: true,
-      required_questions_must_be_answered: true,
+      required_questions_must_be_answered: false,
       completion_map_requires_user_approval: false,
       completion_map_approved: false,
       setup_autopilot_enabled: true
@@ -529,238 +540,232 @@ function buildSetupQuestions(intake, now) {
       question: "このプロジェクトで絶対に避けたい挙動、見た目、運用方針は何ですか？",
       why_it_matters: "AIが勝手に寄せがちな方向を事前に止めるため。",
       options: []
-    },
-    {
-      scope: "workflow",
-      priority: "medium",
-      question: "作業を進めるとき、ユーザー確認が必須なタイミングはどこですか？",
-      why_it_matters: "完全自動ではなく、ユーザーと一丸で進めるOrquestaらしい停止点を決めるため。",
-      options: []
-    },
-    {
-      scope: "specialists",
-      priority: "medium",
-      question: "最初から用意したい専門AIの種類はありますか？また、まだ作らない方がいい専門AIはありますか？",
-      why_it_matters: "完成マップ承認後の専門AI編成を過不足なく行うため。",
-      options: []
-    },
-    {
-      scope: "quality",
-      priority: "medium",
-      question: "初回セットアップが成功したと判断するためのスモークテストは何を確認すべきですか？",
-      why_it_matters: "導入直後に壊れていることへユーザーが後から気づく状態を避けるため。",
-      options: []
     }
   ].map((question, index) => ({
     ...question,
-    source_agent_id: "vision-curator",
+    source_agent_id: "user-support",
     task_id: "SETUP-QUESTION-GATE",
     status: "ready",
     answer_format: "free_text",
     created_at: now,
-    curated_by: "vision-curator",
+    curated_by: "user-support",
     setup_gate: true,
-    required_for_setup: true
+    required_for_setup: false
   })); 
 }
 
-function candidateFromAgent(agents, candidate) {
-  const agent = agents.find((item) => item.agent_id === candidate.agent_id);
+const ROLE_INFERENCE_RULES = Object.freeze([
+  { role_id: "implementation", pattern: /(app|web|desktop|electron|software|system|code|game|開発|実装|アプリ|ゲーム|システム|ツール)/iu },
+  { role_id: "design", pattern: /(ui|ux|design|interface|visual|デザイン|画面|外観|設計)/iu },
+  { role_id: "research", pattern: /(research|investigat|analysis|audit|調査|研究|分析|監査)/iu },
+  { role_id: "writing", pattern: /(novel|story|book|article|document|writing|小説|物語|記事|文書|執筆)/iu },
+  { role_id: "testing", pattern: /(test|quality|qa|verify|validation|検証|テスト|品質)/iu }
+]);
+
+function inferInitialRoleIds(intake) {
+  const text = `${intake.project_title || ""}\n${intake.project_description || ""}`;
+  const matches = ROLE_INFERENCE_RULES.filter((rule) => rule.pattern.test(text)).map((rule) => rule.role_id);
+  return matches.length ? [...new Set(matches)] : ["generalist"];
+}
+
+function setupRoleDefinition(roleId) {
+  const names = {
+    implementation: { ja: "実装係", en: "Implementation" },
+    design: { ja: "設計係", en: "Design" },
+    research: { ja: "調査係", en: "Research" },
+    writing: { ja: "文書係", en: "Writing" },
+    testing: { ja: "検証係", en: "Testing" },
+    generalist: { ja: "専門係", en: "Generalist" }
+  };
   return {
-    candidate_id: candidate.candidate_id,
-    agent_id: candidate.agent_id,
-    display_name: agent?.display_name_ja || agent?.display_name || candidate.display_name,
-    role: agent?.role || candidate.role,
-    status: "proposed",
-    reuse_existing_agent: Boolean(agent),
-    thread_id: agent?.thread_id || null,
-    priority: candidate.priority,
-    reason: candidate.reason,
-    completion_items: candidate.completion_items,
-    proposed_scope: candidate.proposed_scope,
-    required_reading: candidate.required_reading,
-    excluded_context: candidate.excluded_context,
-    user_decision: null,
-    user_note: null,
-    decided_at: null
+    role_id: roleId,
+    version: 1,
+    display_names: names[roleId] || { ja: roleId, en: roleId },
+    aliases: [],
+    capability_ids: [`role:${roleId}`],
+    default_contract_template: `${roleId}-v1`,
+    lifecycle_state: "active"
   };
 }
 
-function buildSpecialistCandidates(agents) {
-  return [
-    candidateFromAgent(agents, {
-      candidate_id: "SP001",
-      agent_id: "implementation-001",
-      display_name: "実装係",
-      role: "implementation",
-      priority: "high",
-      reason: "ダッシュボード、API、状態ファイル、初回セットアップ導線の実装を安全に進めるため。",
-      completion_items: ["CM002.1", "CM002.2", "CM002.3", "CM002.4", "CM003.2", "CM005.1"],
-      proposed_scope: "Orquestaのコード実装、状態保存、API追加、既存パターンに沿った修正。",
-      required_reading: ["orquesta/SKILL.md", "orquesta/references/orchestration-protocol.md", "orquesta/references/state-schema.md", "task-owned files"],
-      excluded_context: ["専門AI向け能力ドキュメントの研究", "旧ゲーム試作のアーカイブ"]
-    }),
-    candidateFromAgent(agents, {
-      candidate_id: "SP002",
-      agent_id: "dashboard-ux-001",
-      display_name: "ダッシュボード係",
-      role: "dashboard-ux",
-      priority: "high",
-      reason: "ユーザーが初回セットアップ、完成マップ、専門AI候補、稼働状況を直感的に確認できるようにするため。",
-      completion_items: ["CM001.2", "CM002.1", "CM003.2", "CM005.2"],
-      proposed_scope: "Dashboard UI、Team Visualizer、Setup/User Tasksの表示、ブラウザ上の使いやすさ。",
-      required_reading: [".orquesta/vision/specialists/dashboard.md", "orquesta/assets/dashboard/app.js", "orquesta/assets/dashboard/styles.css"],
-      excluded_context: ["バックエンド実装の全体", "専門AI向け能力ドキュメント研究"]
-    }),
-    candidateFromAgent(agents, {
-      candidate_id: "SP003",
-      agent_id: "bootstrap-qa-001",
-      display_name: "初期設定検証係",
-      role: "bootstrap-qa",
-      priority: "high",
-      reason: "ユーザー本人が初回セットアップ成功を実行確認できるよう、スモークテストと再現手順を固めるため。",
-      completion_items: ["CM005.3", "CM005.4"],
-      proposed_scope: "GitHubインストール、dashboard port確認、/api/state所有確認、非英語テキストの文字化け検査。",
-      required_reading: [".orquesta/vision/specialists/bootstrap.md", "orquesta/references/initial-setup.md", "docs/testing/github-install-bootstrap-smoke-test.md"],
-      excluded_context: ["プロダクト機能の実装", "専門AI向け能力ドキュメント研究"]
-    }),
-    candidateFromAgent(agents, {
-      candidate_id: "SP004",
-      agent_id: "protocol-architect-001",
-      display_name: "設計規約係",
-      role: "protocol-architect",
-      priority: "medium",
-      reason: "専門AI編成、承認ゲート、報告同期、回答採用クッションをルールとして破綻しない形に保つため。",
-      completion_items: ["CM003.3", "CM004.1", "CM004.2", "CM004.3"],
-      proposed_scope: "Orquesta運用プロトコル、state schema、専門AI契約、承認フロー。",
-      required_reading: [".orquesta/vision/specialists/protocol.md", "orquesta/SKILL.md", "orquesta/references/initial-setup.md"],
-      excluded_context: ["実装詳細全体", "専門AI向け能力ドキュメント研究"]
-    }),
-    candidateFromAgent(agents, {
-      candidate_id: "SP005",
-      agent_id: "docs-release-001",
-      display_name: "文書公開係",
-      role: "docs-release",
-      priority: "medium",
-      reason: "GitHub公開、インストール手順、READMEの取っつきにくさを下げるため。",
-      completion_items: ["CM002.1", "CM005.3"],
-      proposed_scope: "README、インストール説明、公開向け説明、初回セットアップの文書化。",
-      required_reading: [".orquesta/vision/specialists/docs.md", "README.md", "docs/install-from-github.md"],
-      excluded_context: ["実装コードの広範な変更", "専門AI向け能力ドキュメント研究"]
-    })
-  ];
+function buildProjectUnderstanding(intake, completionMap) {
+  const tasks = completionMap.tasks || [];
+  const deliverables = [...new Set(tasks.map((task) => task.deliverable_id).filter(Boolean))]
+    .map((deliverableId) => ({
+      deliverable_id: deliverableId,
+      name: deliverableId,
+      completion_evidence: tasks.filter((task) => task.deliverable_id === deliverableId).map((task) => task.acceptance_root_id)
+    }));
+  return {
+    project_id: path.basename(root),
+    goal: String(intake.project_description || intake.project_title || "Orquesta project").trim(),
+    stage: "initial-setup",
+    deliverables,
+    stack: [],
+    constraints: [],
+    existing_assets: [],
+    unknowns: [],
+    evidence: [{ path: ".orquesta/setup/project_intake.json", kind: "user_input" }],
+    confidence: 0.65
+  };
 }
 
 function buildAutopilotCompletionMap(intake, now) {
   const projectTitle = String(intake.project_title || "Orquesta project").trim() || "Orquesta project";
+  const roles = inferInitialRoleIds(intake);
+  const tasks = roles.map((roleId, index) => ({
+    task_id: `SETUP-${roleId.toUpperCase()}-${String(index + 1).padStart(3, "0")}`,
+    title: `${projectTitle}: ${roleId} first executable work`,
+    status: "ready",
+    depends_on: [],
+    role_id: roleId,
+    line_id: "primary-line",
+    team_id: `primary-${roleId}`,
+    deliverable_id: "primary-deliverable",
+    acceptance_root_id: `CM-PRIMARY-${String(index + 1).padStart(3, "0")}`,
+    scope_boundaries: ["."],
+    durable: true,
+    independent_deliverable: false,
+    activation_condition: null
+  }));
   return {
-    version: 1,
+    version: 2,
+    revision: 1,
     project_title: projectTitle,
     status: "in_progress",
     updated_at: now,
-    source: "setup_autopilot",
-    definition_of_done: "The project reaches the initial outcome described by the user, with Orquesta able to coordinate specialist work through dashboard-visible state, reports, and user-adjustable development steps.",
-    revision_policy: {
-      owner_agent_id: "orchestrator",
-      review_triggers: [
-        "major_direction_change",
-        "user_changes_project_goal",
-        "repeated_failure",
-        "completion_item_no_longer_matches_project",
-        "new_required_surface_discovered"
-      ],
-      rule: "This map is an initial operating contract. It may be revised after setup when the user clarifies priorities or Orquesta discovers a better production shape."
-    },
+    source: "setup_autopilot_project_intake",
+    definition_of_done: String(intake.project_description || `Complete ${projectTitle}`).trim(),
+    tasks,
     phases: [
-      {
-        phase_id: "CM001",
-        title: "初期理解",
-        summary: "ユーザーのプロジェクト説明と必須質問への回答をもとに、Orquestaの初期方針を作る。",
-        status: "done",
-        owner_agent_id: "vision-curator",
-        items: [
-          { item_id: "CM001.1", title: "プロジェクト説明を保存する", status: "done" },
-          { item_id: "CM001.2", title: "必須質問への回答を保存する", status: "done" }
-        ]
-      },
-      {
-        phase_id: "CM002",
-        title: "初期制作体制",
-        summary: "完成までの大きな作業段階と、必要な専門AI候補をOrquestaが自動で用意する。",
-        status: "in_progress",
-        owner_agent_id: "orchestrator",
-        items: [
-          { item_id: "CM002.1", title: "初期完成マップを用意する", status: "done" },
-          { item_id: "CM002.2", title: "初期専門AI候補を用意する", status: "done" },
-          { item_id: "CM002.3", title: "最初の開発ステップを見える状態にする", status: "in_progress" }
-        ]
-      },
-      {
-        phase_id: "CM003",
-        title: "運用と調整",
-        summary: "セットアップ後、ユーザーの追加希望や実作業の結果に合わせて体制と完成マップを調整する。",
-        status: "queued",
-        owner_agent_id: "orchestrator",
-        items: [
-          { item_id: "CM003.1", title: "ユーザーの調整希望を受け付ける", status: "queued" },
-          { item_id: "CM003.2", title: "専門AIへの作業依頼と完了報告を回す", status: "queued" }
-        ]
-      }
+      { phase_id: "CM001", title: "初期理解", summary: "プロジェクト入力から最初の実行可能作業を作る。", status: "done", owner_agent_id: "orchestrator", items: [] },
+      { phase_id: "CM002", title: "初期制作体制", summary: "必要な専門家だけを生成して最初の作業へ接続する。", status: "in_progress", owner_agent_id: "orchestrator", items: tasks.map((task) => ({ item_id: task.task_id, title: task.title, status: "in_progress" })) },
+      { phase_id: "CM003", title: "運用と調整", summary: "作業結果に合わせて組織を調整する。", status: "queued", owner_agent_id: "orchestrator", items: [] }
     ]
   };
 }
 
-function ensureAutopilotCompletionMap(intake, now) {
-  const current = readJsonFrom(projectRoot, "completion_map.json", { phases: [] });
-  if ((current.phases || []).length) {
-    const refreshed = {
+function normalizeCompletionMapForSetup(current, intake, now) {
+  if (Array.isArray(current.tasks) && current.tasks.length) {
+    return {
       ...current,
-      status: current.status || "in_progress",
-      updated_at: current.updated_at || now,
-      source: current.source || "setup_autopilot_existing_map"
+      revision: Number.isInteger(current.revision) ? current.revision : 1,
+      tasks: current.tasks.map((task) => ({
+        ...task,
+        line_id: task.line_id || "primary-line",
+        team_id: task.team_id || `primary-${task.role_id || "generalist"}`,
+        scope_boundaries: Array.isArray(task.scope_boundaries) && task.scope_boundaries.length ? task.scope_boundaries : ["."],
+        depends_on: Array.isArray(task.depends_on) ? task.depends_on : []
+      })),
+      updated_at: current.updated_at || now
     };
-    writeJsonTo(projectRoot, "completion_map.json", refreshed);
-    return { map: refreshed, created: false };
   }
-  const map = buildAutopilotCompletionMap(intake, now);
-  writeJsonTo(projectRoot, "completion_map.json", map);
-  appendEvent({
-    timestamp: now,
-    type: "setup_autopilot_completion_map_created",
-    actor: "orchestrator",
-    summary: "Created an initial Completion Map from setup autopilot after project intake and required question answers."
-  });
-  return { map, created: true };
+  return buildAutopilotCompletionMap(intake, now);
 }
 
-function applyAutopilotSpecialistDecisions(plan, now) {
-  const candidates = plan.candidates || [];
-  const approvedIds = [];
-  for (const candidate of candidates) {
-    const shouldApprove = candidate.priority === "high";
-    candidate.status = shouldApprove ? "approved" : "later";
-    candidate.user_decision = shouldApprove ? "approve_now" : "later";
-    candidate.user_note = shouldApprove
-      ? "Setup autopilot selected this high-priority specialist for the initial operating team."
-      : "Setup autopilot kept this specialist available for later adjustment.";
-    candidate.decided_at = candidate.decided_at || now;
-    if (shouldApprove) approvedIds.push(candidate.candidate_id);
+function ensureAutopilotCompletionMap(intake, now) {
+  const current = readJsonFrom(projectRoot, "completion_map.json", {});
+  const map = normalizeCompletionMapForSetup(current, intake, now);
+  const created = !Array.isArray(current.tasks) || current.tasks.length === 0;
+  writeJsonTo(projectRoot, "completion_map.json", map);
+  if (created) {
+    appendEvent({
+      timestamp: now,
+      type: "setup_autopilot_completion_map_created",
+      actor: "orchestrator",
+      summary: `Created ${map.tasks.length} first executable work items from project intake.`
+    });
   }
-  plan.status = approvedIds.length ? "initial_team_ready" : "proposal_ready";
-  plan.updated_at = now;
-  plan.reviewed_at = now;
-  plan.approved_candidate_ids = approvedIds;
-  plan.policy = {
-    ...(plan.policy || {}),
-    require_user_approval_before_thread_creation: false,
-    setup_autopilot_selected_initial_team: true
-  };
-  plan.notes = Array.from(new Set([
-    ...((plan.notes || [])),
-    "Setup autopilot selected the initial team after project intake and required questions. The user can revise this later during operations.",
-    "No sessions are created and no specialist thread is messaged by this automatic setup step."
-  ]));
-  return plan;
+  return { map, created };
+}
+
+function ensureFoundationOrganization(now) {
+  const current = readOrganizationBundle(root);
+  if (current.organizationState.revision > 0) return current;
+  const migrated = migrateLegacyOrganization({
+    projectId: path.basename(root),
+    agentsState: current.agentsState,
+    sessionsState: current.sessionsState,
+    tasksState: current.tasksState,
+    rolesState: current.rolesState,
+    organizationState: null,
+    now
+  });
+  commitOrganizationTransition({ root, expectedRevision: 0, bundle: migrated, now });
+  return readOrganizationBundle(root);
+}
+
+function setupRoleDefinitions(bundle, completionMap) {
+  const existing = bundle.rolesState.roles || [];
+  const roleIds = [...new Set((completionMap.tasks || []).map((task) => task.role_id).filter(Boolean))];
+  return [...existing, ...roleIds.filter((roleId) => !existing.some((role) => role.role_id === roleId)).map(setupRoleDefinition)];
+}
+
+function ensureExecutableSetupTasks(completionMap, batch, now) {
+  const tasksState = readJson("tasks.json");
+  const tasks = tasksState.tasks || [];
+  const workById = new Map((completionMap.tasks || []).map((task) => [task.task_id, task]));
+  const ownerByTask = new Map(batch.requests.map((request) => [request.task_id, request.agent_id]));
+  for (const taskId of batch.requests.map((request) => request.task_id)) {
+    const work = workById.get(taskId);
+    const record = tasks.find((task) => task.task_id === taskId);
+    const next = {
+      ...(record || {}),
+      task_id: taskId,
+      title: work?.title || taskId,
+      state: record?.state || "queued",
+      owner_agent_id: ownerByTask.get(taskId),
+      created_at: record?.created_at || now,
+      dependencies: work?.depends_on || [],
+      blocked_by: [],
+      source: "adaptive_initial_setup",
+      line_id: work?.line_id || "primary-line",
+      team_id: work?.team_id || null,
+      result_summary: record?.result_summary || "Waiting for Desktop Codex provisioning."
+    };
+    if (record) Object.assign(record, next);
+    else tasks.push(next);
+  }
+  writeJsonTo(stateRoot, "tasks.json", { ...tasksState, version: tasksState.version || 1, tasks, updated_at: now });
+}
+
+function prepareSetupProvisioning({ plan, understanding, completionMap, now, retryFailed = false }) {
+  const expectedTasks = [...plan.first_executable_batch].sort();
+  const existingBatch = readJsonFrom(setupRoot, "provisioning_batch.json", null);
+  if (existingBatch && JSON.stringify(existingBatch.requests.map((request) => request.task_id).sort()) === JSON.stringify(expectedTasks)) {
+    if (retryFailed) {
+      existingBatch.requests = existingBatch.requests.map((request) => request.status === "provisioning_failed"
+        ? { ...request, status: "pending", handoff_status: null, error: null, completed_at: null }
+        : request);
+      existingBatch.updated_at = now;
+      writeJsonTo(setupRoot, "provisioning_batch.json", existingBatch);
+    }
+    return { reused: true, batch: existingBatch };
+  }
+  const foundation = ensureFoundationOrganization(now);
+  const batch = prepareProvisioningBatch({
+    specialistPlan: plan,
+    organizationRevision: foundation.organizationState.revision,
+    existingAgents: foundation.agentsState.agents || [],
+    now
+  });
+  const transition = createInitialRosterTransition({
+    bundle: foundation,
+    specialistPlan: plan,
+    provisioningBatch: batch,
+    projectUnderstanding: understanding,
+    now
+  });
+  commitOrganizationTransition({
+    root,
+    expectedRevision: foundation.organizationState.revision,
+    bundle: transition,
+    now
+  });
+  batch.organization_revision = transition.organizationState.revision;
+  ensureExecutableSetupTasks(completionMap, batch, now);
+  writeJsonTo(setupRoot, "provisioning_batch.json", { ...batch, updated_at: now });
+  return { reused: false, batch };
 }
 
 function saveVisionAnswers(payload) {
@@ -874,7 +879,7 @@ function saveVisionReview(payload) {
 
   const now = new Date().toISOString();
   const answersState = readJsonFrom(visionRoot, "answers.json", { version: 1, answer_batches: [] });
-  const userTasksState = readJsonFrom(userTasksRoot, "queue.json", { version: 1, owner_agent_id: "user-liaison", tasks: [], policy: {} });
+  const userTasksState = readJsonFrom(userTasksRoot, "queue.json", { version: 1, owner_agent_id: "user-support", tasks: [], policy: {} });
   const batch = (answersState.answer_batches || []).find((item) => item.batch_id === batchId);
   const task = (userTasksState.tasks || []).find((item) => item.user_task_id === userTaskId);
 
@@ -1370,7 +1375,7 @@ function generateSetupQuestions() {
   ];
   questionsState.curation_policy = {
     ...(questionsState.curation_policy || {}),
-    curator_agent_id: "vision-curator",
+    curator_agent_id: "user-support",
     wake_triggers: [
       ...new Set([
         ...((questionsState.curation_policy || {}).wake_triggers || []),
@@ -1386,7 +1391,7 @@ function generateSetupQuestions() {
   appendEvent({
     timestamp: now,
     type: "setup_questions_generated",
-    actor: "vision-curator",
+    actor: "user-support",
     summary: `Generated ${setupQuestions.length} required setup questions from project intake.`
   });
 
@@ -1439,49 +1444,55 @@ function generateSpecialistPlan() {
     throw error;
   }
 
-  const agentsState = readJson("agents.json");
-  const completionMap = readJsonFrom(projectRoot, "completion_map.json", { phases: [] });
+  const intake = readJsonFrom(setupRoot, "project_intake.json", { status: "empty" });
+  const completionMap = normalizeCompletionMapForSetup(
+    readJsonFrom(projectRoot, "completion_map.json", {}),
+    intake,
+    now
+  );
+  const understanding = buildProjectUnderstanding(intake, completionMap);
+  const foundation = ensureFoundationOrganization(now);
   const existingPlan = readJsonFrom(setupRoot, "specialist_plan.json", defaultSpecialistPlan());
-  if ((existingPlan.candidates || []).length && ["proposal_ready", "reviewed"].includes(String(existingPlan.status || ""))) {
+  if (existingPlan.schema_version === 2
+    && existingPlan.source_completion_map_revision === completionMap.revision
+    && existingPlan.first_executable_batch?.length) {
     return { reused: true, plan: existingPlan };
   }
-
-  const plan = {
-    version: 1,
-    status: "proposal_ready",
-    updated_at: now,
-    source: "completion_map",
-    source_completion_map_updated_at: completionMap.updated_at || null,
-    source_completion_map_approved_at: wizard.gates.completion_map_approved_at || null,
-    policy: {
-      create_sessions_on_review: false,
-      require_user_approval_before_thread_creation: true,
-      default_capability_docs_policy: "deferred_research"
-    },
-    candidates: buildSpecialistCandidates(agentsState.agents || []),
-    deferred_topics: [
-      {
-        topic_id: "SP-RESEARCH-001",
-        title: "専門AI向け能力ドキュメントをデフォルトで用意すべきか",
-        reason: "ユーザーが研究が必要なため現時点では考えないと指定した。",
-        status: "deferred_research"
-      }
-    ],
-    notes: [
-      "This plan proposes candidates only. It does not create or wake specialist sessions.",
-      "Existing appointed agents should be reused before creating new production specialists."
-    ]
-  };
-
+  const plan = createAdaptiveSpecialistPlan({
+    project_understanding: understanding,
+    completion_map: completionMap,
+    role_definitions: setupRoleDefinitions(foundation, completionMap),
+    approval_source: "setup_confirmation"
+  });
+  if (plan.status === "blocked_unknown") {
+    writeJsonTo(setupRoot, "setup_blocked.json", { ...plan, updated_at: now });
+    const error = new Error(plan.user_capability?.reason || "Initial specialist planning requires clarification");
+    error.statusCode = 409;
+    throw error;
+  }
+  writeJsonTo(projectRoot, "project_understanding.json", understanding);
+  writeJsonTo(projectRoot, "completion_map.json", completionMap);
   writeJsonTo(setupRoot, "specialist_plan.json", plan);
+  const setupState = createSetupStateBundle({
+    projectId: understanding.project_id,
+    projectUnderstanding: understanding,
+    specialistPlan: plan,
+    now
+  });
+  writeJsonTo(setupRoot, "setup_state.json", {
+    ...setupState,
+    status: "running",
+    current_phase: "specialists",
+    updated_at: now
+  });
   appendEvent({
     timestamp: now,
     type: "setup_specialist_plan_generated",
     actor: "orchestrator",
-    summary: `Generated ${plan.candidates.length} specialist candidates from the approved Completion Map.`
+    summary: `Generated ${plan.selected_specialists.length} specialist groups from ${plan.first_executable_batch.length} executable work items.`
   });
 
-  return { generated: plan.candidates.length, plan };
+  return { generated: plan.selected_specialists.length, plan };
 }
 
 function finalizeSetupAutopilot() {
@@ -1494,34 +1505,22 @@ function finalizeSetupAutopilot() {
   }
 
   const questionsState = readJsonFrom(visionRoot, "questions.json", { version: 1, questions: [], curation_policy: {} });
-  const stats = setupQuestionStats(questionsState);
-  if (!stats.total) {
-    const error = new Error("Required setup questions must be generated from project intake before setup autopilot can finalize");
-    error.statusCode = 409;
-    throw error;
-  }
-  if (stats.unresolved) {
-    const error = new Error(`Required setup questions are still unanswered: ${stats.unresolved}`);
-    error.statusCode = 409;
-    throw error;
-  }
-
+  const optionalQuestions = (questionsState.questions || []).filter((question) => question.setup_gate);
   const { map, created: completionMapCreated } = ensureAutopilotCompletionMap(intake, now);
   let wizard = readJsonFrom(setupRoot, "wizard.json", defaultSetupWizard());
-  wizard.status = "ready_for_operation";
-  wizard.current_step = "operation_ready";
+  wizard.status = "in_progress";
+  wizard.current_step = "auto_finalize";
   wizard.updated_at = now;
   wizard = updateSetupStep(wizard, "welcome", "done");
   wizard = updateSetupStep(wizard, "project_intake", "done");
   wizard = updateSetupStep(wizard, "question_gate", "done");
-  wizard = updateSetupStep(wizard, "auto_finalize", "done");
-  wizard = updateSetupStep(wizard, "operation_ready", "active");
+  wizard = updateSetupStep(wizard, "auto_finalize", "active");
+  wizard = updateSetupStep(wizard, "operation_ready", "queued");
   wizard.gates = {
     ...(wizard.gates || {}),
-    required_questions_must_be_answered: true,
-    required_questions_total: stats.total,
-    required_questions_answered: stats.answered,
-    required_questions_unresolved: stats.unresolved,
+    required_questions_must_be_answered: false,
+    optional_setup_questions_total: optionalQuestions.length,
+    optional_setup_questions_unanswered: optionalQuestions.filter((question) => question.status === "ready").length,
     completion_map_requires_user_approval: false,
     completion_map_approved: true,
     completion_map_approved_at: wizard.gates?.completion_map_approved_at || now,
@@ -1530,33 +1529,30 @@ function finalizeSetupAutopilot() {
     setup_autopilot_finalized_at: now
   };
   writeJsonTo(setupRoot, "wizard.json", wizard);
-
-  let specialistResult;
-  try {
-    specialistResult = generateSpecialistPlan();
-  } catch (error) {
-    if (error.statusCode !== 409) throw error;
-    specialistResult = { reused: true, plan: readJsonFrom(setupRoot, "specialist_plan.json", defaultSpecialistPlan()) };
-  }
-
-  const plan = applyAutopilotSpecialistDecisions(
-    specialistResult.plan || readJsonFrom(setupRoot, "specialist_plan.json", defaultSpecialistPlan()),
-    now
-  );
-  writeJsonTo(setupRoot, "specialist_plan.json", plan);
-
+  const specialistResult = generateSpecialistPlan();
+  const plan = specialistResult.plan;
+  const understanding = readJsonFrom(projectRoot, "project_understanding.json", buildProjectUnderstanding(intake, map));
+  const provisioning = prepareSetupProvisioning({ plan, understanding, completionMap: map, now });
+  const setupState = readJsonFrom(setupRoot, "setup_state.json", {});
+  writeJsonTo(setupRoot, "setup_state.json", {
+    ...setupState,
+    status: "running",
+    current_phase: "specialists",
+    provisioning_batch_id: provisioning.batch.provisioning_batch_id,
+    updated_at: now
+  });
   wizard = readJsonFrom(setupRoot, "wizard.json", wizard);
-  wizard.status = "ready_for_operation";
-  wizard.current_step = "operation_ready";
+  wizard.status = "provisioning";
+  wizard.current_step = "auto_finalize";
   wizard.updated_at = now;
-  wizard = updateSetupStep(wizard, "auto_finalize", "done");
-  wizard = updateSetupStep(wizard, "operation_ready", "active");
+  wizard = updateSetupStep(wizard, "auto_finalize", "active");
+  wizard = updateSetupStep(wizard, "operation_ready", "queued");
   wizard.gates = {
     ...(wizard.gates || {}),
     specialist_plan_reviewed: true,
-    specialist_plan_approved: (plan.approved_candidate_ids || []).length > 0,
-    approved_specialist_candidate_ids: plan.approved_candidate_ids || [],
-    production_tasks_prepared: false
+    specialist_plan_approved: true,
+    production_tasks_prepared: true,
+    provisioning_batch_id: provisioning.batch.provisioning_batch_id
   };
   writeJsonTo(setupRoot, "wizard.json", wizard);
 
@@ -1564,22 +1560,36 @@ function finalizeSetupAutopilot() {
     timestamp: now,
     type: "setup_autopilot_finalized",
     actor: "orchestrator",
-    summary: `Setup autopilot finalized initial map and ${plan.approved_candidate_ids?.length || 0} high-priority specialist candidates after required questions were answered.`
+    summary: `Setup created ${provisioning.batch.requests.length} specialist provisioning requests from ${plan.first_executable_batch.length} executable work items.`
   });
 
   return {
     finalized: true,
     completion_map_created: completionMapCreated,
     completion_map_title: map.project_title || null,
-    specialist_candidates: (plan.candidates || []).length,
-    approved_specialist_candidate_ids: plan.approved_candidate_ids || [],
+    specialist_groups: plan.selected_specialists.length,
+    provisioning_requests: provisioning.batch.requests.length,
+    provisioning_batch_id: provisioning.batch.provisioning_batch_id,
     wizard,
-    plan
+    plan,
+    provisioning: provisioning.batch
   };
 }
 
 function reviewSpecialistPlan(payload) {
   const now = new Date().toISOString();
+  const currentPlan = readJsonFrom(setupRoot, "specialist_plan.json", defaultSpecialistPlan());
+  if (currentPlan.schema_version === 2) {
+    return {
+      saved: true,
+      reviewed: 0,
+      approved: currentPlan.selected_specialists.length,
+      approval_state: "not_required",
+      reason: "The setup confirmation approves the initial roster; only a later new line requires separate user approval.",
+      plan: currentPlan,
+      wizard: readJsonFrom(setupRoot, "wizard.json", defaultSetupWizard())
+    };
+  }
   const submitted = Array.isArray(payload.decisions) ? payload.decisions : [];
   const allowed = new Set(["approve_now", "later", "reject", "revise"]);
   const decisions = submitted
@@ -1649,6 +1659,67 @@ function reviewSpecialistPlan(payload) {
 function startProduction(payload) {
   const now = new Date().toISOString();
   const plan = readJsonFrom(setupRoot, "specialist_plan.json", defaultSpecialistPlan());
+  if (plan.schema_version === 2) {
+    const intake = readJsonFrom(setupRoot, "project_intake.json", { status: "empty" });
+    const completionMap = normalizeCompletionMapForSetup(
+      readJsonFrom(projectRoot, "completion_map.json", {}),
+      intake,
+      now
+    );
+    const understanding = readJsonFrom(
+      projectRoot,
+      "project_understanding.json",
+      buildProjectUnderstanding(intake, completionMap)
+    );
+    const provisioning = prepareSetupProvisioning({
+      plan,
+      understanding,
+      completionMap,
+      now,
+      retryFailed: payload.retry_failed === true
+    });
+    const productionStart = {
+      version: 2,
+      status: "provisioning",
+      updated_at: now,
+      provisioning_batch_id: provisioning.batch.provisioning_batch_id,
+      task_ids: provisioning.batch.requests.map((request) => request.task_id),
+      agent_ids: provisioning.batch.requests.map((request) => request.agent_id),
+      policy: {
+        desktop_codex_provisioning_required: true,
+        max_concurrent_provisioning: 3,
+        new_line_requires_user_approval: true,
+        other_organization_changes_require_user_approval: false
+      }
+    };
+    writeJsonTo(setupRoot, "production_start.json", productionStart);
+    let wizard = readJsonFrom(setupRoot, "wizard.json", defaultSetupWizard());
+    wizard.status = "provisioning";
+    wizard.current_step = "auto_finalize";
+    wizard.updated_at = now;
+    wizard.gates = {
+      ...(wizard.gates || {}),
+      production_start_ready: true,
+      production_tasks_prepared: true,
+      provisioning_batch_id: provisioning.batch.provisioning_batch_id
+    };
+    writeJsonTo(setupRoot, "wizard.json", wizard);
+    appendEvent({
+      timestamp: now,
+      type: "setup_provisioning_batch_ready",
+      actor: "orchestrator",
+      summary: `Prepared ${provisioning.batch.requests.length} Desktop Codex provisioning requests.`
+    });
+    return {
+      saved: true,
+      prepared: provisioning.batch.requests.length,
+      task_ids: productionStart.task_ids,
+      productionStart,
+      provisioning: provisioning.batch,
+      plan,
+      wizard
+    };
+  }
   const approvedCandidates = (plan.candidates || []).filter((candidate) => candidate.user_decision === "approve_now");
   if (!approvedCandidates.length) {
     const error = new Error("No approved specialist candidates are available for production start");
@@ -2068,6 +2139,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildAutopilotCompletionMap,
+  buildSetupQuestions,
+  inferInitialRoleIds,
   readModelPolicyState,
   reviewSpecialistReport,
   updateReportReviewStateFiles

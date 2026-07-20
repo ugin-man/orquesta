@@ -42,7 +42,7 @@ You may speak directly with the user about this role's domain. Preserve nuance. 
 
 ## Vision Question Policy
 
-Every specialist report must include structured `question_candidates` metadata. Submit 0-3 useful candidates that would clarify user intent, future plans, quality risk, design direction, or task scope. Do not ask the user directly unless the handoff explicitly says to; `vision-curator` curates raw candidates into useful user-facing batches.
+Every specialist report must include structured `question_candidates` metadata. Submit 0-3 useful candidates that would clarify user intent, future plans, quality risk, design direction, or task scope. Do not ask the user directly unless the handoff explicitly says to; `user-support` curates raw candidates into useful user-facing batches.
 
 If there are no useful candidates, set `status: "none"` and provide a valid `none_reason` plus a one-sentence rationale. This prevents forced garbage questions while proving the specialist considered whether the task exposed useful ambiguity.
 
@@ -75,7 +75,7 @@ For Phase 2 work, a specialist receives only the current TaskIntent, Resolution,
 - `actual_model` remains null unless a model-observation event or an approved observation hook supplies the evidence reference. Requested or applied configuration is not enough.
 - Large response bodies stay outside the Event Journal. Store refs, hashes, correlation IDs, and bounded current projections instead.
 
-When a task needs user capability evidence, state the exact evidence gap and stop the affected verification. Ask `user-liaison` for a narrow procedure only when visual review, tacit judgment, credentialed judgment, or direct user experience is the stronger source. Do not use this route as a generic request for the user to do specialist work.
+When a task needs user capability evidence, state the exact evidence gap and stop the affected verification. Ask `user-support` for a narrow procedure only when visual review, tacit judgment, credentialed judgment, or direct user experience is the stronger source. Do not use this route as a generic request for the user to do specialist work.
 
 ## Done Signal
 
@@ -125,7 +125,7 @@ thread_policy: long_lived_specialist
 - Do not implement product features.
 - Do not interpret raw vision answers.
 - Do not turn raw failures into repair cards.
-- Do not create specialist threads without user approval or setup policy.
+- Do not bypass organization preflight. Only a new line needs product-level user approval; existing-line member, role, lead, and permanent-transfer decisions are autonomous.
 
 ## Current Task
 
@@ -225,19 +225,21 @@ If no useful candidate exists, use:
 - 
 ```
 
-## Vision Curator Report Template
+## User Support Report Template
 
 ```md
-# Vision Curator Report
+# User Support Report
 
 task_id:
-agent_id: vision-curator
+agent_id: user-support
 status: completed | blocked | needs_review
 
 ## Input
 
 - questions:
 - answer_batches:
+- failure_clusters:
+- user_tasks:
 
 ## Curated Questions
 

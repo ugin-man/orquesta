@@ -88,16 +88,14 @@ Use this before the normal operating loop when Orquesta is invoked in a project 
 4. Create the `.orquesta` state skeleton.
 5. Record bootstrap status, title policy, and pin policy in `.orquesta/setup/options.json`.
 6. Create or reuse the foundation sessions:
-   - `user-liaison`
-   - `vision-curator`
-   - `error-concierge`
+   - `user-support`
    - `orquesta-admin`
 7. Start the dashboard server or record why it cannot start.
 8. Verify the dashboard through `/api/state`; do not rely on HTTP 200 alone.
 9. Open the verified dashboard URL in the user's external browser when possible.
 10. Give the user the verified dashboard URL.
-11. Present setup option packs.
-12. Only after the foundation is ready, classify the user's product task and decide which production specialists are needed.
+11. Collect the project folder, name, and description; clarification questions are optional.
+12. Build the first executable work, run the organization preflight, and provision only the specialists with current owned work.
 
 Bootstrap is idempotent. If setup runs again, inspect existing state and create only the missing foundation pieces.
 
@@ -120,7 +118,7 @@ Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open
    - Update task delegation fields: `routing_class`, `routing_gate_status`, `handoff_required`, `handoff_sent_at`, `specialist_report_required`, `specialist_report_path`, `direct_exception_reason`, and `bypass_review_owner`.
    - Extract required specialist report `question_candidates` metadata. Store submitted candidates in `.orquesta/vision/question_candidates.json`; accept a `status: "none"` block only when it includes a valid `none_reason` and plausible rationale.
    - Update `directives.json` for user-to-specialist decisions or nuance.
-   - Add unresolved creative question candidates to `.orquesta/vision/question_candidates.json` first. Only `vision-curator` should promote useful candidates into `.orquesta/vision/questions.json`.
+   - Add unresolved creative question candidates to `.orquesta/vision/question_candidates.json` first. `user-support` promotes useful candidates into `.orquesta/vision/questions.json`.
    - Store new command failures, ineffective repeats, and quality-degrading fallbacks as candidate evidence first. `incident_candidates.json` and `incident_clusters.json` are pre-acceptance records; only accepted incidents belong in `incidents.json`, and only `status: "open"` incidents keep an active concierge wake reason.
    - Record capacity dispatch lifecycle separately from task state: `queued`, `dispatch_accepted`, `turn_started`, `progress_observed`, and `report_produced`. A message acceptance is not turn-start proof.
    - Use the shared atomic JSON helper for control-state writes. Do not add a new control write through ad hoc read-modify-write code.
@@ -133,12 +131,12 @@ Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open
    - For staged-in `specialist_required` and medium/high-risk work, validate the report `completion_envelope` and run a task-scoped control audit before acceptance. Missing or invalid evidence becomes `needs_revision` or a blocker; legacy accepted work remains warning-only unless reopened.
    - For specialist-owned reports, verify the report includes structured `question_candidates`. If the field is missing, set the task to `needs_revision`, `needs_report_metadata`, or equivalent instead of accepting it.
    - Accept `question_candidates.status: "none"` only when it includes a valid `none_reason` and a plausible one-sentence rationale. If the task clearly exposed user choice, product direction, quality risk, or future planning and the `none` rationale is weak, request revision.
-   - If candidates are submitted, record them in `.orquesta/vision/question_candidates.json` for later `vision-curator` review. Do not push raw candidates directly to the user.
+   - If candidates are submitted, record them in `.orquesta/vision/question_candidates.json` for later `user-support` review. Do not push raw candidates directly to the user.
    - For `direct_exception` tasks, verify `direct_exception_reason` and any `bypass_review_owner` before acceptance.
    - Use `accepted`, `needs_review`, `blocked`, or `rejected_scope_drift`.
    - Do not mark project-level completion while unsynced specialist work exists.
-   - If the report contains creative ambiguity, decide whether to queue questions, wake `vision-curator`, or update adopted vision documents.
-   - If the report contains repeated environment, permission, dependency, or server-startup failure, decide whether to wake `error-concierge` before accepting a lower-quality fallback.
+   - If the report contains creative ambiguity, decide whether to queue questions, wake `user-support`, or update adopted vision documents.
+   - If the report contains repeated environment, permission, dependency, or server-startup failure, decide whether to wake `user-support` before accepting a lower-quality fallback.
    - Do not accept a fallback that weakens browser, visual, runtime, or acceptance evidence without explicit user approval.
    - Keep model evidence separate: `recommended_model` is a policy result, `requested_model` is a request, `applied_model` needs adapter evidence, and `actual_model` remains null until independently proved.
    - If a required capacity circuit is open, do not perform the affected specialist work directly. Use only a bounded, role-compatible, independent fallback with documented evidence downgrade, or pause the affected task.
@@ -155,20 +153,20 @@ When the only automated verification is unsafe or unstable:
 
 1. Pause the affected task and record the evidence gap and failed surface.
 2. Do not invent a passing result, silently lower the proof standard, or keep retrying the unstable tool.
-3. Ask `user-liaison` to create one concrete user task: exact procedure, behaviors to confirm, and the short response needed to resume.
+3. Ask `user-support` to create one concrete user task: exact procedure, behaviors to confirm, and the short response needed to resume.
 4. Record the user's result as user-supplied evidence, including its scope and any remaining uncertainty.
 
 This route does not hand ordinary design, implementation, or debugging work to the user. The Codex in-app Browser crash is an external tool limitation: when it recurs, stop that in-app route and use named external-browser UAT only when the user can verify the same behaviors. Do not classify the crash itself as an Orquesta product defect without separate evidence.
 
-## New Thread Gate
+## Organization Preflight And New Line Gate
 
 Create a new specialist thread only when all are true:
 - No existing agent owns the role or context scope.
 - The task is long-lived or domain-specific enough to justify a teammate.
 - The role can be given a bounded contract.
-- The user has approved autonomous creation, or the current Orquesta policy allows it.
+- The organization preflight selected `add_member`, `add_role`, or an approved `propose_line` decision.
 
-Default policy: propose new thread creation and wait for user approval.
+Default policy: thread creation inside an existing approved organization is autonomous. Only a new line waits for product-level user approval. Reuse, task splitting, same-role scaling, new-role creation, leader assignment, and permanent transfer between existing lines do not need product-level approval. Never create a temporary cross-line assignment. This rule does not bypass Codex safety or command approvals.
 
 ## Direct Conversation Sync
 
@@ -203,7 +201,7 @@ Use this flow:
 3. If no useful candidate exists, specialist records `question_candidates.status: "none"` with a valid `none_reason` and rationale.
 4. Orchestrator checks the field before report acceptance.
 5. Orchestrator records submitted candidates in `.orquesta/vision/question_candidates.json` with `status: "pending_curator_review"`.
-6. Wake `vision-curator` only when a trigger in `references/vision-alignment.md` is met.
+6. Wake `user-support` only when a question trigger in `references/user-support.md` is met.
 7. Curator deduplicates, filters, prioritizes, and promotes useful candidates into `.orquesta/vision/questions.json`; rejected or duplicate raw candidates must not reach the user.
 8. Curator rewrites question batches or interprets answer batches into a report.
 9. Curator separates answers into discussion seeds, strong signals, candidate rules, counterproposals, and `do_not_adopt_yet` items.
@@ -220,12 +218,12 @@ Use this flow:
 
 1. Specialist records concise failure evidence as an incident candidate. Deterministic fingerprinting and clustering happen before an accepted incident, repair card, or user task exists.
 2. Orchestrator checks the wake triggers in `references/failure-concierge.md`.
-3. Wake `error-concierge` when the failure may be user-actionable, repeated, environment-specific, or likely to force a quality-lowering fallback.
+3. Wake `user-support` when the failure may be user-actionable, repeated, environment-specific, or likely to force a quality-lowering fallback.
 4. Concierge clusters related candidate evidence, distinguishes open from mitigated history, and writes a report. Repair cards in `.orquesta/failures/user_actions.json` exist only after concierge and orchestrator acceptance.
 5. Orchestrator accepts or rejects the concierge report.
 6. Codex retries, routes a Codex-fixable task, or asks the user to complete/skip the repair card.
 
-If a new incident is recorded after `error-concierge` has already written a "no failures" or readiness report, that report is stale. Wake or message `error-concierge` to re-read incidents and user actions before final setup acceptance.
+If a new incident is recorded after `user-support` has already written a "no failures" or readiness report, that report is stale. Wake or message `user-support` to re-read incidents and user actions before final setup acceptance.
 
 ## Report Freshness
 
@@ -263,4 +261,4 @@ Stop and report instead of continuing when:
 - a direct user directive conflicts with project canon or implementation constraints
 - raw vision answers would need interpretation before safe adoption
 - the same command or environment failure has repeated and no failure incident has been recorded
-- a fallback would reduce user-visible quality before `error-concierge` has checked for a user-side repair path
+- a fallback would reduce user-visible quality before `user-support` has checked for a user-side repair path

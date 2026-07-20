@@ -51,6 +51,7 @@
     "test:control-audit": "node orquesta/scripts/control-audit.test.js",
     "test:report-review": "node orquesta/scripts/dashboard-report-review.test.js",
     "test:triggers": "node orquesta/scripts/foundation-trigger-audit.test.js",
+    "test:adaptive-setup": "node --test orquesta/scripts/adaptive-setup-state.test.js orquesta/scripts/organization-state.test.js && node orquesta/scripts/foundation-trigger-audit.test.js",
     "test:incident-intake": "node orquesta/scripts/incident-intake.test.js",
     "test:model-policy": "node orquesta/scripts/model-policy.test.js",
     "test:ports": "node orquesta/scripts/dashboard-port-selection.test.js",

@@ -55,7 +55,7 @@ function roleDefinition(roleId) {
     version: 1,
     display_names: displayName(roleId),
     aliases,
-    capability_ids: [],
+    capability_ids: [`role:${roleId}`],
     default_contract_template: `${roleId}-v1`,
     lifecycle_state: "active",
   };
@@ -269,6 +269,7 @@ function assertBundle(bundle, expectedRevision) {
   if (JSON.stringify(bundle).includes("temporary_assignment")) {
     throw new Error("temporary_assignment is forbidden");
   }
+  for (const role of bundle.rolesState.roles || []) assertContract("role-definition", role);
   assertContract("organization-state", bundle.organizationState);
 }
 

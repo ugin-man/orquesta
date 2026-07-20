@@ -1,5 +1,7 @@
 # User Liaison Layer
 
+Migration note: the behaviors in this document are now owned by `user-support`. See `user-support.md`. Keep this file only so older reports and state references remain understandable; do not generate a `user-liaison` agent for new projects.
+
 ## Purpose
 
 Keep user-side work visible, humane, and sequenced. Orquesta is not a fully autonomous company; it is a team that works with the user. `user-liaison` owns the user's desk.

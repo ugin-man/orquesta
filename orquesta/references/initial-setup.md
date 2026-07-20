@@ -4,7 +4,7 @@
 
 Define what Orquesta does when it is installed or invoked for the first time in a new project.
 
-The first user experience should not be a blank state. When Orquesta is called in a project chat, that calling chat becomes the production orchestrator. Orquesta then creates the minimum foundation sessions needed for user collaboration, vision alignment, failure repair, and Orquesta configuration before it starts planning production work.
+The first user experience should not be a blank state. When Orquesta is called in a project chat, that calling chat becomes the production orchestrator. Orquesta then creates one support seat and one administration seat, understands the selected project, and provisions only the specialists needed for the first executable work.
 
 ## Naming Policy
 
@@ -13,16 +13,14 @@ Separate machine IDs from human-visible names.
 Foundation agents are unique system seats, not numbered production specialists. New projects should use these canonical foundation IDs:
 
 - `orchestrator`
-- `user-liaison`
-- `vision-curator`
-- `error-concierge`
+- `user-support`
 - `orquesta-admin`
 
 Do not put Japanese text, star marks, emoji, or decorative symbols in agent IDs, JSON keys, file names, or state references. Use ASCII IDs for anything machines read.
 
 Human-visible thread titles may use Japanese and a star mark. The orchestrator thread should be titled `★ Orquesta 統括`.
 
-Existing projects that already use `*-001` foundation IDs may keep them until a deliberate migration task updates dashboard code, state files, reports, and references together.
+Existing `user-liaison`, `vision-curator`, and `error-concierge` records are preserved as `superseded` history and point to `user-support`. New projects never generate those three legacy seats.
 
 ## First Invocation
 
@@ -42,17 +40,15 @@ The orchestrator owns:
 The orchestrator must not:
 
 - absorb every specialist context file
-- independently interpret raw vision answers into adopted direction
-- silently retry repeated environment failures after a concierge wake trigger
+- independently turn raw user answers into adopted direction without support triage
+- silently retry repeated environment failures after a support wake trigger
 - create production specialists before the foundation setup is complete
 
 ## Foundation Sessions
 
 Create or reuse these sessions immediately after the calling chat is recorded as the orchestrator:
 
-- `user-liaison`: user-facing desk and user-side task queue coordinator.
-- `vision-curator`: event-driven question curator and answer interpreter.
-- `error-concierge`: event-driven failure clustering and user repair-card specialist.
+- `user-support`: event-driven question curator, answer interpreter, failure triage, repair-card author, and user-side task coordinator.
 - `orquesta-admin`: Orquesta setup, dashboard handoff, option packs, and configuration.
 
 These are foundation sessions, not production feature teams. They should usually return to `standby` after their readiness or setup report.
@@ -83,7 +79,7 @@ Foundation bootstrap must be idempotent:
 - implement product features
 - interpret raw vision answers
 - classify raw failures into repair cards
-- create specialist threads without user approval or current setup policy
+  - bypass the organization preflight or create a new line without product-level user approval
 - hide options behind long reports
 
 ## Bootstrap Flow
@@ -94,25 +90,24 @@ When `.orquesta/CURRENT_ORCHESTRA.md` is missing:
 2. Record the calling chat as `orchestrator`.
 3. Rename the calling thread to `★ Orquesta 統括` when possible.
 4. Pin the calling thread when possible.
-5. Add the foundation agents to `agents.json`.
-6. Create or reuse the four foundation Codex sessions.
+5. Add exactly `orchestrator`, `user-support`, and `orquesta-admin` to the foundation in `agents.json`.
+6. Create or reuse the three foundation Codex sessions.
 7. Start the dashboard server if possible.
 8. Verify the dashboard with `/api/state`, not only HTTP 200.
 9. Open the verified dashboard URL in the user's external browser when possible.
 10. Give the verified dashboard URL in chat even if browser opening succeeds.
-11. Present a short first-run menu.
-12. Record selected options, title policy, pin policy, dashboard open status, and bootstrap status in `.orquesta/setup/options.json`.
-13. Create or update `.orquesta/setup/wizard.json` so the dashboard can show the user's current setup step.
-14. Ask the user to describe the project they want to make, and store the submitted description in `.orquesta/setup/project_intake.json`.
-15. Generate required project questions from that description. Do not show or accept setup questions before project intake exists.
-16. Block first-run setup completion until the required setup questions are answered.
-17. After project intake and required answers exist, automatically finalize first-run setup. This should create or refresh `.orquesta/project/completion_map.json`, prepare an initial specialist plan, and mark high-priority specialist candidates as the initial operating team.
-18. Do not ask the user for separate Completion Map approval, specialist-by-specialist approval, or first-task approval during first-run setup. Those are normal operations adjustments after Orquesta is already running.
-19. Have `vision-curator` interpret answers as provisional thinking seeds, not user commands. Important creative or product direction may still become later review items, but it must not slow the initial setup path.
-20. Report the initial map, initial specialist team, and broad development steps to the user. Make clear that the user can revise them after setup.
-21. Production handoffs may be prepared later by the orchestrator, but first-run setup must not create sessions, message specialist threads, or mark specialists active by itself.
+11. Ask for the project folder, project name, and project description. Prefill what can be inferred from the selected repository.
+12. Store the intake in `.orquesta/setup/project_intake.json` and build a bounded Project Understanding Packet.
+13. Ask zero to three optional clarification questions only when the evidence is insufficient. Skipping them must not block setup.
+14. Create the six-phase `.orquesta/setup/setup_state.json`, initial Completion Map, and first executable work.
+15. Run the normal organization preflight against that work. Create no fixed roster and no minimum number of specialists.
+16. Create the initial roles, lines, teams, memberships, agents, and task ownership in one organization revision.
+17. Prepare a provisioning batch capped at three concurrent requests. Each specialist must own at least one executable task.
+18. Use the existing Codex App Server path to create each accepted specialist thread and send its bounded handoff.
+19. Mark a specialist operational only after thread and turn evidence exists. Keep failures on the same agent ID as `provisioning_failed` for retry.
+20. Report why each initial role and line exists and move to the Home screen after one integrated setup check.
 
-If the dashboard server cannot start, record a failure incident and ask whether to wake `error-concierge` after it exists.
+If the dashboard server cannot start, record a failure incident and let the trigger audit wake `user-support` when user knowledge or action is actually needed.
 
 If setup is interrupted, resume from `.orquesta/setup/options.json` instead of starting over.
 
@@ -183,40 +178,30 @@ I can help with:
 - separating creative vision, user tasks, and failure repair workflows
 
 First setup is short:
-1. Describe the project.
-2. Answer the generated questions.
-3. Orquesta automatically prepares the initial map and team.
-4. You can adjust the map, team, and priorities during normal operations.
-
-Optional packs:
-- Game Production Core
-- Vision Alignment
-- Failure Concierge
-- User Liaison Desk
-- Orquesta Admin
-- Research Team
-- Playtest QA
-- Asset Pipeline
-
-Tell me which packs to enable, or say "minimal" to start with only the orchestrator and foundation sessions.
+1. Confirm the project folder, name, and description.
+2. Answer or skip any optional clarification questions.
+3. Watch Orquesta build the foundation, plan, initial specialists, and operating state.
+4. Adjust the organization and priorities during normal operation.
 ```
 
-## Option Packs
+## Legacy Option Packs
 
-Store available options in `.orquesta/setup/options.json`.
+Existing projects may retain option-pack metadata in `.orquesta/setup/options.json`, but packs do not generate the first team and are not a setup gate. New specialists come from executable work and capability needs.
 
 Default packs:
 
-- `minimal_core`: production orchestrator plus foundation sessions.
+- `minimal_core`: compatibility label for the three-agent foundation.
 - `game_production_core`: implementation, visual-art, world-lore, playtest-qa.
-- `vision_alignment`: vision-curator, vision questions, answer batches, adopted vision docs.
-- `failure_concierge`: failure incident log and repair cards.
-- `user_liaison_desk`: user task queue and user-facing ask coordination.
+- `vision_alignment`, `failure_concierge`, and `user_liaison_desk`: legacy labels now served by `user-support`.
 - `orquesta_admin`: setup options, dashboard handoff, and Orquesta tuning.
 - `research_team`: future pack for external research and method discovery.
 - `asset_pipeline`: future pack for art, sprite, audio, and asset production workflows.
 
-Future Orquesta versions may add packs. Keep packs data-driven and optional.
+Keep legacy pack data readable, but never use it as a fixed specialist roster.
+
+## Organization Authority After Setup
+
+The organization preflight may autonomously reuse an agent, split work, add a member, add a role, assign a lead, or permanently transfer an agent between existing lines. Only `propose_line` creates a product-level user task and waits for approval. A rejected line proposal stays rejected; it must not be silently converted into a temporary cross-line assignment. Codex harness approvals remain independent of this product rule.
 
 ## Relationship To Orchestrator
 
@@ -239,20 +224,19 @@ The user may talk to either:
 - orchestrator pin policy
 - foundation agent IDs
 - foundation readiness or blockers
-- enabled packs
-- available packs
+- legacy pack metadata when present
 - dashboard URL
 - admin session ID
 - setup status
 - setup notes
 
-`.orquesta/setup/wizard.json` should track:
+`.orquesta/setup/setup_state.json` should track the real six phases: environment, project understanding, foundation, planning, specialists, and operation. `.orquesta/setup/wizard.json` remains a compatibility projection for older clients and should not be treated as the canonical setup engine.
 
 - setup status
 - current setup step
 - visible step list
 - project intake gate state
-- required-question gate state
+- optional-question status without a completion gate
 - setup autopilot finalization state
 - initial team preparation state
 

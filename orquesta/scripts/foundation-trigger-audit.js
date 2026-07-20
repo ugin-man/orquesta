@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { writeJsonAtomic } = require("./json-state");
 
-const FOUNDATION_AGENT_IDS = ["vision-curator", "error-concierge", "user-liaison", "orquesta-admin"];
+const FOUNDATION_AGENT_IDS = ["user-support", "orquesta-admin"];
 const OPEN_USER_TASK_STATES = new Set(["ready", "active", "pending", "blocked", "needs_review", "needs_user_review"]);
 const CLOSED_STATES = new Set(["accepted", "adopted", "curated", "resolved", "retired", "skipped", "rejected", "done", "completed", "archived"]);
 const SESSION_STALE_MINUTES = 60;
@@ -15,7 +15,7 @@ const QUESTION_CANDIDATE_STALE_HOURS = 24;
 const QUESTION_CANDIDATE_EVIDENCE_LIMIT = 8;
 
 const QUESTION_CANDIDATE_REASON_TEXT = {
-  pending_high_priority_question_candidate: "Pending high-priority question candidates need vision-curator triage.",
+  pending_high_priority_question_candidate: "Pending high-priority question candidates need user-support triage.",
   pending_question_candidates_threshold_met: "Pending question candidates meet the batch curation threshold.",
   stale_pending_question_candidate: "Old pending question candidates meet the stale-age curation threshold.",
   question_candidate_blocks_acceptance: "A question candidate marked before_acceptance needs curator review before affected acceptance/routing proceeds."
@@ -248,7 +248,7 @@ function visionTriggers(questionsState, answersState, questionCandidatesState, n
 
   const needsCuration = batches.filter((batch) => includesAny(batch.status, ["needs_curation", "pending_curation", "needs curator"]));
   if (needsCuration.length) {
-    reasons.push("Answer batches need vision-curator curation.");
+    reasons.push("Answer batches need user-support curation.");
     evidence.push(...needsCuration.map((batch) => ({ batch_id: batch.batch_id, status: batch.status })));
   }
 
@@ -321,7 +321,7 @@ function failureTriggers(incidentsState, actionsState, tasks, incidentCandidates
     return counts;
   }, {})).filter(([, count]) => count >= 2);
   if (repeatedCandidateFingerprints.length) {
-    reasons.push("Repeated incident candidates need error-concierge clustering review.");
+    reasons.push("Repeated incident candidates need user-support clustering review.");
     evidence.push(...repeatedCandidateFingerprints.map(([global_fingerprint, count]) => ({
       type: "repeated_incident_candidate",
       global_fingerprint,
@@ -341,7 +341,7 @@ function failureTriggers(incidentsState, actionsState, tasks, incidentCandidates
   }
   const openClusters = incidentClusters.filter((cluster) => normalize(cluster.status) === "open");
   if (openClusters.length) {
-    reasons.push("Open incident clusters need error-concierge review.");
+    reasons.push("Open incident clusters need user-support review.");
     evidence.push(...openClusters.map((cluster) => ({
       type: "incident_cluster",
       cluster_id: cluster.cluster_id || null,
@@ -353,7 +353,7 @@ function failureTriggers(incidentsState, actionsState, tasks, incidentCandidates
 
   const openRepairCards = actions.filter((action) => openState(action.status));
   if (openRepairCards.length) {
-    reasons.push("Open user-action repair cards need error-concierge/user-liaison coordination.");
+    reasons.push("Open user-action repair cards need user-support coordination.");
     evidence.push(...openRepairCards.map((action) => ({ action_id: action.action_id, status: action.status, title: action.title })));
   }
 
@@ -521,10 +521,38 @@ function buildAudit(root, now = new Date()) {
   const agents = agentsState.agents || [];
   const tasks = tasksState.tasks || [];
   const sessionAudit = sessionFreshness(sessionsState, tasks, now);
+  const supportTriggers = [
+    visionTriggers(questionsState, answersState, questionCandidatesState, now),
+    failureTriggers(incidentsState, actionsState, tasks, incidentCandidatesState, incidentClustersState),
+    userLiaisonTriggers(tasks, userTasksState, answersState, actionsState)
+  ];
+  const supportReasons = supportTriggers.flatMap((trigger) => trigger.reasons || []);
+  const statusRank = { clear: 0, trigger_ready: 1, wake_needed: 2 };
+  const explicitSupportStatus = supportTriggers.reduce((status, trigger) => (
+    (statusRank[trigger.trigger_status] || 0) > (statusRank[status] || 0) ? trigger.trigger_status : status
+  ), "clear");
+  const supportStatus = explicitSupportStatus === "clear" && supportReasons.length
+    ? "trigger_ready"
+    : explicitSupportStatus;
+  const supportReasonCodes = [...new Set(supportTriggers.flatMap((trigger) => trigger.reason_codes || []))];
+  const supportBlocksAcceptance = supportReasonCodes.includes("question_candidate_blocks_acceptance");
+  const supportRecommendedAction = supportBlocksAcceptance
+    ? "hold_affected_acceptance_and_wake_user_support"
+    : supportStatus === "wake_needed"
+      ? "wake_user_support_now_for_combined_triage"
+      : supportStatus === "trigger_ready"
+        ? "wake_user_support_for_combined_triage_or_record_deferred_wake_reason"
+        : "no_wake_required_batch_support_events_until_threshold_or_user_request";
   const triggerByAgent = {
-    "vision-curator": { agent_id: "vision-curator", ...visionTriggers(questionsState, answersState, questionCandidatesState, now) },
-    "error-concierge": { agent_id: "error-concierge", ...failureTriggers(incidentsState, actionsState, tasks, incidentCandidatesState, incidentClustersState) },
-    "user-liaison": { agent_id: "user-liaison", ...userLiaisonTriggers(tasks, userTasksState, answersState, actionsState) },
+    "user-support": {
+      agent_id: "user-support",
+      trigger_status: supportStatus,
+      reason_codes: supportReasonCodes,
+      reasons: supportReasons,
+      evidence: supportTriggers.flatMap((trigger) => trigger.evidence || []),
+      open_user_tasks: supportTriggers.flatMap((trigger) => trigger.open_user_tasks || []),
+      recommended_action: supportRecommendedAction
+    },
     "orquesta-admin": { agent_id: "orquesta-admin", ...adminTriggers(setup, sessionAudit, agents, tasks) }
   };
 

@@ -1,5 +1,7 @@
 # Vision Alignment Layer
 
+Migration note: the behaviors in this document are now owned by `user-support`. See `user-support.md`. Keep this file only so older reports and state references remain understandable; do not generate a `vision-curator` agent for new projects.
+
 Use the Vision Alignment Layer when creative work depends on taste, implicit user intent, aesthetics, tone, fantasy, friction, or "this is not quite it" feedback.
 
 ## Core Rule

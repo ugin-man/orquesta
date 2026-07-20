@@ -29,13 +29,73 @@ The `.orquesta/state` files are the source of truth. Keep them small, explicit, 
 }
 ```
 
-Add `vision-curator` only as an event-driven specialist. Its `status` should usually be `standby`; do not model it as a continuously running watcher.
+During bootstrap, the calling chat becomes `orchestrator`. New projects have exactly three unnumbered foundation IDs: `orchestrator`, `user-support`, and `orquesta-admin`. `user-support` is event-driven and normally `standby`; it combines question curation, answer interpretation, repeated-failure triage, repair cards, and user-task coordination. Existing `user-liaison`, `vision-curator`, and `error-concierge` records remain in history as `lifecycle_state: "superseded"` with `superseded_by: "user-support"`.
 
-Add `error-concierge` only as an event-driven specialist. Its `status` should usually be `standby`; do not model it as a continuously running watcher.
+Schema v2 agents add `role_id`, `role_version`, `organization_scope`, `lifecycle_state`, `operational_status`, and `organization_revision`. A provisioning request may use `proposed` or `provisioning`; do not show it as operational until its Codex thread and turn evidence are stored.
 
-Add `user-liaison` as the event-driven owner of user-side task presentation and queue coordination. It may coordinate `vision-curator` and `error-concierge`, but must not replace their specialist interpretation.
+## roles.json and organization.json
 
-During bootstrap, the calling chat becomes the orchestrator foundation agent first. New projects should use unnumbered foundation IDs: `orchestrator`, `user-liaison`, `vision-curator`, `error-concierge`, and `orquesta-admin`. Existing projects with `*-001` foundation IDs may keep them until an explicit migration updates state and dashboard code together. `orquesta-admin` manages Orquesta setup and tuning only; it is not the production orchestrator.
+`roles.json` defines a role once even when several agents hold it. Numeric agent suffixes identify people, not different roles. `organization.json` is the source of truth for teams, memberships, reporting relationships, and lines; task delegation does not imply an organization parent.
+
+```json
+{
+  "schema_version": 2,
+  "revision": 3,
+  "policy": {
+    "organization_changes": "autonomous_except_new_line",
+    "max_concurrent_provisioning": 3,
+    "require_executable_task_per_new_agent": true,
+    "require_no_file_ownership_conflict": true
+  },
+  "agents": [
+    {
+      "agent_id": "implementation-001",
+      "role_id": "implementation",
+      "organization_scope": "line",
+      "lifecycle_state": "active",
+      "operational_status": "working"
+    }
+  ],
+  "teams": [
+    {
+      "team_id": "desktop-implementation",
+      "line_id": "desktop-line",
+      "display_name": "Desktop implementation",
+      "purpose": "Own Desktop implementation",
+      "lifecycle_state": "active"
+    }
+  ],
+  "memberships": [
+    {
+      "membership_id": "membership-implementation-001",
+      "agent_id": "implementation-001",
+      "team_id": "desktop-implementation",
+      "position": "member",
+      "ordinal": 1,
+      "active_from": "2026-07-20T00:00:00.000Z",
+      "active_to": null
+    }
+  ],
+  "relationships": [],
+  "lines": [
+    {
+      "line_id": "desktop-line",
+      "display_name": "Desktop",
+      "goal": "Deliver the Desktop application",
+      "deliverable_ids": ["desktop"],
+      "completion_root_ids": ["CM-DESKTOP"],
+      "scope": ["apps/orquesta-desktop"],
+      "owner_agent_id": "orchestrator",
+      "dedicated_lead_agent_id": null,
+      "status": "active",
+      "approval_source": "user_approval"
+    }
+  ],
+  "applied_decision_ids": []
+}
+```
+
+The organization preflight may autonomously apply `reuse_agent`, `split_task`, `add_member`, `add_role`, `assign_lead`, and permanent transfer between existing lines. Only `propose_line` waits for product-level user approval. Temporary cross-line assignment is not a valid state. Initial lines use `approval_source: "setup_confirmation"`; later lines use `user_approval`.
 
 ## sessions.json
 
@@ -426,7 +486,7 @@ All control-state writes use `readJsonFile`, `writeJsonAtomic`, `updateJsonAtomi
 
 ## vision/question_candidates.json
 
-`question_candidates.json` is the raw inbox for specialist-proposed question candidates. It is not user-facing. The orchestrator writes submitted candidates here after report review; `vision-curator` filters, deduplicates, rewrites, and promotes useful entries into `questions.json`.
+`question_candidates.json` is the raw inbox for specialist-proposed question candidates. It is not user-facing. The orchestrator writes submitted candidates here after report review; `user-support` filters, deduplicates, rewrites, and promotes useful entries into `questions.json`.
 
 ```json
 {
@@ -460,7 +520,7 @@ All control-state writes use `readJsonFile`, `writeJsonAtomic`, `updateJsonAtomi
     }
   ],
   "policy": {
-    "curator_agent_id": "vision-curator",
+    "curator_agent_id": "user-support",
     "wake_triggers": [
       "pending_high_priority_candidate",
       "pending_candidates_gte_5",
@@ -526,7 +586,7 @@ Required candidate fields:
     }
   ],
   "curation_policy": {
-    "curator_agent_id": "vision-curator",
+    "curator_agent_id": "user-support",
     "wake_triggers": [
       "project_kickoff",
       "uncurated_questions_gte_10",
@@ -540,9 +600,9 @@ Required candidate fields:
 }
 ```
 
-Questions generated from first-run project intake should use `setup_gate: true` and `required_for_setup: true`. The dashboard should prioritize these before ordinary vision questions. Project intake must exist before these setup questions are generated or shown. First-run setup completion stays blocked until they are answered, then setup autopilot may prepare the initial Completion Map and specialist plan without separate user approval gates.
+Questions generated from first-run project intake are optional. `setup_gate: true` may group them in the setup UI, but `required_for_setup` must be `false`; zero to three questions may be shown only when project evidence is insufficient, and skipping them does not block Completion Map or specialist planning.
 
-`questions.json` should contain curated questions only. Do not write raw specialist candidates here directly; use `question_candidates.json` until `vision-curator` promotes them.
+`questions.json` should contain curated questions only. Do not write raw specialist candidates here directly; use `question_candidates.json` until `user-support` promotes them.
 
 ## vision/answers.json
 
@@ -579,7 +639,7 @@ Questions generated from first-run project intake should use `setup_gate: true` 
 
 Answer batch statuses:
 
-- `needs_curation`: raw answers were saved and still need `vision-curator`.
+- `needs_curation`: raw answers were saved and still need `user-support`.
 - `curated`: the curator interpreted the batch, but it is not adopted direction.
 - `needs_user_review`: the interpretation contains candidates that should be discussed with the user before adoption.
 - `approved_for_adoption`: the user or an explicit setup policy approved the candidate direction.
@@ -615,7 +675,7 @@ Use `interpretation_mode: "discussion_seed_not_command"` by default. User answer
     }
   ],
   "wake_policy": {
-    "concierge_agent_id": "error-concierge",
+    "concierge_agent_id": "user-support",
     "wake_triggers": [
       "equivalent_failures_gte_2",
       "permission_or_admin_denial",
@@ -674,7 +734,7 @@ New failure intake is pre-acceptance. A candidate is not yet an accepted inciden
 }
 ```
 
-Fingerprinting removes volatile temp paths, timestamps, thread IDs, and ports. Repeated fingerprints or proof-weakening fallbacks can create an open cluster. Same-quality fallback noise does not create a repair card. Only `open` accepted incidents or open candidate/cluster evidence contributes to an active error-concierge wake reason; mitigated and resolved history remains visible but nonblocking.
+Fingerprinting removes volatile temp paths, timestamps, thread IDs, and ports. Repeated fingerprints or proof-weakening fallbacks can create an open cluster. Same-quality fallback noise does not create a repair card. Only `open` accepted incidents or open candidate/cluster evidence contributes to an active `user-support` wake reason; mitigated and resolved history remains visible but nonblocking.
 
 ## failures/user_actions.json
 
@@ -704,13 +764,13 @@ Fingerprinting removes volatile temp paths, timestamps, thread IDs, and ports. R
 ```json
 {
   "version": 1,
-  "owner_agent_id": "user-liaison",
+  "owner_agent_id": "user-support",
   "tasks": [
     {
       "user_task_id": "UT001",
       "source": "vision_question",
       "source_ids": ["Q001"],
-      "assigned_by": "vision-curator",
+      "assigned_by": "user-support",
       "status": "ready",
       "priority": "medium",
       "title": "Answer visual direction question",
@@ -721,8 +781,8 @@ Fingerprinting removes volatile temp paths, timestamps, thread IDs, and ports. R
     }
   ],
   "policy": {
-    "coordinator_agent_id": "user-liaison",
-    "managed_agents": ["vision-curator", "error-concierge"],
+    "coordinator_agent_id": "user-support",
+    "managed_agents": [],
     "default_status": "ready",
     "user_visible": true
   }
@@ -737,7 +797,7 @@ Approval waits are first-class user tasks. When a specialist or the orchestrator
   "source": "approval_wait",
   "source_ids": ["T100"],
   "source_agent_id": "implementation-001",
-  "assigned_by": "user-liaison",
+  "assigned_by": "user-support",
   "status": "ready",
   "priority": "high",
   "title": "Approve local server restart",
@@ -761,7 +821,7 @@ When a human is the strongest source of evidence, use a narrow queue item with `
   "user_task_id": "UT-CAPABILITY-001",
   "source": "user_capability_review",
   "source_ids": ["T162", "IC-T162-001"],
-  "assigned_by": "user-liaison",
+  "assigned_by": "user-support",
   "status": "ready",
   "priority": "high",
   "title": "Verify Control Plane in an external browser",
@@ -822,11 +882,36 @@ The Completion Map records the large pieces required to finish the project. It i
 }
 ```
 
-The map should be created after project intake and required setup questions are answered. In first-run setup, Orquesta may create the initial map automatically and mark it as the current operating contract. The user can revise this map during normal operations; first-run setup should not require a separate map approval conversation.
+The map is created after project intake. Optional setup questions may improve it but never block it. In first-run setup, Orquesta creates the initial map automatically and marks it as the current operating contract. The user can revise it during normal operations; first-run setup does not require a separate map approval conversation.
+
+## setup/setup_state.json and provisioning_batch.json
+
+`setup_state.json` is the canonical six-phase setup projection. The phases are `environment`, `understanding`, `foundation`, `planning`, `specialists`, and `operation`. Each phase records `pending`, `active`, `completed`, `blocked`, or `failed`, plus current activity, recent activity, technical details, and any provisioning failure. The Desktop setup screen reads this real state instead of a fixture.
+
+`provisioning_batch.json` contains the idempotent thread requests generated from the first executable work:
+
+```json
+{
+  "provisioning_batch_id": "PB-20260720-001",
+  "organization_revision": 3,
+  "max_concurrent_provisioning": 3,
+  "requests": [
+    {
+      "agent_id": "implementation-001",
+      "task_id": "SETUP-WORK-001",
+      "status": "pending",
+      "thread_id": null,
+      "turn_id": null
+    }
+  ]
+}
+```
+
+Every request owns one executable task. Repeated setup or retry reuses the same agent and request IDs. An adapter failure becomes `provisioning_failed`; acceptance requires the persisted thread ID and accepted handoff turn.
 
 ## setup/wizard.json
 
-The setup wizard records where the first-run guided setup currently is. It is dashboard state, not a production task list. Current first-run setup uses setup autopilot: after project intake and required answers, Orquesta automatically prepares the initial map and team, then moves to normal operation.
+The setup wizard is a compatibility projection for older clients. Canonical first-run progress lives in `setup/setup_state.json`; after project intake and any optional answers, Orquesta prepares the initial map and team, provisions accepted threads, then moves to normal operation.
 
 ```json
 {
@@ -849,8 +934,8 @@ The setup wizard records where the first-run guided setup currently is. It is da
     },
     {
       "step_id": "question_gate",
-      "title": "必須質問への回答",
-      "summary": "必要質問に答えて方向性を固める。",
+      "title": "補完質問",
+      "summary": "必要なら任意質問に答える。飛ばしてもセットアップは継続する。",
       "status": "done"
     },
     {
@@ -868,7 +953,7 @@ The setup wizard records where the first-run guided setup currently is. It is da
   ],
   "gates": {
     "project_intake_required": true,
-    "required_questions_must_be_answered": true,
+    "required_questions_must_be_answered": false,
     "completion_map_requires_user_approval": false,
     "completion_map_approved": true,
     "setup_autopilot_enabled": true,
@@ -898,18 +983,18 @@ Project intake stores the user's initial explanation before Orquesta generates q
 
 ## setup/specialist_plan.json
 
-Specialist Plan stores proposed production specialists after the Completion Map exists. During first-run setup, setup autopilot may mark high-priority candidates as `approve_now` automatically so Orquesta can begin operating without another approval round. It is still not a thread-creation command: sessions must not be created, specialist threads must not be messaged, and specialists must not be marked active until the orchestrator explicitly runs the next appointment or handoff step.
+Specialist Plan v2 stores specialists derived from the first executable work after the Completion Map exists. Initial setup confirmation authorizes those specialists and their initial lines without per-specialist approval. The separate provisioning batch creates threads through the existing Codex adapter; no specialist is operational until accepted thread and turn evidence exists.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "status": "proposal_ready",
   "updated_at": "2026-06-23T00:00:00+09:00",
   "source": "completion_map",
   "source_completion_map_updated_at": "2026-06-23T00:00:00+09:00",
   "policy": {
     "create_sessions_on_review": false,
-    "require_user_approval_before_thread_creation": true,
+    "require_user_approval_before_thread_creation": false,
     "default_capability_docs_policy": "deferred_research"
   },
   "candidates": [
@@ -942,7 +1027,7 @@ Specialist Plan stores proposed production specialists after the Completion Map 
 
 ## setup/production_start.json
 
-Production Start stores the first handoff requests prepared from approved specialist candidates. It is still not a thread automation layer. Preparing production start may create queued handoff tasks, but it must not create sessions, message specialist threads, or mark specialists active unless the orchestrator actually performs those handoffs.
+Production Start is a compatibility view of the provisioning batch. It may prepare queued requests, while the Desktop repository runtime performs actual thread creation and handoff through the existing Codex adapter. State becomes operational only after adapter evidence is persisted.
 
 ```json
 {
@@ -963,11 +1048,11 @@ Production Start stores the first handoff requests prepared from approved specia
     }
   ],
   "policy": {
-    "create_sessions_on_start": false,
+    "create_sessions_on_start": true,
     "requires_thread_handoff": true
   },
   "notes": [
-    "The dashboard prepared handoff tasks only. It did not create sessions or send messages to specialist threads."
+    "The dashboard prepared provisioning requests. The Desktop runtime creates sessions and sends bounded handoffs."
   ]
 }
 ```
@@ -986,9 +1071,7 @@ Production Start stores the first handoff requests prepared from approved specia
   "orchestrator_title_policy": "rename_calling_thread_to_starred_Orquesta_orchestrator",
   "orchestrator_pin_policy": "pin_calling_thread",
   "foundation_agent_ids": [
-    "user-liaison",
-    "vision-curator",
-    "error-concierge",
+    "user-support",
     "orquesta-admin"
   ],
   "foundation_sessions_required": true,
