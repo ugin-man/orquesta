@@ -97,6 +97,38 @@ Schema v2 agents add `role_id`, `role_version`, `organization_scope`, `lifecycle
 
 The organization preflight may autonomously apply `reuse_agent`, `split_task`, `add_member`, `add_role`, `assign_lead`, and permanent transfer between existing lines. Only `propose_line` waits for product-level user approval. Temporary cross-line assignment is not a valid state. Initial lines use `approval_source: "setup_confirmation"`; later lines use `user_approval`.
 
+## organization-decisions.json
+
+Every organization preflight result is recorded before it changes the organization. The decision ledger is append-oriented and keyed by `decision_id` and `input_hash`. Autonomous actions move from `ready` to `applied` when the atomic organization transition commits. Repeating the same decision does not create another agent or increment the organization revision again. `add_member` and `add_role` must also write a task-bound pending request to `setup/provisioning_batch.json`; the existing Desktop Codex adapter creates the real specialist thread and persists its handoff evidence.
+
+```json
+{
+  "schema_version": 1,
+  "decisions": [
+    {
+      "decision_id": "OD-0123456789ab",
+      "task_intent_id": "TI-0123456789ab",
+      "organization_revision": 4,
+      "input_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "mode": "deep",
+      "selected_action": "add_member",
+      "reason_codes": ["CAPACITY_DURABLE"],
+      "requires_user_approval": false,
+      "approval_state": "not_required",
+      "proposed_line": null,
+      "status": "applied",
+      "created_at": "2026-07-20T00:00:00.000Z",
+      "recorded_at": "2026-07-20T00:00:00.000Z",
+      "resolved_at": null,
+      "applied_at": "2026-07-20T00:00:00.000Z"
+    }
+  ],
+  "updated_at": "2026-07-20T00:00:00.000Z"
+}
+```
+
+`propose_line` is different. Recording it creates exactly one visible `approval_wait` in `user_tasks/queue.json`. Rejection resolves the user task without creating a line. Approval changes the decision to `approved`; only then may the line be committed with `approval_source: "user_approval"`. Pending proposals are not part of `organization.json` and must not appear as existing lines in the organization map.
+
 ## sessions.json
 
 `sessions.json` stores the latest observed Codex project threads. `agents.json` is the appointed role roster; `sessions.json` is the observed runtime session snapshot. The dashboard overlays sessions onto agents by `thread_id`, and may show unassigned project sessions separately.
@@ -810,7 +842,7 @@ Approval waits are first-class user tasks. When a specialist or the orchestrator
 }
 ```
 
-Valid `approval_type` values include `codex_safety_approval`, `scope_expansion_approval`, `destructive_action_approval`, `environment_permission_approval`, and `user_direction_approval`. If the blocked Orquesta task uses `blocked_by: ["user_approval_required"]` or another approval blocker, an open `approval_wait` user task should reference that task id through `source_ids` or `source_task_id`.
+Valid `approval_type` values include `codex_safety_approval`, `scope_expansion_approval`, `destructive_action_approval`, `environment_permission_approval`, `user_direction_approval`, and `organization_line_approval`. `organization_line_approval` is the only product-level organization approval; other organization changes do not create user tasks. If the blocked Orquesta task uses `blocked_by: ["user_approval_required"]` or another approval blocker, an open `approval_wait` user task should reference that task id through `source_ids` or `source_task_id`.
 
 ## User Capability Route
 

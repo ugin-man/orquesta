@@ -168,6 +168,8 @@ Create a new specialist thread only when all are true:
 
 Default policy: thread creation inside an existing approved organization is autonomous. Only a new line waits for product-level user approval. Reuse, task splitting, same-role scaling, new-role creation, leader assignment, and permanent transfer between existing lines do not need product-level approval. Never create a temporary cross-line assignment. This rule does not bypass Codex safety or command approvals.
 
+Persist every result in `.orquesta/state/organization-decisions.json`. Approval-free actions are applied with an atomic organization revision transition. `add_member` and `add_role` also prepare a task-bound request in `.orquesta/setup/provisioning_batch.json`; the Desktop runtime creates the Codex thread and handoff. A `propose_line` result creates one `approval_wait` entry in `.orquesta/user_tasks/queue.json`; it cannot add the line to `.orquesta/state/organization.json` before approval. Repeating the same decision ID is idempotent.
+
 ## Direct Conversation Sync
 
 When the user works directly with a specialist:

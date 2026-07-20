@@ -258,6 +258,16 @@ function assertBundle(bundle, expectedRevision) {
   if (agentDuplicates.length) throw new Error(`duplicate agent_id: ${agentDuplicates.join(", ")}`);
   const roleDuplicates = duplicateIds(bundle.rolesState.roles, "role_id");
   if (roleDuplicates.length) throw new Error(`duplicate role_id: ${roleDuplicates.join(", ")}`);
+  const registeredAgentIds = new Set((bundle.agentsState.agents || []).map((agent) => agent.agent_id));
+  const registeredRoleIds = new Set((bundle.rolesState.roles || []).map((role) => role.role_id));
+  for (const agent of bundle.organizationState.agents || []) {
+    if (!registeredAgentIds.has(agent.agent_id)) {
+      throw new Error(`organization references missing agent_id: ${agent.agent_id}`);
+    }
+    if (!registeredRoleIds.has(agent.role_id)) {
+      throw new Error(`organization references missing role_id: ${agent.role_id}`);
+    }
+  }
   const nextRevision = expectedRevision + 1;
   for (const [name, revision] of [
     ["organization", bundle.organizationState.revision],

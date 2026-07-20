@@ -165,6 +165,8 @@ Before creating or steering a specialist thread, define:
 
 If an existing specialist can do the work, reuse that thread. The organization preflight may autonomously split a task, add a member, add a role, assign a lead, or permanently transfer an agent between existing lines. Creating a new line is the only Orquesta organization change that requires product-level user approval. Codex harness approvals remain separate and are never bypassed. Temporary cross-line assignments are forbidden.
 
+Before non-trivial production work, persist the preflight result in `.orquesta/state/organization-decisions.json`. Apply approval-free organization decisions through the atomic organization transition instead of merely describing them in chat. `add_member` and `add_role` must include an executable task-bound provisioning request so the Desktop Codex adapter creates the real thread. For `propose_line`, create one `approval_wait` user task and leave the proposed line out of `organization.json` until the user approves it.
+
 ## State Rule
 
 The source of truth is not chat history. The source of truth is:
@@ -174,6 +176,9 @@ The source of truth is not chat history. The source of truth is:
 - `.orquesta/state/trigger_audit.json`
 - `.orquesta/state/directives.json`
 - `.orquesta/state/events.jsonl`
+- `.orquesta/state/roles.json`
+- `.orquesta/state/organization.json`
+- `.orquesta/state/organization-decisions.json`
 - `.orquesta/failures/incidents.json`
 - `.orquesta/failures/user_actions.json`
 - `.orquesta/user_tasks/queue.json`

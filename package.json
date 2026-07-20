@@ -52,6 +52,8 @@
     "test:report-review": "node orquesta/scripts/dashboard-report-review.test.js",
     "test:triggers": "node orquesta/scripts/foundation-trigger-audit.test.js",
     "test:adaptive-setup": "node --test orquesta/scripts/adaptive-setup-state.test.js orquesta/scripts/organization-state.test.js && node orquesta/scripts/foundation-trigger-audit.test.js",
+    "test:adaptive-organization": "node --test packages/contracts/test/contracts.test.js packages/core/test/adaptive-setup.test.js packages/core/test/organization-model.test.js packages/core/test/organization-preflight.test.js scripts/v4/adaptive-organization-fixtures.test.js && npm run test:adaptive-setup && npm --prefix apps/orquesta-desktop run test -- electron/core/repository-reader.test.ts electron/core/repository-runtime.test.ts electron/core/specialist-provisioner.test.ts tests/unit/map-organization.test.ts tests/unit/organization-model.test.ts tests/unit/initial-setup-contract.test.ts tests/unit/initial-setup-experience.test.tsx",
+    "check:adaptive-organization": "npm run test:adaptive-organization && node --check orquesta/dashboard-server.js && node --check orquesta/scripts/organization-decision-state.js && npm run check:encoding && npm --prefix apps/orquesta-desktop run build",
     "test:incident-intake": "node orquesta/scripts/incident-intake.test.js",
     "test:model-policy": "node orquesta/scripts/model-policy.test.js",
     "test:ports": "node orquesta/scripts/dashboard-port-selection.test.js",

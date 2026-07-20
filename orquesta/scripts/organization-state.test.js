@@ -148,6 +148,39 @@ test("an invalid transition writes no organization files", () => {
   }
 });
 
+test("a transition rejects organization agents missing from the role or agent registries", () => {
+  const { root } = makeRepository();
+  try {
+    const migrated = migrateLegacyOrganization({
+      projectId: "fixture-project",
+      agentsState: legacyAgents(),
+      sessionsState: emptySessions(),
+      tasksState: emptyTasks(),
+      now: NOW,
+    });
+    migrated.organizationState.agents[0].role_id = "missing-role";
+    assert.throws(
+      () => commitOrganizationTransition({ root, expectedRevision: 0, bundle: migrated, now: NOW }),
+      /missing role_id/,
+    );
+
+    const missingAgent = migrateLegacyOrganization({
+      projectId: "fixture-project",
+      agentsState: legacyAgents(),
+      sessionsState: emptySessions(),
+      tasksState: emptyTasks(),
+      now: NOW,
+    });
+    missingAgent.agentsState.agents = missingAgent.agentsState.agents.filter((agent) => agent.agent_id !== "user-support");
+    assert.throws(
+      () => commitOrganizationTransition({ root, expectedRevision: 0, bundle: missingAgent, now: NOW }),
+      /missing agent_id/,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a valid transition commits roles, agents, and organization at one revision and can be read back", () => {
   const { root } = makeRepository();
   try {
