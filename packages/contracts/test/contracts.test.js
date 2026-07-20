@@ -224,6 +224,79 @@ const executionPlan = {
   supersedes_execution_plan_id: null
 };
 
+const roleDefinition = {
+  role_id: "implementation",
+  version: 1,
+  display_names: { en: "Implementation", ja: "実装係" },
+  aliases: ["coder", "developer"],
+  capability_ids: ["code.change", "code.test"],
+  default_contract_template: "specialist-implementation-v1",
+  lifecycle_state: "active"
+};
+
+const agentCapabilityProfile = {
+  agent_id: "implementation-001",
+  capabilities: [{
+    capability_id: "code.change",
+    status: "verified",
+    evidence_refs: ["evidence:code-change"],
+    scope: ["packages/core"]
+  }],
+  availability: "available",
+  organization_revision: 1
+};
+
+const organizationState = {
+  schema_version: 2,
+  revision: 1,
+  policy: {
+    organization_changes: "autonomous_except_new_line",
+    max_concurrent_provisioning: 3,
+    require_executable_task_per_new_agent: true,
+    require_no_file_ownership_conflict: true
+  },
+  agents: [
+    { agent_id: "implementation-001", role_id: "implementation", organization_scope: "line", lifecycle_state: "active", operational_status: "working" },
+    { agent_id: "orchestrator", role_id: "orchestrator", organization_scope: "project", lifecycle_state: "active", operational_status: "working" }
+  ],
+  teams: [{ team_id: "core-implementation", line_id: "core-line", display_name: "Core implementation", purpose: "Core work", lifecycle_state: "active" }],
+  memberships: [{ membership_id: "membership-implementation", agent_id: "implementation-001", team_id: "core-implementation", position: "member", ordinal: 1, active_from: timestamp, active_to: null }],
+  relationships: [{ relationship_id: "relationship-implementation", type: "reports_to", from_agent_id: "implementation-001", to_agent_id: "orchestrator" }],
+  lines: [{ line_id: "core-line", display_name: "Core", goal: "Core deliverable", deliverable_ids: ["core"], completion_root_ids: ["CM-CORE"], scope: ["packages/core"], owner_agent_id: "orchestrator", dedicated_lead_agent_id: null, status: "active", approval_source: "setup_confirmation" }],
+  applied_decision_ids: []
+};
+
+const organizationDecision = {
+  decision_id: "OD-0123456789ab",
+  task_intent_id: "TI-0123456789ab",
+  organization_revision: 1,
+  input_hash: hash,
+  mode: "deep",
+  selected_action: "add_role",
+  reason_codes: ["CAPABILITY_GAP"],
+  requires_user_approval: false,
+  approval_state: "not_required",
+  proposed_line: null,
+  created_at: timestamp
+};
+
+const specialistPlanV2 = {
+  schema_version: 2,
+  source_understanding_hash: hash,
+  source_completion_map_revision: 1,
+  first_executable_batch: ["T001"],
+  selected_specialists: [{
+    role_id: "implementation",
+    quantity: 1,
+    line_id: "core-line",
+    team_id: "core-implementation",
+    reason_codes: ["CAPABILITY_MATCH"],
+    task_ids: ["T001"]
+  }],
+  future_candidates: [{ role_id: "release", activation_condition: "release milestone becomes executable" }],
+  approval_source: "setup_confirmation"
+};
+
 const fixtures = {
   "task-intent": [taskIntent, (value) => { value.acceptance_criteria = []; }],
   "capability-need": [capabilityNeed, (value) => { value.kind = "unknown"; }],
@@ -235,7 +308,12 @@ const fixtures = {
   "event-batch": [eventBatch, (value) => { value.events = []; }],
   "phase-review": [phaseReview, (value) => { value.status = "ready_for_user_review"; }],
   "approval-attestation": [approvalAttestation, (value) => { value.actor = { type: "user" }; }],
-  "execution-plan": [executionPlan, (value) => { value.lane = "unknown"; }]
+  "execution-plan": [executionPlan, (value) => { value.lane = "unknown"; }],
+  "role-definition": [roleDefinition, (value) => { value.role_id = ""; }],
+  "agent-capability-profile": [agentCapabilityProfile, (value) => { value.availability = "unknown"; }],
+  "organization-state": [organizationState, (value) => { value.agents.push(clone(value.agents[0])); }],
+  "organization-decision": [organizationDecision, (value) => { value.selected_action = "unknown"; }],
+  "specialist-plan-v2": [specialistPlanV2, (value) => { value.schema_version = 1; }]
 };
 
 test("public contract surface is stable", () => {
@@ -258,6 +336,47 @@ test("every approved schema accepts its fixture and rejects a meaningful invalid
     mutate(invalid);
     assert.equal(validateContract(schemaName, invalid).ok, false, schemaName);
   }
+});
+
+test("organization decisions reserve user approval for a proposed new line", () => {
+  const line = {
+    ...organizationDecision,
+    decision_id: "OD-abcdef012345",
+    selected_action: "propose_line",
+    requires_user_approval: true,
+    approval_state: "pending_user",
+    proposed_line: {
+      line_id: "desktop-line",
+      display_name: "Desktop",
+      goal: "Desktop deliverable",
+      deliverable_ids: ["desktop"],
+      completion_root_ids: ["CM-DESKTOP"],
+      scope: ["apps/orquesta-desktop"],
+      owner_agent_id: "orchestrator"
+    }
+  };
+  assert.equal(validateContract("organization-decision", line).ok, true);
+  assert.equal(validateContract("organization-decision", { ...line, requires_user_approval: false }).ok, false);
+  assert.equal(validateContract("organization-decision", { ...organizationDecision, requires_user_approval: true, approval_state: "pending_user" }).ok, false);
+});
+
+test("organization state rejects temporary assignments and invalid cross-record references", () => {
+  assert.equal(validateContract("organization-state", organizationState).ok, true);
+  assert.equal(validateContract("organization-state", { ...organizationState, temporary_assignment: true }).ok, false);
+  const invalid = clone(organizationState);
+  invalid.memberships[0].team_id = "missing-team";
+  assert.equal(validateContract("organization-state", invalid).ok, false);
+});
+
+test("specialist plans keep the same role distinct across separate lines", () => {
+  const plan = clone(specialistPlanV2);
+  plan.selected_specialists.push({
+    ...plan.selected_specialists[0],
+    line_id: "desktop-line",
+    team_id: "desktop-implementation",
+    task_ids: ["T002"]
+  });
+  assert.equal(validateContract("specialist-plan-v2", plan).ok, true);
 });
 
 test("Execution Plan rejects unbound identity, noncanonical effects, and altered lane budgets", () => {

@@ -21,6 +21,11 @@ const SCHEMA_NAMES = [
   "phase-review",
   "approval-attestation",
   "execution-plan",
+  "role-definition",
+  "agent-capability-profile",
+  "organization-state",
+  "organization-decision",
+  "specialist-plan-v2",
   "live-source-query",
   "live-source-result",
   "audition-plan",
@@ -413,6 +418,120 @@ function executionPlanErrors(value) {
   return errors;
 }
 
+function uniqueRecordIds(value, field, pathValue, errors) {
+  if (!Array.isArray(value)) return;
+  const seen = new Set();
+  for (const record of value) {
+    const id = record && record[field];
+    if (typeof id !== "string" || seen.has(id)) {
+      errors.push(schemaError(pathValue, "organization_unique_id", "must contain unique record ids"));
+      return;
+    }
+    seen.add(id);
+  }
+}
+
+function organizationDecisionErrors(value) {
+  if (!isPlainObject(value)) return [];
+  const errors = [];
+  const lineAction = value.selected_action === "propose_line";
+  if (lineAction !== value.requires_user_approval) {
+    errors.push(schemaError("$.requires_user_approval", "organization_line_approval", "must be true only for propose_line"));
+  }
+  if (lineAction) {
+    if (!isPlainObject(value.proposed_line) || !["pending_user", "approved"].includes(value.approval_state)) {
+      errors.push(schemaError("$.approval_state", "organization_line_approval", "propose_line requires a proposed line and pending_user or approved approval"));
+    }
+  } else if (value.approval_state !== "not_required" || value.proposed_line !== null) {
+    errors.push(schemaError("$.approval_state", "organization_approval_scope", "must be not_required with no proposed line outside propose_line"));
+  }
+  return errors;
+}
+
+function organizationStateErrors(value) {
+  if (!isPlainObject(value)) return [];
+  const errors = [];
+  for (const [field, id] of [["agents", "agent_id"], ["teams", "team_id"], ["memberships", "membership_id"], ["relationships", "relationship_id"], ["lines", "line_id"]]) {
+    uniqueRecordIds(value[field], id, `$.${field}`, errors);
+  }
+  if (errors.length > 0) return errors;
+  const agents = new Map((value.agents || []).map((agent) => [agent.agent_id, agent]));
+  const teams = new Map((value.teams || []).map((team) => [team.team_id, team]));
+  const lines = new Map((value.lines || []).map((line) => [line.line_id, line]));
+  for (const team of value.teams || []) {
+    if (team.line_id !== null && !lines.has(team.line_id)) errors.push(schemaError("$.teams", "organization_team_line_reference", "team line_id must reference an existing line"));
+  }
+  const activeMemberships = (value.memberships || []).filter((membership) => membership.active_to === null);
+  for (const membership of activeMemberships) {
+    if (!agents.has(membership.agent_id) || !teams.has(membership.team_id)) {
+      errors.push(schemaError("$.memberships", "organization_membership_reference", "membership must reference existing agent and team"));
+    }
+  }
+  for (const agent of agents.values()) {
+    const memberships = activeMemberships.filter((membership) => membership.agent_id === agent.agent_id);
+    if (agent.organization_scope === "line") {
+      const lineIds = new Set(memberships.map((membership) => teams.get(membership.team_id)?.line_id).filter(Boolean));
+      if (lineIds.size !== 1) errors.push(schemaError("$.memberships", "organization_line_membership", "line-scoped agents must have one active line membership"));
+    }
+    if (agent.organization_scope === "project" && memberships.some((membership) => teams.get(membership.team_id)?.line_id !== null)) {
+      errors.push(schemaError("$.memberships", "organization_project_scope", "project-scoped agents cannot join a production line"));
+    }
+  }
+  for (const team of teams.values()) {
+    const leads = activeMemberships.filter((membership) => membership.team_id === team.team_id && membership.position === "lead");
+    if (leads.length > 1) errors.push(schemaError("$.memberships", "organization_team_lead", "a team may have at most one active lead"));
+  }
+  for (const line of lines.values()) {
+    if (!agents.has(line.owner_agent_id)) errors.push(schemaError("$.lines", "organization_line_owner", "line owner must reference an existing agent"));
+    if (line.dedicated_lead_agent_id !== null && !agents.has(line.dedicated_lead_agent_id)) {
+      errors.push(schemaError("$.lines", "organization_line_lead", "dedicated lead must reference an existing agent"));
+    }
+  }
+  const reportsTo = new Map();
+  for (const relationship of value.relationships || []) {
+    if (!agents.has(relationship.from_agent_id) || !agents.has(relationship.to_agent_id)) {
+      errors.push(schemaError("$.relationships", "organization_relationship_reference", "relationship must reference existing agents"));
+      continue;
+    }
+    reportsTo.set(relationship.from_agent_id, relationship.to_agent_id);
+  }
+  for (const agentId of reportsTo.keys()) {
+    const seen = new Set();
+    let current = agentId;
+    while (reportsTo.has(current)) {
+      if (seen.has(current)) {
+        errors.push(schemaError("$.relationships", "organization_reports_to_cycle", "reports_to relationships must be acyclic"));
+        break;
+      }
+      seen.add(current);
+      current = reportsTo.get(current);
+    }
+  }
+  return errors;
+}
+
+function organizationRecordErrors(name, value) {
+  if (!isPlainObject(value)) return [];
+  if (name === "role-definition") return phase2ArrayErrors(value, ["aliases", "capability_ids"]);
+  if (name === "agent-capability-profile") return phase2ArrayErrors(value, [], [["capabilities", "capability_id"]]);
+  if (name === "organization-state") return organizationStateErrors(value);
+  if (name === "organization-decision") return organizationDecisionErrors(value);
+  if (name === "specialist-plan-v2") {
+    const errors = phase2ArrayErrors(value, ["first_executable_batch"], [["future_candidates", "role_id"]]);
+    const selectedKeys = new Set();
+    for (const specialist of value.selected_specialists || []) {
+      const key = specialist && `${specialist.role_id}\u0000${specialist.line_id}\u0000${specialist.team_id}`;
+      if (selectedKeys.has(key)) {
+        errors.push(schemaError("$.selected_specialists", "organization_selected_specialist_duplicate", "must not repeat the same role, line, and team"));
+        break;
+      }
+      selectedKeys.add(key);
+    }
+    return errors;
+  }
+  return [];
+}
+
 function codeUnitCompare(left, right) {
   if (left < right) return -1;
   if (left > right) return 1;
@@ -437,6 +556,9 @@ function validateContract(name, value, options = {}) {
     errors.push(...phaseReviewErrors(value));
   }
   if (name === "execution-plan") errors.push(...executionPlanErrors(value));
+  if (["role-definition", "agent-capability-profile", "organization-state", "organization-decision", "specialist-plan-v2"].includes(name)) {
+    errors.push(...organizationRecordErrors(name, value));
+  }
   if (name === "live-source-query") {
     errors.push(...timestampFieldErrors(value, ["requested_at"]));
     errors.push(...liveSourceQueryErrors(value));
