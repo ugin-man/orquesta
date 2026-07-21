@@ -112,7 +112,7 @@ function verifyDocumentation(root) {
     ["orquesta/references/orchestration-protocol.md", ["Phase 2A and 2B", "Audition", "install authorization", "dispatch acceptance", "turn start"]],
     ["orquesta/references/agent-contract.md", ["Phase 2 runtime contract", "App Server", "SDK", "repository-only", "actual_model"]],
     ["orquesta/references/state-schema.md", ["Phase 2A and 2B evidence", "derived cache", "Event Journal is canonical"]],
-    ["README.md", ["Phase 2A", "Phase 2B", "no application shell", "separate user decision"]]
+    ["README.md", ["Phase 2A", "Phase 2B", "Windows application", "Electron", "Requested, applied, and observed model identity stay separate"]]
   ];
   const missing = [];
   for (const [relative, markers] of requirements) {

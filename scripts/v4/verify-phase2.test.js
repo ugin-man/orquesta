@@ -60,7 +60,7 @@ test("scope verifier permits Phase 2 surfaces and rejects application, dashboard
   assert.equal(verifyScopePaths([], { modelEvidenceObjects: [{ actual_model: "claimed", actual_model_evidence_ref: null }] }).passed, false);
 });
 
-test("Phase 2 documentation states the implemented boundary without claiming an application shell", () => {
+test("Phase 2 documentation states the implemented runtime and Desktop boundaries", () => {
   const result = verifyDocumentation(REPOSITORY_ROOT);
   assert.equal(result.passed, true, result.missing.join("\n"));
 });

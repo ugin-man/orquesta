@@ -12,6 +12,8 @@ test("pins the generated App Server v2 lifecycle subset", () => {
   assert.equal(Object.hasOwn(schema.source, "sha256"), false);
   assert.deepEqual(Object.keys(schema.client_requests), [
     "initialize",
+    "account/read",
+    "account/login/start",
     "thread/start",
     "thread/resume",
     "thread/read",
@@ -19,6 +21,16 @@ test("pins the generated App Server v2 lifecycle subset", () => {
     "turn/steer",
     "turn/interrupt"
   ]);
+  assert.deepEqual(schema.client_requests["account/read"], {
+    required: ["id", "method", "params"],
+    params_required: [],
+    response_required: ["requiresOpenaiAuth"]
+  });
+  assert.deepEqual(schema.client_requests["account/login/start"], {
+    required: ["id", "method", "params"],
+    params_required: ["type"],
+    response_required: ["type"]
+  });
   assert.deepEqual(schema.client_requests["turn/start"].params_required, [
     "input",
     "threadId"

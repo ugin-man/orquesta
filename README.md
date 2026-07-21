@@ -1,32 +1,64 @@
-# Orquesta Beta V3
+# Orquesta V4 Desktop
 
-Orquesta turns Codex into a long-lived specialist team with a local dashboard, instead of a single disposable coding agent.
+Orquesta is a local-first Windows command room that turns Codex into an evidence-backed team of long-lived specialists.
 
-It is a Codex skill for human-in-the-loop game development and other creative software work where one thread with one giant context is not enough. The orchestrator keeps state, specialists keep scoped context, and the dashboard shows what the team is doing.
+Coding agents are strong once a task is clear. The harder problem is deciding what capabilities the task needs, whether an existing tool should be reused, who should own each part, which context that specialist should read, and whether claimed work actually ran. Orquesta makes that decision layer visible and keeps its project truth in the repository instead of relying on one enormous chat history.
+
+The core goal is not a short multi-agent demo. Orquesta is designed for one-, two-, or three-month development efforts where the team must keep operating without losing the user's intent. Specialists accumulate questions as they work. The user's answers are curated into explicit vision, constraints, and decisions, so human metacognition and tacit knowledge become durable project state instead of disappearing inside old chat messages.
+
+The V4 Desktop application combines a live organization map, user-task queue, conversation history, project switching, a read-only explainer named Luca, and evidence views for capability resolution, acquisition, audit, and execution. The Codex harness remains the runtime boundary; Orquesta does not add a second sandbox or pretend that a dispatched request is a completed turn.
 
 New here? Start with [START_HERE.md](START_HERE.md).
 
+OpenAI Build Week judges can start with [BUILD_WEEK.md](BUILD_WEEK.md), which separates the pre-existing project from work completed during the submission period and includes testing and installation guidance.
+
 Orquesta is not just one Codex thread with a team-themed dashboard. Real operation requires evidence: a task is routed to a non-orchestrator specialist when the work belongs to that lane, the handoff is recorded, the specialist returns a report or artifact, and the orchestrator accepts, holds, or requests changes in state. Direct orchestrator work is reserved for orchestration bookkeeping, tiny state/report updates, emergency unblockers, or explicit user instruction.
 
-The current dashboard is a mission-control style workspace for that loop: a glass-like Command Board, specialist map, user-action rail, project route, and state-backed review surfaces. It is meant to make delegation, pending user actions, and trigger-ready foundation work visible; it is not a guarantee that the team is operating correctly unless the underlying state shows real handoffs and accepted specialist reports.
+The Desktop is a mission-control workspace for that loop. It is meant to make delegation, pending user actions, live and idle specialists, runtime evidence, and project history visible. The interface alone is not proof that the team is operating correctly; the underlying state must show real handoffs, reports, and acceptance evidence.
 
-## Beta Status
+## Current Status
 
-Current preview version: `0.4.0-preview.1`.
+Current hackathon build: **Orquesta V4 Desktop, 0.1.0 preview**.
 
-This repository is beta-quality. Beta V3 adds a file-backed Control Plane for evidence, capacity, completion review, question observations, incident intake, and model-route recommendations. Product-level thread dispatch and model switching remain optional adapters, not repository promises.
+The current application targets Windows x64. It is unsigned preview software, so Windows may show an unknown-publisher warning. Code signing, automatic updates, macOS/Linux packaging, and V4 Phase 3 learning are not part of this submission.
 
-The first GitHub-install bootstrap smoke test passed on 2026-06-22. The skill installed from this repository, initialized a separate project, created the foundation roles, and served the dashboard from a fallback port after detecting a local `4177` port conflict.
+The first GitHub-install bootstrap smoke test passed on 2026-06-22. During OpenAI Build Week, Orquesta was meaningfully extended into a Windows desktop product with a one-screen project intake, six-phase setup experience, Home tutorial, adaptive organization projection, inspection agents, Luca explanations, and a packaged Codex runtime. See [BUILD_WEEK.md](BUILD_WEEK.md) for the dated evidence boundary.
 
 Bootstrap smoke and delegation-loop smoke are separate checks. Bootstrap smoke proves setup, project-owned `/api/state`, foundation agents, dashboard rendering, and encoding health. Delegation-loop smoke proves the operating model: a real specialist receives a task, reports back, and the orchestrator records an acceptance decision. Do not treat the dashboard alone as proof of multi-agent operation.
 
-## V4 Phase 2 preview
+## V4 System
 
 Phase 2A adds bounded discovery of existing tools from official documentation, registries, GitHub, and approved UI catalogs. Candidates keep source hashes and expiry evidence, pass hard gates before ranking, and run through a source-bound Audition before they can be proposed for use. Audition approval and install authorization are separate; Core does not install a dependency.
 
 Phase 2B adds pinned Codex App Server and SDK adapters, repository-only fallback, explicit approval relay, truthful model evidence, and a bounded Event Journal chain from dispatch through acceptance. The Codex harness remains the runtime safety boundary. Orquesta adds no second sandbox.
 
-This preview has no application shell. The current Workbench remains a Phase 1 review surface. Windows, desktop, web-app, or other productization waits for a separate user decision after the Phase 2A and Phase 2B review.
+The Windows application uses Electron, React, TypeScript, and Vite. Its sandboxed Renderer talks through a typed, context-isolated Preload bridge to Electron Main and a separate Core utility process. Repository access and Codex communication do not run in the Renderer.
+
+Codex App Server is the primary execution path, with an SDK fallback and a repository-only preparation fallback. Requested, applied, and observed model identity stay separate. `actual_model` remains unknown unless runtime evidence proves it.
+
+Orquesta also keeps model cost visible. Policy automatically recommends Luna, Terra, or Sol from task signals; the orchestrator can accept or override that route when dispatching a specialist, with bounded escalation for harder work. The Desktop passes the requested model to Codex App Server, but does not present it as applied or observed unless runtime evidence proves it.
+
+## Try the Desktop App
+
+The fastest review path is the Windows x64 installer attached to the latest GitHub release. The build is unsigned preview software.
+
+To run from source, install Node.js 22.12.0 or newer, then run:
+
+```powershell
+npm install
+npm install --prefix apps/orquesta-desktop
+npm run start:desktop --prefix apps/orquesta-desktop
+```
+
+For architecture, packaging, and validation details, see [the Desktop README](apps/orquesta-desktop/README.md) and [Desktop validation evidence](apps/orquesta-desktop/VALIDATION.md).
+
+## Desktop Preview
+
+![Orquesta Desktop Home](apps/orquesta-desktop/docs/audits/2026-07-19-current-ux/01-home.png)
+
+![Orquesta V4 Operations fixture](apps/orquesta-desktop/tests/visual/__screenshots__/operations-1440x900.png)
+
+The first image is a repository-backed Desktop capture. The Operations image is a deterministic review fixture, not a claim that a live Codex turn was running when it was captured.
 
 ## Looking For Collaborators
 
@@ -41,18 +73,17 @@ If you are interested in multi-agent workflows, Codex skills, game-development t
 - A long-lived orchestrator thread for routing, state, blockers, approvals, and final reports.
 - Foundation roles:
   - `orchestrator`
-  - `user-liaison`
-  - `vision-curator`
-  - `error-concierge`
+  - `user-support`
   - `orquesta-admin`
+- The Desktop presents `orquesta-admin` as Luca, a read-only project explainer grounded in bounded saved records.
 - Numbered production specialist roles such as `visual-art-001`, `implementation-001`, `world-lore-001`, and `playtest-qa-001`.
 - File-backed project state under `.orquesta/` in the target project.
-- A local browser dashboard for mission-control style team visualization, task state, delegation evidence, user-side actions, vision questions, trigger audit status, and repair cards.
-- Event-driven foundation roles. For example, `vision-curator` is not a watcher; trigger audit can surface pending question-candidate evidence so the orchestrator can deliberately wake or defer the curator.
+- A Windows Desktop for organization visualization, task state, delegation evidence, user actions, records, setup, and Codex messaging. The earlier browser dashboard remains in the repository as a legacy review surface.
+- A merged `user-support` role that handles user communication, vision-question curation, and failure intake instead of three separate foundation agents.
 - Atomic control-state writes, deterministic `control_audit.json`, and completion-envelope validation for staged-in specialist work.
 - A separate Control Plane view that distinguishes dispatch acceptance, turn start, progress, report production, capacity circuits, fallbacks, and model evidence.
 - Question observations before curator promotion, and incident candidates/clusters before concierge repair cards or user tasks.
-- Signal-based Luna, Terra, and Sol recommendations with bounded escalation and review. A recommendation or requested model is not an applied or actual model.
+- Policy-driven Luna, Terra, and Sol recommendations that the orchestrator can accept or override at dispatch, with bounded escalation and separate requested, applied, and observed evidence.
 
 ## Repository Layout
 
@@ -130,9 +161,9 @@ The current dashboard direction is a mission-control interface rather than the e
 - Command Board style layout with glass lighting and dense operational panels.
 - DAG/tree layout support for specialist command maps and project route views.
 - User-action and delegation surfaces that distinguish prepared, sent, reviewed, accepted, and blocked work.
-- Trigger audit visibility for event-driven foundation roles, including pending question-candidate summaries that may require `vision-curator` review.
+- Trigger audit visibility for event-driven foundation roles, including pending question-candidate summaries that may require `user-support` review.
 
-Trigger audit is visibility, not automation. It can show that curator wake conditions exist, but it must not turn `vision-curator` into a continuous watcher or promote raw question candidates without an explicit Orquesta route.
+Trigger audit is visibility, not automation. It can show that question-curation conditions exist, but it must not turn `user-support` into a continuous watcher or promote raw question candidates without an explicit Orquesta route.
 
 ## Beta V3 Evidence Boundaries
 
