@@ -15,7 +15,7 @@ const setup: SetupUiSnapshot = {
     { id: 'foundation', order: 3, title: '基盤構築', summary: '状態領域と基礎エージェントを準備', status: 'active' },
     { id: 'planning', order: 4, title: '初期計画', summary: '最初のマイルストーンを設計', status: 'waiting' },
     { id: 'specialists', order: 5, title: '専門家編成', summary: '必要な専門家と役割契約を作成', status: 'waiting' },
-    { id: 'launch', order: 6, title: '運用開始', summary: '初期体制を確定してHomeへ移行', status: 'waiting' }
+    { id: 'operation', order: 6, title: '運用開始', summary: '初期体制を確定してHomeへ移行', status: 'waiting' }
   ],
   currentActivity: {
     id: 'foundation-agents',
@@ -70,5 +70,48 @@ export const setupRunningFixture: FixtureDefinition = {
       nextMilestone: '初回セットアップ画面のユーザーレビュー'
     },
     setup
+  }
+};
+
+export const setupOperationFixture: FixtureDefinition = {
+  ...setupRunningFixture,
+  snapshot: {
+    ...setupRunningFixture.snapshot,
+    project: {
+      ...setupRunningFixture.snapshot.project,
+      id: 'setup-operation',
+      connectionLabel: '初回セットアップ最終確認中',
+      summary: '初期体制の同期を確認しています'
+    },
+    setup: {
+      ...setup,
+      currentPhaseId: 'operation',
+      updatedAt: '2026-07-20T08:04:30.000Z',
+      phases: setup.phases.map((phase) => ({
+        ...phase,
+        status: phase.id === 'operation' ? 'active' : 'complete'
+      })),
+      currentActivity: {
+        id: 'operation-validation',
+        title: '運用開始を確認しています',
+        detail: '基礎エージェント、専門家、最初の実行可能作業を接続し、Homeへ移行できる状態を確認しています。',
+        status: 'active',
+        observedAt: '2026-07-20T08:04:30.000Z'
+      },
+      recentActivities: [
+        ...setup.recentActivities,
+        {
+          id: 'specialists-ready',
+          title: '専門家編成を完了',
+          detail: '必要な専門家と役割契約を初期体制へ接続しました。',
+          status: 'complete',
+          observedAt: '2026-07-20T08:04:12.000Z'
+        }
+      ],
+      nextActivity: null,
+      technicalDetails: setup.technicalDetails.map((detail) => (
+        detail.id === 'resume' ? { ...detail, value: 'phase 6 · operation' } : detail
+      ))
+    }
   }
 };

@@ -830,8 +830,15 @@ function setupStatus(value: unknown): SetupUiSnapshot['status'] {
   if (normalized === 'blocked' || normalized === 'failed') return 'blocked';
   if (normalized === 'paused') return 'paused';
   if (normalized === 'cancelled') return 'cancelled';
-  if (normalized === 'running' || normalized === 'provisioning' || normalized === 'in_progress') return 'running';
+  if (normalized === 'active' || normalized === 'running' || normalized === 'provisioning' || normalized === 'in_progress') return 'running';
   return 'preparing';
+}
+
+function setupAllowsPartialRepository(value: unknown): boolean {
+  const state = object(value);
+  if (!state) return false;
+  const status = string(state.status) ?? 'preparing';
+  return !['completed', 'ready', 'ready_for_operation', 'cancelled'].includes(status);
 }
 
 function setupActivity(value: unknown, fallbackId: string, fallbackStatus: SetupActivityUiModel['status']): SetupActivityUiModel | null {
@@ -855,7 +862,7 @@ function projectSetup(documents: RepositoryDocuments, rootPath: string, now: Dat
   const rawPhases = Array.isArray(state.phases) ? state.phases : [];
   const phaseIds = rawPhases.map((phase) => string(phase) ?? string(object(phase)?.id) ?? string(object(phase)?.phase_id)).filter((id): id is string => Boolean(id));
   const normalizedPhaseIds = phaseIds.length === 6 ? phaseIds : Object.keys(SETUP_PHASE_LABELS);
-  const currentPhaseId = string(state.current_phase) ?? string(state.currentPhaseId) ?? null;
+  const currentPhaseId = string(state.current_phase_id) ?? string(state.current_phase) ?? string(state.currentPhaseId) ?? null;
   const currentIndex = currentPhaseId ? normalizedPhaseIds.indexOf(currentPhaseId) : -1;
   const phases: SetupPhaseUiModel[] = normalizedPhaseIds.map((id, index) => {
     const raw = object(rawPhases[index]);
@@ -887,7 +894,7 @@ function projectSetup(documents: RepositoryDocuments, rootPath: string, now: Dat
     ?? (nextPhase ? { id: `phase-${nextPhase.id}`, title: nextPhase.title, detail: nextPhase.summary, status: 'waiting', observedAt: null } : null);
   return {
     status,
-    projectTitle: string(state.project_title) ?? string(object(state.project_understanding)?.goal) ?? path.basename(rootPath),
+    projectTitle: string(state.project_title) ?? string(state.project_name) ?? string(object(state.project_understanding)?.goal) ?? path.basename(rootPath),
     projectRootLabel: path.resolve(rootPath),
     currentPhaseId,
     startedAt: string(state.started_at) ?? string(state.created_at) ?? string(state.updated_at) ?? now.toISOString(),
@@ -955,8 +962,9 @@ function projectInspections(
 }
 
 export function projectSnapshotFromDocuments({ rootPath, documents, now = new Date() }: SnapshotProjectionInput): OrquestaUiSnapshot {
-  const rawAgents = rows(documents.agents, 'agents', true);
-  const rawTasks = rows(documents.tasks, 'tasks', true);
+  const partialSetup = setupAllowsPartialRepository(documents.setupState);
+  const rawAgents = rows(documents.agents ?? (partialSetup ? { agents: [] } : undefined), 'agents', true);
+  const rawTasks = rows(documents.tasks ?? (partialSetup ? { tasks: [] } : undefined), 'tasks', true);
   const sessions = rows(documents.sessions, 'sessions');
   const progressedTaskIds = new Set((documents.events ?? []).flatMap((item) => {
     const event = object(item);
@@ -1071,9 +1079,11 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
   const setupStatePath = await confinedFile(root, path.join('.orquesta', 'setup', 'setup_state.json'));
   const provisioningBatchPath = await confinedFile(root, path.join('.orquesta', 'setup', 'provisioning_batch.json'));
   const inspectionRunsPath = await confinedFile(root, path.join('.orquesta', 'state', 'inspection-runs.json'));
-  const [agents, tasks, roles, organization, organizationDecisions, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, inspectionRuns, events] = await Promise.all([
-    readBoundedJson(agentsPath, true),
-    readBoundedJson(tasksPath, true),
+  const setupState = await readBoundedJson(setupStatePath, false);
+  const partialSetup = setupAllowsPartialRepository(setupState);
+  const [agents, tasks, roles, organization, organizationDecisions, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, provisioningBatch, inspectionRuns, events] = await Promise.all([
+    readBoundedJson(agentsPath, !partialSetup),
+    readBoundedJson(tasksPath, !partialSetup),
     readBoundedJson(rolesPath, false),
     readBoundedJson(organizationPath, false),
     readBoundedJson(organizationDecisionsPath, false),
@@ -1085,7 +1095,6 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
     readBoundedJson(incidentsPath, false),
     readBoundedJson(incidentCandidatesPath, false),
     readBoundedJson(incidentClustersPath, false),
-    readBoundedJson(setupStatePath, false),
     readBoundedJson(provisioningBatchPath, false),
     readBoundedJson(inspectionRunsPath, false),
     readEvents(eventsPath)
@@ -1093,6 +1102,11 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
   return projectSnapshotFromDocuments({
     rootPath: root,
     now: options.now,
-    documents: { agents, tasks, roles, organization, organizationDecisions, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, inspectionRuns, events }
+    documents: {
+      agents: agents ?? (partialSetup ? { agents: [] } : undefined),
+      tasks: tasks ?? (partialSetup ? { tasks: [] } : undefined),
+      roles, organization, organizationDecisions, sessions, questions, userTasks, userActions, dashboardActions,
+      incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, inspectionRuns, events
+    }
   });
 }

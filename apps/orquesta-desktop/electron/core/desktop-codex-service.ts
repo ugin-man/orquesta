@@ -1,8 +1,10 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import * as canonicalAdapterModule from '@orquesta/codex-adapter';
 import type { ConversationMessage, ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
 import type { LucaAnswerPayload } from '../../src/contracts/luca';
 import type { InspectionKind } from '../../src/contracts/orquesta-ui';
+import type { SetupAccountState, SetupLoginStartResult } from '../../src/contracts/setup';
 import { LUCA_DEVELOPER_INSTRUCTIONS, LUCA_EFFORT, LUCA_MODEL, LUCA_TARGET_AGENT_ID } from '../shared/luca-runtime-profile';
 import type { RuntimeApprovalRequest, RuntimeModelEvidence, RuntimeNotification as DesktopRuntimeNotification } from './protocol';
 import type { InspectionRuntimeBoundary } from './inspection-run-store';
@@ -17,6 +19,8 @@ export interface CanonicalCodexAdapter {
   startTurn(input: UnknownRecord): Promise<UnknownRecord>;
   interruptTurn(input: UnknownRecord): Promise<UnknownRecord>;
   readThread(input: UnknownRecord): Promise<UnknownRecord>;
+  readAccount(input: UnknownRecord): Promise<UnknownRecord>;
+  startLogin(input: UnknownRecord): Promise<UnknownRecord>;
   runtimeInfo(input: UnknownRecord): Promise<UnknownRecord>;
   respondToApproval(input: UnknownRecord): Promise<UnknownRecord>;
   shutdown(input: UnknownRecord): Promise<UnknownRecord>;
@@ -285,6 +289,40 @@ export class DesktopCodexService {
   subscribeApprovals(listener: (approval: RuntimeApprovalRequest) => void): () => void {
     this.approvalListeners.add(listener);
     return () => this.approvalListeners.delete(listener);
+  }
+
+  async readAccount(): Promise<SetupAccountState> {
+    try {
+      const adapter = await this.adapter();
+      const result = requireSuccessfulResult(await adapter.readAccount({ correlationId: randomUUID() }), 'readAccount');
+      const requiresOpenaiAuth = result.requires_openai_auth;
+      if (typeof requiresOpenaiAuth !== 'boolean') throw new Error('App Server account response is incomplete');
+      if (result.account_type === 'chatgpt') {
+        return { status: 'authenticated', accountType: 'chatgpt', requiresOpenaiAuth };
+      }
+      if (result.account_type === 'apiKey') {
+        return { status: 'authenticated', accountType: 'api_key', requiresOpenaiAuth };
+      }
+      return { status: 'unauthenticated', accountType: null, requiresOpenaiAuth };
+    } catch (error) {
+      return {
+        status: 'unavailable',
+        accountType: null,
+        requiresOpenaiAuth: null,
+        reason: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  async startChatGptLogin(): Promise<SetupLoginStartResult> {
+    const adapter = await this.adapter();
+    const result = requireSuccessfulResult(await adapter.startLogin({
+      correlationId: randomUUID(),
+      loginType: 'chatgpt'
+    }), 'startLogin');
+    const loginId = nonEmptyString(result.login_id);
+    if (!loginId || result.login_type !== 'chatgpt') throw new Error('App Server login response is incomplete');
+    return { type: 'chatgpt', loginId, authUrl: nullableString(result.auth_url) };
   }
 
   private emit(notification: DesktopRuntimeNotification): void {

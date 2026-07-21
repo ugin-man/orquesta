@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import { emptyV4OperationsSnapshot } from '../../src/contracts/orquesta-ui';
 import { RepositoryRuntime } from './repository-runtime';
+import { ensureLegacyOrganizationState } from './legacy-organization-migration';
 
 const temporaryRepositories: string[] = [];
 
@@ -67,6 +68,19 @@ function snapshot(id: string, rootPath: string): OrquestaUiSnapshot {
 }
 
 describe('RepositoryRuntime', () => {
+  test('does not run legacy migration during ordinary repository selection', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-desktop-read-only-'));
+    temporaryRepositories.push(root);
+    const runtime = new RepositoryRuntime({
+      readSnapshot: vi.fn(async () => snapshot('repo-read-only', root)),
+      watchDirectory: vi.fn(() => ({ close: vi.fn() }))
+    });
+
+    await runtime.select({ projectId: 'repo-read-only', rootPath: root });
+
+    await expect(readFile(path.join(root, '.orquesta', 'state', 'organization.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   test('migrates a legacy organization before the first Desktop projection', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-desktop-legacy-'));
     temporaryRepositories.push(root);
@@ -81,6 +95,7 @@ describe('RepositoryRuntime', () => {
     });
     await writeJson(path.join(stateRoot, 'sessions.json'), { version: 1, sessions: [] });
     await writeJson(path.join(stateRoot, 'tasks.json'), { version: 1, tasks: [] });
+    await ensureLegacyOrganizationState({ projectId: 'legacy-project', rootPath: root });
     const runtime = new RepositoryRuntime({
       watchDirectory: vi.fn(() => ({ close: vi.fn() }))
     });
@@ -118,6 +133,7 @@ describe('RepositoryRuntime', () => {
     });
     await writeJson(path.join(stateRoot, 'sessions.json'), { version: 1, sessions: [] });
     await writeJson(path.join(stateRoot, 'tasks.json'), { version: 1, tasks: [] });
+    await ensureLegacyOrganizationState({ projectId: 'repair-project', rootPath: root });
     const firstRuntime = new RepositoryRuntime({ watchDirectory: vi.fn(() => ({ close: vi.fn() })) });
     await firstRuntime.select({ projectId: 'repair-project', rootPath: root });
     await firstRuntime.stop();
@@ -139,6 +155,7 @@ describe('RepositoryRuntime', () => {
     await writeJson(path.join(stateRoot, 'agents.json'), agentsState);
     await writeJson(path.join(stateRoot, 'organization.json'), organizationState);
 
+    await ensureLegacyOrganizationState({ projectId: 'repair-project', rootPath: root });
     const repairedRuntime = new RepositoryRuntime({ watchDirectory: vi.fn(() => ({ close: vi.fn() })) });
     const selected = await repairedRuntime.select({ projectId: 'repair-project', rootPath: root });
     const repairedAgents = JSON.parse(await readFile(path.join(stateRoot, 'agents.json'), 'utf8')) as {
@@ -173,12 +190,7 @@ describe('RepositoryRuntime', () => {
     };
     await writeJson(path.join(stateRoot, 'agents.json'), legacyAgents);
     await writeJson(path.join(stateRoot, 'roles.json'), { schema_version: 1, organization_revision: 1, roles: [] });
-    const runtime = new RepositoryRuntime({
-      readSnapshot: vi.fn(async () => snapshot('partial-project', root)),
-      watchDirectory: vi.fn(() => ({ close: vi.fn() }))
-    });
-
-    await expect(runtime.select({ projectId: 'partial-project', rootPath: root })).rejects.toThrow(/incomplete organization state/i);
+    await expect(ensureLegacyOrganizationState({ projectId: 'partial-project', rootPath: root })).rejects.toThrow(/incomplete organization state/i);
     expect(JSON.parse(await readFile(path.join(stateRoot, 'agents.json'), 'utf8'))).toEqual(legacyAgents);
   });
 

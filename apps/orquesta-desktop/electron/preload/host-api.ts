@@ -2,6 +2,7 @@ import type { ComposerAttachment, ConversationMessage, ConversationPage, Inspect
 import { LUCA_QUESTION_IDS, type AskLucaInput } from '../../src/contracts/luca';
 import { isV4OperationsSnapshot, type AttentionUiItem, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
+import { isSetupAccountState, isSetupPhaseId, isSetupProgressEvent, isSetupSourceDraft, parseSetupDraft, type SetupLoginStartResult, type SetupStartResult } from '../../src/contracts/setup';
 import type { DesktopHostApi, DesktopHostInfo } from '../shared/host-contract';
 import { DESKTOP_IPC } from '../shared/host-contract';
 
@@ -12,6 +13,21 @@ function isDesktopHostInfo(value: unknown): value is DesktopHostInfo {
   if (!value || typeof value !== 'object') return false;
   const info = value as Record<string, unknown>;
   return info.platform === 'win32' && ['starting', 'ready', 'stopped'].includes(String(info.coreStatus));
+}
+
+function isSetupLoginStartResult(value: unknown): value is SetupLoginStartResult {
+  if (!value || typeof value !== 'object') return false;
+  const login = value as Record<string, unknown>;
+  return ['chatgpt', 'chatgpt_device_code'].includes(String(login.type))
+    && safeId(login.loginId)
+    && (login.authUrl === null || (typeof login.authUrl === 'string' && /^https:\/\//u.test(login.authUrl)));
+}
+
+function isSetupStartResult(value: unknown): value is SetupStartResult {
+  if (!value || typeof value !== 'object') return false;
+  const result = value as Record<string, unknown>;
+  return safeId(result.setupId) && typeof result.rootPath === 'string' && result.rootPath.length > 0
+    && result.rootPath.length <= 32_768 && isSetupPhaseId(result.activePhaseId);
 }
 
 function isRepositorySnapshot(value: unknown): value is OrquestaUiSnapshot {
@@ -172,6 +188,40 @@ export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe)
         throw new Error('Desktop host returned an invalid Core ping response');
       }
       return { correlationId };
+    },
+    async readSetupDraft() {
+      const draft = await invoke(DESKTOP_IPC.readSetupDraft);
+      return draft === null ? null : parseSetupDraft(draft);
+    },
+    async saveSetupDraft(draft) {
+      await invoke(DESKTOP_IPC.saveSetupDraft, parseSetupDraft(draft));
+    },
+    async chooseSetupSource(kind) {
+      if (!['detected_root', 'existing_folder', 'new_project', 'public_github'].includes(kind)) throw new Error('Setup source kind is invalid');
+      const source = await invoke(DESKTOP_IPC.chooseSetupSource, { kind });
+      if (source === null) return null;
+      if (!isSetupSourceDraft(source)) throw new Error('Desktop host returned invalid setup source');
+      return source;
+    },
+    async readSetupAccount() {
+      const account = await invoke(DESKTOP_IPC.readSetupAccount);
+      if (!isSetupAccountState(account)) throw new Error('Desktop host returned invalid setup account state');
+      return account;
+    },
+    async startSetupLogin() {
+      const login = await invoke(DESKTOP_IPC.startSetupLogin);
+      if (!isSetupLoginStartResult(login)) throw new Error('Desktop host returned invalid setup login result');
+      return login;
+    },
+    async startSetup(draft) {
+      const result = await invoke(DESKTOP_IPC.startSetup, parseSetupDraft(draft));
+      if (!isSetupStartResult(result)) throw new Error('Desktop host returned invalid setup start result');
+      return result;
+    },
+    subscribeSetup(listener) {
+      return subscribe(DESKTOP_IPC.setupChanged, (payload) => {
+        if (isSetupProgressEvent(payload)) listener(payload);
+      });
     },
     async getRepositorySnapshot() {
       const snapshot = await invoke(DESKTOP_IPC.getRepositorySnapshot);

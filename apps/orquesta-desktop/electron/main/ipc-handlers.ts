@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { ConversationPage, InspectionReportUi, ProjectSummary, RuntimeInfoUi, StartInspectionUiInput, UiActionResult } from '../../src/contracts/bridge';
 import { LUCA_QUESTION_IDS, type AskLucaInput } from '../../src/contracts/luca';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import { parseSetupDraft, type SetupAccountState, type SetupDraft, type SetupLoginStartResult, type SetupSourceDraft, type SetupStartResult } from '../../src/contracts/setup';
 import type { CoreHostStatus } from './core-host';
 import { DESKTOP_IPC, type CoreStatus } from '../shared/host-contract';
 import { buildLucaContext } from './luca-context-builder';
@@ -19,6 +20,8 @@ export interface CoreController {
   sendLucaQuestion(input: { projectId: string; rootPath: string; threadId: string | null; prompt: string }): Promise<{ correlationId: string; threadId: string; turnId: string; modelEvidence: import('../core/protocol').RuntimeModelEvidence }>;
   listConversation(input: { threadId: string; targetAgentId: string; cursor?: string | null; limit: number }): Promise<ConversationPage>;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
+  readSetupAccount(): Promise<SetupAccountState>;
+  startSetupLogin(): Promise<SetupLoginStartResult>;
   respondRuntimeApproval(input: { attentionId: string; decision: string }): Promise<{ correlationId: string }>;
   listAttentionHistory(): Promise<AttentionUiItem[]>;
   startInspection(input: { projectId: string; rootPath: string } & StartInspectionUiInput): Promise<{ correlationId: string; runId: string }>;
@@ -33,6 +36,13 @@ export interface AttachmentController {
 
 export interface ExternalController {
   openExternal(url: string): Promise<unknown>;
+}
+
+export interface SetupController {
+  readDraft(): Promise<SetupDraft | null>;
+  saveDraft(draft: SetupDraft): Promise<void>;
+  chooseSource(kind: SetupSourceDraft['kind']): Promise<SetupSourceDraft | null>;
+  start(draft: SetupDraft): Promise<SetupStartResult>;
 }
 
 export interface RepositoryController {
@@ -59,6 +69,15 @@ function readCorrelationId(input: unknown): string {
     throw new Error('correlationId must contain 1-128 characters');
   }
   return correlationId;
+}
+
+function readSetupSourceKind(input: unknown): SetupSourceDraft['kind'] {
+  if (!input || typeof input !== 'object') throw new Error('Setup source kind is required');
+  const kind = (input as Record<string, unknown>).kind;
+  if (!['detected_root', 'existing_folder', 'new_project', 'public_github'].includes(String(kind))) {
+    throw new Error('Setup source kind is invalid');
+  }
+  return kind as SetupSourceDraft['kind'];
 }
 
 function readProjectId(input: unknown): string {
@@ -193,13 +212,23 @@ export function registerDesktopIpc(
   coreHost: CoreController,
   repositories: RepositoryController,
   attachments: AttachmentController,
-  external?: ExternalController
+  external?: ExternalController,
+  setup?: SetupController
 ): void {
   ipcMain.handle(DESKTOP_IPC.getHostInfo, async () => ({
     platform: 'win32' as const,
     coreStatus: publicCoreStatus(coreHost.status())
   }));
   ipcMain.handle(DESKTOP_IPC.pingCore, async (_event, input) => coreHost.ping(readCorrelationId(input)));
+  ipcMain.handle(DESKTOP_IPC.readSetupDraft, async () => setup?.readDraft() ?? null);
+  ipcMain.handle(DESKTOP_IPC.saveSetupDraft, async (_event, input) => {
+    if (!setup) throw new Error('Setup intake is unavailable');
+    await setup.saveDraft(parseSetupDraft(input));
+  });
+  ipcMain.handle(DESKTOP_IPC.chooseSetupSource, async (_event, input) => {
+    if (!setup) throw new Error('Setup intake is unavailable');
+    return setup.chooseSource(readSetupSourceKind(input));
+  });
   ipcMain.handle(DESKTOP_IPC.getRepositorySnapshot, async () => repositories.getSnapshot());
   ipcMain.handle(DESKTOP_IPC.listRepositories, async () => repositories.listProjects());
   ipcMain.handle(DESKTOP_IPC.switchRepository, async (_event, input) => repositories.switchProject(readProjectId(input)));
@@ -264,6 +293,16 @@ export function registerDesktopIpc(
     return coreHost.listConversation({ threadId: context.threadId, ...query });
   });
   ipcMain.handle(DESKTOP_IPC.getRuntimeInfo, async (_event, input) => coreHost.getRuntimeInfo(readRuntimeInfoInput(input)));
+  ipcMain.handle(DESKTOP_IPC.readSetupAccount, async () => coreHost.readSetupAccount());
+  ipcMain.handle(DESKTOP_IPC.startSetupLogin, async () => {
+    const login = await coreHost.startSetupLogin();
+    if (login.authUrl && external) await external.openExternal(login.authUrl);
+    return login;
+  });
+  ipcMain.handle(DESKTOP_IPC.startSetup, async (_event, input) => {
+    if (!setup) throw new Error('Setup engine is unavailable');
+    return setup.start(parseSetupDraft(input));
+  });
   ipcMain.handle(DESKTOP_IPC.respondRuntimeApproval, async (_event, input) => {
     const response = readRuntimeApprovalInput(input);
     try {

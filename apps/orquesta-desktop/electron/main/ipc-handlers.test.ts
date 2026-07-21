@@ -29,6 +29,8 @@ describe('registerDesktopIpc', () => {
         runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
         platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified' as const
       })),
+      readSetupAccount: vi.fn(async () => ({ status: 'authenticated' as const, accountType: 'chatgpt' as const, requiresOpenaiAuth: true })),
+      startSetupLogin: vi.fn(async () => ({ type: 'chatgpt' as const, loginId: 'login-1', authUrl: 'https://auth.openai.com/authorize' })),
       respondRuntimeApproval: vi.fn(async () => ({ correlationId: 'approval-1' })),
       listAttentionHistory: vi.fn(async () => []),
       startInspection: vi.fn(async () => ({ correlationId: 'inspection-1', runId: 'BENCH-001' })),
@@ -50,12 +52,26 @@ describe('registerDesktopIpc', () => {
     };
     const attachments = { chooseImages: vi.fn(async () => []), resolveImagePaths: vi.fn(() => []) };
     const external = { openExternal: vi.fn(async () => undefined) };
+    const setupDraft = {
+      revision: 1 as const, status: 'draft' as const,
+      source: { kind: 'detected_root' as const, rootPath: 'C:\\repo' },
+      projectName: 'Repo', description: '', questions: [], answers: []
+    };
+    const setup = {
+      readDraft: vi.fn(async () => setupDraft),
+      saveDraft: vi.fn(async () => undefined),
+      chooseSource: vi.fn(async () => setupDraft.source),
+      start: vi.fn(async () => ({ setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment' as const }))
+    };
 
-    registerDesktopIpc(ipcMain, coreHost, repositories, attachments, external);
+    registerDesktopIpc(ipcMain, coreHost, repositories, attachments, external, setup);
 
     expect([...handlers.keys()]).toEqual([
       DESKTOP_IPC.getHostInfo,
       DESKTOP_IPC.pingCore,
+      DESKTOP_IPC.readSetupDraft,
+      DESKTOP_IPC.saveSetupDraft,
+      DESKTOP_IPC.chooseSetupSource,
       DESKTOP_IPC.getRepositorySnapshot,
       DESKTOP_IPC.listRepositories,
       DESKTOP_IPC.switchRepository,
@@ -65,6 +81,9 @@ describe('registerDesktopIpc', () => {
       DESKTOP_IPC.askLuca,
       DESKTOP_IPC.listConversation,
       DESKTOP_IPC.getRuntimeInfo,
+      DESKTOP_IPC.readSetupAccount,
+      DESKTOP_IPC.startSetupLogin,
+      DESKTOP_IPC.startSetup,
       DESKTOP_IPC.respondRuntimeApproval,
       DESKTOP_IPC.listAttentionHistory,
       DESKTOP_IPC.startInspection,
@@ -79,6 +98,9 @@ describe('registerDesktopIpc', () => {
     await expect(handlers.get(DESKTOP_IPC.pingCore)?.({}, { correlationId: 'ping-1' })).resolves.toEqual({
       correlationId: 'ping-1'
     });
+    await expect(handlers.get(DESKTOP_IPC.readSetupDraft)?.({})).resolves.toEqual(setupDraft);
+    await expect(handlers.get(DESKTOP_IPC.saveSetupDraft)?.({}, setupDraft)).resolves.toBeUndefined();
+    await expect(handlers.get(DESKTOP_IPC.chooseSetupSource)?.({}, { kind: 'detected_root' })).resolves.toEqual(setupDraft.source);
     await expect(handlers.get(DESKTOP_IPC.getRepositorySnapshot)?.({})).resolves.toBe(snapshot);
     await expect(handlers.get(DESKTOP_IPC.listRepositories)?.({})).resolves.toEqual([{ id: 'repo-1' }]);
     await expect(handlers.get(DESKTOP_IPC.switchRepository)?.({}, { projectId: 'repo-1' })).resolves.toMatchObject({ status: 'accepted' });
@@ -99,6 +121,10 @@ describe('registerDesktopIpc', () => {
     expect(coreHost.listConversation).toHaveBeenCalledTimes(1);
     await expect(handlers.get(DESKTOP_IPC.getRuntimeInfo)?.({}, { probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
     expect(coreHost.getRuntimeInfo).toHaveBeenCalledWith({ probe: false });
+    await expect(handlers.get(DESKTOP_IPC.readSetupAccount)?.({})).resolves.toMatchObject({ status: 'authenticated', accountType: 'chatgpt' });
+    await expect(handlers.get(DESKTOP_IPC.startSetupLogin)?.({})).resolves.toMatchObject({ type: 'chatgpt', loginId: 'login-1' });
+    expect(external.openExternal).toHaveBeenCalledWith('https://auth.openai.com/authorize');
+    await expect(handlers.get(DESKTOP_IPC.startSetup)?.({}, setupDraft)).resolves.toMatchObject({ setupId: 'SETUP-1' });
     await expect(handlers.get(DESKTOP_IPC.respondRuntimeApproval)?.({}, {
       id: 'runtime-approval-1', decision: 'decline'
     })).resolves.toMatchObject({ status: 'accepted', correlationId: 'approval-1' });
@@ -118,7 +144,7 @@ describe('registerDesktopIpc', () => {
     await expect(handlers.get(DESKTOP_IPC.openCodexDraft)?.({}, {
       targetAgentId: 'worker', text: '日本語の下書き', url: 'https://evil.example', rootPath: 'C:\\evil'
     })).resolves.toMatchObject({ status: 'accepted' });
-    const opened = new URL(external.openExternal.mock.calls[0][0]);
+    const opened = new URL(external.openExternal.mock.calls.map(([url]) => url).find((url) => url.startsWith('codex:'))!);
     expect(`${opened.protocol}//${opened.host}${opened.pathname}`).toBe('codex://threads/new');
     expect(opened.searchParams.get('path')).toBe('C:\\repo');
     expect(opened.searchParams.get('prompt')).toContain('日本語の下書き');
@@ -136,6 +162,7 @@ describe('registerDesktopIpc', () => {
     const coreHost = {
       status: () => 'ready' as const,
       ping: vi.fn(), sendMessage: vi.fn(), sendLucaQuestion: vi.fn(), listConversation: vi.fn(), getRuntimeInfo: vi.fn(),
+      readSetupAccount: vi.fn(), startSetupLogin: vi.fn(),
       respondRuntimeApproval: vi.fn(), listAttentionHistory: vi.fn(), startInspection: vi.fn(),
       cancelInspection: vi.fn(), readInspectionReport: vi.fn()
     };

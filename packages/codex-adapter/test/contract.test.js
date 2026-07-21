@@ -24,6 +24,8 @@ test("CodexAdapter declares the complete stable method surface", () => {
     "subscribeEvents",
     "readActualModel",
     "readThread",
+    "readAccount",
+    "startLogin",
     "runtimeInfo",
     "shutdown"
   ]);

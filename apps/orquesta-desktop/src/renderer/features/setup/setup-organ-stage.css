@@ -1,0 +1,49 @@
+.setup-organ-stage,
+.setup-organ-scene,
+.setup-organ-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.setup-organ-stage,
+.setup-organ-scene {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.setup-organ-canvas {
+  position: absolute !important;
+  inset: 0;
+  outline: none;
+}
+
+.setup-scene-semantic-manifest {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.setup-organ-stage__loading,
+.setup-organ-webgl-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  color: #77736b;
+  text-align: center;
+  font-size: 11px;
+}
+
+.setup-organ-webgl-fallback strong {
+  color: #292824;
+  font-size: 14px;
+  font-weight: 560;
+}

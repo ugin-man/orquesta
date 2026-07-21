@@ -16,6 +16,8 @@ const SDK_CAPABILITIES = Object.freeze({
   subscribeEvents: true,
   readActualModel: false,
   readThread: false,
+  readAccount: false,
+  startLogin: false,
   runtimeInfo: true,
   shutdown: true
 });
@@ -362,6 +364,18 @@ function createSdkAdapter({
       "readThread",
       correlationId,
       "Codex SDK 0.144.5 does not expose canonical thread history reads."
+    ),
+
+    readAccount: ({ correlationId }) => unsupported(
+      "readAccount",
+      correlationId,
+      "Codex SDK 0.144.5 does not expose App Server account state."
+    ),
+
+    startLogin: ({ correlationId }) => unsupported(
+      "startLogin",
+      correlationId,
+      "Codex SDK 0.144.5 does not expose App Server login."
     ),
 
     runtimeInfo: ({ correlationId }) => success("runtimeInfo", correlationId, {

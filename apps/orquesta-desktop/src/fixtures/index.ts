@@ -6,7 +6,7 @@ import { largeRosterFixture } from './large-roster';
 import { longJapaneseTextFixture } from './long-japanese-text';
 import { nestedRosterFixture } from './nested-roster';
 import { offlineProjectFixture } from './offline-project';
-import { setupRunningFixture } from './setup-running';
+import { setupOperationFixture, setupRunningFixture } from './setup-running';
 import { inspectionRunningFixture } from './inspection-running';
 import { unknownEvidenceFixture } from './unknown-evidence';
 import { wideRosterFixture } from './wide-roster';
@@ -25,6 +25,7 @@ export const fixtureCatalog = {
   'wide-roster': wideRosterFixture,
   'offline-project': offlineProjectFixture,
   'setup-running': setupRunningFixture,
+  'setup-operation': setupOperationFixture,
   'inspection-running': inspectionRunningFixture,
   'unknown-evidence': unknownEvidenceFixture,
   'long-japanese-text': longJapaneseTextFixture

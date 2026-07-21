@@ -25,6 +25,8 @@ const APP_SERVER_CAPABILITIES = Object.freeze({
   subscribeEvents: true,
   readActualModel: false,
   readThread: true,
+  readAccount: true,
+  startLogin: true,
   runtimeInfo: true,
   shutdown: true
 });
@@ -171,6 +173,23 @@ function createAppServerAdapter({
       }
       validateServerMessage(schema.server_notifications, message, "server notification");
       const params = message.params;
+      if (message.method === "account/updated") {
+        emitEvent({
+          type: "account_updated",
+          auth_mode: params.authMode ?? null,
+          plan_type: params.planType ?? null
+        });
+        return;
+      }
+      if (message.method === "account/login/completed") {
+        emitEvent({
+          type: "account_login_completed",
+          login_id: params.loginId ?? null,
+          success: params.success,
+          error: params.error ?? null
+        });
+        return;
+      }
       if (message.method === "thread/started") {
         const correlationId = threadCorrelations.get(params.thread.id);
         if (correlationId) {
@@ -520,6 +539,46 @@ function createAppServerAdapter({
         return success("readThread", correlationId, {
           thread_id: threadId,
           thread: result.thread
+        });
+      }
+    ),
+
+    readAccount: ({ correlationId, refreshToken = false }) => run(
+      "readAccount",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        const params = { refreshToken: Boolean(refreshToken) };
+        validateRequest("account/read", params);
+        const result = await transport.request("account/read", params);
+        validateResponse("account/read", result);
+        return success("readAccount", correlationId, {
+          account_type: result.account?.type ?? null,
+          requires_openai_auth: result.requiresOpenaiAuth
+        });
+      }
+    ),
+
+    startLogin: ({ correlationId, loginType = "chatgpt" }) => run(
+      "startLogin",
+      correlationId,
+      async () => {
+        if (loginType !== "chatgpt" && loginType !== "chatgptDeviceCode") {
+          throw new Error(`unsupported login type: ${loginType}`);
+        }
+        await ensureInitialized();
+        const params = loginType === "chatgpt"
+          ? { type: "chatgpt", useHostedLoginSuccessPage: true }
+          : { type: "chatgptDeviceCode" };
+        validateRequest("account/login/start", params);
+        const result = await transport.request("account/login/start", params);
+        validateResponse("account/login/start", result);
+        return success("startLogin", correlationId, {
+          login_type: result.type,
+          login_id: result.loginId ?? null,
+          auth_url: result.authUrl ?? null,
+          verification_url: result.verificationUrl ?? null,
+          user_code: result.userCode ?? null
         });
       }
     ),

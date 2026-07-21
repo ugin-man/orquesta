@@ -12,6 +12,16 @@
       "params_required": ["clientInfo"],
       "response_required": ["codexHome", "platformFamily", "platformOs", "userAgent"]
     },
+    "account/read": {
+      "required": ["id", "method", "params"],
+      "params_required": [],
+      "response_required": ["requiresOpenaiAuth"]
+    },
+    "account/login/start": {
+      "required": ["id", "method", "params"],
+      "params_required": ["type"],
+      "response_required": ["type"]
+    },
     "thread/start": {
       "required": ["id", "method", "params"],
       "params_required": [],
@@ -49,6 +59,14 @@
     }
   },
   "server_notifications": {
+    "account/updated": {
+      "required": ["method", "params"],
+      "params_required": []
+    },
+    "account/login/completed": {
+      "required": ["method", "params"],
+      "params_required": ["success"]
+    },
     "thread/started": {
       "required": ["method", "params"],
       "params_required": ["thread"]

@@ -6,6 +6,7 @@ import { createDesktopHostApi } from './host-api';
 describe('createDesktopHostApi', () => {
   test('exposes bounded methods instead of raw IPC', async () => {
     const snapshot = { project: { id: 'repo-1', title: 'Repo' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [], v4Operations: emptyV4OperationsSnapshot(), inspectionTemplates: [], inspectionRuns: [] };
+    const setupDraft = { revision: 1, status: 'draft', source: { kind: 'detected_root', rootPath: 'C:\\repo' }, projectName: 'Repo', description: '', questions: [], answers: [] };
     const invoke = vi.fn(async (channel: string, input?: unknown) => {
       if (channel === DESKTOP_IPC.getHostInfo) return { platform: 'win32', coreStatus: 'ready' };
       if (channel === DESKTOP_IPC.getRepositorySnapshot) return snapshot;
@@ -19,6 +20,12 @@ describe('createDesktopHostApi', () => {
         runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
         platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified'
       };
+      if (channel === DESKTOP_IPC.readSetupDraft) return setupDraft;
+      if (channel === DESKTOP_IPC.saveSetupDraft) return undefined;
+      if (channel === DESKTOP_IPC.chooseSetupSource) return setupDraft.source;
+      if (channel === DESKTOP_IPC.readSetupAccount) return { status: 'authenticated', accountType: 'chatgpt', requiresOpenaiAuth: true };
+      if (channel === DESKTOP_IPC.startSetupLogin) return { type: 'chatgpt', loginId: 'login-1', authUrl: 'https://auth.openai.com/authorize' };
+      if (channel === DESKTOP_IPC.startSetup) return { setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment' };
       if (channel === DESKTOP_IPC.respondRuntimeApproval) return { status: 'accepted', correlationId: 'approval-1' };
       if (channel === DESKTOP_IPC.listAttentionHistory) return [];
       if (channel === DESKTOP_IPC.startInspection || channel === DESKTOP_IPC.cancelInspection) return { status: 'accepted', correlationId: 'inspection-1' };
@@ -45,6 +52,12 @@ describe('createDesktopHostApi', () => {
     await expect(api.askLuca({ questionId: 'home.current', context: { kind: 'home' }, locale: 'ja' })).resolves.toMatchObject({ status: 'accepted' });
     await expect(api.listConversation({ targetAgentId: 'orchestrator', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
     await expect(api.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
+    await expect(api.readSetupDraft()).resolves.toEqual(setupDraft);
+    await expect(api.saveSetupDraft(setupDraft as never)).resolves.toBeUndefined();
+    await expect(api.chooseSetupSource('detected_root')).resolves.toEqual(setupDraft.source);
+    await expect(api.readSetupAccount()).resolves.toMatchObject({ status: 'authenticated', accountType: 'chatgpt' });
+    await expect(api.startSetupLogin()).resolves.toMatchObject({ type: 'chatgpt', loginId: 'login-1' });
+    await expect(api.startSetup(setupDraft as never)).resolves.toMatchObject({ setupId: 'SETUP-1', activePhaseId: 'environment' });
     await expect(api.respondRuntimeApproval({ id: 'runtime-approval-1', decision: 'decline' })).resolves.toMatchObject({ status: 'accepted' });
     await expect(api.listAttentionHistory()).resolves.toEqual([]);
     await expect(api.startInspection({
@@ -58,6 +71,17 @@ describe('createDesktopHostApi', () => {
     for (const notify of listeners) notify(snapshot);
     expect(listener).toHaveBeenCalledWith(snapshot);
     unsubscribe();
+    const setupListener = vi.fn();
+    const unsubscribeSetup = api.subscribeSetup(setupListener);
+    const setupProgress = {
+      setupId: 'SETUP-1', phaseId: 'planning', status: 'active',
+      message: 'プロジェクト構造を設計しています。', occurredAt: '2026-07-22T00:00:00.000Z'
+    };
+    for (const notify of listeners) notify(setupProgress);
+    expect(setupListener).toHaveBeenCalledWith(setupProgress);
+    for (const notify of listeners) notify({ ...setupProgress, phaseId: 'unknown' });
+    expect(setupListener).toHaveBeenCalledTimes(1);
+    unsubscribeSetup();
     expect(invoke.mock.calls).toEqual([
       [DESKTOP_IPC.getHostInfo],
       [DESKTOP_IPC.pingCore, { correlationId: 'ping-1' }],
@@ -70,6 +94,12 @@ describe('createDesktopHostApi', () => {
       [DESKTOP_IPC.askLuca, { questionId: 'home.current', context: { kind: 'home' }, locale: 'ja' }],
       [DESKTOP_IPC.listConversation, { targetAgentId: 'orchestrator', limit: 20 }],
       [DESKTOP_IPC.getRuntimeInfo, { probe: false }],
+      [DESKTOP_IPC.readSetupDraft],
+      [DESKTOP_IPC.saveSetupDraft, setupDraft],
+      [DESKTOP_IPC.chooseSetupSource, { kind: 'detected_root' }],
+      [DESKTOP_IPC.readSetupAccount],
+      [DESKTOP_IPC.startSetupLogin],
+      [DESKTOP_IPC.startSetup, setupDraft],
       [DESKTOP_IPC.respondRuntimeApproval, { id: 'runtime-approval-1', decision: 'decline' }],
       [DESKTOP_IPC.listAttentionHistory],
       [DESKTOP_IPC.startInspection, { kind: 'external_benchmark', target: { kind: 'project', ids: [] }, focus: 'cost' }],

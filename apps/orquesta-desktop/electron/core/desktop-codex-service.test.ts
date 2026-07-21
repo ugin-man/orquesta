@@ -66,6 +66,17 @@ function createAdapterDouble() {
       platform_os: probe ? 'windows' : null,
       user_agent: probe ? 'codex-cli/0.144.5' : null
     })),
+    readAccount: vi.fn(async () => ({
+      ok: true,
+      account_type: 'chatgpt',
+      requires_openai_auth: true
+    })),
+    startLogin: vi.fn(async () => ({
+      ok: true,
+      login_type: 'chatgpt',
+      login_id: 'login-1',
+      auth_url: 'https://auth.openai.com/authorize'
+    })),
     respondToApproval: vi.fn(async (input) => ({
       ok: true, thread_id: input.threadId, turn_id: input.turnId, approval_id: input.requestId
     })),
@@ -85,6 +96,20 @@ function createAdapterDouble() {
 }
 
 describe('DesktopCodexService', () => {
+  test('projects App Server account state without exposing account details', async () => {
+    const double = createAdapterDouble();
+    const service = new DesktopCodexService({ adapter: double.adapter });
+
+    await expect(service.readAccount()).resolves.toEqual({
+      status: 'authenticated', accountType: 'chatgpt', requiresOpenaiAuth: true
+    });
+    await expect(service.startChatGptLogin()).resolves.toEqual({
+      type: 'chatgpt', loginId: 'login-1', authUrl: 'https://auth.openai.com/authorize'
+    });
+    expect(double.adapter.readAccount).toHaveBeenCalledWith({ correlationId: expect.any(String) });
+    expect(double.adapter.startLogin).toHaveBeenCalledWith({ correlationId: expect.any(String), loginType: 'chatgpt' });
+  });
+
   test('runs Luca in a separate Luna high-effort read-only thread', async () => {
     const double = createAdapterDouble();
     const service = new DesktopCodexService({ adapter: double.adapter });

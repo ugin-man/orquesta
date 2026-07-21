@@ -19,10 +19,8 @@ async function makeProject(parent: string, name: string) {
   return root;
 }
 
-function createProjectionHost(options: { migrateLegacyOrganization?: boolean } = {}) {
-  const runtime = new RepositoryRuntime(options.migrateLegacyOrganization
-    ? {}
-    : { ensureOrganizationState: async () => 'not_applicable' });
+function createProjectionHost() {
+  const runtime = new RepositoryRuntime();
   return {
     runtime,
     host: {
@@ -34,6 +32,32 @@ function createProjectionHost(options: { migrateLegacyOrganization?: boolean } =
 }
 
 describe('RepositoryService', () => {
+  test('turns an uninitialized folder into a read-only setup source instead of selecting it as a repository', async () => {
+    const temporary = await mkdtemp(path.join(os.tmpdir(), 'orquesta-setup-source-'));
+    temporaryRoots.push(temporary);
+    const project = path.join(temporary, 'new-project');
+    await mkdir(project, { recursive: true });
+    const prepareSetupSource = vi.fn(async () => undefined);
+    const coreHost = {
+      selectRepository: vi.fn(),
+      getRepositorySnapshot: vi.fn(),
+      subscribeRepository: vi.fn(() => () => undefined)
+    };
+    const service = new RepositoryService({
+      registryPath: path.join(temporary, 'user-data', 'repositories.json'),
+      coreHost,
+      chooseDirectory: async () => project,
+      prepareSetupSource
+    });
+
+    await service.initialize();
+    await expect(service.openProject()).resolves.toMatchObject({ status: 'accepted' });
+
+    expect(prepareSetupSource).toHaveBeenCalledWith({ kind: 'existing_folder', rootPath: project });
+    expect(coreHost.selectRepository).not.toHaveBeenCalled();
+    await expect(readFile(path.join(project, '.orquesta', 'setup', 'setup_state.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   test('persists app-owned recent projects and switches without writing project state', async () => {
     const temporary = await mkdtemp(path.join(os.tmpdir(), 'orquesta-repositories-'));
     temporaryRoots.push(temporary);
@@ -109,7 +133,7 @@ describe('RepositoryService', () => {
     await writeFile(path.join(brokenState, 'agents.json'), '{ broken', 'utf8');
     await writeFile(path.join(brokenState, 'tasks.json'), '{"tasks":[]}', 'utf8');
     const recovered = await makeProject(temporary, 'recovered');
-    const projection = createProjectionHost({ migrateLegacyOrganization: true });
+    const projection = createProjectionHost();
     const service = new RepositoryService({
       registryPath: path.join(temporary, 'repositories.json'),
       coreHost: projection.host,

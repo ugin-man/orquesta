@@ -20,8 +20,11 @@ describe('InitialSetupExperience', () => {
     expect(within(phases).getAllByRole('listitem')).toHaveLength(6);
     expect(within(phases).getByText('03')).toBeVisible();
     expect(within(phases).getByText('基盤構築')).toBeVisible();
-    expect(container.querySelectorAll('[data-setup-gear]')).toHaveLength(6);
-    expect(container.querySelector('[data-setup-gear][data-state="active"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-setup-phase]')).toHaveLength(6);
+    expect(container.querySelector('[data-setup-phase][data-state="active"]')).not.toBeNull();
+    expect(screen.getByRole('region', { name: 'パイプオルガン構築状況' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Auto|Blocked|Complete|Phase/u })).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('setup-log-entry').length).toBeLessThanOrEqual(6);
 
     const progress = screen.getByRole('progressbar', { name: 'セットアップ進行状況' });
     expect(progress).toHaveAttribute('aria-valuemin', '1');

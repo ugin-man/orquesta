@@ -12,6 +12,7 @@ import type {
 } from '../contracts/bridge';
 import type { AskLucaInput, LucaAnswerPayload } from '../contracts/luca';
 import type { AttentionUiItem, InspectionRunUiModel, OrquestaUiSnapshot, RuntimeUiEvent } from '../contracts/orquesta-ui';
+import type { SetupAccountState, SetupDraft, SetupSourceDraft, SetupStartResult } from '../contracts/setup';
 import { fixtureCatalog, fixtureIdForProject, fixtureKeys, type FixtureId } from '../fixtures';
 
 function correlationId(): string {
@@ -38,6 +39,16 @@ export class MockOrquestaBridge implements OrquestaRendererBridge {
   private resolvedAttention = new Map<string, AttentionUiItem>();
   private approvedProposals = new Set<string>();
   private inspectionRunsByProject = new Map<string, InspectionRunUiModel[]>();
+  private setupDraft: SetupDraft = {
+    revision: 1,
+    status: 'draft',
+    source: { kind: 'new_project', parentPath: 'C:\\Users\\Demo\\Documents\\Orquesta Projects', folderName: 'New Orquesta Project' },
+    projectName: 'New Orquesta Project',
+    description: '',
+    questions: [],
+    answers: []
+  };
+  private setupAccount: SetupAccountState = { status: 'authenticated', accountType: 'chatgpt', requiresOpenaiAuth: true };
 
   constructor(initialFixture: FixtureId = 'active-project') {
     this.fixtureId = initialFixture;
@@ -173,6 +184,40 @@ export class MockOrquestaBridge implements OrquestaRendererBridge {
       userAgent: null,
       integrity: 'unverified' as const
     };
+  }
+
+  async readSetupDraft(): Promise<SetupDraft | null> {
+    return structuredClone(this.setupDraft);
+  }
+
+  async saveSetupDraft(draft: SetupDraft): Promise<void> {
+    this.setupDraft = structuredClone(draft);
+  }
+
+  async chooseSetupSource(kind: SetupSourceDraft['kind']): Promise<SetupSourceDraft | null> {
+    if (kind === 'detected_root') return this.setupDraft.source.kind === 'detected_root' ? structuredClone(this.setupDraft.source) : null;
+    if (kind === 'existing_folder') return { kind, rootPath: 'C:\\Users\\Demo\\Documents\\Existing Project' };
+    if (kind === 'new_project') {
+      return { kind, parentPath: 'C:\\Users\\Demo\\Documents\\Orquesta Projects', folderName: this.setupDraft.projectName || 'New Orquesta Project' };
+    }
+    return null;
+  }
+
+  async readSetupAccount(): Promise<SetupAccountState> {
+    return structuredClone(this.setupAccount);
+  }
+
+  async startSetupLogin() {
+    this.setupAccount = { status: 'authenticated', accountType: 'chatgpt', requiresOpenaiAuth: true };
+    return { type: 'chatgpt' as const, loginId: 'prototype-login', authUrl: 'https://auth.openai.com/authorize' };
+  }
+
+  async startSetup(draft: SetupDraft): Promise<SetupStartResult> {
+    this.setupDraft = structuredClone(draft);
+    const rootPath = draft.source.kind === 'detected_root' || draft.source.kind === 'existing_folder'
+      ? draft.source.rootPath
+      : `${draft.source.parentPath}\\${draft.source.kind === 'new_project' ? draft.source.folderName : draft.projectName}`;
+    return { setupId: 'prototype-setup', rootPath, activePhaseId: 'environment' };
   }
 
   async openCodexDraft(_input: { targetAgentId: string; text: string }): Promise<UiActionResult> {

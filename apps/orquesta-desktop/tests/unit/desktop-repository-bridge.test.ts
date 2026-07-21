@@ -8,6 +8,12 @@ describe('DesktopRepositoryBridge', () => {
     const snapshot = fixtureCatalog['active-project'].snapshot;
     const subscription: { listener: ((next: typeof snapshot) => void) | null } = { listener: null };
     const runtimeSubscription: { listener: Parameters<DesktopHostApi['subscribeRuntime']>[0] | null } = { listener: null };
+    const setupSubscription: { listener: Parameters<DesktopHostApi['subscribeSetup']>[0] | null } = { listener: null };
+    const setupDraft = {
+      revision: 1 as const, status: 'draft' as const,
+      source: { kind: 'detected_root' as const, rootPath: 'C:\\repo' },
+      projectName: 'Repo', description: '', questions: [], answers: []
+    };
     const host = {
       getRepositorySnapshot: vi.fn(async () => snapshot),
       listRepositories: vi.fn(async () => []),
@@ -15,6 +21,7 @@ describe('DesktopRepositoryBridge', () => {
       openRepository: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'open-1' })),
       selectImageAttachments: vi.fn(async () => []),
       subscribeRepository: vi.fn((listener: (next: typeof snapshot) => void) => { subscription.listener = listener; return () => { subscription.listener = null; }; }),
+      subscribeSetup: vi.fn((listener) => { setupSubscription.listener = listener; return () => { setupSubscription.listener = null; }; }),
       sendMessage: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'send-1' })),
       askLuca: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'luca-1' })),
       listConversation: vi.fn(async () => ({ items: [], nextCursor: null })),
@@ -23,6 +30,12 @@ describe('DesktopRepositoryBridge', () => {
         runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
         platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified' as const
       })),
+      readSetupDraft: vi.fn(async () => setupDraft),
+      saveSetupDraft: vi.fn(async () => undefined),
+      chooseSetupSource: vi.fn(async () => setupDraft.source),
+      readSetupAccount: vi.fn(async () => ({ status: 'authenticated' as const, accountType: 'chatgpt' as const, requiresOpenaiAuth: true })),
+      startSetupLogin: vi.fn(async () => ({ type: 'chatgpt' as const, loginId: 'login-1', authUrl: 'https://auth.openai.com/authorize' })),
+      startSetup: vi.fn(async () => ({ setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment' as const })),
       respondRuntimeApproval: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'approval-1' })),
       listAttentionHistory: vi.fn(async () => []),
       startInspection: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'inspection-1' })),
@@ -40,6 +53,13 @@ describe('DesktopRepositoryBridge', () => {
     const unsubscribe = bridge.subscribe(listener);
     subscription.listener?.(snapshot);
     expect(listener).toHaveBeenCalledWith({ type: 'snapshot_changed', snapshot });
+    setupSubscription.listener?.({
+      setupId: 'SETUP-1', phaseId: 'planning', status: 'active', occurredAt: '2026-07-22T00:00:00.000Z',
+      message: 'プロジェクト構造を設計しています。'
+    });
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'setup_progress', progress: expect.objectContaining({ phaseId: 'planning', status: 'active' })
+    }));
     runtimeSubscription.listener?.({
       kind: 'model_observed', threadId: 'thread-1', turnId: 'turn-1',
       targetAgentId: 'orchestrator', text: null,
@@ -62,6 +82,7 @@ describe('DesktopRepositoryBridge', () => {
       type: 'runtime_notification', notification: expect.objectContaining({ targetAgentId: 'orquesta-admin' })
     }));
     unsubscribe();
+    expect(setupSubscription.listener).toBeNull();
     expect(runtimeSubscription.listener).toBeNull();
     await expect(bridge.switchProject('repo-1')).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.requestOpenProject()).resolves.toMatchObject({ status: 'accepted' });
@@ -73,6 +94,12 @@ describe('DesktopRepositoryBridge', () => {
     await expect(bridge.resolveAttentionItem({ kind: 'repository_action', id: 'A1', resolution: 'done' })).resolves.toMatchObject({ status: 'unsupported' });
     expect(host.respondRuntimeApproval).toHaveBeenCalledTimes(1);
     await expect(bridge.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
+    await expect(bridge.readSetupDraft()).resolves.toEqual(setupDraft);
+    await expect(bridge.saveSetupDraft(setupDraft)).resolves.toBeUndefined();
+    await expect(bridge.chooseSetupSource('detected_root')).resolves.toEqual(setupDraft.source);
+    await expect(bridge.readSetupAccount()).resolves.toMatchObject({ status: 'authenticated' });
+    await expect(bridge.startSetupLogin()).resolves.toMatchObject({ loginId: 'login-1' });
+    await expect(bridge.startSetup(setupDraft)).resolves.toMatchObject({ setupId: 'SETUP-1' });
     await expect(bridge.openCodexDraft({ targetAgentId: 'orchestrator', text: 'Draft.' })).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.startInspection({
       kind: 'external_benchmark', target: { kind: 'project', ids: [] }, focus: null

@@ -90,6 +90,23 @@ lines.on('line', (line) => {
     });
     return;
   }
+  if (message.method === 'account/read') {
+    send({
+      id: message.id,
+      result: {
+        account: { type: 'chatgpt', email: 'fixture@example.test', planType: 'plus' },
+        requiresOpenaiAuth: true
+      }
+    });
+    return;
+  }
+  if (message.method === 'account/login/start') {
+    send({
+      id: message.id,
+      result: { type: 'chatgpt', loginId: 'login-e2e', authUrl: 'https://auth.openai.com/authorize' }
+    });
+    return;
+  }
   if (message.method === 'thread/start') {
     const luca = String(message.params?.developerInstructions ?? '').includes('You are Luca');
     const inspection = message.params?.sandbox === 'read-only' && !luca;

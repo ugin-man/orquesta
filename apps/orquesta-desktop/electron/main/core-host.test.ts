@@ -117,6 +117,73 @@ describe('CoreHost', () => {
     await expect(pending).resolves.toEqual(info);
   });
 
+  test('binds setup account reads and login starts to matching Core results', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+
+    const account = host.readSetupAccount();
+    const accountRequest = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(accountRequest).toMatchObject({ type: 'setup.account.read' });
+    child.emit('message', {
+      type: 'setup.account.result', correlationId: accountRequest.correlationId,
+      account: { status: 'authenticated', accountType: 'chatgpt', requiresOpenaiAuth: true }
+    });
+    await expect(account).resolves.toMatchObject({ status: 'authenticated', accountType: 'chatgpt' });
+
+    const login = host.startSetupLogin();
+    const loginRequest = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(loginRequest).toMatchObject({ type: 'setup.account.login.start' });
+    child.emit('message', {
+      type: 'setup.account.login.started', correlationId: loginRequest.correlationId,
+      login: { type: 'chatgpt', loginId: 'login-1', authUrl: 'https://auth.openai.com/authorize' }
+    });
+    await expect(login).resolves.toMatchObject({ type: 'chatgpt', loginId: 'login-1' });
+  });
+
+  test('binds setup start to the matching Core result', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+    const draft = {
+      revision: 1 as const, status: 'draft' as const,
+      source: { kind: 'detected_root' as const, rootPath: 'C:\\repo' },
+      projectName: 'Repo', description: '', questions: [], answers: []
+    };
+
+    const started = host.startSetup({ rootPath: 'C:\\repo', draft });
+    const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(request).toMatchObject({ type: 'setup.start', rootPath: 'C:\\repo', draft });
+    child.emit('message', {
+      type: 'setup.start.result', correlationId: request.correlationId,
+      result: { setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment' }
+    });
+    await expect(started).resolves.toEqual({ setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment' });
+  });
+
+  test('forwards setup progress without waiting for a repository refresh', () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+    const listener = vi.fn();
+    const unsubscribe = host.subscribeSetup(listener);
+    const progress = {
+      setupId: 'SETUP-1', phaseId: 'planning', status: 'active',
+      message: 'プロジェクト構造を設計しています。', occurredAt: '2026-07-22T00:00:00.000Z'
+    } as const;
+
+    child.emit('message', { type: 'setup.progress', progress });
+
+    expect(listener).toHaveBeenCalledWith(progress);
+    expect(listener.mock.calls[0]?.[0]).not.toBe(progress);
+    unsubscribe();
+    child.emit('message', { type: 'setup.progress', progress: { ...progress, status: 'completed' } });
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   test('forwards bounded runtime notifications and conversation pages', async () => {
     const child = new FakeCoreChild();
     const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });

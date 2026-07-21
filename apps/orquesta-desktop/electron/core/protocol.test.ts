@@ -34,6 +34,49 @@ describe('Core protocol validation', () => {
     })).toBe(true);
   });
 
+  test('accepts bounded setup account and start requests', () => {
+    expect(isCoreRequest({ type: 'setup.account.read', correlationId: 'setup-account-1' })).toBe(true);
+    expect(isCoreRequest({ type: 'setup.account.login.start', correlationId: 'setup-login-1' })).toBe(true);
+    expect(isCoreRequest({ type: 'setup.account.read', correlationId: '' })).toBe(false);
+    expect(isCoreRequest({
+      type: 'setup.start',
+      correlationId: 'setup-start-1',
+      rootPath: 'C:\\work\\demo',
+      draft: {
+        revision: 1,
+        status: 'draft',
+        source: { kind: 'existing_folder', rootPath: 'C:\\work\\demo' },
+        projectName: 'Demo',
+        description: '',
+        questions: [],
+        answers: []
+      }
+    })).toBe(true);
+    expect(isCoreRequest({
+      type: 'setup.start', correlationId: 'setup-start-1', rootPath: 'C:\\work\\demo', draft: { status: 'started' }
+    })).toBe(false);
+  });
+
+  test('accepts typed setup account and progress results', () => {
+    expect(isCoreEvent({
+      type: 'setup.account.result',
+      correlationId: 'setup-account-1',
+      account: { status: 'authenticated', accountType: 'chatgpt', requiresOpenaiAuth: true }
+    })).toBe(true);
+    expect(isCoreEvent({
+      type: 'setup.progress',
+      progress: {
+        setupId: 'setup-1', phaseId: 'environment', status: 'active', message: 'Checking environment', occurredAt: '2026-07-22T00:00:00.000Z'
+      }
+    })).toBe(true);
+    expect(isCoreEvent({
+      type: 'setup.progress',
+      progress: {
+        setupId: 'setup-1', phaseId: 'unknown', status: 'active', message: 'Nope', occurredAt: '2026-07-22T00:00:00.000Z'
+      }
+    })).toBe(false);
+  });
+
   test('accepts only bounded Luca runtime requests', () => {
     const valid = {
       type: 'runtime.luca.send', correlationId: 'corr-luca', projectId: 'repo-1', rootPath: 'C:\\repo',

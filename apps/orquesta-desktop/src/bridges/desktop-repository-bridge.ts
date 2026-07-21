@@ -11,6 +11,7 @@ import type {
   UiActionResult
 } from '../contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../contracts/orquesta-ui';
+import type { SetupDraft, SetupSourceDraft } from '../contracts/setup';
 
 function correlationId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `desktop-${Date.now()}`;
@@ -34,6 +35,7 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
 
   subscribe(listener: (event: BridgeEvent) => void): () => void {
     const unsubscribeRepository = this.host.subscribeRepository((snapshot) => listener({ type: 'snapshot_changed', snapshot }));
+    const unsubscribeSetup = this.host.subscribeSetup((progress) => listener({ type: 'setup_progress', progress }));
     const unsubscribeRuntime = this.host.subscribeRuntime((notification) => {
       listener({ type: 'runtime_notification', notification });
       if (notification.targetAgentId === 'orquesta-admin') return;
@@ -56,7 +58,7 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
         }
       });
     });
-    return () => { unsubscribeRepository(); unsubscribeRuntime(); };
+    return () => { unsubscribeRepository(); unsubscribeSetup(); unsubscribeRuntime(); };
   }
 
   sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult> {
@@ -85,6 +87,13 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
   getRuntimeInfo(input: { probe: boolean }) {
     return this.host.getRuntimeInfo(input);
   }
+
+  readSetupDraft() { return this.host.readSetupDraft(); }
+  saveSetupDraft(draft: SetupDraft) { return this.host.saveSetupDraft(draft); }
+  chooseSetupSource(kind: SetupSourceDraft['kind']) { return this.host.chooseSetupSource(kind); }
+  readSetupAccount() { return this.host.readSetupAccount(); }
+  startSetupLogin() { return this.host.startSetupLogin(); }
+  startSetup(draft: SetupDraft) { return this.host.startSetup(draft); }
 
   openCodexDraft(input: { targetAgentId: string; text: string }): Promise<UiActionResult> {
     return this.host.openCodexDraft(input);

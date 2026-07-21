@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Circle, Pause, X } from 'lucide-react';
 import type { SetupPhaseUiModel, SetupUiSnapshot } from '../../../contracts/orquesta-ui';
+import { SetupOrganStage } from './SetupOrganStage';
+import { createSetupVisualState } from './setup-visual-state';
 import './initial-setup.css';
 
 interface InitialSetupExperienceProps {
@@ -15,13 +17,13 @@ const phaseStatusLabel: Record<SetupPhaseUiModel['status'], string> = {
   blocked: '停止'
 };
 
-const phaseGearVariants = [
-  { name: 'medium', src: '/setup/setup-gear-medium.png' },
-  { name: 'fine', src: '/setup/setup-gear-fine.png' },
-  { name: 'heavy', src: '/setup/setup-gear-heavy.png' },
-  { name: 'medium', src: '/setup/setup-gear-medium.png' },
-  { name: 'fine', src: '/setup/setup-gear-fine.png' },
-  { name: 'heavy', src: '/setup/setup-gear-heavy.png' }
+const mechanismCopy = [
+  '入力機構を始動しています',
+  '動力列へ回転を伝えています',
+  '機械制御を同期しています',
+  'ベローズと空気槽を加圧しています',
+  '必要なパイプへ空気経路を接続しています',
+  '全機構の同期を確認しています'
 ] as const;
 
 function PhaseStateIcon({ status }: { status: SetupPhaseUiModel['status'] }) {
@@ -34,110 +36,127 @@ export function InitialSetupExperience({ setup, onCancel }: InitialSetupExperien
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const activePhase = setup.phases.find((phase) => phase.id === setup.currentPhaseId)
-    ?? setup.phases.find((phase) => phase.status === 'active')
+    ?? setup.phases.find((phase) => phase.status === 'active' || phase.status === 'blocked')
     ?? setup.phases[0];
-  const progressValue = activePhase?.order ?? Math.max(1, setup.phases.filter((phase) => phase.status === 'complete').length);
+  const visualState = useMemo(() => createSetupVisualState(setup, false), [setup]);
+  const progressValue = setup.status === 'completed'
+    ? setup.phases.length
+    : activePhase?.order ?? Math.max(1, setup.phases.filter((phase) => phase.status === 'complete').length);
+  const stopped = setup.status === 'paused' || setup.status === 'blocked' || setup.status === 'cancelled';
+  const liveLabel = setup.status === 'completed' ? '完了' : stopped ? '停止中' : '構築中';
 
   return (
     <main className="initial-setup" role="main" aria-label="Orquesta 初回セットアップ">
       <div className="initial-setup__paper" aria-hidden="true" />
-      <div className="initial-setup__organ" aria-hidden="true" />
 
-      <section className="initial-setup__details" aria-labelledby="initial-setup-title">
+      <aside className="initial-setup__rail">
         <header className="initial-setup__brand">
-          <span>Orquesta</span>
-          <small>初回セットアップ</small>
-          <i aria-hidden="true" />
+          <p>ORQUESTA SETUP</p>
+          <h2>{setup.projectTitle}</h2>
+          <small>LOCAL MULTI-AGENT WORKSPACE</small>
         </header>
 
-        <div className="initial-setup__phase-kicker">
-          <span>フェーズ {String(activePhase?.order ?? 1).padStart(2, '0')} / {String(setup.phases.length).padStart(2, '0')}</span>
-          <span className={`initial-setup__live initial-setup__live--${setup.status}`}><i aria-hidden="true" />{setup.status === 'paused' || setup.status === 'blocked' ? '停止中' : '構築中'}</span>
-        </div>
+        <nav className="initial-setup__phases" aria-label="セットアップ段階">
+          <div className="initial-setup__section-label">
+            <span>SETUP PHASES</span>
+            <strong>{String(progressValue).padStart(2, '0')} / 06</strong>
+          </div>
+          <ol>
+            {setup.phases.map((phase) => (
+              <li
+                key={phase.id}
+                data-setup-phase
+                data-state={phase.status}
+                aria-current={phase.status === 'active' ? 'step' : undefined}
+                aria-label={`フェーズ${phase.order} ${phase.title} ${phaseStatusLabel[phase.status]}`}
+              >
+                <span className="initial-setup__phase-index">{String(phase.order).padStart(2, '0')}</span>
+                <span className="initial-setup__phase-copy">
+                  <small>PHASE {phase.order}</small>
+                  <strong>{phase.title}</strong>
+                  <span>{phase.summary}</span>
+                </span>
+                <span className="initial-setup__phase-state"><PhaseStateIcon status={phase.status} />{phaseStatusLabel[phase.status]}</span>
+              </li>
+            ))}
+          </ol>
+        </nav>
 
-        <h1 id="initial-setup-title">{setup.currentActivity?.title ?? activePhase?.title ?? '初回セットアップ'}</h1>
-        <p className="initial-setup__lead">{setup.currentActivity?.detail ?? activePhase?.summary}</p>
+        <section className="initial-setup__status" aria-labelledby="initial-setup-title">
+          <div className="initial-setup__status-heading">
+            <div>
+              <small>STATUS</small>
+              <h1 id="initial-setup-title">{setup.currentActivity?.title ?? activePhase?.title ?? '初回セットアップ'}</h1>
+            </div>
+            <span className={`initial-setup__live initial-setup__live--${setup.status}`}><i aria-hidden="true" />{liveLabel}</span>
+          </div>
+          <p className="initial-setup__lead">{setup.currentActivity?.detail ?? activePhase?.summary}</p>
 
-        <div
-          className="initial-setup__progress"
-          role="progressbar"
-          aria-label="セットアップ進行状況"
-          aria-valuemin={1}
-          aria-valuemax={setup.phases.length}
-          aria-valuenow={progressValue}
-          aria-valuetext={`${setup.phases.length}段階中${progressValue}段階目`}
-        >
-          {setup.phases.map((phase) => <i key={phase.id} data-state={phase.status} aria-hidden="true" />)}
-        </div>
+          <div className="initial-setup__progress-row">
+            <span>PROGRESS</span>
+            <strong>{visualState.overallProgress}%</strong>
+          </div>
+          <div
+            className="initial-setup__progress"
+            role="progressbar"
+            aria-label="セットアップ進行状況"
+            aria-valuemin={1}
+            aria-valuemax={setup.phases.length}
+            aria-valuenow={progressValue}
+            aria-valuetext={`${setup.phases.length}段階中${progressValue}段階目`}
+          >
+            <i style={{ width: `${visualState.overallProgress}%` }} aria-hidden="true" />
+          </div>
 
-        <ol className="initial-setup__activity" aria-label="セットアップ処理">
-          {setup.recentActivities.slice(0, 2).map((activity) => (
-            <li key={activity.id} data-state="complete">
-              <span className="initial-setup__activity-mark"><Check size={12} aria-hidden="true" /></span>
-              <div><small>完了</small><strong>{activity.title}</strong></div>
-            </li>
-          ))}
-          {setup.currentActivity ? (
-            <li data-state={setup.currentActivity.status}>
-              <span className="initial-setup__activity-mark"><Circle size={9} fill="currentColor" aria-hidden="true" /></span>
-              <div><small>{setup.currentActivity.status === 'failed' ? '停止' : '実行中'}</small><strong>{setup.currentActivity.title}</strong></div>
-            </li>
+          <div className="initial-setup__log-heading">
+            <span>SYSTEM LOG</span>
+            {setup.nextActivity ? <small data-prefix="次">{setup.nextActivity.title}</small> : null}
+          </div>
+          <ol className="initial-setup__logs" aria-label="直近のセットアップ処理">
+            {visualState.logs.map((entry) => (
+              <li key={entry.id} data-testid="setup-log-entry" data-state={entry.state}>
+                <time>{entry.time}</time>
+                <span>{entry.message}</span>
+                <strong>{entry.stateLabel}</strong>
+              </li>
+            ))}
+          </ol>
+
+          <div className="initial-setup__technical">
+            <button type="button" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((open) => !open)}>
+              {detailsOpen ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+              {detailsOpen ? '技術的な詳細を閉じる' : '技術的な詳細を表示'}
+            </button>
+            {detailsOpen ? (
+              <dl>
+                {setup.technicalDetails.map((detail) => (
+                  <div key={detail.id} data-tone={detail.tone}>
+                    <dt>{detail.label}</dt>
+                    <dd>{detail.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+          </div>
+        </section>
+
+        <footer className="initial-setup__footer">
+          <span><i aria-hidden="true" />LOCAL</span>
+          <small title={setup.projectRootLabel}>{setup.projectRootLabel}</small>
+          {setup.canCancel ? (
+            <button type="button" onClick={() => setConfirmCancel(true)}>セットアップを中止 <X size={14} aria-hidden="true" /></button>
           ) : null}
-          {setup.nextActivity ? (
-            <li data-state="waiting">
-              <span className="initial-setup__activity-mark"><Circle size={10} aria-hidden="true" /></span>
-              <div><small>次</small><strong>{setup.nextActivity.title}</strong></div>
-            </li>
-          ) : null}
-        </ol>
+        </footer>
+      </aside>
 
-        <div className="initial-setup__technical">
-          <button type="button" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((open) => !open)}>
-            {detailsOpen ? <ChevronUp size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
-            {detailsOpen ? '技術的な詳細を閉じる' : '技術的な詳細を表示'}
-          </button>
-          {detailsOpen ? (
-            <dl>
-              {setup.technicalDetails.map((detail) => (
-                <div key={detail.id} data-tone={detail.tone}>
-                  <dt>{detail.label}</dt>
-                  <dd>{detail.value}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
+      <section className="initial-setup__stage" role="region" aria-label="パイプオルガン構築状況">
+        <div className="initial-setup__stage-kicker"><i aria-hidden="true" /> MECHANICAL ORCHESTRATION / LOCAL SYSTEM</div>
+        <SetupOrganStage setup={setup} />
+        <div className="initial-setup__stage-caption">
+          <small>PHASE {activePhase?.order ?? 1} · {activePhase?.id.toUpperCase()}</small>
+          <p>{mechanismCopy[(activePhase?.order ?? 1) - 1]}</p>
         </div>
       </section>
-
-      <nav className="initial-setup__phases" aria-label="セットアップ段階">
-        <ol>
-          {setup.phases.map((phase) => {
-            const gear = phaseGearVariants[(phase.order - 1) % phaseGearVariants.length]!;
-            return (
-            <li key={phase.id} data-state={phase.status} aria-current={phase.status === 'active' ? 'step' : undefined}>
-              <span className="initial-setup__gear-wrap" data-setup-gear data-state={phase.status} data-variant={gear.name} aria-hidden="true">
-                <img src={gear.src} alt="" draggable={false} />
-              </span>
-              <span className="initial-setup__phase-copy">
-                <span className="initial-setup__phase-number">{String(phase.order).padStart(2, '0')}</span>
-                <strong>{phase.title}</strong>
-                <small className="initial-setup__phase-state"><PhaseStateIcon status={phase.status} />{phaseStatusLabel[phase.status]}</small>
-                <small className="initial-setup__phase-summary">{phase.summary}</small>
-              </span>
-            </li>
-            );
-          })}
-        </ol>
-      </nav>
-
-      <footer className="initial-setup__footer">
-        <span>{setup.projectTitle}</span>
-        <span aria-hidden="true">·</span>
-        <small>{setup.projectRootLabel}</small>
-        {setup.canCancel ? (
-          <button type="button" onClick={() => setConfirmCancel(true)}>セットアップを中止 <X size={15} aria-hidden="true" /></button>
-        ) : null}
-      </footer>
 
       {confirmCancel ? (
         <div className="initial-setup__modal-backdrop" role="presentation" onMouseDown={(event) => {

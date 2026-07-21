@@ -1,5 +1,6 @@
 import type { ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
 import { isV4OperationsSnapshot, type AttentionUiItem, type InspectionKind, type InspectionTargetUi, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import { isSetupAccountState, isSetupDraft, isSetupProgressEvent, type SetupAccountState, type SetupDraft, type SetupLoginStartResult, type SetupProgressEvent, type SetupStartResult } from '../../src/contracts/setup';
 
 export interface RuntimeModelEvidence {
   recommendedModel: string | null;
@@ -66,6 +67,23 @@ export interface RuntimeInfoRequest {
   probe: boolean;
 }
 
+export interface SetupAccountReadRequest {
+  type: 'setup.account.read';
+  correlationId: string;
+}
+
+export interface SetupAccountLoginStartRequest {
+  type: 'setup.account.login.start';
+  correlationId: string;
+}
+
+export interface SetupStartRequest {
+  type: 'setup.start';
+  correlationId: string;
+  rootPath: string;
+  draft: SetupDraft;
+}
+
 export interface RepositorySelectRequest {
   type: 'repository.select';
   correlationId: string;
@@ -122,6 +140,7 @@ export interface InspectionReadReportRequest {
 }
 
 export type CoreDispatchRequest = RuntimeSendRequest | RuntimeLucaSendRequest | RuntimeConversationRequest | RuntimeInfoRequest
+  | SetupAccountReadRequest | SetupAccountLoginStartRequest | SetupStartRequest
   | RepositorySelectRequest | RepositorySnapshotRequest | RepositoryCloseRequest
   | RuntimeApprovalRespondRequest | RepositoryAttentionHistoryRequest
   | InspectionStartRequest | InspectionCancelRequest | InspectionReadReportRequest;
@@ -133,6 +152,9 @@ export type CoreRequest =
   | RuntimeLucaSendRequest
   | RuntimeConversationRequest
   | RuntimeInfoRequest
+  | SetupAccountReadRequest
+  | SetupAccountLoginStartRequest
+  | SetupStartRequest
   | RepositorySelectRequest
   | RepositorySnapshotRequest
   | RepositoryCloseRequest
@@ -149,6 +171,10 @@ export type CoreEvent =
   | { type: 'runtime.request.failed'; correlationId: string; reason: string; retryable: boolean }
   | { type: 'runtime.conversation.result'; correlationId: string; page: ConversationPage }
   | { type: 'runtime.info.result'; correlationId: string; info: RuntimeInfoUi }
+  | { type: 'setup.account.result'; correlationId: string; account: SetupAccountState }
+  | { type: 'setup.account.login.started'; correlationId: string; login: SetupLoginStartResult }
+  | { type: 'setup.start.result'; correlationId: string; result: SetupStartResult }
+  | { type: 'setup.progress'; progress: SetupProgressEvent }
   | { type: 'runtime.notification'; notification: RuntimeNotification }
   | { type: 'repository.snapshot.result'; correlationId: string; snapshot: OrquestaUiSnapshot }
   | { type: 'repository.snapshot.changed'; snapshot: OrquestaUiSnapshot }
@@ -225,6 +251,20 @@ function isInspectionTarget(value: unknown): value is InspectionStartRequest['ta
   return value.ids.length > 0;
 }
 
+function isSetupLoginStartResult(value: unknown): value is SetupLoginStartResult {
+  if (!isRecord(value)) return false;
+  return ['chatgpt', 'chatgpt_device_code'].includes(String(value.type))
+    && isSafeId(value.loginId)
+    && (value.authUrl === null || isBoundedText(value.authUrl, 2_048));
+}
+
+function isSetupStartResult(value: unknown): value is SetupStartResult {
+  if (!isRecord(value)) return false;
+  return isSafeId(value.setupId)
+    && isBoundedText(value.rootPath, 32_768)
+    && ['environment', 'understanding', 'foundation', 'planning', 'specialists', 'operation'].includes(String(value.activePhaseId));
+}
+
 export function isCoreRequest(value: unknown): value is CoreRequest {
   if (!isRecord(value)) return false;
   if (value.type === 'core.shutdown') return true;
@@ -246,6 +286,12 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
   }
   if (value.type === 'runtime.info') {
     return isCorrelationId(value.correlationId) && typeof value.probe === 'boolean';
+  }
+  if (value.type === 'setup.account.read' || value.type === 'setup.account.login.start') {
+    return isCorrelationId(value.correlationId);
+  }
+  if (value.type === 'setup.start') {
+    return isCorrelationId(value.correlationId) && isBoundedText(value.rootPath, 32_768) && isSetupDraft(value.draft);
   }
   if (value.type === 'repository.select') {
     return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768);
@@ -286,6 +332,16 @@ export function isCoreEvent(value: unknown): value is CoreEvent {
   if (value.type === 'runtime.info.result') {
     return isCorrelationId(value.correlationId) && isRuntimeInfo(value.info);
   }
+  if (value.type === 'setup.account.result') {
+    return isCorrelationId(value.correlationId) && isSetupAccountState(value.account);
+  }
+  if (value.type === 'setup.account.login.started') {
+    return isCorrelationId(value.correlationId) && isSetupLoginStartResult(value.login);
+  }
+  if (value.type === 'setup.start.result') {
+    return isCorrelationId(value.correlationId) && isSetupStartResult(value.result);
+  }
+  if (value.type === 'setup.progress') return isSetupProgressEvent(value.progress);
   if (value.type === 'runtime.notification') {
     const notification = isRecord(value.notification) ? value.notification : null;
     return Boolean(notification && ['turn_started', 'turn_completed', 'turn_failed', 'agent_message', 'model_observed'].includes(String(notification.kind))
