@@ -29,7 +29,7 @@ async function missing(filePath) {
   try { await access(filePath); return false; } catch { return true; }
 }
 
-test("starts an atomic idempotent six-phase setup with the three foundation agents", async () => {
+test("starts an atomic idempotent six-phase setup before creating foundation agents", async () => {
   const parent = await mkdtemp(path.join(os.tmpdir(), "orquesta-setup-engine-"));
   roots.push(parent);
   const root = path.join(parent, "project");
@@ -41,10 +41,8 @@ test("starts an atomic idempotent six-phase setup with the three foundation agen
 
   assert.equal(await missing(path.join(root, ".orquesta")), true);
   const first = await engine.start(input(root));
+  assert.equal(first.setup_state.schema_version, 3);
   assert.equal(first.setup_state.current_phase_id, "environment");
-  assert.deepEqual(first.setup_state.foundation_agents.map((agent) => agent.agent_id), [
-    "orchestrator", "user-support", "orquesta-admin"
-  ]);
   assert.equal(first.setup_state.phases.length, 6);
 
   const second = await engine.start(input(root));
@@ -52,7 +50,10 @@ test("starts an atomic idempotent six-phase setup with the three foundation agen
   const persisted = JSON.parse(await readFile(path.join(root, ".orquesta", "setup", "setup_state.json"), "utf8"));
   assert.equal(persisted.setup_id, first.setup_state.setup_id);
   const agents = JSON.parse(await readFile(path.join(root, ".orquesta", "state", "agents.json"), "utf8"));
-  assert.deepEqual(new Set(agents.agents.map((agent) => agent.agent_id)), new Set(["orchestrator", "user-support", "orquesta-admin"]));
+  assert.deepEqual(agents.agents, []);
+  const organization = JSON.parse(await readFile(path.join(root, ".orquesta", "state", "organization.json"), "utf8"));
+  assert.equal(organization.revision, 0);
+  assert.deepEqual(organization.agents, []);
 });
 
 test("leaves no partial .orquesta tree when preparation fails", async () => {

@@ -4,15 +4,7 @@ const crypto = require("node:crypto");
 const { access, mkdir, readFile, realpath, rename, rm, stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { createFoundationStateBundle } = require("./adaptive-setup-state");
-
-const PHASES = Object.freeze([
-  Object.freeze({ phase_id: "environment", title: "環境確認", summary: "保存先と実行環境を確認しています。" }),
-  Object.freeze({ phase_id: "understanding", title: "プロジェクト理解", summary: "入力と既存資産からプロジェクトを整理します。" }),
-  Object.freeze({ phase_id: "foundation", title: "基礎組織", summary: "統括者、Luca、利用者支援係を構築します。" }),
-  Object.freeze({ phase_id: "planning", title: "初期計画", summary: "最初の実行可能作業を組み立てます。" }),
-  Object.freeze({ phase_id: "specialists", title: "専門家編成", summary: "必要な専門家だけを配置します。" }),
-  Object.freeze({ phase_id: "operation", title: "運用開始", summary: "初期体制を接続してホーム画面へ移ります。" }),
-]);
+const { PHASES, createSetupState } = require("./setup-state");
 
 const FOUNDATION_AGENTS = Object.freeze([
   Object.freeze({ agent_id: "orchestrator", role_id: "orchestrator" }),
@@ -75,43 +67,23 @@ async function writeJson(root, relativePath, value) {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function setupState({ setupId, projectId, draft, now }) {
+function emptyFoundationStateBundle({ projectId, now }) {
+  const foundation = createFoundationStateBundle({ projectId, now });
   return {
-    schema_version: 2,
-    setup_id: setupId,
-    project_id: projectId,
-    project_name: draft.projectName,
-    project_title: draft.projectName,
-    status: "active",
-    current_phase_id: "environment",
-    phases: PHASES.map((phase, index) => ({ ...phase, status: index === 0 ? "active" : "waiting" })),
-    input_snapshot: {
-      revision: draft.revision,
-      source: clone(draft.source),
-      project_name: draft.projectName,
-      description: draft.description,
-      questions: clone(draft.questions),
-      answers: clone(draft.answers),
+    rolesState: { ...foundation.rolesState, organization_revision: 0, roles: [] },
+    agentsState: { ...foundation.agentsState, organization_revision: 0, agents: [] },
+    organizationState: {
+      ...foundation.organizationState,
+      revision: 0,
+      agents: [],
+      teams: [],
+      memberships: [],
+      relationships: [],
+      lines: [],
+      applied_decision_ids: [],
     },
-    foundation_agents: FOUNDATION_AGENTS.map(clone),
-    current_activity: {
-      activity_id: "setup-environment-preflight",
-      title: "環境を確認中",
-      detail: "プロジェクトの保存先とOrquesta Coreの開始状態を確認しています。",
-      status: "active",
-      observed_at: now,
-    },
-    recent_activities: [],
-    next_activity: {
-      activity_id: "setup-project-understanding",
-      title: "プロジェクト理解",
-      detail: "入力内容と既存資産を整理します。",
-      status: "waiting",
-      observed_at: null,
-    },
-    started_at: now,
-    created_at: now,
-    updated_at: now,
+    sessionsState: { ...foundation.sessionsState, sessions: [] },
+    tasksState: { ...foundation.tasksState, tasks: [] },
   };
 }
 
@@ -148,8 +120,8 @@ function createSetupEngine(options = {}) {
       const setupId = `SETUP-${randomUUID()}`;
       const projectId = projectIdForRoot(rootPath);
       const stagingRoot = path.join(rootPath, `.orquesta.setup-${setupId}.tmp`);
-      const state = setupState({ setupId, projectId, draft: input.draft, now: timestamp });
-      const foundation = createFoundationStateBundle({ projectId, now: timestamp });
+      const state = createSetupState({ setupId, projectId, draft: input.draft, now: timestamp });
+      const foundation = emptyFoundationStateBundle({ projectId, now: timestamp });
       const intake = buildProjectIntake(input.draft, timestamp);
       const answers = new Map(input.draft.answers.map((answer) => [answer.questionId, answer.answer]));
       const questions = input.draft.questions.map((question) => ({
