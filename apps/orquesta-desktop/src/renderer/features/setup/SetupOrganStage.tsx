@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { SetupUiSnapshot } from '../../../contracts/orquesta-ui';
+import type { Locale } from '../i18n/messages';
+import { getSetupCopy } from './setup-localization';
 import { createSetupVisualState } from './setup-visual-state';
 import './setup-organ-stage.css';
 
@@ -33,15 +35,16 @@ function usePageVisible(): boolean {
   return visible;
 }
 
-export function SetupOrganStage({ setup }: { setup: SetupUiSnapshot }) {
+export function SetupOrganStage({ setup, locale = 'ja' }: { setup: SetupUiSnapshot; locale?: Locale }) {
   const reducedMotion = useReducedMotion();
   const pageVisible = usePageVisible();
-  const state = useMemo(() => createSetupVisualState(setup, reducedMotion), [reducedMotion, setup]);
+  const copy = getSetupCopy(locale);
+  const state = useMemo(() => createSetupVisualState(setup, reducedMotion, locale), [locale, reducedMotion, setup]);
 
   return (
-    <section className="setup-organ-stage" aria-label="セットアップ機構">
-      <Suspense fallback={<div className="setup-organ-stage__loading" role="status">機構を準備しています…</div>}>
-        <SetupOrganScene state={state} active={pageVisible} />
+    <section className="setup-organ-stage" aria-label={copy.organStage}>
+      <Suspense fallback={<div className="setup-organ-stage__loading" role="status">{copy.organLoading}</div>}>
+        <SetupOrganScene state={state} active={pageVisible} locale={locale} />
       </Suspense>
     </section>
   );

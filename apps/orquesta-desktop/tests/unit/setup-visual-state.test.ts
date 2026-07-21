@@ -40,4 +40,19 @@ describe('setup visual state', () => {
     expect(visual.phases[2]?.status).toBe('blocked');
     expect(visual.phases[3]?.status).toBe('waiting');
   });
+
+  test('renders canonical setup state without Japanese copy in English mode', () => {
+    const visual = createSetupVisualState(setupRunningFixture.snapshot.setup!, false, 'en');
+
+    expect(visual.phases.map((phase) => phase.title)).toEqual([
+      'Environment',
+      'Project understanding',
+      'Foundation',
+      'Initial plan',
+      'Specialist team',
+      'Ready to operate'
+    ]);
+    expect(visual.connection.label).toBe('Connected');
+    expect(visual.logs.map((entry) => entry.message).join(' ')).not.toMatch(/[\u3040-\u30ff\u3400-\u9fff]/u);
+  });
 });

@@ -692,7 +692,7 @@ describe('DesktopRendererApp', () => {
     let publish!: (event: BridgeEvent) => void;
     vi.spyOn(bridge, 'subscribe').mockImplementation((listener) => { publish = listener; return () => undefined; });
     render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
-    await screen.findByRole('main', { name: 'Orquesta 初回セットアップ' });
+    await screen.findByRole('main', { name: 'Orquesta initial setup' });
 
     const complete = structuredClone(fixtureCatalog['active-project'].snapshot);
     complete.setup = {
@@ -734,7 +734,7 @@ describe('DesktopRendererApp', () => {
     let publish!: (event: BridgeEvent) => void;
     vi.spyOn(runningBridge, 'subscribe').mockImplementation((listener) => { publish = listener; return () => undefined; });
     render(<DesktopRendererApp bridge={runningBridge} initialLocale="en" />);
-    await screen.findByRole('main', { name: 'Orquesta 初回セットアップ' });
+    await screen.findByRole('main', { name: 'Orquesta initial setup' });
     act(() => publish({ type: 'snapshot_changed', snapshot: complete }));
 
     await screen.findByText('Demo data', {}, { timeout: 2_500 });
