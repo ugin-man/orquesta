@@ -24,8 +24,12 @@ export interface DesktopHostInfo {
 export interface DesktopHostApi {
   getHostInfo(): Promise<DesktopHostInfo>;
   pingCore(correlationId: string): Promise<{ correlationId: string }>;
+  readSetupDraft(): Promise<SetupDraft | null>;
+  saveSetupDraft(draft: SetupDraft): Promise<void>;
+  chooseSetupSource(kind: SetupSourceDraft['kind']): Promise<SetupSourceDraft | null>;
   readSetupAccount(): Promise<SetupAccountState>;
   startSetupLogin(): Promise<SetupLoginStartResult>;
+  startSetup(draft: SetupDraft): Promise<SetupStartResult>;
   getRepositorySnapshot(): Promise<OrquestaUiSnapshot>;
   listRepositories(): Promise<ProjectSummary[]>;
   switchRepository(projectId: string): Promise<UiActionResult>;
@@ -48,8 +52,12 @@ export interface DesktopHostApi {
 export const DESKTOP_IPC = {
   getHostInfo: 'orquesta.desktop.get-host-info',
   pingCore: 'orquesta.desktop.ping-core',
+  readSetupDraft: 'orquesta.desktop.setup.draft.read',
+  saveSetupDraft: 'orquesta.desktop.setup.draft.save',
+  chooseSetupSource: 'orquesta.desktop.setup.source.choose',
   readSetupAccount: 'orquesta.desktop.setup.account.read',
   startSetupLogin: 'orquesta.desktop.setup.account.login-start',
+  startSetup: 'orquesta.desktop.setup.start',
   getRepositorySnapshot: 'orquesta.desktop.repository.get-snapshot',
   listRepositories: 'orquesta.desktop.repository.list',
   switchRepository: 'orquesta.desktop.repository.switch',

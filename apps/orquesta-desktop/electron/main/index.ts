@@ -69,6 +69,21 @@ if (!hasSingleInstanceLock) {
   void app.whenReady().then(async () => {
     app.setAppUserModelId('com.orquesta.desktop');
     setupDrafts = new SetupDraftStore({ storePath: path.join(app.getPath('userData'), 'setup-draft.json') });
+    if (!await setupDrafts.read()) {
+      await setupDrafts.save({
+        revision: 1,
+        status: 'draft',
+        source: {
+          kind: 'new_project',
+          parentPath: path.join(app.getPath('documents'), 'Orquesta Projects'),
+          folderName: 'New Orquesta Project'
+        },
+        projectName: 'New Orquesta Project',
+        description: '',
+        questions: [],
+        answers: []
+      });
+    }
     repositories = new RepositoryService({
       registryPath: path.join(app.getPath('userData'), 'repositories.json'),
       coreHost,
@@ -104,6 +119,25 @@ if (!hasSingleInstanceLock) {
     });
     registerDesktopIpc(ipcMain, coreHost, repositories, attachments, {
       openExternal: (url) => shell.openExternal(url)
+    }, {
+      readDraft: () => setupDrafts?.read() ?? Promise.resolve(null),
+      saveDraft: async (draft) => { await setupDrafts?.save(draft); },
+      chooseSource: async (kind) => {
+        const current = await setupDrafts?.read();
+        if (kind === 'detected_root') return current?.source.kind === 'detected_root' ? current.source : null;
+        if (kind === 'new_project') {
+          return {
+            kind,
+            parentPath: path.join(app.getPath('documents'), 'Orquesta Projects'),
+            folderName: current?.projectName || 'New Orquesta Project'
+          };
+        }
+        if (kind === 'public_github') return current?.source.kind === 'public_github' ? current.source : null;
+        const options = { title: 'Choose existing project folder', properties: ['openDirectory' as const] };
+        const selection = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+        return selection.canceled || !selection.filePaths[0] ? null : { kind, rootPath: selection.filePaths[0] };
+      },
+      start: async () => { throw new Error('Setup engine is not connected yet'); }
     });
     mainWindow = createMainWindow();
     repositories.subscribe((snapshot) => {

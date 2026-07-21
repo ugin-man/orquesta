@@ -1,5 +1,6 @@
 import type { AttentionUiItem, InspectionKind, InspectionTargetUi, OrquestaUiSnapshot, ProjectStatus, RuntimeUiEvent } from './orquesta-ui';
 import type { AskLucaInput, LucaAnswerPayload } from './luca';
+import type { SetupAccountState, SetupDraft, SetupLoginStartResult, SetupSourceDraft, SetupStartResult } from './setup';
 export type {
   SetupAccountState,
   SetupDraft,
@@ -127,6 +128,12 @@ export interface OrquestaRendererBridge {
   resolveAttentionItem(input: AttentionResolutionInput): Promise<UiActionResult>;
   listConversation(input: ConversationQuery): Promise<ConversationPage>;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
+  readSetupDraft(): Promise<SetupDraft | null>;
+  saveSetupDraft(draft: SetupDraft): Promise<void>;
+  chooseSetupSource(kind: SetupSourceDraft['kind']): Promise<SetupSourceDraft | null>;
+  readSetupAccount(): Promise<SetupAccountState>;
+  startSetupLogin(): Promise<SetupLoginStartResult>;
+  startSetup(draft: SetupDraft): Promise<SetupStartResult>;
   openCodexDraft(input: { targetAgentId: string; text: string }): Promise<UiActionResult>;
   listProjects(): Promise<ProjectSummary[]>;
   switchProject(projectId: string): Promise<UiActionResult>;

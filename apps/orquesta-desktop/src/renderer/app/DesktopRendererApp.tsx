@@ -32,6 +32,7 @@ import { ProjectRoute } from '../features/project/ProjectRoute';
 import { ProjectStatusCard } from '../features/project/ProjectStatusCard';
 import { ProjectSwitcher } from '../features/project/ProjectSwitcher';
 import { InitialSetupExperience } from '../features/setup/InitialSetupExperience';
+import { SetupIntake } from '../features/setup/SetupIntake';
 import { TeamManagement } from '../features/team/TeamManagement';
 import { ToastStack } from '../features/toast/ToastStack';
 
@@ -109,7 +110,6 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const [draft, setDraft] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('orchestrator');
   const [sending, setSending] = useState(false);
-  const [openingProject, setOpeningProject] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [directSendFailure, setDirectSendFailure] = useState<string | null>(null);
   const [toasts, setToasts] = useState<RuntimeUiEvent[]>([]);
@@ -495,36 +495,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   }
 
   if (snapshot.project.id === 'no-project') {
-    const openFirstProject = async () => {
-      if (openingProject) return;
-      setOpeningProject(true);
-      setActionError(null);
-      try {
-        const result = await bridge.requestOpenProject();
-        if (result.status !== 'accepted') setActionError(result.reason);
-      } catch (error) {
-        setActionError(error instanceof Error ? error.message : String(error));
-      } finally {
-        setOpeningProject(false);
-      }
-    };
-    return (
-      <main className="desktop-shell project-onboarding-shell" role="application" aria-label="Orquesta Desktop">
-        <div className="paper-grain" aria-hidden="true" />
-        <span className="prototype-badge"><i />{t('projectNotSelected')}</span>
-        <section className="project-onboarding" aria-labelledby="project-onboarding-title">
-          <span className="project-onboarding__mark" aria-hidden="true"><FolderOpen size={27} /></span>
-          <p>{t('orquestaDesktop')}</p>
-          <h1 id="project-onboarding-title">{t('openFirstProjectTitle')}</h1>
-          <div className="project-onboarding__rule" aria-hidden="true" />
-          <small>{t('openFirstProjectBody')}</small>
-          <button type="button" onClick={() => void openFirstProject()} disabled={openingProject}>
-            <FolderOpen size={16} />{openingProject ? t('openingProject') : t('openProjectFolder')}
-          </button>
-          {actionError ? <p className="project-onboarding__error" role="status">{actionError}</p> : null}
-        </section>
-      </main>
-    );
+    return <SetupIntake bridge={bridge} locale={locale} />;
   }
 
   const selectedAgent = overlay?.kind === 'agent' ? snapshot.agents.find((agent) => agent.id === overlay.agentId) ?? null : null;

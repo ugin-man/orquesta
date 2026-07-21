@@ -44,7 +44,7 @@ describe('DesktopRendererApp', () => {
 
     expect(screen.getByText('プロジェクトを読み込み中…')).toBeVisible();
     await act(async () => resolveSnapshot({ ...base, project: { ...base.project, id: 'no-project', title: 'No project' } }));
-    expect(await screen.findByRole('heading', { name: '最初のOrquestaプロジェクトを開く' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Orquestaを始める' })).toBeVisible();
   });
 
   test('shows a bounded recovery screen when the repository snapshot fails', async () => {
@@ -73,14 +73,14 @@ describe('DesktopRendererApp', () => {
     expect(screen.queryByText('Renderer snapshot unavailable')).not.toBeInTheDocument();
   });
 
-  test('recovers the first-project action when the folder picker throws', async () => {
+  test('recovers the setup source action when the folder picker throws', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const base = await bridge.getInitialSnapshot();
     vi.spyOn(bridge, 'getInitialSnapshot').mockResolvedValue({ ...base, project: { ...base.project, id: 'no-project', title: 'No project' } });
-    vi.spyOn(bridge, 'requestOpenProject').mockRejectedValue(new Error('Project picker disconnected'));
+    vi.spyOn(bridge, 'chooseSetupSource').mockRejectedValue(new Error('Project picker disconnected'));
     render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
 
-    const open = await screen.findByRole('button', { name: 'Open project folder' });
+    const open = await screen.findByRole('button', { name: 'Choose existing folder' });
     await userEvent.click(open);
     expect(await screen.findByText('Project picker disconnected')).toBeVisible();
     expect(open).toBeEnabled();
