@@ -75,6 +75,9 @@ export function runDesktopCore(runtime: DesktopCodexService): void {
             requestedModel: request.requestedModel ?? null
           });
           send({ type: 'runtime.dispatch.accepted', correlationId: request.correlationId, ...result });
+        } else if (request.type === 'runtime.luca.send') {
+          const result = await runtime.sendLucaQuestion(request);
+          send({ type: 'runtime.dispatch.accepted', correlationId: request.correlationId, ...result });
         } else if (request.type === 'inspection.start') {
           const result = await inspections.start(request);
           send({ type: 'inspection.action.accepted', correlationId: request.correlationId, runId: result.runId });

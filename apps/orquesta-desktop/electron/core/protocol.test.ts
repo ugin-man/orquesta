@@ -34,6 +34,17 @@ describe('Core protocol validation', () => {
     })).toBe(true);
   });
 
+  test('accepts only bounded Luca runtime requests', () => {
+    const valid = {
+      type: 'runtime.luca.send', correlationId: 'corr-luca', projectId: 'repo-1', rootPath: 'C:\\repo',
+      threadId: null, prompt: '{"protocol":"orquesta.luca.ask.v1"}'
+    };
+    expect(isCoreRequest(valid)).toBe(true);
+    expect(isCoreRequest({ ...valid, projectId: '../bad' })).toBe(false);
+    expect(isCoreRequest({ ...valid, prompt: '' })).toBe(false);
+    expect(isCoreRequest({ ...valid, prompt: 'x'.repeat(65_537) })).toBe(false);
+  });
+
   test('requires separated model evidence on dispatch and runtime notifications', () => {
     const modelEvidence = {
       recommendedModel: null, requestedModel: 'requested', appliedModel: 'requested', actualModel: null,

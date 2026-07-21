@@ -139,6 +139,43 @@ test("spawns App Server without a shell and initializes exactly once before thre
   ]);
 });
 
+test("forwards Luca thread profile and high turn effort without renaming parameters", async () => {
+  const { adapter, process } = createHarness();
+  await adapter.createThread({
+    correlationId: "corr-luca-thread",
+    recommendedModel: "Luna",
+    requestedModel: "gpt-5.6-luna",
+    params: {
+      cwd: "C:\\repo",
+      model: "gpt-5.6-luna",
+      sandbox: "read-only",
+      approvalPolicy: "never",
+      developerInstructions: "You are Luca, the read-only user explainer."
+    }
+  });
+  await adapter.startTurn({
+    correlationId: "corr-luca-turn",
+    threadId: "thread-1",
+    input: [{ type: "text", text: "{}", text_elements: [] }],
+    params: { effort: "high" }
+  });
+
+  const startedThread = process.clientMessages.find((message) => message.method === "thread/start");
+  assert.deepEqual(startedThread.params, {
+    cwd: "C:\\repo",
+    model: "gpt-5.6-luna",
+    sandbox: "read-only",
+    approvalPolicy: "never",
+    developerInstructions: "You are Luca, the read-only user explainer."
+  });
+  const startedTurn = process.clientMessages.find((message) => message.method === "turn/start");
+  assert.deepEqual(startedTurn.params, {
+    effort: "high",
+    input: [{ type: "text", text: "{}", text_elements: [] }],
+    threadId: "thread-1"
+  });
+});
+
 test("returns the applied inspection runtime profile from thread start", async () => {
   const process = new FakeAppServerProcess();
   process.on("clientMessage", (message) => {

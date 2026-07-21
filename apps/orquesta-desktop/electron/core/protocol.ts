@@ -42,6 +42,15 @@ export interface RuntimeSendRequest {
   requestedModel?: string | null;
 }
 
+export interface RuntimeLucaSendRequest {
+  type: 'runtime.luca.send';
+  correlationId: string;
+  projectId: string;
+  rootPath: string;
+  threadId: string | null;
+  prompt: string;
+}
+
 export interface RuntimeConversationRequest {
   type: 'runtime.conversation';
   correlationId: string;
@@ -112,7 +121,7 @@ export interface InspectionReadReportRequest {
   runId: string;
 }
 
-export type CoreDispatchRequest = RuntimeSendRequest | RuntimeConversationRequest | RuntimeInfoRequest
+export type CoreDispatchRequest = RuntimeSendRequest | RuntimeLucaSendRequest | RuntimeConversationRequest | RuntimeInfoRequest
   | RepositorySelectRequest | RepositorySnapshotRequest | RepositoryCloseRequest
   | RuntimeApprovalRespondRequest | RepositoryAttentionHistoryRequest
   | InspectionStartRequest | InspectionCancelRequest | InspectionReadReportRequest;
@@ -121,6 +130,7 @@ export type CoreRequest =
   | { type: 'core.shutdown' }
   | { type: 'core.ping'; correlationId: string }
   | RuntimeSendRequest
+  | RuntimeLucaSendRequest
   | RuntimeConversationRequest
   | RuntimeInfoRequest
   | RepositorySelectRequest
@@ -224,6 +234,10 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
       && (value.threadId === null || isSafeId(value.threadId)) && isSafeId(value.targetAgentId) && isBoundedText(value.text, 65_536)
       && Array.isArray(value.localImagePaths) && value.localImagePaths.length <= 4
       && value.localImagePaths.every((filePath) => isBoundedText(filePath, 32_768));
+  }
+  if (value.type === 'runtime.luca.send') {
+    return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768)
+      && (value.threadId === null || isSafeId(value.threadId)) && isBoundedText(value.prompt, 65_536);
   }
   if (value.type === 'runtime.conversation') {
     return isCorrelationId(value.correlationId) && isSafeId(value.threadId) && isSafeId(value.targetAgentId)

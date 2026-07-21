@@ -63,7 +63,7 @@ export class CoreHost {
     this.#options = {
       shutdownTimeoutMs: options.shutdownTimeoutMs ?? 2_000,
       pingTimeoutMs: options.pingTimeoutMs ?? 5_000,
-      runtimeTimeoutMs: options.runtimeTimeoutMs ?? 60_000,
+      runtimeTimeoutMs: options.runtimeTimeoutMs ?? 180_000,
       ...options
     };
   }
@@ -114,6 +114,24 @@ export class CoreHost {
       }, this.#options.runtimeTimeoutMs);
       this.#pendingDispatches.set(correlationId, { resolve, reject, timeout });
       this.#child?.postMessage({ type: 'runtime.send', correlationId, ...input });
+    });
+  }
+
+  sendLucaQuestion(input: { projectId: string; rootPath: string; threadId: string | null; prompt: string }): Promise<{
+    correlationId: string;
+    threadId: string;
+    turnId: string;
+    modelEvidence: RuntimeModelEvidence;
+  }> {
+    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.sendLucaQuestion(input));
+    const correlationId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.#pendingDispatches.delete(correlationId);
+        reject(new Error('Luca runtime dispatch timed out'));
+      }, this.#options.runtimeTimeoutMs);
+      this.#pendingDispatches.set(correlationId, { resolve, reject, timeout });
+      this.#child?.postMessage({ type: 'runtime.luca.send', correlationId, ...input });
     });
   }
 

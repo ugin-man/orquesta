@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 
-import { DesktopCodexService, type CanonicalCodexAdapter } from './desktop-codex-service';
+import { DesktopCodexService, projectLucaConversation, type CanonicalCodexAdapter } from './desktop-codex-service';
 
 function thread(id: string, routedText = 'Hello', agentText = 'Done.') {
   return {
@@ -85,6 +85,59 @@ function createAdapterDouble() {
 }
 
 describe('DesktopCodexService', () => {
+  test('runs Luca in a separate Luna high-effort read-only thread', async () => {
+    const double = createAdapterDouble();
+    const service = new DesktopCodexService({ adapter: double.adapter });
+
+    const result = await service.sendLucaQuestion({
+      correlationId: 'corr-luca', projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null,
+      prompt: '{"protocol":"orquesta.luca.ask.v1"}'
+    });
+
+    expect(double.adapter.createThread).toHaveBeenCalledWith({
+      correlationId: 'corr-luca:thread',
+      recommendedModel: 'Luna',
+      requestedModel: 'gpt-5.6-luna',
+      params: expect.objectContaining({
+        cwd: 'C:\\repo', model: 'gpt-5.6-luna', sandbox: 'read-only', approvalPolicy: 'never',
+        developerInstructions: expect.stringContaining('read-only user explainer')
+      })
+    });
+    expect(double.adapter.startTurn).toHaveBeenCalledWith({
+      correlationId: 'corr-luca', threadId: 'thread-new',
+      input: [{ type: 'text', text: '{"protocol":"orquesta.luca.ask.v1"}', text_elements: [] }],
+      params: { effort: 'high' }
+    });
+    expect(result).toMatchObject({ threadId: 'thread-new', turnId: 'turn-1' });
+  });
+
+  test('projects internal Luca envelopes as visible conversation text', () => {
+    const messages = projectLucaConversation({
+      turns: [{
+        startedAt: 1, completedAt: 2,
+        items: [
+          {
+            id: 'user-luca', type: 'userMessage',
+            content: [{ type: 'text', text: JSON.stringify({
+              protocol: 'orquesta.luca.ask.v1', request: { displayQuestion: 'このタスクを簡単に説明して' }
+            }) }]
+          },
+          {
+            id: 'agent-luca', type: 'agentMessage', text: JSON.stringify({
+              answer: '画面を直すタスクです。', points: [], uncertainties: [], references: []
+            })
+          }
+        ]
+      }]
+    }, new Date('2026-07-22T00:00:00.000Z'));
+
+    expect(messages.map((message) => message.text)).toEqual([
+      'このタスクを簡単に説明して',
+      '画面を直すタスクです。'
+    ]);
+    expect(messages.every((message) => message.targetAgentId === 'orquesta-admin')).toBe(true);
+  });
+
   test('starts external inspection in a fresh read-only thread with live Web search', async () => {
     const double = createAdapterDouble();
     const service = new DesktopCodexService({ adapter: double.adapter });

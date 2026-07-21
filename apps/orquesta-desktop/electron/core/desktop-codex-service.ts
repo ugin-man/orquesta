@@ -1,7 +1,9 @@
 import path from 'node:path';
 import * as canonicalAdapterModule from '@orquesta/codex-adapter';
 import type { ConversationMessage, ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
+import type { LucaAnswerPayload } from '../../src/contracts/luca';
 import type { InspectionKind } from '../../src/contracts/orquesta-ui';
+import { LUCA_DEVELOPER_INSTRUCTIONS, LUCA_EFFORT, LUCA_MODEL, LUCA_TARGET_AGENT_ID } from '../shared/luca-runtime-profile';
 import type { RuntimeApprovalRequest, RuntimeModelEvidence, RuntimeNotification as DesktopRuntimeNotification } from './protocol';
 import type { InspectionRuntimeBoundary } from './inspection-run-store';
 import { resolveDesktopSdkPackageRoot } from './runtime-location';
@@ -41,6 +43,14 @@ export interface DesktopRuntimeSendInput {
   localImagePaths: string[];
   recommendedModel: string | null;
   requestedModel: string | null;
+}
+
+export interface DesktopLucaSendInput {
+  correlationId: string;
+  projectId: string;
+  rootPath: string;
+  threadId: string | null;
+  prompt: string;
 }
 
 export interface DesktopInspectionStartInput {
@@ -172,6 +182,67 @@ function projectConversation(thread: UnknownRecord, fallback: Date): Conversatio
   return messages;
 }
 
+function parseLucaAnswer(text: string): LucaAnswerPayload | null {
+  try {
+    const value = record(JSON.parse(text));
+    if (!value || typeof value.answer !== 'string' || !Array.isArray(value.points)
+      || !value.points.every((item) => typeof item === 'string')
+      || !Array.isArray(value.uncertainties) || !value.uncertainties.every((item) => typeof item === 'string')
+      || !Array.isArray(value.references)) return null;
+    const references = value.references.flatMap((item) => {
+      const reference = record(item);
+      if (!reference || !['project', 'phase', 'task', 'failure', 'inspection', 'agent', 'attention'].includes(String(reference.kind))
+        || typeof reference.id !== 'string' || typeof reference.label !== 'string') return [];
+      return [{ kind: reference.kind, id: reference.id, label: reference.label } as LucaAnswerPayload['references'][number]];
+    });
+    if (references.length !== value.references.length) return null;
+    return { answer: value.answer, points: value.points, uncertainties: value.uncertainties, references };
+  } catch {
+    return null;
+  }
+}
+
+export function projectLucaConversation(thread: UnknownRecord, fallback: Date): ConversationMessage[] {
+  const turns = Array.isArray(thread.turns) ? thread.turns.flatMap((turn) => record(turn) ?? []) : [];
+  const messages: ConversationMessage[] = [];
+  for (const turn of turns) {
+    const items = Array.isArray(turn.items) ? turn.items.flatMap((item) => record(item) ?? []) : [];
+    for (const item of items) {
+      if (item.type === 'userMessage') {
+        const content = Array.isArray(item.content) ? item.content.flatMap((entry) => record(entry) ?? []) : [];
+        const rawText = content.filter((entry) => entry.type === 'text').map((entry) => nonEmptyString(entry.text) ?? '').join('\n').trim();
+        if (!rawText) continue;
+        let displayQuestion: string | null = null;
+        try {
+          const envelope = record(JSON.parse(rawText));
+          const request = record(envelope?.request);
+          displayQuestion = nonEmptyString(request?.displayQuestion);
+        } catch {
+          displayQuestion = null;
+        }
+        if (!displayQuestion) continue;
+        messages.push({
+          id: nonEmptyString(item.id) ?? `luca-user-${messages.length}`,
+          role: 'user', targetAgentId: LUCA_TARGET_AGENT_ID, authorLabel: 'You', text: displayQuestion,
+          createdAt: isoFromSeconds(turn.startedAt, fallback), evidenceLabel: 'Codex Luca thread history'
+        });
+      } else if (item.type === 'agentMessage') {
+        const rawText = nonEmptyString(item.text);
+        if (!rawText) continue;
+        const payload = parseLucaAnswer(rawText);
+        messages.push(Object.assign({
+          id: nonEmptyString(item.id) ?? `luca-agent-${messages.length}`,
+          role: 'agent' as const, targetAgentId: LUCA_TARGET_AGENT_ID, authorLabel: 'Luca',
+          text: payload?.answer ?? rawText,
+          createdAt: isoFromSeconds(turn.completedAt ?? turn.startedAt, fallback),
+          evidenceLabel: payload ? 'Luca structured answer' : 'Luca raw answer'
+        }, { lucaAnswer: payload, structured: Boolean(payload) }));
+      }
+    }
+  }
+  return messages;
+}
+
 const defaultFactory = (input: { sdkPackageRoot: string }) => {
   const factory = (canonicalAdapterModule as unknown as {
     createAppServerAdapter(options: { sdkPackageRoot: string }): CanonicalCodexAdapter;
@@ -188,6 +259,7 @@ export class DesktopCodexService {
   private readonly approvalListeners = new Set<(approval: RuntimeApprovalRequest) => void>();
   private readonly evidenceByThread = new Map<string, RuntimeModelEvidence>();
   private readonly projectByThread = new Map<string, string>();
+  private readonly targetByThread = new Map<string, string>();
   private readonly pendingApprovals = new Map<string, RuntimeApprovalRequest>();
   private readonly seenAgentMessages = new Set<string>();
   private eventQueue: Promise<void> = Promise.resolve();
@@ -300,6 +372,7 @@ export class DesktopCodexService {
     const evidence = modelEvidenceFromThreadResult(threadResult, input.recommendedModel, input.requestedModel);
     this.evidenceByThread.set(threadId, evidence);
     this.projectByThread.set(threadId, input.projectId);
+    this.targetByThread.set(threadId, input.targetAgentId);
     const turnResult = requireSuccessfulResult(await adapter.startTurn({
       correlationId: input.correlationId,
       threadId,
@@ -310,6 +383,51 @@ export class DesktopCodexService {
     }), 'startTurn');
     const turnId = nonEmptyString(turnResult.turn_id);
     if (!turnId) throw new Error('Codex App Server did not accept the turn');
+    this.runtimeStarted = true;
+    return { threadId, turnId, modelEvidence: structuredClone(evidence) };
+  }
+
+  async sendLucaQuestion(input: DesktopLucaSendInput): Promise<{
+    threadId: string;
+    turnId: string;
+    modelEvidence: RuntimeModelEvidence;
+  }> {
+    if (this.shutdownRequested) throw new Error('Codex runtime is shutting down');
+    const adapter = await this.adapter();
+    const params = {
+      cwd: input.rootPath,
+      model: LUCA_MODEL,
+      sandbox: 'read-only',
+      approvalPolicy: 'never',
+      developerInstructions: LUCA_DEVELOPER_INSTRUCTIONS
+    };
+    const threadResult = requireSuccessfulResult(await (input.threadId
+      ? adapter.resumeThread({
+          correlationId: `${input.correlationId}:thread`, threadId: input.threadId,
+          recommendedModel: 'Luna', requestedModel: LUCA_MODEL, params
+        })
+      : adapter.createThread({
+          correlationId: `${input.correlationId}:thread`,
+          recommendedModel: 'Luna', requestedModel: LUCA_MODEL, params
+        })), input.threadId ? 'resumeThread' : 'createThread');
+    const threadId = nonEmptyString(threadResult.thread_id);
+    if (!threadId) throw new Error('Codex App Server did not return a Luca thread id');
+    const profile = record(threadResult.runtime_profile);
+    if (profile?.sandbox !== 'read-only' || profile.approval_policy !== 'never') {
+      throw new Error('read_only_boundary_violation: Codex App Server did not apply the requested Luca profile');
+    }
+    const evidence = modelEvidenceFromThreadResult(threadResult, 'Luna', LUCA_MODEL);
+    this.evidenceByThread.set(threadId, evidence);
+    this.projectByThread.set(threadId, input.projectId);
+    this.targetByThread.set(threadId, LUCA_TARGET_AGENT_ID);
+    const turnResult = requireSuccessfulResult(await adapter.startTurn({
+      correlationId: input.correlationId,
+      threadId,
+      input: [{ type: 'text', text: input.prompt, text_elements: [] }],
+      params: { effort: LUCA_EFFORT }
+    }), 'startTurn');
+    const turnId = nonEmptyString(turnResult.turn_id);
+    if (!turnId) throw new Error('Codex App Server did not accept the Luca turn');
     this.runtimeStarted = true;
     return { threadId, turnId, modelEvidence: structuredClone(evidence) };
   }
@@ -402,7 +520,9 @@ export class DesktopCodexService {
     const thread = record(result.thread);
     if (!thread) throw new Error('Codex App Server returned invalid thread history');
     this.runtimeStarted = true;
-    const messages = projectConversation(thread, this.options.now())
+    const messages = (input.targetAgentId === LUCA_TARGET_AGENT_ID
+      ? projectLucaConversation(thread, this.options.now())
+      : projectConversation(thread, this.options.now()))
       .filter((message) => message.targetAgentId === input.targetAgentId);
     for (const message of messages) {
       if (message.role === 'agent') this.seenAgentMessages.add(`${input.threadId}:${message.id}`);
@@ -486,6 +606,7 @@ export class DesktopCodexService {
     const threadId = nonEmptyString(event.thread_id);
     if (!type || !threadId) return;
     const turnId = nullableString(event.turn_id);
+    const targetAgentId = this.targetByThread.get(threadId) ?? null;
     if (type === 'approval_requested') {
       const projectId = this.projectByThread.get(threadId);
       const correlationId = nonEmptyString(event.correlation_id);
@@ -517,18 +638,18 @@ export class DesktopCodexService {
       evidence.actualModel = model;
       evidence.actualModelEvidence = 'proven';
       this.evidenceByThread.set(threadId, evidence);
-      this.emit({ kind: 'model_observed', threadId, turnId, text: null, targetAgentId: null, modelEvidence: evidence });
+      this.emit({ kind: 'model_observed', threadId, turnId, text: null, targetAgentId, modelEvidence: evidence });
       return;
     }
     if (type === 'turn_started') {
-      this.emit({ kind: 'turn_started', threadId, turnId, text: null, targetAgentId: null, modelEvidence: this.evidence(threadId) });
+      this.emit({ kind: 'turn_started', threadId, turnId, text: null, targetAgentId, modelEvidence: this.evidence(threadId) });
       return;
     }
     if (type === 'runtime_error') {
       this.emit({
         kind: 'turn_failed', threadId, turnId,
         text: nonEmptyString(event.message) ?? 'Codex turn failed.',
-        targetAgentId: null,
+        targetAgentId,
         modelEvidence: this.evidence(threadId)
       });
       return;
@@ -544,7 +665,8 @@ export class DesktopCodexService {
       }), 'readThread');
       const history = record(result.thread);
       const newestAgentMessage = history
-        ? projectConversation(history, this.options.now()).filter((message) => message.role === 'agent').at(-1)
+        ? (targetAgentId === LUCA_TARGET_AGENT_ID ? projectLucaConversation(history, this.options.now()) : projectConversation(history, this.options.now()))
+            .filter((message) => message.role === 'agent').at(-1)
         : null;
       if (newestAgentMessage) {
         const key = `${threadId}:${newestAgentMessage.id}`;
@@ -563,7 +685,7 @@ export class DesktopCodexService {
     } catch {
       // Completion remains truthful even when the follow-up history read is unavailable.
     }
-    this.emit({ kind: 'turn_completed', threadId, turnId, text: null, targetAgentId: null, modelEvidence: this.evidence(threadId) });
+    this.emit({ kind: 'turn_completed', threadId, turnId, text: null, targetAgentId, modelEvidence: this.evidence(threadId) });
   }
 
   shutdown(): Promise<void> {

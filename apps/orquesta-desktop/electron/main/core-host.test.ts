@@ -72,6 +72,32 @@ describe('CoreHost', () => {
     await expect(pending).resolves.toEqual({ correlationId: request.correlationId, threadId: 'thread-1', turnId: 'turn-1', modelEvidence });
   });
 
+  test('sends Luca through its dedicated Core request', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+
+    const pending = host.sendLucaQuestion({
+      projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null,
+      prompt: '{"protocol":"orquesta.luca.ask.v1"}'
+    });
+    const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(request).toMatchObject({
+      type: 'runtime.luca.send', projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null
+    });
+    const modelEvidence = {
+      recommendedModel: 'Luna', requestedModel: 'gpt-5.6-luna', appliedModel: 'gpt-5.6-luna', actualModel: null,
+      actualModelEvidence: 'unknown'
+    };
+    child.emit('message', {
+      type: 'runtime.dispatch.accepted', correlationId: request.correlationId,
+      threadId: 'thread-luca', turnId: 'turn-luca', modelEvidence
+    });
+
+    await expect(pending).resolves.toMatchObject({ threadId: 'thread-luca', turnId: 'turn-luca' });
+  });
+
   test('returns typed runtime information without exposing the Core request channel', async () => {
     const child = new FakeCoreChild();
     const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
