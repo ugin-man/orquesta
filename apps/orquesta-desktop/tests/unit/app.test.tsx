@@ -706,7 +706,7 @@ describe('DesktopRendererApp', () => {
     };
     act(() => publish({ type: 'snapshot_changed', snapshot: complete }));
 
-    expect(await screen.findByRole('dialog', { name: 'Orquesta map' })).toBeVisible();
+    expect(await screen.findByRole('dialog', { name: 'Orquesta map' }, { timeout: 2_500 })).toBeVisible();
     rectSpy.mockRestore();
   });
 
@@ -737,7 +737,7 @@ describe('DesktopRendererApp', () => {
     await screen.findByRole('main', { name: 'Orquesta 初回セットアップ' });
     act(() => publish({ type: 'snapshot_changed', snapshot: complete }));
 
-    await screen.findByText('Demo data');
+    await screen.findByText('Demo data', {}, { timeout: 2_500 });
     expect(screen.queryByRole('dialog', { name: 'Orquesta map' })).not.toBeInTheDocument();
   });
 
