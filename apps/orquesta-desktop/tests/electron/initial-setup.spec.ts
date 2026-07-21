@@ -46,11 +46,12 @@ test('runs all six Desktop setup phases, opens Home, and keeps the completed set
     await expect(access(statePath)).rejects.toMatchObject({ code: 'ENOENT' });
 
     await window.getByRole('button', { name: 'Start setup' }).click();
-    const setup = window.getByLabel('Orquesta 初回セットアップ');
+    const setup = window.getByLabel('Orquesta initial setup');
     await expect(setup).toBeVisible();
     await expect(setup.locator('[data-setup-phase]')).toHaveCount(6);
-    await expect(window.getByRole('region', { name: 'パイプオルガン構築状況' })).toBeVisible();
-    await expect(window.getByRole('progressbar', { name: 'セットアップ進行状況' })).toBeVisible();
+    await expect(window.getByRole('region', { name: 'Pipe organ build status' })).toBeVisible();
+    await expect(window.getByRole('progressbar', { name: 'Setup progress' })).toBeVisible();
+    await expect(setup).not.toContainText(/[\u3040-\u30ff\u3400-\u9fff]/u);
 
     await expect.poll(async () => {
       const state = await readJson<{ status: string; current_phase_id: string; completed_at: string | null }>(statePath);
@@ -84,7 +85,7 @@ test('runs all six Desktop setup phases, opens Home, and keeps the completed set
     desktop = await launchDesktop(userData, projectRoot);
     window = await desktop.firstWindow();
     await expect(window.getByRole('application', { name: 'Orquesta Desktop' })).toBeVisible();
-    await expect(window.getByLabel('Orquesta 初回セットアップ')).not.toBeVisible();
+    await expect(window.getByLabel('Orquesta initial setup')).not.toBeVisible();
     const resumedState = await readJson<{ setup_id: string; status: string }>(statePath);
     expect(resumedState).toMatchObject({ setup_id: setupState.setup_id, status: 'completed' });
   } finally {

@@ -7,6 +7,20 @@ import { InitialSetupExperience } from '../../src/renderer/features/setup/Initia
 const setup = setupRunningFixture.snapshot.setup!;
 
 describe('InitialSetupExperience', () => {
+  test('uses English for every Orquesta-owned setup label in English mode', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<InitialSetupExperience setup={{ ...setup, projectRootLabel: 'C:\\Projects\\Orquesta' }} locale="en" />);
+
+    expect(screen.getByRole('main', { name: 'Orquesta initial setup' })).toBeVisible();
+    expect(screen.getByRole('navigation', { name: 'Setup phases' })).toBeVisible();
+    expect(screen.getByRole('progressbar', { name: 'Setup progress' })).toBeVisible();
+    expect(screen.getByText('Foundation')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Show technical details' }));
+    await user.click(screen.getByRole('button', { name: 'Stop setup' }));
+    expect(screen.getByRole('dialog', { name: 'Stop initial setup?' })).toBeVisible();
+    expect(container.textContent).not.toMatch(/[\u3040-\u30ff\u3400-\u9fff]/u);
+  });
+
   test('shows current work, the six real phases, and the next operation', () => {
     const { container } = render(<InitialSetupExperience setup={setup} />);
 

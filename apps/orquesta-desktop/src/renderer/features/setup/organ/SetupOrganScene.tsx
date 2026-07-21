@@ -2,6 +2,8 @@ import { useLayoutEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { SetupVisualPhaseId, SetupVisualState } from '../setup-visual-types';
+import type { Locale } from '../../i18n/messages';
+import { getSetupCopy } from '../setup-localization';
 import { phaseActivityAttributes } from '../phase-activity';
 import { PIPE_RANKS, SOUNDING_VOICE_INDICES } from './sceneLayout';
 import { GearTrain3D } from './GearTrain3D';
@@ -293,10 +295,12 @@ function SceneSemanticManifest({ state }: { state: SetupVisualState }) {
   );
 }
 
-export function SetupOrganScene({ state, active = true }: {
+export function SetupOrganScene({ state, active = true, locale = 'ja' }: {
   state: SetupVisualState;
   active?: boolean;
+  locale?: Locale;
 }) {
+  const copy = getSetupCopy(locale);
   const canRender = supportsWebGL();
   const initialPreset = CAMERA_PRESETS[getCameraPresetKey(state)];
 
@@ -305,7 +309,7 @@ export function SetupOrganScene({ state, active = true }: {
       className="setup-organ-scene"
       data-renderer="three-webgl"
       role="img"
-      aria-label="初回セットアップの進行に合わせて起動するパイプオルガン機構"
+      aria-label={copy.organAria}
     >
       <SceneSemanticManifest state={state} />
       {canRender ? (
@@ -334,8 +338,8 @@ export function SetupOrganScene({ state, active = true }: {
         </Canvas>
       ) : (
         <div className="setup-organ-webgl-fallback">
-          <strong>パイプオルガン機構</strong>
-          <span>この表示にはWebGLが必要です。セットアップ処理はそのまま継続します。</span>
+          <strong>{copy.organFallbackTitle}</strong>
+          <span>{copy.organFallbackBody}</span>
         </div>
       )}
     </div>

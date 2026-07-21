@@ -554,11 +554,11 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   }
 
   if (setupPresentation) {
-    return <InitialSetupExperience setup={setupPresentation} />;
+    return <InitialSetupExperience setup={setupPresentation} locale={locale} />;
   }
 
   if (snapshot.setup && snapshot.setup.status !== 'completed' && snapshot.setup.status !== 'cancelled') {
-    return <InitialSetupExperience setup={snapshot.setup} />;
+    return <InitialSetupExperience setup={snapshot.setup} locale={locale} />;
   }
 
   if (snapshot.project.id === 'no-project') {

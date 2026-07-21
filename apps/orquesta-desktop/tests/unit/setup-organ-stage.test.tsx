@@ -13,4 +13,10 @@ describe('SetupOrganStage', () => {
     expect(container.querySelectorAll('[data-pipe-id]')).toHaveLength(51);
     expect(container.querySelector('[data-demo-controls]')).toBeNull();
   });
+
+  test('exposes the organ scene in English when the setup locale is English', async () => {
+    render(<SetupOrganStage setup={setupRunningFixture.snapshot.setup!} locale="en" />);
+
+    await waitFor(() => expect(screen.getByRole('img', { name: /pipe organ mechanism/i })).toBeVisible(), { timeout: 5_000 });
+  });
 });
