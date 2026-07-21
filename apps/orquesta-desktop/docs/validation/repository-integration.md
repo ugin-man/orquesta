@@ -30,10 +30,12 @@ Open questions and incidents can appear in Attention. An incident becomes a repa
 
 Electron watches the state, vision, and failures directories with a short debounce. A valid update replaces the snapshot. A malformed update keeps the last valid snapshot visible, marks it offline, and clears proven working status until a valid read succeeds.
 
-The first launch shows a project chooser. Later launches restore the last readable project, and the project switcher can open another folder or return to any of the 24 most recent projects.
+The first launch shows one Desktop setup intake for source selection, project details, Codex account state, and explicit Start approval. The selected project stays read only until Start. Later launches restore the last readable project, and the project switcher can open another folder or return to any of the 24 most recent projects.
 
 ## Verification
 
 The unit suite checks projection, stale evidence, unsupported model claims, bounded reads, source-byte preservation, registry persistence, watcher refresh, IPC validation, and preload filtering.
 
-The Electron integration test opens a temporary real `.orquesta` project, observes a canonical agent-file change from two agents to three, and confirms the task file bytes remain unchanged. A separate first-run test confirms that a clean app shows the project chooser and no prototype map.
+The Electron integration test opens a temporary real `.orquesta` project, observes a canonical agent-file change from two agents to three, and confirms the task file bytes remain unchanged.
+
+`tests/electron/initial-setup.spec.ts` uses a clean Desktop `userData` directory and an empty detected project. It confirms that the intake is visible, no setup state exists before Start, and Start creates canonical Phase 1 with `orchestrator`, `user-support`, and `orquesta-admin`. It then restarts Electron and confirms that the same `setup_id` resumes. The account response in this test comes from the fake App Server fixture; it does not prove a real ChatGPT account session.

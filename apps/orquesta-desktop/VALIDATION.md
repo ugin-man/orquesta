@@ -54,11 +54,29 @@ npm run test:desktop-smoke --prefix apps/orquesta-desktop
 
 - sandboxed Rendererが限定Preload APIだけを使う
 - 実`.orquesta`をCoreが読み、canonical file更新を反映する
-- 初回起動で偽fixtureを表示せずproject chooserを出す
+- 初回起動で偽fixtureを表示せず一枚のsetup intakeを出す
 - 35 agentを省略せず、Windows 100、125、150、200%でMapを操作できる
 - fake App ServerでComposer、history、runtime eventを結線できる
 - delayed turn中も100文字入力とMap操作が500 ms以上止まらない
 - project切り替え後に古いwatcher eventを出さず、終了後にfake/runtime childが残らない
+
+## 初回セットアップ
+
+初回入力からcanonical Phase 1までのDesktop専用gateは次です。Browser testでは代用しません。
+
+```powershell
+npm run build:desktop --prefix apps/orquesta-desktop
+npx --prefix apps/orquesta-desktop playwright test --config=playwright.electron.config.ts tests/electron/initial-setup.spec.ts
+```
+
+2026-07-22の確認では、setup engineの10件、Desktop setup境界の83件、Electron受け入れ1件が通りました。Electron testは次を一つの経路で確認します。
+
+- Start前は対象projectに`.orquesta`を書かない
+- Startで`setup_state.json`と3体の基礎agentを一度だけ作る
+- Desktopが6段階中1段階目の`environment`を表示する
+- 再起動後も同じ`setup_id`とPhase 1から再開する
+
+このgateのCodex認証はfake App Serverのprotocol fixtureです。実アカウントのログイン証拠ではありません。6 phaseの最終アニメーションとsetup各phaseの自動進行は別sliceです。
 
 ## Packageと本物のCodex
 
