@@ -4,6 +4,7 @@ import type { CoreDispatchRequest, CoreEvent } from './protocol';
 import { InspectionRunController } from './inspection-run-controller';
 import { RepositoryRuntime } from './repository-runtime';
 import { provisionSpecialists } from './specialist-provisioner';
+import { startDesktopSetup } from './setup-engine-adapter';
 
 export function runDesktopCore(runtime: DesktopCodexService): void {
   const parentPort = process.parentPort;
@@ -96,6 +97,9 @@ export function runDesktopCore(runtime: DesktopCodexService): void {
         } else if (request.type === 'setup.account.login.start') {
           const login = await runtime.startChatGptLogin();
           send({ type: 'setup.account.login.started', correlationId: request.correlationId, login });
+        } else if (request.type === 'setup.start') {
+          const result = await startDesktopSetup({ rootPath: request.rootPath, draft: request.draft });
+          send({ type: 'setup.start.result', correlationId: request.correlationId, result });
         } else {
           const info = await runtime.getRuntimeInfo({ probe: request.probe });
           send({ type: 'runtime.info.result', correlationId: request.correlationId, info });

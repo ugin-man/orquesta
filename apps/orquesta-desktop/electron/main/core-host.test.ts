@@ -142,6 +142,27 @@ describe('CoreHost', () => {
     await expect(login).resolves.toMatchObject({ type: 'chatgpt', loginId: 'login-1' });
   });
 
+  test('binds setup start to the matching Core result', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+    const draft = {
+      revision: 1 as const, status: 'draft' as const,
+      source: { kind: 'detected_root' as const, rootPath: 'C:\\repo' },
+      projectName: 'Repo', description: '', questions: [], answers: []
+    };
+
+    const started = host.startSetup({ rootPath: 'C:\\repo', draft });
+    const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(request).toMatchObject({ type: 'setup.start', rootPath: 'C:\\repo', draft });
+    child.emit('message', {
+      type: 'setup.start.result', correlationId: request.correlationId,
+      result: { setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment' }
+    });
+    await expect(started).resolves.toEqual({ setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment' });
+  });
+
   test('forwards bounded runtime notifications and conversation pages', async () => {
     const child = new FakeCoreChild();
     const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ConversationPage, InspectionReportUi, RuntimeInfoUi, StartInspectionUiInput } from '../../src/contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
-import type { SetupAccountState, SetupLoginStartResult } from '../../src/contracts/setup';
+import type { SetupAccountState, SetupDraft, SetupLoginStartResult, SetupStartResult } from '../../src/contracts/setup';
 import type { CoreEvent, CoreRequest, RuntimeModelEvidence, RuntimeNotification } from '../core/protocol';
 import { isCoreEvent } from '../core/protocol';
 
@@ -49,6 +49,7 @@ export class CoreHost {
   readonly #pendingRuntimeInfo = new Map<string, PendingRuntime<RuntimeInfoUi>>();
   readonly #pendingSetupAccounts = new Map<string, PendingRuntime<SetupAccountState>>();
   readonly #pendingSetupLogins = new Map<string, PendingRuntime<SetupLoginStartResult>>();
+  readonly #pendingSetupStarts = new Map<string, PendingRuntime<SetupStartResult>>();
   readonly #pendingRepositorySnapshots = new Map<string, PendingRuntime<OrquestaUiSnapshot>>();
   readonly #pendingApprovalResponses = new Map<string, PendingRuntime<{ correlationId: string; attentionId: string; decision: string }>>();
   readonly #pendingAttentionHistory = new Map<string, PendingRuntime<AttentionUiItem[]>>();
@@ -187,6 +188,19 @@ export class CoreHost {
       }, this.#options.runtimeTimeoutMs);
       this.#pendingSetupLogins.set(correlationId, { resolve, reject, timeout });
       this.#child?.postMessage({ type: 'setup.account.login.start', correlationId });
+    });
+  }
+
+  startSetup(input: { rootPath: string; draft: SetupDraft }): Promise<SetupStartResult> {
+    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.startSetup(input));
+    const correlationId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.#pendingSetupStarts.delete(correlationId);
+        reject(new Error('Orquesta setup start timed out'));
+      }, this.#options.runtimeTimeoutMs);
+      this.#pendingSetupStarts.set(correlationId, { resolve, reject, timeout });
+      this.#child?.postMessage({ type: 'setup.start', correlationId, rootPath: input.rootPath, draft: input.draft });
     });
   }
 
@@ -407,6 +421,14 @@ export class CoreHost {
       pending.resolve(structuredClone(event.login));
       return;
     }
+    if (event.type === 'setup.start.result') {
+      const pending = this.#pendingSetupStarts.get(event.correlationId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      this.#pendingSetupStarts.delete(event.correlationId);
+      pending.resolve(structuredClone(event.result));
+      return;
+    }
     if (event.type === 'repository.snapshot.result') {
       const pending = this.#pendingRepositorySnapshots.get(event.correlationId);
       if (!pending) return;
@@ -457,6 +479,7 @@ export class CoreHost {
         ?? this.#pendingRuntimeInfo.get(event.correlationId)
         ?? this.#pendingSetupAccounts.get(event.correlationId)
         ?? this.#pendingSetupLogins.get(event.correlationId)
+        ?? this.#pendingSetupStarts.get(event.correlationId)
         ?? this.#pendingRepositorySnapshots.get(event.correlationId)
         ?? this.#pendingApprovalResponses.get(event.correlationId)
         ?? this.#pendingAttentionHistory.get(event.correlationId)
@@ -469,6 +492,7 @@ export class CoreHost {
       this.#pendingRuntimeInfo.delete(event.correlationId);
       this.#pendingSetupAccounts.delete(event.correlationId);
       this.#pendingSetupLogins.delete(event.correlationId);
+      this.#pendingSetupStarts.delete(event.correlationId);
       this.#pendingRepositorySnapshots.delete(event.correlationId);
       this.#pendingApprovalResponses.delete(event.correlationId);
       this.#pendingAttentionHistory.delete(event.correlationId);
@@ -509,6 +533,7 @@ export class CoreHost {
       ...this.#pendingRuntimeInfo.values(),
       ...this.#pendingSetupAccounts.values(),
       ...this.#pendingSetupLogins.values(),
+      ...this.#pendingSetupStarts.values(),
       ...this.#pendingRepositorySnapshots.values(),
       ...this.#pendingApprovalResponses.values(),
       ...this.#pendingAttentionHistory.values(),
@@ -523,6 +548,7 @@ export class CoreHost {
     this.#pendingRuntimeInfo.clear();
     this.#pendingSetupAccounts.clear();
     this.#pendingSetupLogins.clear();
+    this.#pendingSetupStarts.clear();
     this.#pendingRepositorySnapshots.clear();
     this.#pendingApprovalResponses.clear();
     this.#pendingAttentionHistory.clear();

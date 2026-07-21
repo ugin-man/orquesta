@@ -3,6 +3,7 @@
 const crypto = require("node:crypto");
 const { assertContract } = require("@orquesta/contracts");
 const { normalizeOrganizationLeadership } = require("../../packages/core/src/organization-model");
+const { migrateLegacyOrganization } = require("./organization-state");
 
 const FOUNDATION = Object.freeze([
   Object.freeze({ agent_id: "orchestrator", role_id: "orchestrator", organization_scope: "project", lifecycle_state: "active", operational_status: "working" }),
@@ -39,6 +40,21 @@ function createSetupStateBundle({ projectId, projectUnderstanding, specialistPla
     ],
     created_at: now,
   };
+}
+
+function createFoundationStateBundle({ projectId, now } = {}) {
+  if (!projectId || !now) throw new TypeError("projectId and now are required");
+  const bundle = migrateLegacyOrganization({
+    projectId,
+    agentsState: { version: 1, agents: [] },
+    sessionsState: { version: 1, sessions: [] },
+    tasksState: { version: 1, tasks: [] },
+    now,
+  });
+  const agentsState = clone(bundle.agentsState);
+  delete agentsState.organization_migration;
+  agentsState.updated_at = now;
+  return { ...bundle, agentsState };
 }
 
 function nextAgentId(roleId, reservedIds) {
@@ -262,6 +278,7 @@ function createInitialRosterTransition({
 
 module.exports = {
   FOUNDATION,
+  createFoundationStateBundle,
   createInitialRosterTransition,
   createSetupStateBundle,
   prepareProvisioningBatch,

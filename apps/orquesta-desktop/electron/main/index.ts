@@ -137,7 +137,20 @@ if (!hasSingleInstanceLock) {
         const selection = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
         return selection.canceled || !selection.filePaths[0] ? null : { kind, rootPath: selection.filePaths[0] };
       },
-      start: async () => { throw new Error('Setup engine is not connected yet'); }
+      start: async (draft) => {
+        const rootPath = draft.source.kind === 'detected_root' || draft.source.kind === 'existing_folder'
+          ? draft.source.rootPath
+          : draft.source.kind === 'new_project'
+            ? path.join(draft.source.parentPath, draft.source.folderName)
+            : path.join(draft.source.parentPath, draft.projectName);
+        const started = await coreHost.startSetup({ rootPath, draft });
+        const selected = await repositories?.selectRoot(started.rootPath);
+        if (!selected || selected.status !== 'accepted') {
+          throw new Error(selected && selected.status !== 'accepted' ? selected.reason : 'Setup project could not be opened');
+        }
+        await setupDrafts?.clear();
+        return started;
+      }
     });
     mainWindow = createMainWindow();
     repositories.subscribe((snapshot) => {

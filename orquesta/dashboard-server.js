@@ -24,6 +24,11 @@ const {
   prepareProvisioningBatch
 } = require("./scripts/adaptive-setup-state");
 const {
+  buildOptionalSetupQuestions,
+  buildProjectIntake
+} = require("./scripts/setup-engine");
+const buildSetupQuestions = buildOptionalSetupQuestions;
+const {
   commitOrganizationTransition,
   migrateLegacyOrganization,
   readOrganizationBundle
@@ -515,43 +520,6 @@ function syncWizardQuestionGate(questionsState) {
 
   writeJsonTo(setupRoot, "wizard.json", wizard);
   return wizard;
-}
-
-function buildSetupQuestions(intake, now) {
-  const projectTitle = intake.project_title || "このプロジェクト";
-  return [
-    {
-      scope: "purpose",
-      priority: "high",
-      question: `${projectTitle}で、最初のベータ完成時に「これは完成した」と判断できる最低条件は何ですか？`,
-      why_it_matters: "完成マップのゴールを、曖昧な期待ではなく確認可能な条件にするため。",
-      options: []
-    },
-    {
-      scope: "user_experience",
-      priority: "high",
-      question: "ユーザーが最初の30分で体験できるべき一番重要な流れは何ですか？",
-      why_it_matters: "最初に作るべき画面、導線、専門AIの役割を決めるため。",
-      options: []
-    },
-    {
-      scope: "anti_vision",
-      priority: "high",
-      question: "このプロジェクトで絶対に避けたい挙動、見た目、運用方針は何ですか？",
-      why_it_matters: "AIが勝手に寄せがちな方向を事前に止めるため。",
-      options: []
-    }
-  ].map((question, index) => ({
-    ...question,
-    source_agent_id: "user-support",
-    task_id: "SETUP-QUESTION-GATE",
-    status: "ready",
-    answer_format: "free_text",
-    created_at: now,
-    curated_by: "user-support",
-    setup_gate: true,
-    required_for_setup: false
-  })); 
 }
 
 const ROLE_INFERENCE_RULES = Object.freeze([
@@ -1297,24 +1265,9 @@ function reviewSpecialistReport(payload) {
 }
 
 function saveSetupProjectIntake(payload) {
-  const projectTitle = String(payload.project_title || "Orquesta project").trim();
-  const projectDescription = String(payload.project_description || "").trim();
-  if (!projectDescription) {
-    const error = new Error("Project description is required");
-    error.statusCode = 400;
-    throw error;
-  }
-
   const now = new Date().toISOString();
-  const intake = {
-    version: 1,
-    status: "submitted",
-    updated_at: now,
-    project_title: projectTitle,
-    project_description: projectDescription,
-    source: "dashboard_setup_wizard",
-    notes: Array.isArray(payload.notes) ? payload.notes : []
-  };
+  const intake = buildProjectIntake(payload, now, "dashboard_setup_wizard");
+  intake.notes = Array.isArray(payload.notes) ? payload.notes : [];
 
   let wizard = readJsonFrom(setupRoot, "wizard.json", defaultSetupWizard());
   const stepOrder = ["welcome", "project_intake", "question_gate", "completion_map_review", "specialist_planning", "production_start"];
@@ -1348,7 +1301,7 @@ function saveSetupProjectIntake(payload) {
 
 function generateSetupQuestions() {
   const intake = readJsonFrom(setupRoot, "project_intake.json", { status: "empty" });
-  if (!String(intake.project_description || "").trim()) {
+  if (intake.status !== "submitted") {
     const error = new Error("Project intake is required before generating questions");
     error.statusCode = 400;
     throw error;
@@ -1363,9 +1316,14 @@ function generateSetupQuestions() {
   }
 
   const idFor = nextQuestionIdFactory(questionsState.questions || []);
-  const setupQuestions = buildSetupQuestions(intake, now).map((question, index) => ({
+  const setupQuestions = buildOptionalSetupQuestions(intake, now).map((question, index) => ({
     ...question,
-    question_id: idFor(index + 1)
+    question_id: idFor(index + 1),
+    task_id: "SETUP-QUESTION-GATE",
+    priority: "normal",
+    options: [],
+    answer_format: "free_text",
+    curated_by: "user-support"
   }));
 
   questionsState.version = questionsState.version || 1;
@@ -1392,7 +1350,7 @@ function generateSetupQuestions() {
     timestamp: now,
     type: "setup_questions_generated",
     actor: "user-support",
-    summary: `Generated ${setupQuestions.length} required setup questions from project intake.`
+    summary: `Generated ${setupQuestions.length} optional setup questions from project intake.`
   });
 
   return { generated: setupQuestions.length, question_ids: setupQuestions.map((question) => question.question_id), wizard };
