@@ -71,6 +71,17 @@ describe('createDesktopHostApi', () => {
     for (const notify of listeners) notify(snapshot);
     expect(listener).toHaveBeenCalledWith(snapshot);
     unsubscribe();
+    const setupListener = vi.fn();
+    const unsubscribeSetup = api.subscribeSetup(setupListener);
+    const setupProgress = {
+      setupId: 'SETUP-1', phaseId: 'planning', status: 'active',
+      message: 'プロジェクト構造を設計しています。', occurredAt: '2026-07-22T00:00:00.000Z'
+    };
+    for (const notify of listeners) notify(setupProgress);
+    expect(setupListener).toHaveBeenCalledWith(setupProgress);
+    for (const notify of listeners) notify({ ...setupProgress, phaseId: 'unknown' });
+    expect(setupListener).toHaveBeenCalledTimes(1);
+    unsubscribeSetup();
     expect(invoke.mock.calls).toEqual([
       [DESKTOP_IPC.getHostInfo],
       [DESKTOP_IPC.pingCore, { correlationId: 'ping-1' }],

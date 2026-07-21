@@ -163,6 +163,9 @@ if (!hasSingleInstanceLock) {
     coreHost.subscribeRuntime((notification) => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DESKTOP_IPC.runtimeChanged, notification);
     });
+    coreHost.subscribeSetup((progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(DESKTOP_IPC.setupChanged, progress);
+    });
   });
 }
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { FolderOpen, MessageCircleQuestion } from 'lucide-react';
 import type { AgentProposal, ComposerAttachment, ConversationMessage, OrquestaRendererBridge, ProjectSummary, UiActionResult } from '../../contracts/bridge';
 import { LUCA_AGENT_ID, type AskLucaInput, type LucaContextRef } from '../../contracts/luca';
-import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent, UserActionKind } from '../../contracts/orquesta-ui';
+import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent, SetupUiSnapshot, UserActionKind } from '../../contracts/orquesta-ui';
 import { DesktopRepositoryBridge } from '../../bridges/desktop-repository-bridge';
 import { MockOrquestaBridge } from '../../bridges/mock-bridge';
 import { fixtureKeys, type FixtureId } from '../../fixtures';
@@ -33,6 +33,7 @@ import { ProjectStatusCard } from '../features/project/ProjectStatusCard';
 import { ProjectSwitcher } from '../features/project/ProjectSwitcher';
 import { InitialSetupExperience } from '../features/setup/InitialSetupExperience';
 import { SetupIntake } from '../features/setup/SetupIntake';
+import { applySetupProgress } from '../features/setup/setup-presentation';
 import { TeamManagement } from '../features/team/TeamManagement';
 import { ToastStack } from '../features/toast/ToastStack';
 
@@ -92,6 +93,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const { t, locale } = useI18n();
   const reducedMotion = useReducedMotion();
   const [snapshot, setSnapshot] = useState<OrquestaUiSnapshot | null>(null);
+  const [setupPresentation, setSetupPresentation] = useState<SetupUiSnapshot | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<OpenOverlay>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>('home');
@@ -134,9 +136,36 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const currentProjectIdRef = useRef<string | null>(null);
   const lucaPendingProjectIdRef = useRef<string | null>(null);
   const lucaPendingThreadIdRef = useRef<string | null>(null);
+  const setupPresentationRef = useRef<SetupUiSnapshot | null>(null);
+  const setupSeenActiveRef = useRef(false);
+  const setupCompletionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let alive = true;
+    const presentSetup = (setup: SetupUiSnapshot | null) => {
+      setupPresentationRef.current = setup;
+      setSetupPresentation(setup);
+    };
+    const acceptSetupSnapshot = (setup: SetupUiSnapshot | null | undefined) => {
+      if (!setup) return;
+      if (setup.status !== 'completed' && setup.status !== 'cancelled') {
+        setupSeenActiveRef.current = true;
+        if (setupCompletionTimerRef.current) clearTimeout(setupCompletionTimerRef.current);
+        setupCompletionTimerRef.current = null;
+        const current = setupPresentationRef.current;
+        if (!current || Date.parse(setup.updatedAt) >= Date.parse(current.updatedAt)) presentSetup(setup);
+        return;
+      }
+      if (setup.status === 'completed' && setupSeenActiveRef.current) {
+        presentSetup(setup);
+        if (setupCompletionTimerRef.current) clearTimeout(setupCompletionTimerRef.current);
+        setupCompletionTimerRef.current = setTimeout(() => {
+          setupCompletionTimerRef.current = null;
+          presentSetup(null);
+          setupSeenActiveRef.current = false;
+        }, 1_200);
+      }
+    };
     void bridge.getInitialSnapshot()
       .then((next) => {
         if (!alive) return;
@@ -144,6 +173,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
         currentProjectIdRef.current = next.project.id;
         setSnapshot(next);
         setToasts(next.recentEvents);
+        acceptSetupSnapshot(next.setup);
       })
       .catch((error: unknown) => setLoadingError(error instanceof Error ? error.message : String(error)));
     const unsubscribe = bridge.subscribe((event) => {
@@ -154,6 +184,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           ?? event.snapshot.agents[0]?.id
           ?? 'orchestrator';
         setSnapshot(event.snapshot);
+        acceptSetupSnapshot(event.snapshot.setup);
         setLoadingError(null);
         setActionError(null);
         setTargetAgentId((current) => event.snapshot.agents.some((agent) => agent.id === current) ? current : fallbackAgentId);
@@ -165,6 +196,12 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           setConversationCursor(null);
           setLoadingConversation(false);
           setActiveWorkspace('home');
+        }
+      } else if (event.type === 'setup_progress') {
+        const current = setupPresentationRef.current;
+        if (current) {
+          setupSeenActiveRef.current = true;
+          presentSetup(applySetupProgress(current, event.progress));
         }
       } else if (event.type === 'toast') {
         setToasts((current) => [...current, event.toast].slice(-6));
@@ -202,6 +239,8 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     return () => {
       alive = false;
       unsubscribe();
+      if (setupCompletionTimerRef.current) clearTimeout(setupCompletionTimerRef.current);
+      setupCompletionTimerRef.current = null;
     };
   }, [bridge]);
 
@@ -488,6 +527,10 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   }
   if (!snapshot) {
     return <main className="desktop-shell loading-shell" role="application" aria-label="Orquesta Desktop"><div className="loading-mark"><i />{t('loading')}</div></main>;
+  }
+
+  if (setupPresentation) {
+    return <InitialSetupExperience setup={setupPresentation} />;
   }
 
   if (snapshot.setup && snapshot.setup.status !== 'completed' && snapshot.setup.status !== 'cancelled') {

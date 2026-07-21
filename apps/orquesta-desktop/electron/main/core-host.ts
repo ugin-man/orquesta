@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ConversationPage, InspectionReportUi, RuntimeInfoUi, StartInspectionUiInput } from '../../src/contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
-import type { SetupAccountState, SetupDraft, SetupLoginStartResult, SetupStartResult } from '../../src/contracts/setup';
+import type { SetupAccountState, SetupDraft, SetupLoginStartResult, SetupProgressEvent, SetupStartResult } from '../../src/contracts/setup';
 import type { CoreEvent, CoreRequest, RuntimeModelEvidence, RuntimeNotification } from '../core/protocol';
 import { isCoreEvent } from '../core/protocol';
 
@@ -57,6 +57,7 @@ export class CoreHost {
   readonly #pendingInspectionReports = new Map<string, PendingRuntime<InspectionReportUi>>();
   readonly #runtimeListeners = new Set<(notification: RuntimeNotification) => void>();
   readonly #repositoryListeners = new Set<(snapshot: OrquestaUiSnapshot) => void>();
+  readonly #setupListeners = new Set<(progress: SetupProgressEvent) => void>();
   #child: CoreChildProcess | null = null;
   #status: CoreHostStatus = 'stopped';
   #stopPromise: Promise<void> | null = null;
@@ -221,6 +222,11 @@ export class CoreHost {
   subscribeRepository(listener: (snapshot: OrquestaUiSnapshot) => void): () => void {
     this.#repositoryListeners.add(listener);
     return () => this.#repositoryListeners.delete(listener);
+  }
+
+  subscribeSetup(listener: (progress: SetupProgressEvent) => void): () => void {
+    this.#setupListeners.add(listener);
+    return () => this.#setupListeners.delete(listener);
   }
 
   respondRuntimeApproval(input: { attentionId: string; decision: string }): Promise<{
@@ -429,6 +435,10 @@ export class CoreHost {
       pending.resolve(structuredClone(event.result));
       return;
     }
+    if (event.type === 'setup.progress') {
+      for (const listener of this.#setupListeners) listener(structuredClone(event.progress));
+      return;
+    }
     if (event.type === 'repository.snapshot.result') {
       const pending = this.#pendingRepositorySnapshots.get(event.correlationId);
       if (!pending) return;
@@ -556,6 +566,7 @@ export class CoreHost {
     this.#pendingInspectionReports.clear();
     this.#runtimeListeners.clear();
     this.#repositoryListeners.clear();
+    this.#setupListeners.clear();
     const resolveStop = this.#resolveStop;
     this.#resolveStop = null;
     this.#stopPromise = null;

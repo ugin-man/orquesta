@@ -2,7 +2,7 @@ import type { ComposerAttachment, ConversationMessage, ConversationPage, Inspect
 import { LUCA_QUESTION_IDS, type AskLucaInput } from '../../src/contracts/luca';
 import { isV4OperationsSnapshot, type AttentionUiItem, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
-import { isSetupAccountState, isSetupPhaseId, isSetupSourceDraft, parseSetupDraft, type SetupLoginStartResult, type SetupStartResult } from '../../src/contracts/setup';
+import { isSetupAccountState, isSetupPhaseId, isSetupProgressEvent, isSetupSourceDraft, parseSetupDraft, type SetupLoginStartResult, type SetupStartResult } from '../../src/contracts/setup';
 import type { DesktopHostApi, DesktopHostInfo } from '../shared/host-contract';
 import { DESKTOP_IPC } from '../shared/host-contract';
 
@@ -217,6 +217,11 @@ export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe)
       const result = await invoke(DESKTOP_IPC.startSetup, parseSetupDraft(draft));
       if (!isSetupStartResult(result)) throw new Error('Desktop host returned invalid setup start result');
       return result;
+    },
+    subscribeSetup(listener) {
+      return subscribe(DESKTOP_IPC.setupChanged, (payload) => {
+        if (isSetupProgressEvent(payload)) listener(payload);
+      });
     },
     async getRepositorySnapshot() {
       const snapshot = await invoke(DESKTOP_IPC.getRepositorySnapshot);

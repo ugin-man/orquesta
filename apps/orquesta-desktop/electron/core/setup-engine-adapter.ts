@@ -72,7 +72,6 @@ export function createDesktopSetupController(options: DesktopSetupControllerOpti
   return {
     async start(input: { rootPath: string; draft: SetupDraft }): Promise<SetupStartResult> {
       const started = await engine.start(input);
-      launch(runner.run({ rootPath: started.result.rootPath, setupId: started.result.setupId }));
       return started.result;
     },
 

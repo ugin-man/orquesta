@@ -1,6 +1,6 @@
 import type { AttentionUiItem, InspectionKind, InspectionTargetUi, OrquestaUiSnapshot, ProjectStatus, RuntimeUiEvent } from './orquesta-ui';
 import type { AskLucaInput, LucaAnswerPayload } from './luca';
-import type { SetupAccountState, SetupDraft, SetupLoginStartResult, SetupSourceDraft, SetupStartResult } from './setup';
+import type { SetupAccountState, SetupDraft, SetupLoginStartResult, SetupProgressEvent, SetupSourceDraft, SetupStartResult } from './setup';
 export type {
   SetupAccountState,
   SetupDraft,
@@ -99,6 +99,7 @@ export interface RendererCapabilities {
 
 export type BridgeEvent =
   | { type: 'snapshot_changed'; snapshot: OrquestaUiSnapshot }
+  | { type: 'setup_progress'; progress: SetupProgressEvent }
   | { type: 'toast'; toast: RuntimeUiEvent }
   | {
       type: 'runtime_notification';

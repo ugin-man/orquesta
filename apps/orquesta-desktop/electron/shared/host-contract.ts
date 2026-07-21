@@ -30,6 +30,7 @@ export interface DesktopHostApi {
   readSetupAccount(): Promise<SetupAccountState>;
   startSetupLogin(): Promise<SetupLoginStartResult>;
   startSetup(draft: SetupDraft): Promise<SetupStartResult>;
+  subscribeSetup(listener: (progress: SetupProgressEvent) => void): () => void;
   getRepositorySnapshot(): Promise<OrquestaUiSnapshot>;
   listRepositories(): Promise<ProjectSummary[]>;
   switchRepository(projectId: string): Promise<UiActionResult>;
@@ -58,6 +59,7 @@ export const DESKTOP_IPC = {
   readSetupAccount: 'orquesta.desktop.setup.account.read',
   startSetupLogin: 'orquesta.desktop.setup.account.login-start',
   startSetup: 'orquesta.desktop.setup.start',
+  setupChanged: 'orquesta.desktop.setup.changed',
   getRepositorySnapshot: 'orquesta.desktop.repository.get-snapshot',
   listRepositories: 'orquesta.desktop.repository.list',
   switchRepository: 'orquesta.desktop.repository.switch',

@@ -43,6 +43,7 @@ export function InitialSetupExperience({ setup, onCancel }: InitialSetupExperien
     ? setup.phases.length
     : activePhase?.order ?? Math.max(1, setup.phases.filter((phase) => phase.status === 'complete').length);
   const stopped = setup.status === 'paused' || setup.status === 'blocked' || setup.status === 'cancelled';
+  const liveLabel = setup.status === 'completed' ? '完了' : stopped ? '停止中' : '構築中';
 
   return (
     <main className="initial-setup" role="main" aria-label="Orquesta 初回セットアップ">
@@ -87,7 +88,7 @@ export function InitialSetupExperience({ setup, onCancel }: InitialSetupExperien
               <small>STATUS</small>
               <h1 id="initial-setup-title">{setup.currentActivity?.title ?? activePhase?.title ?? '初回セットアップ'}</h1>
             </div>
-            <span className={`initial-setup__live initial-setup__live--${setup.status}`}><i aria-hidden="true" />{stopped ? '停止中' : '構築中'}</span>
+            <span className={`initial-setup__live initial-setup__live--${setup.status}`}><i aria-hidden="true" />{liveLabel}</span>
           </div>
           <p className="initial-setup__lead">{setup.currentActivity?.detail ?? activePhase?.summary}</p>
 

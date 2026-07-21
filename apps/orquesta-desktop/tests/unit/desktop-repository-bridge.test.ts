@@ -8,6 +8,7 @@ describe('DesktopRepositoryBridge', () => {
     const snapshot = fixtureCatalog['active-project'].snapshot;
     const subscription: { listener: ((next: typeof snapshot) => void) | null } = { listener: null };
     const runtimeSubscription: { listener: Parameters<DesktopHostApi['subscribeRuntime']>[0] | null } = { listener: null };
+    const setupSubscription: { listener: Parameters<DesktopHostApi['subscribeSetup']>[0] | null } = { listener: null };
     const setupDraft = {
       revision: 1 as const, status: 'draft' as const,
       source: { kind: 'detected_root' as const, rootPath: 'C:\\repo' },
@@ -20,6 +21,7 @@ describe('DesktopRepositoryBridge', () => {
       openRepository: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'open-1' })),
       selectImageAttachments: vi.fn(async () => []),
       subscribeRepository: vi.fn((listener: (next: typeof snapshot) => void) => { subscription.listener = listener; return () => { subscription.listener = null; }; }),
+      subscribeSetup: vi.fn((listener) => { setupSubscription.listener = listener; return () => { setupSubscription.listener = null; }; }),
       sendMessage: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'send-1' })),
       askLuca: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'luca-1' })),
       listConversation: vi.fn(async () => ({ items: [], nextCursor: null })),
@@ -51,6 +53,13 @@ describe('DesktopRepositoryBridge', () => {
     const unsubscribe = bridge.subscribe(listener);
     subscription.listener?.(snapshot);
     expect(listener).toHaveBeenCalledWith({ type: 'snapshot_changed', snapshot });
+    setupSubscription.listener?.({
+      setupId: 'SETUP-1', phaseId: 'planning', status: 'active', occurredAt: '2026-07-22T00:00:00.000Z',
+      message: 'プロジェクト構造を設計しています。'
+    });
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'setup_progress', progress: expect.objectContaining({ phaseId: 'planning', status: 'active' })
+    }));
     runtimeSubscription.listener?.({
       kind: 'model_observed', threadId: 'thread-1', turnId: 'turn-1',
       targetAgentId: 'orchestrator', text: null,
@@ -73,6 +82,7 @@ describe('DesktopRepositoryBridge', () => {
       type: 'runtime_notification', notification: expect.objectContaining({ targetAgentId: 'orquesta-admin' })
     }));
     unsubscribe();
+    expect(setupSubscription.listener).toBeNull();
     expect(runtimeSubscription.listener).toBeNull();
     await expect(bridge.switchProject('repo-1')).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.requestOpenProject()).resolves.toMatchObject({ status: 'accepted' });

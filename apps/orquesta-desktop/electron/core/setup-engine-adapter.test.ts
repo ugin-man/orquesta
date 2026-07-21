@@ -13,10 +13,10 @@ const draft: SetupDraft = {
 };
 
 describe('Desktop setup controller', () => {
-  test('returns the durable start result before the background runner finishes', async () => {
+  test('prepares durable state before the selected repository resumes the runner', async () => {
     let release!: () => void;
     const running = new Promise<void>((resolve) => { release = resolve; });
-    const run = vi.fn(async () => running);
+    const resume = vi.fn(async () => running);
     const engine = {
       start: vi.fn(async () => ({
         result: { setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment' as const },
@@ -25,14 +25,16 @@ describe('Desktop setup controller', () => {
     };
     const controller = createDesktopSetupController({
       engine,
-      runner: { run, resume: vi.fn(), cancel: vi.fn() },
-      readSetupState: vi.fn()
+      runner: { run: vi.fn(), resume, cancel: vi.fn() },
+      readSetupState: vi.fn(async () => ({ setup_id: 'SETUP-1', status: 'running' }))
     });
 
     await expect(controller.start({ rootPath: 'C:\\repo', draft })).resolves.toEqual({
       setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment'
     });
-    expect(run).toHaveBeenCalledWith({ rootPath: 'C:\\repo', setupId: 'SETUP-1' });
+    expect(resume).not.toHaveBeenCalled();
+    await controller.resume({ rootPath: 'C:\\repo' });
+    expect(resume).toHaveBeenCalledWith({ rootPath: 'C:\\repo', setupId: 'SETUP-1' });
     release();
     await running;
   });

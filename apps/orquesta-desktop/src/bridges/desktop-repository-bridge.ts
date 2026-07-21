@@ -35,6 +35,7 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
 
   subscribe(listener: (event: BridgeEvent) => void): () => void {
     const unsubscribeRepository = this.host.subscribeRepository((snapshot) => listener({ type: 'snapshot_changed', snapshot }));
+    const unsubscribeSetup = this.host.subscribeSetup((progress) => listener({ type: 'setup_progress', progress }));
     const unsubscribeRuntime = this.host.subscribeRuntime((notification) => {
       listener({ type: 'runtime_notification', notification });
       if (notification.targetAgentId === 'orquesta-admin') return;
@@ -57,7 +58,7 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
         }
       });
     });
-    return () => { unsubscribeRepository(); unsubscribeRuntime(); };
+    return () => { unsubscribeRepository(); unsubscribeSetup(); unsubscribeRuntime(); };
   }
 
   sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult> {

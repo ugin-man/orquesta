@@ -5,25 +5,22 @@ import { InspectionRunController } from './inspection-run-controller';
 import { RepositoryRuntime } from './repository-runtime';
 import { provisionSpecialists } from './specialist-provisioner';
 import { createDesktopSetupController } from './setup-engine-adapter';
+import { createSpecialistProvisioningCoordinator } from './specialist-provisioning-coordinator';
 
 export function runDesktopCore(runtime: DesktopCodexService): void {
   const parentPort = process.parentPort;
   if (!parentPort) throw new Error('Orquesta Core must run as an Electron utility process');
 
+  const coordinatedProvisioning = createSpecialistProvisioningCoordinator(({ projectId, rootPath, batch }) => (
+    provisionSpecialists({ root: rootPath, projectId, batch, runtime })
+  ));
   const repository = new RepositoryRuntime({
-    provisionSetupSpecialists: async ({ projectId, rootPath, batch }) => {
-      await provisionSpecialists({ root: rootPath, projectId, batch, runtime });
-    }
+    provisionSetupSpecialists: async (input) => { await coordinatedProvisioning(input); }
   });
   const inspections = new InspectionRunController({ runtime });
   const send = (event: CoreEvent) => parentPort.postMessage(event);
   const setup = createDesktopSetupController({
-    provisionSpecialists: ({ rootPath, projectId, batch }) => provisionSpecialists({
-      root: rootPath,
-      projectId,
-      batch,
-      runtime
-    }),
+    provisionSpecialists: coordinatedProvisioning,
     onProgress: (progress) => send({ type: 'setup.progress', progress }),
     onBackgroundError: (error) => {
       console.error('Initial setup runner failed outside a phase boundary', error);
