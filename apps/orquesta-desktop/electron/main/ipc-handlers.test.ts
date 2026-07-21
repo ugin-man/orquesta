@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { emptyV4OperationsSnapshot } from '../../src/contracts/orquesta-ui';
+import { fixtureCatalog } from '../../src/fixtures';
 import { DESKTOP_IPC } from '../shared/host-contract';
 import { registerDesktopIpc } from './ipc-handlers';
 
@@ -18,6 +19,10 @@ describe('registerDesktopIpc', () => {
         correlationId: 'send-1', threadId: 'thread-1', turnId: 'turn-1',
         modelEvidence: { recommendedModel: null, requestedModel: null, appliedModel: null, actualModel: null, actualModelEvidence: 'unknown' as const }
       })),
+      sendLucaQuestion: vi.fn(async () => ({
+        correlationId: 'luca-1', threadId: 'thread-luca', turnId: 'turn-luca',
+        modelEvidence: { recommendedModel: 'Luna', requestedModel: 'gpt-5.6-luna', appliedModel: 'gpt-5.6-luna', actualModel: null, actualModelEvidence: 'unknown' as const }
+      })),
       listConversation: vi.fn(async () => ({ items: [], nextCursor: null })),
       getRuntimeInfo: vi.fn(async () => ({
         status: 'not_started' as const, adapter: 'app_server' as const, sdkVersion: '0.144.5', codexVersion: '0.144.5',
@@ -30,17 +35,18 @@ describe('registerDesktopIpc', () => {
       cancelInspection: vi.fn(async () => ({ correlationId: 'inspection-2', runId: 'BENCH-001' })),
       readInspectionReport: vi.fn(async () => ({ runId: 'BENCH-001', markdown: '# Benchmark' }))
     };
-    const snapshot = {
-      project: { id: 'repo-1' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [],
-      v4Operations: emptyV4OperationsSnapshot()
-    };
+    const snapshot = fixtureCatalog['active-project'].snapshot;
     const repositories = {
       getSnapshot: vi.fn(async () => snapshot),
       listProjects: vi.fn(async () => [{ id: 'repo-1' }]),
       switchProject: vi.fn(async () => ({ status: 'accepted', correlationId: 'switch-1' })),
       openProject: vi.fn(async () => ({ status: 'accepted', correlationId: 'open-1' })),
       getCurrentRuntimeContext: vi.fn(() => ({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-1' })),
-      setCoordinatorThread: vi.fn(async () => undefined)
+      setCoordinatorThread: vi.fn(async () => undefined),
+      getLucaRuntimeContext: vi.fn(() => ({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null })),
+      setLucaThread: vi.fn(async () => undefined),
+      getLastLucaHomeSeenAt: vi.fn(() => null),
+      markLucaHomeSeen: vi.fn(async () => undefined)
     };
     const attachments = { chooseImages: vi.fn(async () => []), resolveImagePaths: vi.fn(() => []) };
     const external = { openExternal: vi.fn(async () => undefined) };
@@ -56,6 +62,7 @@ describe('registerDesktopIpc', () => {
       DESKTOP_IPC.openRepository,
       DESKTOP_IPC.selectImageAttachments,
       DESKTOP_IPC.sendMessage,
+      DESKTOP_IPC.askLuca,
       DESKTOP_IPC.listConversation,
       DESKTOP_IPC.getRuntimeInfo,
       DESKTOP_IPC.respondRuntimeApproval,
@@ -78,7 +85,18 @@ describe('registerDesktopIpc', () => {
     await expect(handlers.get(DESKTOP_IPC.openRepository)?.({})).resolves.toMatchObject({ status: 'accepted' });
     await expect(handlers.get(DESKTOP_IPC.sendMessage)?.({}, { targetAgentId: 'orchestrator', text: 'Continue.', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted', correlationId: 'send-1' });
     expect(coreHost.sendMessage).toHaveBeenCalledWith({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-1', targetAgentId: 'orchestrator', text: 'Continue.', localImagePaths: [] });
+    const taskId = snapshot.tasks[0].id;
+    await expect(handlers.get(DESKTOP_IPC.askLuca)?.({}, {
+      questionId: 'task.explain', context: { kind: 'task', id: taskId }, locale: 'ja', customText: null
+    })).resolves.toMatchObject({ status: 'accepted', correlationId: 'luca-1' });
+    expect(coreHost.sendLucaQuestion).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null,
+      prompt: expect.stringContaining('"questionId":"task.explain"')
+    }));
+    expect(repositories.setLucaThread).toHaveBeenCalledWith('repo-1', 'thread-luca');
     await expect(handlers.get(DESKTOP_IPC.listConversation)?.({}, { targetAgentId: 'orchestrator', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
+    await expect(handlers.get(DESKTOP_IPC.listConversation)?.({}, { targetAgentId: 'orquesta-admin', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
+    expect(coreHost.listConversation).toHaveBeenCalledTimes(1);
     await expect(handlers.get(DESKTOP_IPC.getRuntimeInfo)?.({}, { probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
     expect(coreHost.getRuntimeInfo).toHaveBeenCalledWith({ probe: false });
     await expect(handlers.get(DESKTOP_IPC.respondRuntimeApproval)?.({}, {
@@ -117,13 +135,14 @@ describe('registerDesktopIpc', () => {
     };
     const coreHost = {
       status: () => 'ready' as const,
-      ping: vi.fn(), sendMessage: vi.fn(), listConversation: vi.fn(), getRuntimeInfo: vi.fn(),
+      ping: vi.fn(), sendMessage: vi.fn(), sendLucaQuestion: vi.fn(), listConversation: vi.fn(), getRuntimeInfo: vi.fn(),
       respondRuntimeApproval: vi.fn(), listAttentionHistory: vi.fn(), startInspection: vi.fn(),
       cancelInspection: vi.fn(), readInspectionReport: vi.fn()
     };
     const repositories = {
       getSnapshot: vi.fn(), listProjects: vi.fn(), switchProject: vi.fn(), openProject: vi.fn(),
-      getCurrentRuntimeContext: vi.fn(), setCoordinatorThread: vi.fn()
+      getCurrentRuntimeContext: vi.fn(), setCoordinatorThread: vi.fn(), getLucaRuntimeContext: vi.fn(),
+      setLucaThread: vi.fn(), getLastLucaHomeSeenAt: vi.fn(), markLucaHomeSeen: vi.fn()
     };
     registerDesktopIpc(ipcMain, coreHost, repositories, { chooseImages: vi.fn(async () => []), resolveImagePaths: vi.fn(() => []) });
 
@@ -143,6 +162,10 @@ describe('registerDesktopIpc', () => {
       kind: 'adversarial_audit', target: { kind: 'agents', ids: ['../bad'] }, focus: null
     })).rejects.toThrow('target');
     expect(coreHost.startInspection).not.toHaveBeenCalled();
+    await expect(handlers.get(DESKTOP_IPC.askLuca)?.({}, {
+      questionId: 'failure.explain', context: { kind: 'task', id: 'T001' }, locale: 'ja'
+    })).rejects.toThrow('does not match context kind');
+    expect(coreHost.sendLucaQuestion).not.toHaveBeenCalled();
     await expect(handlers.get(DESKTOP_IPC.openCodexDraft)?.({}, {
       targetAgentId: 'orchestrator', text: ''
     })).rejects.toThrow('text');

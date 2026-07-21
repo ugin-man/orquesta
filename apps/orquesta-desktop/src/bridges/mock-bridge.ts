@@ -10,6 +10,7 @@ import type {
   StartInspectionUiInput,
   UiActionResult
 } from '../contracts/bridge';
+import type { AskLucaInput, LucaAnswerPayload } from '../contracts/luca';
 import type { AttentionUiItem, InspectionRunUiModel, OrquestaUiSnapshot, RuntimeUiEvent } from '../contracts/orquesta-ui';
 import { fixtureCatalog, fixtureIdForProject, fixtureKeys, type FixtureId } from '../fixtures';
 
@@ -92,6 +93,39 @@ export class MockOrquestaBridge implements OrquestaRendererBridge {
         message: 'Saved to mock conversation. No Codex turn was started.',
         taskId: null,
         createdAt: new Date().toISOString()
+      }
+    });
+    return accepted();
+  }
+
+  async askLuca(input: AskLucaInput): Promise<UiActionResult> {
+    const question = input.customText?.trim() || input.questionId;
+    const payload: LucaAnswerPayload = {
+      answer: input.context.kind === 'home'
+        ? 'これはプロトタイプのLuca回答です。現在のプロジェクト記録だけを説明しています。'
+        : `これは${input.context.kind} ${input.context.id}についてのプロトタイプ説明です。`,
+      points: ['実際のCodexターンは開始していません。'],
+      uncertainties: ['モックデータのため、実行環境の状態は確認していません。'],
+      references: input.context.kind === 'home' ? [] : [{ kind: input.context.kind, id: input.context.id, label: input.context.id }]
+    };
+    const existing = this.conversations.get('orquesta-admin') ?? [];
+    const now = new Date().toISOString();
+    existing.push({
+      id: correlationId(), role: 'user', targetAgentId: 'orquesta-admin', authorLabel: 'You', text: question,
+      createdAt: now, evidenceLabel: 'Prototype Luca question'
+    }, {
+      id: correlationId(), role: 'agent', targetAgentId: 'orquesta-admin', authorLabel: 'Luca', text: payload.answer,
+      createdAt: now, evidenceLabel: 'Prototype Luca answer', lucaAnswer: payload, structured: true
+    });
+    this.conversations.set('orquesta-admin', existing);
+    this.emit({
+      type: 'runtime_notification',
+      notification: {
+        kind: 'agent_message', threadId: 'prototype-luca', turnId: correlationId(), text: payload.answer,
+        targetAgentId: 'orquesta-admin', modelEvidence: {
+          recommendedModel: 'Luna', requestedModel: 'gpt-5.6-luna', appliedModel: null,
+          actualModel: null, actualModelEvidence: 'unknown'
+        }
       }
     });
     return accepted();

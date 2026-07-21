@@ -154,7 +154,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           setLoadingConversation(false);
           setActiveWorkspace('home');
         }
-      } else {
+      } else if (event.type === 'toast') {
         setToasts((current) => [...current, event.toast].slice(-6));
       }
     });

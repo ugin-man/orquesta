@@ -12,6 +12,7 @@ describe('createDesktopHostApi', () => {
       if (channel === DESKTOP_IPC.listRepositories) return [];
       if (channel === DESKTOP_IPC.switchRepository || channel === DESKTOP_IPC.openRepository) return { status: 'accepted', correlationId: 'action-1' };
       if (channel === DESKTOP_IPC.sendMessage) return { status: 'accepted', correlationId: 'send-1' };
+      if (channel === DESKTOP_IPC.askLuca) return { status: 'accepted', correlationId: 'luca-1' };
       if (channel === DESKTOP_IPC.listConversation) return { items: [], nextCursor: null };
       if (channel === DESKTOP_IPC.getRuntimeInfo) return {
         status: 'not_started', adapter: 'app_server', sdkVersion: '0.144.5', codexVersion: '0.144.5',
@@ -41,6 +42,7 @@ describe('createDesktopHostApi', () => {
     await expect(api.openRepository()).resolves.toMatchObject({ status: 'accepted' });
     await expect(api.selectImageAttachments()).resolves.toEqual([]);
     await expect(api.sendMessage({ targetAgentId: 'orchestrator', text: 'Continue.', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted' });
+    await expect(api.askLuca({ questionId: 'home.current', context: { kind: 'home' }, locale: 'ja' })).resolves.toMatchObject({ status: 'accepted' });
     await expect(api.listConversation({ targetAgentId: 'orchestrator', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
     await expect(api.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
     await expect(api.respondRuntimeApproval({ id: 'runtime-approval-1', decision: 'decline' })).resolves.toMatchObject({ status: 'accepted' });
@@ -65,6 +67,7 @@ describe('createDesktopHostApi', () => {
       [DESKTOP_IPC.openRepository],
       [DESKTOP_IPC.selectImageAttachments],
       [DESKTOP_IPC.sendMessage, { targetAgentId: 'orchestrator', text: 'Continue.', attachmentIds: [], selectedContextIds: [] }],
+      [DESKTOP_IPC.askLuca, { questionId: 'home.current', context: { kind: 'home' }, locale: 'ja' }],
       [DESKTOP_IPC.listConversation, { targetAgentId: 'orchestrator', limit: 20 }],
       [DESKTOP_IPC.getRuntimeInfo, { probe: false }],
       [DESKTOP_IPC.respondRuntimeApproval, { id: 'runtime-approval-1', decision: 'decline' }],

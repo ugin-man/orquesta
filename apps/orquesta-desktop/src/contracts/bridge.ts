@@ -1,4 +1,5 @@
 import type { AttentionUiItem, InspectionKind, InspectionTargetUi, OrquestaUiSnapshot, ProjectStatus, RuntimeUiEvent } from './orquesta-ui';
+import type { AskLucaInput, LucaAnswerPayload } from './luca';
 
 export type UiActionResult =
   | { status: 'accepted'; correlationId: string }
@@ -12,6 +13,8 @@ export interface ConversationMessage {
   text: string;
   createdAt: string;
   evidenceLabel: string | null;
+  lucaAnswer?: LucaAnswerPayload | null;
+  structured?: boolean;
 }
 
 export interface ConversationQuery {
@@ -86,13 +89,31 @@ export interface RendererCapabilities {
 
 export type BridgeEvent =
   | { type: 'snapshot_changed'; snapshot: OrquestaUiSnapshot }
-  | { type: 'toast'; toast: RuntimeUiEvent };
+  | { type: 'toast'; toast: RuntimeUiEvent }
+  | {
+      type: 'runtime_notification';
+      notification: {
+        kind: 'turn_started' | 'turn_completed' | 'turn_failed' | 'agent_message' | 'model_observed';
+        threadId: string;
+        turnId: string | null;
+        text: string | null;
+        targetAgentId: string | null;
+        modelEvidence: {
+          recommendedModel: string | null;
+          requestedModel: string | null;
+          appliedModel: string | null;
+          actualModel: string | null;
+          actualModelEvidence: 'proven' | 'reported' | 'inferred' | 'unknown';
+        };
+      };
+    };
 
 export interface OrquestaRendererBridge {
   readonly capabilities: RendererCapabilities;
   getInitialSnapshot(): Promise<OrquestaUiSnapshot>;
   subscribe(listener: (event: BridgeEvent) => void): () => void;
   sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult>;
+  askLuca(input: AskLucaInput): Promise<UiActionResult>;
   openAttentionItem(id: string): Promise<UiActionResult>;
   resolveAttentionItem(input: AttentionResolutionInput): Promise<UiActionResult>;
   listConversation(input: ConversationQuery): Promise<ConversationPage>;

@@ -15,6 +15,27 @@ describe('MockOrquestaBridge', () => {
     expect(page.items[page.items.length - 1]).toMatchObject({ role: 'user', text: 'Keep the bridge clean.', evidenceLabel: 'Prototype message · no real turn started' });
   });
 
+  test('answers Luca deterministically without creating a task', async () => {
+    const bridge = new MockOrquestaBridge('active-project');
+    const before = await bridge.getInitialSnapshot();
+    const listener = vi.fn();
+    bridge.subscribe(listener);
+
+    await expect(bridge.askLuca({
+      questionId: 'task.explain', context: { kind: 'task', id: before.tasks[0].id }, locale: 'ja'
+    })).resolves.toMatchObject({ status: 'accepted' });
+
+    const page = await bridge.listConversation({ targetAgentId: 'orquesta-admin' });
+    expect(page.items.slice(-2)).toEqual([
+      expect.objectContaining({ role: 'user', targetAgentId: 'orquesta-admin' }),
+      expect.objectContaining({ role: 'agent', authorLabel: 'Luca' })
+    ]);
+    expect((await bridge.getInitialSnapshot()).tasks).toHaveLength(before.tasks.length);
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'runtime_notification', notification: expect.objectContaining({ kind: 'agent_message', targetAgentId: 'orquesta-admin' })
+    }));
+  });
+
   test('rejects sending while the project is offline', async () => {
     const bridge = new MockOrquestaBridge('offline-project');
     const result = await bridge.sendMessage({ targetAgentId: 'orchestrator', text: 'Run now.', attachmentIds: [], selectedContextIds: [] });

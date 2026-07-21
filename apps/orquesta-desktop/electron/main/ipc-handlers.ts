@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { ConversationPage, InspectionReportUi, ProjectSummary, RuntimeInfoUi, StartInspectionUiInput, UiActionResult } from '../../src/contracts/bridge';
+import { LUCA_QUESTION_IDS, type AskLucaInput } from '../../src/contracts/luca';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { CoreHostStatus } from './core-host';
 import { DESKTOP_IPC, type CoreStatus } from '../shared/host-contract';
+import { buildLucaContext } from './luca-context-builder';
+import { questionDefinition } from './luca-question-catalog';
+import { buildLucaRequestPrompt } from './luca-prompt';
 
 export interface IpcMainLike {
   handle(channel: string, handler: (event: unknown, input?: unknown) => unknown): void;
@@ -12,6 +16,7 @@ export interface CoreController {
   status(): CoreHostStatus;
   ping(correlationId: string): Promise<{ correlationId: string }>;
   sendMessage(input: { projectId: string; rootPath: string; threadId: string | null; targetAgentId: string; text: string; localImagePaths: string[] }): Promise<{ correlationId: string; threadId: string; turnId: string; modelEvidence: import('../core/protocol').RuntimeModelEvidence }>;
+  sendLucaQuestion(input: { projectId: string; rootPath: string; threadId: string | null; prompt: string }): Promise<{ correlationId: string; threadId: string; turnId: string; modelEvidence: import('../core/protocol').RuntimeModelEvidence }>;
   listConversation(input: { threadId: string; targetAgentId: string; cursor?: string | null; limit: number }): Promise<ConversationPage>;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
   respondRuntimeApproval(input: { attentionId: string; decision: string }): Promise<{ correlationId: string }>;
@@ -37,6 +42,10 @@ export interface RepositoryController {
   openProject(): Promise<UiActionResult>;
   getCurrentRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null;
   setCoordinatorThread(projectId: string, threadId: string): Promise<void>;
+  getLucaRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null;
+  setLucaThread(projectId: string, threadId: string): Promise<void>;
+  getLastLucaHomeSeenAt(projectId: string): string | null;
+  markLucaHomeSeen(projectId: string, at: string): Promise<void>;
 }
 
 function publicCoreStatus(status: CoreHostStatus): CoreStatus {
@@ -80,6 +89,33 @@ function readConversationInput(input: unknown): { targetAgentId: string; cursor:
   const cursor = value.cursor === undefined ? null : value.cursor;
   if (cursor !== null && (typeof cursor !== 'string' || !/^before:\d+$/u.test(cursor))) throw new Error('cursor is invalid');
   return { targetAgentId: value.targetAgentId, cursor, limit };
+}
+
+const lucaQuestionIds = new Set<string>(LUCA_QUESTION_IDS);
+
+function readAskLucaInput(input: unknown): AskLucaInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Luca question input is required');
+  const value = input as Record<string, unknown>;
+  if (typeof value.questionId !== 'string' || !lucaQuestionIds.has(value.questionId)) throw new Error('Luca question id is invalid');
+  if (value.locale !== 'ja' && value.locale !== 'en') throw new Error('Luca locale is invalid');
+  if (!value.context || typeof value.context !== 'object' || Array.isArray(value.context)) throw new Error('Luca context is invalid');
+  const context = value.context as Record<string, unknown>;
+  if (!['home', 'task', 'failure', 'inspection'].includes(String(context.kind))) throw new Error('Luca context kind is invalid');
+  if (context.kind !== 'home' && (typeof context.id !== 'string' || !/^[a-zA-Z0-9._:-]{1,128}$/u.test(context.id))) {
+    throw new Error('Luca context id is invalid');
+  }
+  if (value.customText !== undefined && value.customText !== null
+    && (typeof value.customText !== 'string' || value.customText.length > 2_000)) throw new Error('Luca custom question is invalid');
+  const parsed = {
+    questionId: value.questionId,
+    context: context.kind === 'home' ? { kind: 'home' as const } : { kind: context.kind, id: context.id },
+    locale: value.locale,
+    customText: value.customText === undefined ? undefined : value.customText
+  } as AskLucaInput;
+  if (questionDefinition(parsed.questionId).contextKind !== parsed.context.kind) {
+    throw new Error('Luca question does not match context kind');
+  }
+  return parsed;
 }
 
 function readRuntimeInfoInput(input: unknown): { probe: boolean } {
@@ -191,9 +227,39 @@ export function registerDesktopIpc(
       } satisfies UiActionResult;
     }
   });
+  ipcMain.handle(DESKTOP_IPC.askLuca, async (_event, input) => {
+    const question = readAskLucaInput(input);
+    const runtime = repositories.getLucaRuntimeContext();
+    if (!runtime) {
+      return { status: 'unavailable', correlationId: randomUUID(), reason: 'Open an Orquesta project before asking Luca.', retryable: false } satisfies UiActionResult;
+    }
+    try {
+      const snapshot = await repositories.getSnapshot();
+      const context = await buildLucaContext(question, snapshot, {
+        readInspectionReport: (runId) => coreHost.readInspectionReport({
+          projectId: runtime.projectId, rootPath: runtime.rootPath, runId
+        }),
+        lastHomeSeenAt: repositories.getLastLucaHomeSeenAt(runtime.projectId)
+      });
+      const prompt = buildLucaRequestPrompt(question, context);
+      const accepted = await coreHost.sendLucaQuestion({ ...runtime, prompt });
+      await repositories.setLucaThread(runtime.projectId, accepted.threadId);
+      if (question.context.kind === 'home') {
+        await repositories.markLucaHomeSeen(runtime.projectId, new Date().toISOString());
+      }
+      return { status: 'accepted', correlationId: accepted.correlationId } satisfies UiActionResult;
+    } catch (error) {
+      return {
+        status: 'failed', correlationId: randomUUID(),
+        reason: error instanceof Error ? error.message : String(error), retryable: true
+      } satisfies UiActionResult;
+    }
+  });
   ipcMain.handle(DESKTOP_IPC.listConversation, async (_event, input) => {
     const query = readConversationInput(input);
-    const context = repositories.getCurrentRuntimeContext();
+    const context = query.targetAgentId === 'orquesta-admin'
+      ? repositories.getLucaRuntimeContext()
+      : repositories.getCurrentRuntimeContext();
     if (!context?.threadId) return { items: [], nextCursor: null } satisfies ConversationPage;
     return coreHost.listConversation({ threadId: context.threadId, ...query });
   });

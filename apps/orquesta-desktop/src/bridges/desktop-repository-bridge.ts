@@ -35,6 +35,8 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
   subscribe(listener: (event: BridgeEvent) => void): () => void {
     const unsubscribeRepository = this.host.subscribeRepository((snapshot) => listener({ type: 'snapshot_changed', snapshot }));
     const unsubscribeRuntime = this.host.subscribeRuntime((notification) => {
+      listener({ type: 'runtime_notification', notification });
+      if (notification.targetAgentId === 'orquesta-admin') return;
       const tone = notification.kind === 'turn_failed' ? 'danger' : notification.kind === 'turn_completed' ? 'success' : 'neutral';
       const title = notification.kind === 'turn_started' ? 'Codex turn started'
         : notification.kind === 'turn_completed' ? 'Codex turn completed'
@@ -59,6 +61,10 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
 
   sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult> {
     return this.host.sendMessage(input);
+  }
+
+  askLuca(input: import('../contracts/luca').AskLucaInput): Promise<UiActionResult> {
+    return this.host.askLuca(input);
   }
 
   async openAttentionItem(_id: string): Promise<UiActionResult> {

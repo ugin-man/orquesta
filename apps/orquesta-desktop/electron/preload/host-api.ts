@@ -1,4 +1,5 @@
 import type { ComposerAttachment, ConversationMessage, ConversationPage, InspectionReportUi, ProjectSummary, RuntimeInfoUi, StartInspectionUiInput, UiActionResult } from '../../src/contracts/bridge';
+import { LUCA_QUESTION_IDS, type AskLucaInput } from '../../src/contracts/luca';
 import { isV4OperationsSnapshot, type AttentionUiItem, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
 import type { DesktopHostApi, DesktopHostInfo } from '../shared/host-contract';
@@ -59,8 +60,32 @@ function safeId(value: unknown): value is string {
 function isConversationMessage(value: unknown): value is ConversationMessage {
   if (!value || typeof value !== 'object') return false;
   const message = value as Record<string, unknown>;
-  return safeId(message.id) && ['user', 'agent', 'system'].includes(String(message.role)) && safeId(message.targetAgentId)
-    && typeof message.authorLabel === 'string' && typeof message.text === 'string' && typeof message.createdAt === 'string';
+  if (!(safeId(message.id) && ['user', 'agent', 'system'].includes(String(message.role)) && safeId(message.targetAgentId)
+    && typeof message.authorLabel === 'string' && typeof message.text === 'string' && typeof message.createdAt === 'string')) return false;
+  if (message.structured !== undefined && typeof message.structured !== 'boolean') return false;
+  if (message.lucaAnswer === undefined || message.lucaAnswer === null) return true;
+  if (typeof message.lucaAnswer !== 'object' || Array.isArray(message.lucaAnswer)) return false;
+  const answer = message.lucaAnswer as Record<string, unknown>;
+  return typeof answer.answer === 'string' && Array.isArray(answer.points) && answer.points.every((item) => typeof item === 'string')
+    && Array.isArray(answer.uncertainties) && answer.uncertainties.every((item) => typeof item === 'string')
+    && Array.isArray(answer.references) && answer.references.every((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+      const reference = item as Record<string, unknown>;
+      return ['project', 'phase', 'task', 'failure', 'inspection', 'agent', 'attention'].includes(String(reference.kind))
+        && typeof reference.id === 'string' && typeof reference.label === 'string';
+    });
+}
+
+const lucaQuestionIds = new Set<string>(LUCA_QUESTION_IDS);
+
+function validateAskLucaInput(input: AskLucaInput): void {
+  if (!input || !lucaQuestionIds.has(input.questionId) || !input.context || !['ja', 'en'].includes(input.locale)) {
+    throw new Error('Luca question is invalid');
+  }
+  if (!['home', 'task', 'failure', 'inspection'].includes(input.context.kind)) throw new Error('Luca context is invalid');
+  if (input.context.kind !== 'home' && !safeId(input.context.id)) throw new Error('Luca context id is invalid');
+  if (input.customText !== undefined && input.customText !== null
+    && (typeof input.customText !== 'string' || input.customText.length > 2_000)) throw new Error('Luca custom question is invalid');
 }
 
 function isConversationPage(value: unknown): value is ConversationPage {
@@ -186,6 +211,12 @@ export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe)
       if (!Array.isArray(input.attachmentIds) || !Array.isArray(input.selectedContextIds)) throw new Error('Message context is invalid');
       const action = await invoke(DESKTOP_IPC.sendMessage, input);
       if (!isActionResult(action)) throw new Error('Desktop host returned an invalid send result');
+      return action;
+    },
+    async askLuca(input) {
+      validateAskLucaInput(input);
+      const action = await invoke(DESKTOP_IPC.askLuca, input);
+      if (!isActionResult(action)) throw new Error('Desktop host returned an invalid Luca result');
       return action;
     },
     async listConversation(input) {

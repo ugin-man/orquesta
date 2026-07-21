@@ -1,4 +1,5 @@
 import type { ComposerAttachment, ConversationPage, ConversationQuery, InspectionReportUi, ProjectSummary, RuntimeInfoUi, StartInspectionUiInput, UiActionResult } from '../../src/contracts/bridge';
+import type { AskLucaInput } from '../../src/contracts/luca';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
 
@@ -19,6 +20,7 @@ export interface DesktopHostApi {
   selectImageAttachments(): Promise<ComposerAttachment[]>;
   subscribeRepository(listener: (snapshot: OrquestaUiSnapshot) => void): () => void;
   sendMessage(input: { targetAgentId: string; text: string; attachmentIds: string[]; selectedContextIds: string[] }): Promise<UiActionResult>;
+  askLuca(input: AskLucaInput): Promise<UiActionResult>;
   listConversation(input: ConversationQuery): Promise<ConversationPage>;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
   openCodexDraft(input: { targetAgentId: string; text: string }): Promise<UiActionResult>;
@@ -40,6 +42,7 @@ export const DESKTOP_IPC = {
   selectImageAttachments: 'orquesta.desktop.attachment.select-images',
   repositoryChanged: 'orquesta.desktop.repository.changed',
   sendMessage: 'orquesta.desktop.runtime.send-message',
+  askLuca: 'orquesta.desktop.luca.ask',
   listConversation: 'orquesta.desktop.runtime.list-conversation',
   getRuntimeInfo: 'orquesta.desktop.runtime.get-info',
   respondRuntimeApproval: 'orquesta.desktop.runtime.respond-approval',

@@ -16,6 +16,7 @@ describe('DesktopRepositoryBridge', () => {
       selectImageAttachments: vi.fn(async () => []),
       subscribeRepository: vi.fn((listener: (next: typeof snapshot) => void) => { subscription.listener = listener; return () => { subscription.listener = null; }; }),
       sendMessage: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'send-1' })),
+      askLuca: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'luca-1' })),
       listConversation: vi.fn(async () => ({ items: [], nextCursor: null })),
       getRuntimeInfo: vi.fn(async () => ({
         status: 'not_started' as const, adapter: 'app_server' as const, sdkVersion: '0.144.5', codexVersion: '0.144.5',
@@ -50,11 +51,22 @@ describe('DesktopRepositoryBridge', () => {
     expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
       type: 'toast', toast: expect.objectContaining({ title: 'Codex model observed' })
     }));
+    runtimeSubscription.listener?.({
+      kind: 'agent_message', threadId: 'thread-luca', turnId: 'turn-luca', targetAgentId: 'orquesta-admin',
+      text: '説明です。', modelEvidence: {
+        recommendedModel: 'Luna', requestedModel: 'gpt-5.6-luna', appliedModel: 'gpt-5.6-luna',
+        actualModel: null, actualModelEvidence: 'unknown'
+      }
+    });
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'runtime_notification', notification: expect.objectContaining({ targetAgentId: 'orquesta-admin' })
+    }));
     unsubscribe();
     expect(runtimeSubscription.listener).toBeNull();
     await expect(bridge.switchProject('repo-1')).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.requestOpenProject()).resolves.toMatchObject({ status: 'accepted' });
     await expect(bridge.sendMessage({ targetAgentId: 'orchestrator', text: 'hello', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted' });
+    await expect(bridge.askLuca({ questionId: 'home.current', context: { kind: 'home' }, locale: 'ja' })).resolves.toMatchObject({ status: 'accepted' });
     expect(bridge.capabilities.attentionResolution).toBe(true);
     await expect(bridge.resolveAttentionItem({ kind: 'runtime_approval', id: 'runtime-approval-1', decision: 'decline' })).resolves.toMatchObject({ status: 'accepted' });
     expect(host.respondRuntimeApproval).toHaveBeenCalledWith({ id: 'runtime-approval-1', decision: 'decline' });
