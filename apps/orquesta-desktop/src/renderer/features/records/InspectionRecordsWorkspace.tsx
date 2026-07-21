@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, FileSearch, Globe2, RotateCcw, ShieldAlert, X } from 'lucide-react';
+import { AlertTriangle, FileSearch, Globe2, MessageCircleQuestion, RotateCcw, ShieldAlert, X } from 'lucide-react';
 import type { InspectionReportUi } from '../../../contracts/bridge';
 import type { InspectionKind, InspectionRunStatus, InspectionRunUiModel } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
@@ -87,11 +87,13 @@ function kindIcon(kind: InspectionKind) {
   return kind === 'external_benchmark' ? <Globe2 size={15} /> : <ShieldAlert size={15} />;
 }
 
-export function InspectionRecordsWorkspace({ runs, selectedRunId, onSelectedRunIdChange, readReport }: {
+export function InspectionRecordsWorkspace({ runs, selectedRunId, onSelectedRunIdChange, readReport, onAskLuca, lucaActive = false }: {
   runs: InspectionRunUiModel[];
   selectedRunId: string | null;
   onSelectedRunIdChange(runId: string | null): void;
   readReport(runId: string): Promise<InspectionReportUi>;
+  onAskLuca?(runId: string): void;
+  lucaActive?: boolean;
 }) {
   const { locale } = useI18n();
   const [filter, setFilter] = useState<InspectionRecordFilter>('all');
@@ -102,13 +104,13 @@ export function InspectionRecordsWorkspace({ runs, selectedRunId, onSelectedRunI
         all: 'すべて', external: '外部比較', audit: '敵対監査', complete: '完了', failed: '失敗', filters: '検査履歴の絞り込み',
         records: '件を表示', empty: '条件に合う検査履歴はありません。', more: 'さらに表示', target: '対象', sources: '参照元',
         started: '開始', completed: '完了', close: '検査レポートを閉じる', loading: 'レポートを読み込み中…', retry: '再試行',
-        noReport: 'この実行には保存済みレポートがありません。', error: 'レポートを読み込めませんでした。', report: 'レポート'
+        noReport: 'この実行には保存済みレポートがありません。', error: 'レポートを読み込めませんでした。', report: 'レポート', askLuca: 'この監査をLucaに聞く'
       }
     : {
         all: 'All', external: 'External benchmark', audit: 'Adversarial audit', complete: 'Complete', failed: 'Failed', filters: 'Inspection history filters',
         records: 'shown', empty: 'No inspection runs match these filters.', more: 'Show more', target: 'Target', sources: 'Sources',
         started: 'Started', completed: 'Completed', close: 'Close inspection report', loading: 'Loading report…', retry: 'Retry',
-        noReport: 'This run has no saved report.', error: 'The report could not be loaded.', report: 'report'
+        noReport: 'This run has no saved report.', error: 'The report could not be loaded.', report: 'report', askLuca: 'Ask Luca about this inspection'
       };
   const kindLabel = { external_benchmark: copy.external, adversarial_audit: copy.audit };
   const statusLabel: Record<InspectionRunStatus, string> = locale === 'ja'
@@ -191,7 +193,7 @@ export function InspectionRecordsWorkspace({ runs, selectedRunId, onSelectedRunI
         {filteredRuns.length > limit ? <button type="button" className="inspection-record-more" onClick={() => setLimit((value) => value + 100)}>{copy.more}</button> : null}
       </section>
       {selectedRun ? (
-        <div className="inspection-record-modal-layer" data-testid="inspection-record-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onSelectedRunIdChange(null); }}>
+        <div className={`inspection-record-modal-layer${lucaActive ? ' has-luca' : ''}`} data-testid="inspection-record-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onSelectedRunIdChange(null); }}>
           <aside className={`inspection-record-detail inspection-record-detail--${selectedRun.kind === 'external_benchmark' ? 'blue' : 'red'}`} role="dialog" aria-modal="true" aria-label={`${kindLabel[selectedRun.kind]}${copy.report}`}>
             <header>
               <div><span>{kindIcon(selectedRun.kind)}{kindLabel[selectedRun.kind]}</span><small>{selectedRun.runId}</small></div>
@@ -199,6 +201,7 @@ export function InspectionRecordsWorkspace({ runs, selectedRunId, onSelectedRunI
               <h1>{selectedRun.displayName}</h1>
             </header>
             <div className="inspection-record-detail__scroll">
+              {onAskLuca ? <button type="button" className="luca-detail-trigger" onClick={() => onAskLuca(selectedRun.runId)}><MessageCircleQuestion size={15} />{copy.askLuca}</button> : null}
               {report?.state === 'loading' ? <p className="inspection-report-state">{copy.loading}</p> : null}
               {report?.state === 'error' ? (
                 <div className="inspection-report-state inspection-report-state--error">

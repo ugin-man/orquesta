@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react';
 import type { ConversationMessage, RuntimeInfoUi, UiActionResult } from '../../../contracts/bridge';
+import type { LucaContextRef } from '../../../contracts/luca';
 import type { AttentionUiItem, OrquestaUiSnapshot, TaskUiModel } from '../../../contracts/orquesta-ui';
 import { UserTasksWorkspace, type UserTaskKind } from '../attention/UserTasksWorkspace';
 import { useI18n } from '../i18n/I18nProvider';
@@ -68,7 +69,7 @@ function TaskList({ tasks, onOpen }: { tasks: TaskUiModel[]; onOpen(taskId: stri
   );
 }
 
-export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind, recordKind, taskRecordView, failureRecordView, selectedInspectionRunId, decisionRecords, decisionRecordKind, decisionRecordsLoading, timelineConversations, timelineDecisions, timelineLoading, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, canResolveAttention, getRuntimeInfo, readInspectionReport, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onSelectedInspectionRunIdChange, onDecisionRecordKindChange, onOpenTimelineRecord, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenRoute, onOpenOperations }: {
+export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind, recordKind, taskRecordView, failureRecordView, selectedInspectionRunId, decisionRecords, decisionRecordKind, decisionRecordsLoading, timelineConversations, timelineDecisions, timelineLoading, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, activeLucaContext, canResolveAttention, getRuntimeInfo, readInspectionReport, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onSelectedInspectionRunIdChange, onDecisionRecordKindChange, onOpenTimelineRecord, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onAskLuca, onOpenRoute, onOpenOperations }: {
   active: Exclude<WorkspaceId, 'home'>;
   snapshot: OrquestaUiSnapshot;
   reducedMotion: boolean;
@@ -87,6 +88,7 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
   conversationTargetAgentId: string;
   conversationLoading: boolean;
   conversationHasOlder: boolean;
+  activeLucaContext: LucaContextRef | null;
   canResolveAttention: boolean;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
   readInspectionReport(runId: string): Promise<import('../../../contracts/bridge').InspectionReportUi>;
@@ -101,6 +103,7 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
   onLoadOlderConversation(): void;
   onOpenAttention(item: AttentionUiItem): void;
   onResolveAttention(item: AttentionUiItem, decision: string): Promise<UiActionResult>;
+  onAskLuca(context: LucaContextRef): void;
   onOpenRoute(): void;
   onOpenOperations(): void;
 }) {
@@ -138,14 +141,14 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
             onSubmit={onResolveAttention}
           />
         ) : null}
-        {active === 'records' && recordKind === 'task' ? <TaskRecordsWorkspace tasks={snapshot.tasks} agents={snapshot.agents} view={taskRecordView} onViewChange={onTaskRecordViewChange} /> : null}
-        {active === 'records' && recordKind === 'error' ? <FailureRecordsWorkspace failures={snapshot.failures} view={failureRecordView} onViewChange={onFailureRecordViewChange} /> : null}
+        {active === 'records' && recordKind === 'task' ? <TaskRecordsWorkspace tasks={snapshot.tasks} agents={snapshot.agents} view={taskRecordView} onViewChange={onTaskRecordViewChange} onAskLuca={(id) => onAskLuca({ kind: 'task', id })} lucaActive={activeLucaContext?.kind === 'task' && activeLucaContext.id === taskRecordView.selectedTaskId} /> : null}
+        {active === 'records' && recordKind === 'error' ? <FailureRecordsWorkspace failures={snapshot.failures} view={failureRecordView} onViewChange={onFailureRecordViewChange} onAskLuca={(id) => onAskLuca({ kind: 'failure', id })} lucaActive={activeLucaContext?.kind === 'failure' && activeLucaContext.id === failureRecordView.selectedFailureId} /> : null}
         {active === 'records' && recordKind === 'conversation' ? (
           <ConversationRecordsWorkspace agents={snapshot.agents} targetAgentId={conversationTargetAgentId} messages={messages} loading={conversationLoading} hasOlder={conversationHasOlder} onSelectTarget={onSelectConversationTarget} onLoadOlder={onLoadOlderConversation} />
         ) : null}
         {active === 'records' && recordKind === 'decision' ? <DecisionRecordsWorkspace items={decisionRecords} agents={snapshot.agents} selectedKind={decisionRecordKind} loading={decisionRecordsLoading} onSelectKind={onDecisionRecordKindChange} /> : null}
         {active === 'records' && recordKind === 'timeline' ? <TimelineRecordsWorkspace snapshot={snapshot} conversations={timelineConversations} decisions={timelineDecisions} loading={timelineLoading} onOpenRecord={onOpenTimelineRecord} /> : null}
-        {active === 'records' && recordKind === 'inspection' ? <InspectionRecordsWorkspace runs={snapshot.inspectionRuns} selectedRunId={selectedInspectionRunId} onSelectedRunIdChange={onSelectedInspectionRunIdChange} readReport={readInspectionReport} /> : null}
+        {active === 'records' && recordKind === 'inspection' ? <InspectionRecordsWorkspace runs={snapshot.inspectionRuns} selectedRunId={selectedInspectionRunId} onSelectedRunIdChange={onSelectedInspectionRunIdChange} readReport={readInspectionReport} onAskLuca={(id) => onAskLuca({ kind: 'inspection', id })} lucaActive={activeLucaContext?.kind === 'inspection' && activeLucaContext.id === selectedInspectionRunId} /> : null}
         {active === 'settings' ? <SettingsWorkspace project={snapshot.project} reducedMotion={reducedMotion} getRuntimeInfo={getRuntimeInfo} onOpenRoute={onOpenRoute} onOpenOperations={onOpenOperations} /> : null}
       </div>
     </section>

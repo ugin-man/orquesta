@@ -648,6 +648,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           conversationTargetAgentId={conversationTargetAgentId}
           conversationLoading={loadingConversation || loadingOlderMessages}
           conversationHasOlder={Boolean(conversationCursor)}
+          activeLucaContext={lucaContext}
           canResolveAttention={bridge.capabilities.attentionResolution}
           getRuntimeInfo={getRuntimeInfo}
           readInspectionReport={readInspectionReport}
@@ -668,6 +669,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           onLoadOlderConversation={() => void loadOlderConversation()}
           onOpenAttention={openAttentionItem}
           onResolveAttention={resolveAttention}
+          onAskLuca={openLuca}
           onOpenRoute={() => setOverlay({ kind: 'project-route' })}
           onOpenOperations={() => setOverlay({ kind: 'operations' })}
         />

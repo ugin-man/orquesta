@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type { FailureUiModel } from '../../src/contracts/orquesta-ui';
 import { I18nProvider } from '../../src/renderer/features/i18n/I18nProvider';
 import {
@@ -45,9 +45,9 @@ const failures: FailureUiModel[] = [
   }
 ];
 
-function Harness({ initialView = createDefaultFailureRecordView() }: { initialView?: FailureRecordView }) {
+function Harness({ initialView = createDefaultFailureRecordView(), onAskLuca }: { initialView?: FailureRecordView; onAskLuca?(failureId: string): void }) {
   const [view, setView] = useState(initialView);
-  return <I18nProvider initialLocale="en"><FailureRecordsWorkspace failures={failures} view={view} onViewChange={setView} /></I18nProvider>;
+  return <I18nProvider initialLocale="en"><FailureRecordsWorkspace failures={failures} view={view} onViewChange={setView} onAskLuca={onAskLuca} /></I18nProvider>;
 }
 
 describe('FailureRecordsWorkspace', () => {
@@ -92,5 +92,14 @@ describe('FailureRecordsWorkspace', () => {
     expect(within(detail).getByText('4 occurrences')).toBeVisible();
     expect(within(detail).getByText('Changed endpoint.')).toBeVisible();
     expect(within(detail).getByText('Retry after the source recovers.')).toBeVisible();
+  });
+
+  test('opens Luca for the selected failure', async () => {
+    const onAskLuca = vi.fn();
+    render(<Harness initialView={{ ...createDefaultFailureRecordView(), scope: 'all', selectedFailureId: 'FC1' }} onAskLuca={onAskLuca} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask Luca about this error' }));
+
+    expect(onAskLuca).toHaveBeenCalledWith('FC1');
   });
 });

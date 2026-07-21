@@ -38,12 +38,13 @@ const runs = [
   })
 ];
 
-function Subject({ records = runs, readReport }: {
+function Subject({ records = runs, readReport, onAskLuca }: {
   records?: InspectionRunUiModel[];
   readReport(runId: string): Promise<{ runId: string; markdown: string }>;
+  onAskLuca?(runId: string): void;
 }) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  return <InspectionRecordsWorkspace runs={records} selectedRunId={selectedRunId} onSelectedRunIdChange={setSelectedRunId} readReport={readReport} />;
+  return <InspectionRecordsWorkspace runs={records} selectedRunId={selectedRunId} onSelectedRunIdChange={setSelectedRunId} readReport={readReport} onAskLuca={onAskLuca} />;
 }
 
 describe('InspectionRecordsWorkspace', () => {
@@ -95,5 +96,13 @@ describe('InspectionRecordsWorkspace', () => {
     expect(screen.getByRole('button', { name: /BENCH-001/u })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByRole('heading', { name: 'Recovered' })).toBeVisible();
+  });
+
+  test('opens Luca for the selected inspection report', async () => {
+    const onAskLuca = vi.fn();
+    render(<I18nProvider initialLocale="en"><Subject readReport={vi.fn(async (runId) => ({ runId, markdown: '## Finding' }))} onAskLuca={onAskLuca} /></I18nProvider>);
+    await userEvent.click(screen.getByRole('button', { name: /BENCH-001/u }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Ask Luca about this inspection' }));
+    expect(onAskLuca).toHaveBeenCalledWith('BENCH-001');
   });
 });

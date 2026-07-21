@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AlertTriangle, CalendarClock, Check, Circle, FileOutput, GitBranch, Link2, Play, Search, Send, UserRound, X } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Check, Circle, FileOutput, GitBranch, Link2, MessageCircleQuestion, Play, Search, Send, UserRound, X } from 'lucide-react';
 import type { AgentUiModel, TaskUiModel, TaskUiState } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
 import { useI18n } from '../i18n/I18nProvider';
@@ -60,14 +60,14 @@ function TaskEvidence({ label, value, icon }: { label: string; value: boolean; i
   return <div><span>{icon}{label}</span><strong className={value ? 'is-proven' : undefined}>{value ? <Check size={12} /> : <Circle size={9} />}</strong></div>;
 }
 
-function TaskRecordDetail({ task, agents, onClose }: { task: TaskUiModel; agents: AgentUiModel[]; onClose(): void }) {
+function TaskRecordDetail({ task, agents, onClose, onAskLuca }: { task: TaskUiModel; agents: AgentUiModel[]; onClose(): void; onAskLuca?(): void }) {
   const { locale, t } = useI18n();
   const agentById = new Map(agents.map((agent) => [agent.id, agent.displayName]));
   const owner = task.ownerAgentId ? agentById.get(task.ownerAgentId) ?? task.ownerAgentId : t('unknown');
   const assigner = task.assignedByAgentId === 'user' ? (locale === 'ja' ? 'あなた' : 'You') : task.assignedByAgentId ? agentById.get(task.assignedByAgentId) ?? task.assignedByAgentId : t('unknown');
   const copy = locale === 'ja'
-    ? { close: 'タスク詳細を閉じる', progress: '進捗', ownership: '担当と経路', owner: '担当', assignedBy: '依頼元', routing: '経路', dependencies: '依存タスク', blockedBy: '停止理由', artifact: '成果物', report: '関連レポート', evidence: '実行証拠', models: 'モデル経路', checks: '完了条件', handoff: '引き渡し', dispatch: '委譲受付', turn: '実行開始', observed: '進捗観測', recommended: '推奨', requested: '要求', actual: '実際', started: '開始', updated: '更新' }
-    : { close: 'Close task detail', progress: 'Progress', ownership: 'Ownership and route', owner: 'Owner', assignedBy: 'Assigned by', routing: 'Routing', dependencies: 'Dependencies', blockedBy: 'Blocked by', artifact: 'Artifact', report: 'Related report', evidence: 'Execution evidence', models: 'Model routing', checks: 'Acceptance checks', handoff: 'Handoff sent', dispatch: 'Dispatch accepted', turn: 'Turn started', observed: 'Progress observed', recommended: 'Recommended', requested: 'Requested', actual: 'Actual', started: 'Started', updated: 'Updated' };
+    ? { close: 'タスク詳細を閉じる', askLuca: 'このタスクをLucaに聞く', progress: '進捗', ownership: '担当と経路', owner: '担当', assignedBy: '依頼元', routing: '経路', dependencies: '依存タスク', blockedBy: '停止理由', artifact: '成果物', report: '関連レポート', evidence: '実行証拠', models: 'モデル経路', checks: '完了条件', handoff: '引き渡し', dispatch: '委譲受付', turn: '実行開始', observed: '進捗観測', recommended: '推奨', requested: '要求', actual: '実際', started: '開始', updated: '更新' }
+    : { close: 'Close task detail', askLuca: 'Ask Luca about this task', progress: 'Progress', ownership: 'Ownership and route', owner: 'Owner', assignedBy: 'Assigned by', routing: 'Routing', dependencies: 'Dependencies', blockedBy: 'Blocked by', artifact: 'Artifact', report: 'Related report', evidence: 'Execution evidence', models: 'Model routing', checks: 'Acceptance checks', handoff: 'Handoff sent', dispatch: 'Dispatch accepted', turn: 'Turn started', observed: 'Progress observed', recommended: 'Recommended', requested: 'Requested', actual: 'Actual', started: 'Started', updated: 'Updated' };
   return (
     <aside className="task-record-detail" role="dialog" aria-modal="true" aria-label={`Task ${task.id} detail`}>
       <header>
@@ -76,6 +76,7 @@ function TaskRecordDetail({ task, agents, onClose }: { task: TaskUiModel; agents
         <h2>{task.title}</h2>
       </header>
       <div className="task-record-detail__scroll">
+        {onAskLuca ? <button type="button" className="luca-detail-trigger" onClick={onAskLuca}><MessageCircleQuestion size={15} />{copy.askLuca}</button> : null}
         <section className="task-record-progress">
           <h3>{copy.progress}</h3>
           <div><span>{task.progressSummary ?? stateCopy[locale][task.state]}</span><strong>{task.progressPercent == null ? '—' : `${task.progressPercent}%`}</strong></div>
@@ -104,11 +105,13 @@ function TaskRecordDetail({ task, agents, onClose }: { task: TaskUiModel; agents
   );
 }
 
-export function TaskRecordsWorkspace({ tasks, agents, view, onViewChange }: {
+export function TaskRecordsWorkspace({ tasks, agents, view, onViewChange, onAskLuca, lucaActive = false }: {
   tasks: TaskUiModel[];
   agents: AgentUiModel[];
   view: TaskRecordView;
   onViewChange(view: TaskRecordView): void;
+  onAskLuca?(taskId: string): void;
+  lucaActive?: boolean;
 }) {
   const { locale } = useI18n();
   const copy = locale === 'ja'
@@ -182,7 +185,7 @@ export function TaskRecordsWorkspace({ tasks, agents, view, onViewChange }: {
           </div>
         </section>
       </div>
-      {selected ? <div className="task-record-modal-layer" data-testid="task-record-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) update({ selectedTaskId: null }); }}><TaskRecordDetail task={selected} agents={agents} onClose={() => update({ selectedTaskId: null })} /></div> : null}
+      {selected ? <div className={`task-record-modal-layer${lucaActive ? ' has-luca' : ''}`} data-testid="task-record-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) update({ selectedTaskId: null }); }}><TaskRecordDetail task={selected} agents={agents} onClose={() => update({ selectedTaskId: null })} onAskLuca={onAskLuca ? () => onAskLuca(selected.id) : undefined} /></div> : null}
     </div>
   );
 }

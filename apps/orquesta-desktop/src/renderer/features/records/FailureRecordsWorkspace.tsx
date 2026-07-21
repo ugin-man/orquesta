@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clock3, Repeat2, Search, Wrench, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock3, MessageCircleQuestion, Repeat2, Search, Wrench, X } from 'lucide-react';
 import { useEffect } from 'react';
 import type { FailureUiModel, FailureUiSeverity } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
@@ -26,11 +26,11 @@ function time(value: string | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function FailureDetail({ failure, onClose }: { failure: FailureUiModel; onClose(): void }) {
+function FailureDetail({ failure, onClose, onAskLuca }: { failure: FailureUiModel; onClose(): void; onAskLuca?(): void }) {
   const { locale } = useI18n();
   const copy = locale === 'ja'
-    ? { close: 'エラー詳細を閉じる', occurrences: '発生', affected: '影響範囲', tasks: 'タスク', agents: 'エージェント', first: '初回', last: '最終', owner: '推定担当', cause: '原因', repair: '修復状況', fix: '修復内容・次の対応', evidence: '証拠', prevention: '再発防止', history: '発生履歴', attempted: '試した対応', outcome: '結果', candidate: '候補', incident: '受理済み', cluster: '反復cluster' }
-    : { close: 'Close error detail', occurrences: 'occurrences', affected: 'Affected work', tasks: 'Tasks', agents: 'Agents', first: 'First', last: 'Last', owner: 'Suspected owner', cause: 'Cause', repair: 'Repair state', fix: 'Repair or next action', evidence: 'Evidence', prevention: 'Prevention', history: 'Occurrence history', attempted: 'Attempted fixes', outcome: 'Outcome', candidate: 'Candidate', incident: 'Accepted incident', cluster: 'Repeated cluster' };
+    ? { close: 'エラー詳細を閉じる', askLuca: 'このエラーをLucaに聞く', occurrences: '発生', affected: '影響範囲', tasks: 'タスク', agents: 'エージェント', first: '初回', last: '最終', owner: '推定担当', cause: '原因', repair: '修復状況', fix: '修復内容・次の対応', evidence: '証拠', prevention: '再発防止', history: '発生履歴', attempted: '試した対応', outcome: '結果', candidate: '候補', incident: '受理済み', cluster: '反復cluster' }
+    : { close: 'Close error detail', askLuca: 'Ask Luca about this error', occurrences: 'occurrences', affected: 'Affected work', tasks: 'Tasks', agents: 'Agents', first: 'First', last: 'Last', owner: 'Suspected owner', cause: 'Cause', repair: 'Repair state', fix: 'Repair or next action', evidence: 'Evidence', prevention: 'Prevention', history: 'Occurrence history', attempted: 'Attempted fixes', outcome: 'Outcome', candidate: 'Candidate', incident: 'Accepted incident', cluster: 'Repeated cluster' };
   const sourceLabel = copy[failure.source];
   return (
     <aside className="failure-record-detail" role="dialog" aria-modal="true" aria-label={`Failure ${failure.id} detail`}>
@@ -41,6 +41,7 @@ function FailureDetail({ failure, onClose }: { failure: FailureUiModel; onClose(
         <p>{failure.failureClass}</p>
       </header>
       <div className="failure-record-detail__scroll">
+        {onAskLuca ? <button type="button" className="luca-detail-trigger" onClick={onAskLuca}><MessageCircleQuestion size={15} />{copy.askLuca}</button> : null}
         <section className="failure-detail-summary">
           <strong><Repeat2 size={15} />{failure.occurrenceCount} {copy.occurrences}</strong>
           <p>{failure.summary}</p>
@@ -72,10 +73,12 @@ function FailureDetail({ failure, onClose }: { failure: FailureUiModel; onClose(
   );
 }
 
-export function FailureRecordsWorkspace({ failures, view, onViewChange }: {
+export function FailureRecordsWorkspace({ failures, view, onViewChange, onAskLuca, lucaActive = false }: {
   failures: FailureUiModel[];
   view: FailureRecordView;
   onViewChange(view: FailureRecordView): void;
+  onAskLuca?(failureId: string): void;
+  lucaActive?: boolean;
 }) {
   const { locale } = useI18n();
   const copy = locale === 'ja'
@@ -145,7 +148,7 @@ export function FailureRecordsWorkspace({ failures, view, onViewChange }: {
           </div>
         </section>
       </div>
-      {selected ? <div className="failure-record-modal-layer" data-testid="failure-record-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) update({ selectedFailureId: null }); }}><FailureDetail failure={selected} onClose={() => update({ selectedFailureId: null })} /></div> : null}
+      {selected ? <div className={`failure-record-modal-layer${lucaActive ? ' has-luca' : ''}`} data-testid="failure-record-modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) update({ selectedFailureId: null }); }}><FailureDetail failure={selected} onClose={() => update({ selectedFailureId: null })} onAskLuca={onAskLuca ? () => onAskLuca(selected.id) : undefined} /></div> : null}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { agent, task } from '../../src/fixtures/helpers';
 import {
   createDefaultTaskRecordView,
@@ -22,11 +22,11 @@ const tasks = [
   task({ id: 'T4', title: 'Failed import', state: 'failed', ownerAgentId: 'analyst', progressSummary: 'Parser rejected the input.', updatedAt: '2026-07-16T09:00:00Z' })
 ];
 
-function Harness({ initialView = createDefaultTaskRecordView() }: { initialView?: TaskRecordView }) {
+function Harness({ initialView = createDefaultTaskRecordView(), onAskLuca }: { initialView?: TaskRecordView; onAskLuca?(taskId: string): void }) {
   const [view, setView] = useState(initialView);
   return (
     <I18nProvider initialLocale="en">
-      <TaskRecordsWorkspace tasks={tasks} agents={agents} view={view} onViewChange={setView} />
+      <TaskRecordsWorkspace tasks={tasks} agents={agents} view={view} onViewChange={setView} onAskLuca={onAskLuca} />
     </I18nProvider>
   );
 }
@@ -77,5 +77,15 @@ describe('TaskRecordsWorkspace', () => {
 
     await user.click(screen.getByTestId('task-record-modal-backdrop'));
     expect(screen.queryByRole('dialog', { name: 'Task T2 detail' })).not.toBeInTheDocument();
+  });
+
+  test('opens Luca for the selected task without closing the detail', async () => {
+    const onAskLuca = vi.fn();
+    render(<Harness initialView={{ ...createDefaultTaskRecordView(), selectedTaskId: 'T1' }} onAskLuca={onAskLuca} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ask Luca about this task' }));
+
+    expect(onAskLuca).toHaveBeenCalledWith('T1');
+    expect(screen.getByRole('dialog', { name: 'Task T1 detail' })).toBeVisible();
   });
 });
