@@ -1,5 +1,14 @@
 import type { AttentionUiItem, InspectionKind, InspectionTargetUi, OrquestaUiSnapshot, ProjectStatus, RuntimeUiEvent } from './orquesta-ui';
 import type { AskLucaInput, LucaAnswerPayload } from './luca';
+export type {
+  SetupAccountState,
+  SetupDraft,
+  SetupLoginStartResult,
+  SetupProgressEvent,
+  SetupSourceDraft,
+  SetupStartInput,
+  SetupStartResult
+} from './setup';
 
 export type UiActionResult =
   | { status: 'accepted'; correlationId: string }

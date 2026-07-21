@@ -2,6 +2,17 @@ import type { ComposerAttachment, ConversationPage, ConversationQuery, Inspectio
 import type { AskLucaInput } from '../../src/contracts/luca';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
+import type { SetupAccountState, SetupDraft, SetupLoginStartResult, SetupProgressEvent, SetupSourceDraft, SetupStartResult } from '../../src/contracts/setup';
+
+export interface DesktopSetupApi {
+  readSetupDraft(): Promise<SetupDraft | null>;
+  saveSetupDraft(draft: SetupDraft): Promise<void>;
+  chooseSetupSource(kind: SetupSourceDraft['kind']): Promise<SetupSourceDraft | null>;
+  readSetupAccount(): Promise<SetupAccountState>;
+  startSetupLogin(): Promise<SetupLoginStartResult>;
+  startSetup(draft: SetupDraft): Promise<SetupStartResult>;
+  subscribeSetup(listener: (progress: SetupProgressEvent) => void): () => void;
+}
 
 export type CoreStatus = 'starting' | 'ready' | 'stopped';
 
