@@ -1,0 +1,43 @@
+.luca-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(170, 163, 152, .76);
+  border-radius: 16px;
+  background: rgba(250, 248, 242, .97);
+  box-shadow: 0 20px 54px rgba(36, 31, 24, .18);
+  color: var(--ink);
+  animation: luca-panel-in var(--motion-open) var(--motion-ease-out) both;
+}
+.luca-panel-host { position: fixed; z-index: 94; top: 92px; right: clamp(24px, 2.4vw, 44px); bottom: 126px; width: min(370px, calc(100vw - 48px)); display: grid; pointer-events: none; }
+.luca-panel-host > .luca-panel { pointer-events: auto; }
+.luca-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 15px 12px; border-bottom: 1px solid var(--line); }
+.luca-panel__header div { display: grid; gap: 2px; }
+.luca-panel__header span { font-size: 16px; font-weight: 760; letter-spacing: .02em; }
+.luca-panel__header small, .luca-panel__references small, .luca-panel__answer section > small { color: var(--ink-muted); font-size: 10px; font-weight: 650; }
+.luca-panel__close { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-strong); }
+.luca-panel__body, .luca-panel__answer, .luca-panel__error { min-height: 0; overflow: auto; padding: 15px; }
+.luca-panel__intro { margin: 0 0 13px; color: var(--ink-muted); font-size: 12px; line-height: 1.6; }
+.luca-panel__questions { display: grid; gap: 8px; }
+.luca-panel__questions > button, .luca-panel__custom > button, .luca-panel__back, .luca-panel__error button { min-height: 42px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper-strong); text-align: left; font-size: 12px; font-weight: 620; transition: border-color 130ms ease, transform 130ms ease, background 130ms ease; }
+.luca-panel__questions > button:hover:not(:disabled), .luca-panel__custom > button:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--line-strong); background: #fff; }
+.luca-panel__custom form { display: grid; grid-template-columns: 34px minmax(0, 1fr) 38px; gap: 7px; align-items: stretch; }
+.luca-panel__custom textarea { min-height: 78px; max-height: 160px; resize: vertical; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--paper-strong); font-size: 12px; line-height: 1.5; }
+.luca-panel__custom form button { display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-strong); }
+.luca-panel__custom form button[type='submit'] { color: white; border-color: #262522; background: #262522; }
+.luca-panel__pending { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 10px 11px; border: 1px solid rgba(85, 119, 149, .28); border-radius: 10px; background: rgba(85, 119, 149, .07); color: #3e5d78; font-size: 11px; }
+.luca-panel__pending i { width: 8px; height: 8px; border: 2px solid rgba(85, 119, 149, .28); border-top-color: var(--info); border-radius: 50%; animation: luca-spin .8s linear infinite; }
+.luca-panel__answer { display: grid; align-content: start; gap: 14px; }
+.luca-panel__answer > p { margin: 0; font-size: 14px; line-height: 1.75; }
+.luca-panel__answer ul { margin: 0; padding-left: 18px; color: #37342f; font-size: 12px; line-height: 1.65; }
+.luca-panel__answer section { display: grid; gap: 7px; padding-top: 11px; border-top: 1px solid var(--line); }
+.luca-panel__references div { display: flex; flex-wrap: wrap; gap: 6px; }
+.luca-panel__references span { padding: 4px 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper-strong); font-size: 10px; }
+.luca-panel__back { display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-top: 3px; text-align: center; }
+.luca-panel__error { display: grid; align-content: start; gap: 12px; }
+.luca-panel__error p { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.6; }
+@keyframes luca-panel-in { from { opacity: 0; transform: translateX(10px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes luca-spin { to { rotate: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .luca-panel { animation: none; } .luca-panel__pending i { animation: none; } }

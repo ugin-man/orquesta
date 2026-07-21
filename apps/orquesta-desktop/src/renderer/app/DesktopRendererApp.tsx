@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { FolderOpen } from 'lucide-react';
 import type { AgentProposal, ComposerAttachment, ConversationMessage, OrquestaRendererBridge, ProjectSummary, UiActionResult } from '../../contracts/bridge';
+import type { AskLucaInput, LucaContextRef } from '../../contracts/luca';
 import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent, UserActionKind } from '../../contracts/orquesta-ui';
 import { DesktopRepositoryBridge } from '../../bridges/desktop-repository-bridge';
 import { MockOrquestaBridge } from '../../bridges/mock-bridge';
@@ -14,6 +15,7 @@ import { TaskDetail } from '../features/details/TaskDetail';
 import { I18nProvider, useI18n } from '../features/i18n/I18nProvider';
 import type { Locale } from '../features/i18n/messages';
 import { MapViewport } from '../features/map/MapViewport';
+import { LucaPanel, type LucaPanelState } from '../features/luca/LucaPanel';
 import { WorkspaceDock, type WorkspaceId } from '../features/navigation/WorkspaceDock';
 import { WorkspaceSurface, type RecordKind, type UserTaskKind } from '../features/navigation/WorkspaceSurface';
 import { createDefaultTaskRecordView, type TaskRecordView } from '../features/records/TaskRecordsWorkspace';
@@ -84,7 +86,7 @@ function useReducedMotion(): boolean {
 }
 
 function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge; onStartupReady?: () => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const reducedMotion = useReducedMotion();
   const [snapshot, setSnapshot] = useState<OrquestaUiSnapshot | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
@@ -117,6 +119,9 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [proposals, setProposals] = useState<AgentProposal[]>([]);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [lucaContext, setLucaContext] = useState<LucaContextRef | null>(null);
+  const [lucaState, setLucaState] = useState<LucaPanelState>({ kind: 'idle' });
+  const [lucaMessages, setLucaMessages] = useState<ConversationMessage[]>([]);
   const draftProjectId = useRef<string | null>(null);
   const startupReadyReported = useRef(false);
   const conversationRequest = useRef(0);
@@ -124,6 +129,9 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const timelineRequest = useRef(0);
   const conversationTargetAgentIdRef = useRef('orchestrator');
   const availableAgentIdsRef = useRef<Set<string>>(new Set());
+  const currentProjectIdRef = useRef<string | null>(null);
+  const lucaPendingProjectIdRef = useRef<string | null>(null);
+  const lucaPendingThreadIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -131,6 +139,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
       .then((next) => {
         if (!alive) return;
         availableAgentIdsRef.current = new Set(next.agents.map((agent) => agent.id));
+        currentProjectIdRef.current = next.project.id;
         setSnapshot(next);
         setToasts(next.recentEvents);
       })
@@ -138,6 +147,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     const unsubscribe = bridge.subscribe((event) => {
       if (event.type === 'snapshot_changed') {
         availableAgentIdsRef.current = new Set(event.snapshot.agents.map((agent) => agent.id));
+        currentProjectIdRef.current = event.snapshot.project.id;
         const fallbackAgentId = event.snapshot.agents.find((agent) => agent.id === 'orchestrator')?.id
           ?? event.snapshot.agents[0]?.id
           ?? 'orchestrator';
@@ -156,6 +166,35 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
         }
       } else if (event.type === 'toast') {
         setToasts((current) => [...current, event.toast].slice(-6));
+      } else if (event.notification.targetAgentId === 'orquesta-admin'
+        && lucaPendingProjectIdRef.current === currentProjectIdRef.current) {
+        const notification = event.notification;
+        if (notification.kind === 'turn_started') {
+          lucaPendingThreadIdRef.current = notification.threadId;
+        } else if (!lucaPendingThreadIdRef.current || lucaPendingThreadIdRef.current === notification.threadId) {
+          lucaPendingThreadIdRef.current = notification.threadId;
+          if (notification.kind === 'turn_failed') {
+            setLucaState({ kind: 'error', message: notification.text ?? 'Luca could not answer this question.', retryable: true });
+          } else if (notification.kind === 'agent_message' || notification.kind === 'turn_completed') {
+            void bridge.listConversation({ targetAgentId: 'orquesta-admin', cursor: null, limit: 100 })
+              .then((page) => {
+                if (lucaPendingProjectIdRef.current !== currentProjectIdRef.current) return;
+                setLucaMessages(page.items);
+                const latest = [...page.items].reverse().find((message) => message.role === 'agent');
+                if (!latest && notification.kind !== 'agent_message') return;
+                setLucaState({
+                  kind: 'answer',
+                  payload: latest?.lucaAnswer ?? {
+                    answer: latest?.text ?? notification.text ?? 'Luca returned an empty answer.',
+                    points: [], uncertainties: [], references: []
+                  }
+                });
+              })
+              .catch((error: unknown) => setLucaState({
+                kind: 'error', message: error instanceof Error ? error.message : String(error), retryable: true
+              }));
+          }
+        }
       }
     });
     return () => {
@@ -190,6 +229,11 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     setOverlay(null);
     setAttachments([]);
     setDirectSendFailure(null);
+    setLucaContext(null);
+    setLucaState({ kind: 'idle' });
+    setLucaMessages([]);
+    lucaPendingProjectIdRef.current = null;
+    lucaPendingThreadIdRef.current = null;
     setMessages([]);
     conversationTargetAgentIdRef.current = 'orchestrator';
     setConversationTargetAgentId('orchestrator');
@@ -214,6 +258,28 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   }, []);
   const getRuntimeInfo = useCallback((input: { probe: boolean }) => bridge.getRuntimeInfo(input), [bridge]);
   const readInspectionReport = useCallback((runId: string) => bridge.readInspectionReport(runId), [bridge]);
+  const openLuca = useCallback((context: LucaContextRef) => {
+    setLucaContext((current) => {
+      const same = current?.kind === context.kind
+        && (current.kind === 'home' || (context.kind !== 'home' && current.id === context.id));
+      if (!same) setLucaState({ kind: 'idle' });
+      return context;
+    });
+  }, []);
+  const askLuca = useCallback(async (input: AskLucaInput) => {
+    if (!currentProjectIdRef.current) return;
+    setLucaState({ kind: 'pending', questionId: input.questionId });
+    lucaPendingProjectIdRef.current = currentProjectIdRef.current;
+    lucaPendingThreadIdRef.current = null;
+    try {
+      const result = await bridge.askLuca(input);
+      if (result.status !== 'accepted') {
+        setLucaState({ kind: 'error', message: result.reason, retryable: result.retryable });
+      }
+    } catch (error) {
+      setLucaState({ kind: 'error', message: error instanceof Error ? error.message : String(error), retryable: true });
+    }
+  }, [bridge]);
   const openProjects = async () => {
     try {
       setProjects(await bridge.listProjects());
@@ -656,6 +722,19 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
         <ToastStack toasts={toasts} onDismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} />
         <WorkspaceDock active={activeWorkspace} counts={workspaceCounts} labels={workspaceLabels} onSelect={selectWorkspace} />
       </div>
+
+      {lucaContext ? (
+        <div className={`luca-panel-host luca-panel-host--${activeWorkspace}`}>
+          <LucaPanel
+            context={lucaContext}
+            locale={locale}
+            state={lucaState}
+            onAsk={askLuca}
+            onReset={() => setLucaState({ kind: 'idle' })}
+            onClose={() => { setLucaContext(null); setLucaState({ kind: 'idle' }); }}
+          />
+        </div>
+      ) : null}
 
       {selectedAgent ? <AgentDetail agent={selectedAgent} task={selectedAgentTask} onOpenTask={openTaskRecord} onClose={clearMapSelection} /> : null}
       {selectedTask ? <TaskDetail task={selectedTask} agents={snapshot.agents} onClose={clearMapSelection} /> : null}
