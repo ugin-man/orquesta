@@ -39,7 +39,10 @@ export function LucaPanel({ context, locale, state, onAsk, onClose, onReset }: {
       className="luca-panel"
       aria-label="Luca"
       onKeyDown={(event) => {
-        if (event.key === 'Escape' && panelRef.current?.contains(document.activeElement)) onClose();
+        if (event.key === 'Escape' && panelRef.current?.contains(document.activeElement)) {
+          event.stopPropagation();
+          onClose();
+        }
       }}
     >
       <header className="luca-panel__header">

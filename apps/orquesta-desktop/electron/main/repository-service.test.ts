@@ -87,7 +87,10 @@ describe('RepositoryService', () => {
     await service.initialize();
     await expect(service.getSnapshot()).resolves.toMatchObject({
       project: { id: 'no-project' },
-      v4Operations: { available: false, revision: 0 }
+      v4Operations: { available: false, revision: 0 },
+      failures: [],
+      inspectionTemplates: expect.any(Array),
+      inspectionRuns: []
     });
 
     await expect(service.openProject()).resolves.toMatchObject({ status: 'rejected' });

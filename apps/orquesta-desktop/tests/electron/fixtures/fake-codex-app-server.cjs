@@ -3,6 +3,7 @@ const readline = require('node:readline');
 
 let turnNumber = 0;
 let inspectionThreadNumber = 0;
+let lucaThreadNumber = 0;
 const turnsByThread = new Map([['thread-e2e', []]]);
 const profilesByThread = new Map();
 const pendingApprovals = new Map();
@@ -53,6 +54,17 @@ function inspectionResponse(userText) {
   });
 }
 
+function lucaResponse(userText) {
+  let request = null;
+  try { request = JSON.parse(userText)?.request ?? null; } catch {}
+  return JSON.stringify({
+    answer: `Luca explained ${request?.displayQuestion ?? 'the saved project records'}.`,
+    points: ['The answer used only the bounded context supplied by Orquesta.'],
+    uncertainties: [],
+    references: []
+  });
+}
+
 lines.on('line', (line) => {
   let message;
   try { message = JSON.parse(line); } catch { return; }
@@ -79,8 +91,9 @@ lines.on('line', (line) => {
     return;
   }
   if (message.method === 'thread/start') {
-    const inspection = message.params?.sandbox === 'read-only';
-    const threadId = inspection ? `thread-inspection-${++inspectionThreadNumber}` : 'thread-e2e';
+    const luca = String(message.params?.developerInstructions ?? '').includes('You are Luca');
+    const inspection = message.params?.sandbox === 'read-only' && !luca;
+    const threadId = luca ? `thread-luca-${++lucaThreadNumber}` : inspection ? `thread-inspection-${++inspectionThreadNumber}` : 'thread-e2e';
     const profile = {
       approvalPolicy: message.params?.approvalPolicy ?? 'on-request',
       cwd: message.params?.cwd ?? null,
@@ -128,7 +141,8 @@ lines.on('line', (line) => {
 
     turnNumber += 1;
     const inspection = threadId.startsWith('thread-inspection-');
-    const turnId = inspection ? `turn-inspection-${turnNumber}` : `turn-e2e-${turnNumber}`;
+    const luca = threadId.startsWith('thread-luca-');
+    const turnId = inspection ? `turn-inspection-${turnNumber}` : luca ? `turn-luca-${turnNumber}` : `turn-e2e-${turnNumber}`;
     const startedAt = Date.now() / 1_000;
     const turn = {
       id: turnId,
@@ -142,6 +156,8 @@ lines.on('line', (line) => {
       send({ method: 'turn/started', params: { threadId, turn: { id: turnId, status: 'inProgress' } } });
       if (inspection) {
         if (!userText.includes('HOLD_FOR_CANCEL')) completeTurn(threadId, turn, inspectionResponse(userText));
+      } else if (luca) {
+        completeTurn(threadId, turn, lucaResponse(userText));
       } else if (userText.includes('REQUEST_APPROVAL')) {
         const approvalId = `approval-e2e-${turnNumber}`;
         pendingApprovals.set(approvalId, { threadId, turn });

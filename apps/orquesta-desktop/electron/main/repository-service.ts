@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
-import { emptyV4OperationsSnapshot, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import { emptyV4OperationsSnapshot, INSPECTION_TEMPLATE_DEFINITIONS, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import { ProjectRegistry, projectIdForRoot } from './project-registry';
 
 export interface RepositoryProjectionHost {
@@ -45,9 +45,12 @@ function emptySnapshot(): OrquestaUiSnapshot {
     agents: [],
     tasks: [],
     attention: [],
+    failures: [],
     phases: [],
     recentEvents: [],
-    v4Operations: emptyV4OperationsSnapshot()
+    v4Operations: emptyV4OperationsSnapshot(),
+    inspectionTemplates: INSPECTION_TEMPLATE_DEFINITIONS.map((template) => ({ ...template, activeRunId: null, lastReportRunId: null })),
+    inspectionRuns: []
   };
 }
 

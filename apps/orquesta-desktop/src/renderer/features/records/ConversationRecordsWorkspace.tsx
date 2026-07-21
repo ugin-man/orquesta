@@ -33,10 +33,15 @@ export function ConversationRecordsWorkspace({ agents, targetAgentId, messages, 
     channels: 'Conversation channels', search: 'Search conversations', coordinator: 'Coordinator', helper: 'User helper', routes: 'Agent routes', noMatch: 'No matching conversations.',
     logicalTarget: 'Logical target', actualDelivery: 'Actual delivery', coordinatorThread: 'Coordinator Codex thread', lucaThread: 'Luca Codex thread', route: 'Route', direct: 'Direct coordinator message', readOnly: 'Read-only project explanation', reading: 'Reading history…'
   };
-  const conversationAgents = useMemo<AgentUiModel[]>(() => agents.some((agent) => agent.id === LUCA_AGENT_ID) ? agents : [...agents, {
+  const conversationAgents = useMemo<AgentUiModel[]>(() => {
+    const lucaRole = locale === 'ja' ? 'プロジェクト説明係' : 'Project explainer';
+    const projected = agents.map((agent) => agent.id === LUCA_AGENT_ID ? {
+      ...agent, displayName: LUCA_DISPLAY_NAME, role: lucaRole, roleSummary: LUCA_ROLE_SUMMARY
+    } : agent);
+    return projected.some((agent) => agent.id === LUCA_AGENT_ID) ? projected : [...projected, {
     id: LUCA_AGENT_ID,
     displayName: LUCA_DISPLAY_NAME,
-    role: locale === 'ja' ? 'プロジェクト説明係' : 'Project explainer',
+    role: lucaRole,
     roleSummary: LUCA_ROLE_SUMMARY,
     iconKey: 'help-circle',
     status: 'standby',
@@ -59,7 +64,8 @@ export function ConversationRecordsWorkspace({ agents, targetAgentId, messages, 
     recentEvidence: [],
     history: [],
     forbiddenActions: ['Do not mutate project state.']
-  }], [agents, locale]);
+    }];
+  }, [agents, locale]);
   const coordinator = conversationAgents.find((agent) => agent.id === 'orchestrator') ?? conversationAgents.find((agent) => agent.id !== LUCA_AGENT_ID) ?? null;
   const luca = conversationAgents.find((agent) => agent.id === LUCA_AGENT_ID) ?? null;
   const routes = useMemo(() => conversationAgents.filter((agent) => agent.id !== coordinator?.id && agent.id !== LUCA_AGENT_ID), [conversationAgents, coordinator?.id]);

@@ -201,7 +201,7 @@ export function InspectionRecordsWorkspace({ runs, selectedRunId, onSelectedRunI
               <h1>{selectedRun.displayName}</h1>
             </header>
             <div className="inspection-record-detail__scroll">
-              {onAskLuca ? <button type="button" className="luca-detail-trigger" onClick={() => onAskLuca(selectedRun.runId)}><MessageCircleQuestion size={15} />{copy.askLuca}</button> : null}
+              {onAskLuca ? <button type="button" className="luca-detail-trigger" disabled={report?.state === 'loading'} onClick={() => onAskLuca(selectedRun.runId)}><MessageCircleQuestion size={15} />{copy.askLuca}</button> : null}
               {report?.state === 'loading' ? <p className="inspection-report-state">{copy.loading}</p> : null}
               {report?.state === 'error' ? (
                 <div className="inspection-report-state inspection-report-state--error">

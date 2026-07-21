@@ -37,7 +37,7 @@ async function writeCanonicalState(root: string, includeReviewer: boolean): Prom
   ]);
 }
 
-test('loads a real .orquesta repository read-only and follows canonical file changes', async () => {
+test('loads a real .orquesta repository read-only and preserves the governed organization across raw agent changes', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-live-'));
   const userData = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-user-'));
   await writeCanonicalState(root, false);
@@ -56,8 +56,9 @@ test('loads a real .orquesta repository read-only and follows canonical file cha
     await expect(window.getByText('Watching state files', { exact: true })).toBeVisible();
     await expect(window.getByText('Demo data')).toHaveCount(0);
     await expect(window.getByLabel('Orquesta Map')).toBeVisible();
-    await expect(window.locator('[data-node-kind="agent"]')).toHaveCount(2);
+    await expect(window.locator('[data-node-kind="agent"]')).toHaveCount(4);
     await expect(window.getByRole('button', { name: 'Builder, Working' })).toBeVisible();
+    await expect(window.getByRole('button', { name: 'Luca, Unknown' })).toBeVisible();
     await expect(window.getByText('Approve integration result?')).toBeVisible();
 
     const agentsDocument = JSON.parse(await readFile(agentsPath, 'utf8')) as { agents: unknown[] };
@@ -66,8 +67,9 @@ test('loads a real .orquesta repository read-only and follows canonical file cha
       assigned_by_agent_id: 'orchestrator', mission: 'Review the result.'
     });
     await writeFile(agentsPath, `${JSON.stringify(agentsDocument, null, 2)}\n`, 'utf8');
-    await expect(window.locator('[data-node-kind="agent"]')).toHaveCount(3);
-    await expect(window.getByRole('button', { name: 'Reviewer, Idle' })).toBeVisible();
+    await window.getByRole('button', { name: 'Home' }).click();
+    await expect(window.locator('[data-node-kind="agent"]')).toHaveCount(4);
+    await expect(window.getByRole('button', { name: 'Reviewer, Idle' })).toHaveCount(0);
 
     expect(await readFile(tasksPath, 'utf8')).toBe(originalTasks);
     expect((await readFile(agentsPath, 'utf8')).includes('Reviewer')).toBe(true);

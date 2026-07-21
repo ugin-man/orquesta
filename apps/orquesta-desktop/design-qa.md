@@ -93,3 +93,34 @@
 8. 敵対監査の指摘に証拠、重大度、改善コストがある。
 9. Team ManagementとMap以外の通常Agent数が増えていない。
 10. 通常チャット送信が従来どおり動く。
+
+# Luca 説明係 Desktop QA
+
+確認日: 2026-07-22
+
+## 判定
+
+- Luca専用E2E: 1件合格
+- Desktop全体スモーク: 8件合格
+- 全unit test: 331件合格
+- Luca関連の重点test: 102件合格
+- Desktop build: 合格
+
+## 確認したこと
+
+- Homeには金魚を作る前の仮ボタンを置き、Task、Error、Inspectionの詳細からもLucaを開ける。
+- 1366×768と1440×900で各入口を開き、詳細画面、Composer、右側railと重ならない。
+- Homeでは「自由に聞く」を先頭にし、Task、Error、Inspectionでは末尾に置く。
+- 質問ボタンはアプリ内の固定catalogからpromptを組み立て、選択中の対象と必要最小限のproject contextだけを渡す。
+- Lucaは通常の統括者threadと分けた専用threadを使い、同じprojectでは再利用する。
+- 要求profileは `gpt-5.6-luna`、推論 `high`、sandbox `read-only`、approval `never`。
+- Lucaへの質問前後で `tasks.json` が一字も変わらないことを確認した。
+- Lucaとの会話は記録の会話画面から独立した送信先として確認できる。
+
+## 証拠の境界
+
+requested/applied profileは、要求したmodelと実際に適用した設定の証拠であり、実際に応答したmodel identityの証明とは分けて扱う。E2Eのfake serverでは観測値を別欄に記録した。本番ではApp Serverがactual model evidenceを返した場合だけactualとして表示する。
+
+## 今回やらないこと
+
+Homeで泳ぐ金魚のLucaはユーザー指定どおり後回し。今回は仮ボタンと、説明専用の質問経路、履歴、read-only境界までを実装した。
