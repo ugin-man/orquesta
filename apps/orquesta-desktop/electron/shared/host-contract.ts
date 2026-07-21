@@ -24,6 +24,8 @@ export interface DesktopHostInfo {
 export interface DesktopHostApi {
   getHostInfo(): Promise<DesktopHostInfo>;
   pingCore(correlationId: string): Promise<{ correlationId: string }>;
+  readSetupAccount(): Promise<SetupAccountState>;
+  startSetupLogin(): Promise<SetupLoginStartResult>;
   getRepositorySnapshot(): Promise<OrquestaUiSnapshot>;
   listRepositories(): Promise<ProjectSummary[]>;
   switchRepository(projectId: string): Promise<UiActionResult>;
@@ -46,6 +48,8 @@ export interface DesktopHostApi {
 export const DESKTOP_IPC = {
   getHostInfo: 'orquesta.desktop.get-host-info',
   pingCore: 'orquesta.desktop.ping-core',
+  readSetupAccount: 'orquesta.desktop.setup.account.read',
+  startSetupLogin: 'orquesta.desktop.setup.account.login-start',
   getRepositorySnapshot: 'orquesta.desktop.repository.get-snapshot',
   listRepositories: 'orquesta.desktop.repository.list',
   switchRepository: 'orquesta.desktop.repository.switch',

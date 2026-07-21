@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ConversationPage, InspectionReportUi, RuntimeInfoUi, StartInspectionUiInput } from '../../src/contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import type { SetupAccountState, SetupLoginStartResult } from '../../src/contracts/setup';
 import type { CoreEvent, CoreRequest, RuntimeModelEvidence, RuntimeNotification } from '../core/protocol';
 import { isCoreEvent } from '../core/protocol';
 
@@ -46,6 +47,8 @@ export class CoreHost {
   readonly #pendingDispatches = new Map<string, PendingRuntime<{ correlationId: string; threadId: string; turnId: string; modelEvidence: RuntimeModelEvidence }>>();
   readonly #pendingConversations = new Map<string, PendingRuntime<ConversationPage>>();
   readonly #pendingRuntimeInfo = new Map<string, PendingRuntime<RuntimeInfoUi>>();
+  readonly #pendingSetupAccounts = new Map<string, PendingRuntime<SetupAccountState>>();
+  readonly #pendingSetupLogins = new Map<string, PendingRuntime<SetupLoginStartResult>>();
   readonly #pendingRepositorySnapshots = new Map<string, PendingRuntime<OrquestaUiSnapshot>>();
   readonly #pendingApprovalResponses = new Map<string, PendingRuntime<{ correlationId: string; attentionId: string; decision: string }>>();
   readonly #pendingAttentionHistory = new Map<string, PendingRuntime<AttentionUiItem[]>>();
@@ -158,6 +161,32 @@ export class CoreHost {
       }, this.#options.runtimeTimeoutMs);
       this.#pendingRuntimeInfo.set(correlationId, { resolve, reject, timeout });
       this.#child?.postMessage({ type: 'runtime.info', correlationId, probe: input.probe });
+    });
+  }
+
+  readSetupAccount(): Promise<SetupAccountState> {
+    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.readSetupAccount());
+    const correlationId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.#pendingSetupAccounts.delete(correlationId);
+        reject(new Error('Codex account state request timed out'));
+      }, this.#options.runtimeTimeoutMs);
+      this.#pendingSetupAccounts.set(correlationId, { resolve, reject, timeout });
+      this.#child?.postMessage({ type: 'setup.account.read', correlationId });
+    });
+  }
+
+  startSetupLogin(): Promise<SetupLoginStartResult> {
+    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.startSetupLogin());
+    const correlationId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.#pendingSetupLogins.delete(correlationId);
+        reject(new Error('Codex account login start timed out'));
+      }, this.#options.runtimeTimeoutMs);
+      this.#pendingSetupLogins.set(correlationId, { resolve, reject, timeout });
+      this.#child?.postMessage({ type: 'setup.account.login.start', correlationId });
     });
   }
 
@@ -362,6 +391,22 @@ export class CoreHost {
       pending.resolve(event.info);
       return;
     }
+    if (event.type === 'setup.account.result') {
+      const pending = this.#pendingSetupAccounts.get(event.correlationId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      this.#pendingSetupAccounts.delete(event.correlationId);
+      pending.resolve(structuredClone(event.account));
+      return;
+    }
+    if (event.type === 'setup.account.login.started') {
+      const pending = this.#pendingSetupLogins.get(event.correlationId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      this.#pendingSetupLogins.delete(event.correlationId);
+      pending.resolve(structuredClone(event.login));
+      return;
+    }
     if (event.type === 'repository.snapshot.result') {
       const pending = this.#pendingRepositorySnapshots.get(event.correlationId);
       if (!pending) return;
@@ -410,6 +455,8 @@ export class CoreHost {
       const pending = this.#pendingDispatches.get(event.correlationId)
         ?? this.#pendingConversations.get(event.correlationId)
         ?? this.#pendingRuntimeInfo.get(event.correlationId)
+        ?? this.#pendingSetupAccounts.get(event.correlationId)
+        ?? this.#pendingSetupLogins.get(event.correlationId)
         ?? this.#pendingRepositorySnapshots.get(event.correlationId)
         ?? this.#pendingApprovalResponses.get(event.correlationId)
         ?? this.#pendingAttentionHistory.get(event.correlationId)
@@ -420,6 +467,8 @@ export class CoreHost {
       this.#pendingDispatches.delete(event.correlationId);
       this.#pendingConversations.delete(event.correlationId);
       this.#pendingRuntimeInfo.delete(event.correlationId);
+      this.#pendingSetupAccounts.delete(event.correlationId);
+      this.#pendingSetupLogins.delete(event.correlationId);
       this.#pendingRepositorySnapshots.delete(event.correlationId);
       this.#pendingApprovalResponses.delete(event.correlationId);
       this.#pendingAttentionHistory.delete(event.correlationId);
@@ -458,6 +507,8 @@ export class CoreHost {
       ...this.#pendingDispatches.values(),
       ...this.#pendingConversations.values(),
       ...this.#pendingRuntimeInfo.values(),
+      ...this.#pendingSetupAccounts.values(),
+      ...this.#pendingSetupLogins.values(),
       ...this.#pendingRepositorySnapshots.values(),
       ...this.#pendingApprovalResponses.values(),
       ...this.#pendingAttentionHistory.values(),
@@ -470,6 +521,8 @@ export class CoreHost {
     this.#pendingDispatches.clear();
     this.#pendingConversations.clear();
     this.#pendingRuntimeInfo.clear();
+    this.#pendingSetupAccounts.clear();
+    this.#pendingSetupLogins.clear();
     this.#pendingRepositorySnapshots.clear();
     this.#pendingApprovalResponses.clear();
     this.#pendingAttentionHistory.clear();

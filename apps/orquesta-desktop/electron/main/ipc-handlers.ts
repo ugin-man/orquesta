@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { ConversationPage, InspectionReportUi, ProjectSummary, RuntimeInfoUi, StartInspectionUiInput, UiActionResult } from '../../src/contracts/bridge';
 import { LUCA_QUESTION_IDS, type AskLucaInput } from '../../src/contracts/luca';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import type { SetupAccountState, SetupLoginStartResult } from '../../src/contracts/setup';
 import type { CoreHostStatus } from './core-host';
 import { DESKTOP_IPC, type CoreStatus } from '../shared/host-contract';
 import { buildLucaContext } from './luca-context-builder';
@@ -19,6 +20,8 @@ export interface CoreController {
   sendLucaQuestion(input: { projectId: string; rootPath: string; threadId: string | null; prompt: string }): Promise<{ correlationId: string; threadId: string; turnId: string; modelEvidence: import('../core/protocol').RuntimeModelEvidence }>;
   listConversation(input: { threadId: string; targetAgentId: string; cursor?: string | null; limit: number }): Promise<ConversationPage>;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
+  readSetupAccount(): Promise<SetupAccountState>;
+  startSetupLogin(): Promise<SetupLoginStartResult>;
   respondRuntimeApproval(input: { attentionId: string; decision: string }): Promise<{ correlationId: string }>;
   listAttentionHistory(): Promise<AttentionUiItem[]>;
   startInspection(input: { projectId: string; rootPath: string } & StartInspectionUiInput): Promise<{ correlationId: string; runId: string }>;
@@ -264,6 +267,8 @@ export function registerDesktopIpc(
     return coreHost.listConversation({ threadId: context.threadId, ...query });
   });
   ipcMain.handle(DESKTOP_IPC.getRuntimeInfo, async (_event, input) => coreHost.getRuntimeInfo(readRuntimeInfoInput(input)));
+  ipcMain.handle(DESKTOP_IPC.readSetupAccount, async () => coreHost.readSetupAccount());
+  ipcMain.handle(DESKTOP_IPC.startSetupLogin, async () => coreHost.startSetupLogin());
   ipcMain.handle(DESKTOP_IPC.respondRuntimeApproval, async (_event, input) => {
     const response = readRuntimeApprovalInput(input);
     try {

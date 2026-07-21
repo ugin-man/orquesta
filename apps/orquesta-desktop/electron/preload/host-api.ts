@@ -2,6 +2,7 @@ import type { ComposerAttachment, ConversationMessage, ConversationPage, Inspect
 import { LUCA_QUESTION_IDS, type AskLucaInput } from '../../src/contracts/luca';
 import { isV4OperationsSnapshot, type AttentionUiItem, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
+import { isSetupAccountState, type SetupLoginStartResult } from '../../src/contracts/setup';
 import type { DesktopHostApi, DesktopHostInfo } from '../shared/host-contract';
 import { DESKTOP_IPC } from '../shared/host-contract';
 
@@ -12,6 +13,14 @@ function isDesktopHostInfo(value: unknown): value is DesktopHostInfo {
   if (!value || typeof value !== 'object') return false;
   const info = value as Record<string, unknown>;
   return info.platform === 'win32' && ['starting', 'ready', 'stopped'].includes(String(info.coreStatus));
+}
+
+function isSetupLoginStartResult(value: unknown): value is SetupLoginStartResult {
+  if (!value || typeof value !== 'object') return false;
+  const login = value as Record<string, unknown>;
+  return ['chatgpt', 'chatgpt_device_code'].includes(String(login.type))
+    && safeId(login.loginId)
+    && (login.authUrl === null || (typeof login.authUrl === 'string' && /^https:\/\//u.test(login.authUrl)));
 }
 
 function isRepositorySnapshot(value: unknown): value is OrquestaUiSnapshot {
@@ -172,6 +181,16 @@ export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe)
         throw new Error('Desktop host returned an invalid Core ping response');
       }
       return { correlationId };
+    },
+    async readSetupAccount() {
+      const account = await invoke(DESKTOP_IPC.readSetupAccount);
+      if (!isSetupAccountState(account)) throw new Error('Desktop host returned invalid setup account state');
+      return account;
+    },
+    async startSetupLogin() {
+      const login = await invoke(DESKTOP_IPC.startSetupLogin);
+      if (!isSetupLoginStartResult(login)) throw new Error('Desktop host returned invalid setup login result');
+      return login;
     },
     async getRepositorySnapshot() {
       const snapshot = await invoke(DESKTOP_IPC.getRepositorySnapshot);

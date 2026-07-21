@@ -88,6 +88,16 @@ function attachSuccessfulServer(process) {
       process.send({ id: message.id, result: { turnId: message.params.expectedTurnId } });
     } else if (message.method === "turn/interrupt") {
       process.send({ id: message.id, result: {} });
+    } else if (message.method === "account/read") {
+      process.send({
+        id: message.id,
+        result: { account: { type: "chatgpt", email: "user@example.test", planType: "plus" }, requiresOpenaiAuth: true }
+      });
+    } else if (message.method === "account/login/start") {
+      process.send({
+        id: message.id,
+        result: { type: "chatgpt", loginId: "login-1", authUrl: "https://auth.openai.com/authorize" }
+      });
     }
   });
 }
@@ -136,6 +146,33 @@ test("spawns App Server without a shell and initializes exactly once before thre
     "initialized",
     "thread/start",
     "thread/resume"
+  ]);
+});
+
+test("reads account state and starts ChatGPT login through the initialized App Server", async () => {
+  const { adapter, process } = createHarness();
+
+  const account = await adapter.readAccount({ correlationId: "corr-account" });
+  const login = await adapter.startLogin({ correlationId: "corr-login", loginType: "chatgpt" });
+
+  assert.deepEqual(account, {
+    ok: true,
+    status: "completed",
+    adapter: "app_server",
+    operation: "readAccount",
+    correlation_id: "corr-account",
+    thread_id: null,
+    turn_id: null,
+    approval_id: null,
+    actual_model: null,
+    account_type: "chatgpt",
+    requires_openai_auth: true
+  });
+  assert.equal(login.login_type, "chatgpt");
+  assert.equal(login.login_id, "login-1");
+  assert.equal(login.auth_url, "https://auth.openai.com/authorize");
+  assert.deepEqual(process.clientMessages.map((message) => message.method), [
+    "initialize", "initialized", "account/read", "account/login/start"
   ]);
 });
 

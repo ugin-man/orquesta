@@ -90,6 +90,12 @@ export function runDesktopCore(runtime: DesktopCodexService): void {
         } else if (request.type === 'runtime.conversation') {
           const page = await runtime.listConversation(request);
           send({ type: 'runtime.conversation.result', correlationId: request.correlationId, page });
+        } else if (request.type === 'setup.account.read') {
+          const account = await runtime.readAccount();
+          send({ type: 'setup.account.result', correlationId: request.correlationId, account });
+        } else if (request.type === 'setup.account.login.start') {
+          const login = await runtime.startChatGptLogin();
+          send({ type: 'setup.account.login.started', correlationId: request.correlationId, login });
         } else {
           const info = await runtime.getRuntimeInfo({ probe: request.probe });
           send({ type: 'runtime.info.result', correlationId: request.correlationId, info });

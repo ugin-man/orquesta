@@ -14,6 +14,8 @@ const CODEX_ADAPTER_METHODS = Object.freeze([
   "subscribeEvents",
   "readActualModel",
   "readThread",
+  "readAccount",
+  "startLogin",
   "runtimeInfo",
   "shutdown"
 ]);

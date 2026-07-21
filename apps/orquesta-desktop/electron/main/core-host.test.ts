@@ -117,6 +117,31 @@ describe('CoreHost', () => {
     await expect(pending).resolves.toEqual(info);
   });
 
+  test('binds setup account reads and login starts to matching Core results', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+
+    const account = host.readSetupAccount();
+    const accountRequest = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(accountRequest).toMatchObject({ type: 'setup.account.read' });
+    child.emit('message', {
+      type: 'setup.account.result', correlationId: accountRequest.correlationId,
+      account: { status: 'authenticated', accountType: 'chatgpt', requiresOpenaiAuth: true }
+    });
+    await expect(account).resolves.toMatchObject({ status: 'authenticated', accountType: 'chatgpt' });
+
+    const login = host.startSetupLogin();
+    const loginRequest = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(loginRequest).toMatchObject({ type: 'setup.account.login.start' });
+    child.emit('message', {
+      type: 'setup.account.login.started', correlationId: loginRequest.correlationId,
+      login: { type: 'chatgpt', loginId: 'login-1', authUrl: 'https://auth.openai.com/authorize' }
+    });
+    await expect(login).resolves.toMatchObject({ type: 'chatgpt', loginId: 'login-1' });
+  });
+
   test('forwards bounded runtime notifications and conversation pages', async () => {
     const child = new FakeCoreChild();
     const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });

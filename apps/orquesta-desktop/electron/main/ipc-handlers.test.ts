@@ -29,6 +29,8 @@ describe('registerDesktopIpc', () => {
         runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
         platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified' as const
       })),
+      readSetupAccount: vi.fn(async () => ({ status: 'authenticated' as const, accountType: 'chatgpt' as const, requiresOpenaiAuth: true })),
+      startSetupLogin: vi.fn(async () => ({ type: 'chatgpt' as const, loginId: 'login-1', authUrl: 'https://auth.openai.com/authorize' })),
       respondRuntimeApproval: vi.fn(async () => ({ correlationId: 'approval-1' })),
       listAttentionHistory: vi.fn(async () => []),
       startInspection: vi.fn(async () => ({ correlationId: 'inspection-1', runId: 'BENCH-001' })),
@@ -65,6 +67,8 @@ describe('registerDesktopIpc', () => {
       DESKTOP_IPC.askLuca,
       DESKTOP_IPC.listConversation,
       DESKTOP_IPC.getRuntimeInfo,
+      DESKTOP_IPC.readSetupAccount,
+      DESKTOP_IPC.startSetupLogin,
       DESKTOP_IPC.respondRuntimeApproval,
       DESKTOP_IPC.listAttentionHistory,
       DESKTOP_IPC.startInspection,
@@ -99,6 +103,8 @@ describe('registerDesktopIpc', () => {
     expect(coreHost.listConversation).toHaveBeenCalledTimes(1);
     await expect(handlers.get(DESKTOP_IPC.getRuntimeInfo)?.({}, { probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
     expect(coreHost.getRuntimeInfo).toHaveBeenCalledWith({ probe: false });
+    await expect(handlers.get(DESKTOP_IPC.readSetupAccount)?.({})).resolves.toMatchObject({ status: 'authenticated', accountType: 'chatgpt' });
+    await expect(handlers.get(DESKTOP_IPC.startSetupLogin)?.({})).resolves.toMatchObject({ type: 'chatgpt', loginId: 'login-1' });
     await expect(handlers.get(DESKTOP_IPC.respondRuntimeApproval)?.({}, {
       id: 'runtime-approval-1', decision: 'decline'
     })).resolves.toMatchObject({ status: 'accepted', correlationId: 'approval-1' });
@@ -136,6 +142,7 @@ describe('registerDesktopIpc', () => {
     const coreHost = {
       status: () => 'ready' as const,
       ping: vi.fn(), sendMessage: vi.fn(), sendLucaQuestion: vi.fn(), listConversation: vi.fn(), getRuntimeInfo: vi.fn(),
+      readSetupAccount: vi.fn(), startSetupLogin: vi.fn(),
       respondRuntimeApproval: vi.fn(), listAttentionHistory: vi.fn(), startInspection: vi.fn(),
       cancelInspection: vi.fn(), readInspectionReport: vi.fn()
     };
