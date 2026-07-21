@@ -4,7 +4,7 @@ import type { CoreDispatchRequest, CoreEvent } from './protocol';
 import { InspectionRunController } from './inspection-run-controller';
 import { RepositoryRuntime } from './repository-runtime';
 import { provisionSpecialists } from './specialist-provisioner';
-import { startDesktopSetup } from './setup-engine-adapter';
+import { createDesktopSetupController } from './setup-engine-adapter';
 
 export function runDesktopCore(runtime: DesktopCodexService): void {
   const parentPort = process.parentPort;
@@ -17,6 +17,18 @@ export function runDesktopCore(runtime: DesktopCodexService): void {
   });
   const inspections = new InspectionRunController({ runtime });
   const send = (event: CoreEvent) => parentPort.postMessage(event);
+  const setup = createDesktopSetupController({
+    provisionSpecialists: ({ rootPath, projectId, batch }) => provisionSpecialists({
+      root: rootPath,
+      projectId,
+      batch,
+      runtime
+    }),
+    onProgress: (progress) => send({ type: 'setup.progress', progress }),
+    onBackgroundError: (error) => {
+      console.error('Initial setup runner failed outside a phase boundary', error);
+    }
+  });
   runtime.subscribe((notification) => {
     send({ type: 'runtime.notification', notification });
     void inspections.handleRuntimeNotification(notification);
@@ -43,6 +55,7 @@ export function runDesktopCore(runtime: DesktopCodexService): void {
           await inspections.reconcileProject(request.projectId, request.rootPath);
           const snapshot = await repository.refresh();
           send({ type: 'repository.snapshot.result', correlationId: request.correlationId, snapshot });
+          await setup.resume({ rootPath: request.rootPath });
         } else if (request.type === 'repository.get-snapshot') {
           const snapshot = await repository.refresh();
           send({ type: 'repository.snapshot.result', correlationId: request.correlationId, snapshot });
@@ -98,7 +111,7 @@ export function runDesktopCore(runtime: DesktopCodexService): void {
           const login = await runtime.startChatGptLogin();
           send({ type: 'setup.account.login.started', correlationId: request.correlationId, login });
         } else if (request.type === 'setup.start') {
-          const result = await startDesktopSetup({ rootPath: request.rootPath, draft: request.draft });
+          const result = await setup.start({ rootPath: request.rootPath, draft: request.draft });
           send({ type: 'setup.start.result', correlationId: request.correlationId, result });
         } else {
           const info = await runtime.getRuntimeInfo({ probe: request.probe });

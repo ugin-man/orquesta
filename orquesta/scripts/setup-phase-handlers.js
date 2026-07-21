@@ -3,7 +3,12 @@
 const { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { createAdaptiveSpecialistPlan } = require("../../packages/core/src/adaptive-setup");
-const { createFoundationStateBundle } = require("./adaptive-setup-state");
+const {
+  createFoundationStateBundle,
+  createInitialRosterTransition,
+  prepareProvisioningBatch,
+} = require("./adaptive-setup-state");
+const { SetupBlockedError } = require("./setup-runner");
 
 const TEXT_BUDGET = 256 * 1024;
 const FILE_BUDGET = 40;
@@ -173,7 +178,42 @@ function completionMap(understanding, projectTitle, now) {
   };
 }
 
-function createDefaultPhaseHandlers({ now = () => new Date().toISOString() } = {}) {
+function executableTasks(completion, batch, current, now) {
+  const byId = new Map((current.tasks || []).map((task) => [task.task_id, clone(task)]));
+  const workById = new Map((completion.tasks || []).map((task) => [task.task_id, task]));
+  for (const request of batch.requests) {
+    const work = workById.get(request.task_id) || {};
+    const existing = byId.get(request.task_id) || {};
+    byId.set(request.task_id, {
+      ...existing,
+      task_id: request.task_id,
+      title: work.title || request.task_id,
+      state: existing.state || "queued",
+      owner_agent_id: request.agent_id,
+      created_at: existing.created_at || now,
+      dependencies: work.depends_on || [],
+      blocked_by: [],
+      source: "adaptive_initial_setup",
+      line_id: work.line_id || request.line_id || "primary-line",
+      team_id: work.team_id || request.team_id || null,
+      result_summary: existing.result_summary || "Waiting for Desktop Codex provisioning.",
+    });
+  }
+  return { ...current, version: current.version || 1, tasks: [...byId.values()], updated_at: now };
+}
+
+async function organizationBundle(rootPath) {
+  const stateRoot = path.join(rootPath, ".orquesta", "state");
+  return {
+    rolesState: await readJson(path.join(stateRoot, "roles.json")),
+    agentsState: await readJson(path.join(stateRoot, "agents.json")),
+    organizationState: await readJson(path.join(stateRoot, "organization.json")),
+    sessionsState: await readJson(path.join(stateRoot, "sessions.json"), { version: 1, sessions: [] }),
+    tasksState: await readJson(path.join(stateRoot, "tasks.json"), { version: 1, tasks: [] }),
+  };
+}
+
+function createDefaultPhaseHandlers({ now = () => new Date().toISOString(), provisionSpecialists = null } = {}) {
   return {
     async environment({ rootPath, setupState }) {
       const timestamp = now();
@@ -268,6 +308,94 @@ function createDefaultPhaseHandlers({ now = () => new Date().toISOString() } = {
         checkpointRef: relative,
         activity: activity("setup-planning-complete", "初期計画が完成", `${map.tasks.length}件の実行可能作業を準備しました。`, "complete", timestamp),
         output: { completionMap: map, specialistPlan: plan },
+      };
+    },
+
+    async specialists({ rootPath, setupState }) {
+      const timestamp = now();
+      const batchPath = path.join(rootPath, ".orquesta", "setup", "provisioning_batch.json");
+      const plan = await readJson(path.join(rootPath, ".orquesta", "setup", "specialist_plan.json"));
+      const understanding = await readJson(path.join(rootPath, ".orquesta", "project", "project_understanding.json"));
+      const completion = await readJson(path.join(rootPath, ".orquesta", "project", "completion_map.json"));
+      let batch = await readJson(batchPath, null);
+      if (!batch) {
+        const bundle = await organizationBundle(rootPath);
+        batch = prepareProvisioningBatch({
+          specialistPlan: plan,
+          organizationRevision: bundle.organizationState.revision,
+          existingAgents: bundle.agentsState.agents || [],
+          now: timestamp,
+        });
+        const transition = createInitialRosterTransition({
+          bundle,
+          specialistPlan: plan,
+          provisioningBatch: batch,
+          projectUnderstanding: understanding,
+          now: timestamp,
+        });
+        batch.organization_revision = transition.organizationState.revision;
+        const tasksState = executableTasks(completion, batch, transition.tasksState, timestamp);
+        await Promise.all([
+          writeJsonAtomic(path.join(rootPath, ".orquesta", "state", "roles.json"), transition.rolesState),
+          writeJsonAtomic(path.join(rootPath, ".orquesta", "state", "agents.json"), transition.agentsState),
+          writeJsonAtomic(path.join(rootPath, ".orquesta", "state", "organization.json"), transition.organizationState),
+          writeJsonAtomic(path.join(rootPath, ".orquesta", "state", "sessions.json"), transition.sessionsState),
+          writeJsonAtomic(path.join(rootPath, ".orquesta", "state", "tasks.json"), tasksState),
+          writeJsonAtomic(batchPath, { ...batch, updated_at: timestamp }),
+        ]);
+      }
+
+      const pending = batch.requests.some((request) => ["pending", "reuse_ready"].includes(request.status));
+      if (pending) {
+        if (typeof provisionSpecialists !== "function") {
+          throw new SetupBlockedError("SPECIALIST_RUNTIME_UNAVAILABLE", "専門家を起動するCodex runtimeへ接続できません。", true);
+        }
+        batch = await provisionSpecialists({ rootPath, projectId: setupState.project_id, batch: clone(batch) });
+        await writeJsonAtomic(batchPath, { ...batch, updated_at: now() });
+      }
+      const failures = batch.requests.filter((request) => request.status === "provisioning_failed" || request.handoff_status === "failed");
+      if (failures.length) {
+        throw new SetupBlockedError("SPECIALIST_PROVISIONING_FAILED", `${failures.length}件の専門家起動に失敗しました。`, true);
+      }
+      const unfinished = batch.requests.filter((request) => request.handoff_status !== "accepted" && !["standby", "accepted"].includes(request.status));
+      if (unfinished.length) {
+        throw new SetupBlockedError("SPECIALIST_PROVISIONING_INCOMPLETE", `${unfinished.length}件の専門家がまだ起動していません。`, true);
+      }
+      const relative = "setup/checkpoints/specialists.json";
+      await checkpoint(rootPath, "specialists", setupState, now(), { provisioning_batch_id: batch.provisioning_batch_id, request_count: batch.requests.length });
+      return {
+        checkpointRef: relative,
+        activity: activity("setup-specialists-complete", "専門家編成が完了", `${batch.requests.length}件の専門家接続を確認しました。`, "complete", now()),
+        output: { provisioningBatchId: batch.provisioning_batch_id, requestCount: batch.requests.length },
+      };
+    },
+
+    async operation({ rootPath, setupState }) {
+      const timestamp = now();
+      const batch = await readJson(path.join(rootPath, ".orquesta", "setup", "provisioning_batch.json"), { requests: [] });
+      const bundle = await organizationBundle(rootPath);
+      const sessions = new Map((bundle.sessionsState.sessions || []).map((session) => [session.agent_id, session]));
+      const tasks = new Map((bundle.tasksState.tasks || []).map((task) => [task.task_id, task]));
+      const organizationAgents = new Set((bundle.organizationState.agents || []).map((agent) => agent.agent_id));
+      const missing = [];
+      for (const request of batch.requests || []) {
+        if (!organizationAgents.has(request.agent_id)) missing.push(`organization:${request.agent_id}`);
+        if (!sessions.get(request.agent_id)?.thread_id) missing.push(`session:${request.agent_id}`);
+        if (tasks.get(request.task_id)?.owner_agent_id !== request.agent_id) missing.push(`task:${request.task_id}`);
+      }
+      if (missing.length) {
+        throw new SetupBlockedError("OPERATION_NOT_READY", `初期体制の接続が完了していません: ${missing.slice(0, 6).join(", ")}`, true);
+      }
+      if (bundle.organizationState.revision !== bundle.rolesState.organization_revision
+        || bundle.organizationState.revision !== bundle.agentsState.organization_revision) {
+        throw new SetupBlockedError("ORGANIZATION_REVISION_MISMATCH", "組織stateのrevisionが一致していません。", true);
+      }
+      const relative = "setup/checkpoints/operation.json";
+      await checkpoint(rootPath, "operation", setupState, timestamp, { organization_revision: bundle.organizationState.revision, ready: true });
+      return {
+        checkpointRef: relative,
+        activity: activity("setup-operation-complete", "運用準備が完了", "初期タスクと専門家を接続しました。", "complete", timestamp),
+        output: { ready: true, organizationRevision: bundle.organizationState.revision },
       };
     },
   };

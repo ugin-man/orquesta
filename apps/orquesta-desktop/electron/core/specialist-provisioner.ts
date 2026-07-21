@@ -227,12 +227,19 @@ async function writeOrganizationRuntimeTransition(input: {
 
 function updateInitialSetupProjection(setupState: JsonRecord, batch: ProvisioningBatch, now: string): JsonRecord {
   const status = String(setupState.status ?? '');
-  const currentPhase = String(setupState.current_phase ?? '');
+  const currentPhase = String(setupState.current_phase_id ?? setupState.current_phase ?? '');
   const setupIsActive = ['preparing', 'running', 'provisioning', 'in_progress', 'blocked'].includes(status)
     || currentPhase === 'specialists';
   if (!setupIsActive) return setupState;
 
-  if (!batchIsTerminal(batch)) return { ...setupState, status: 'running', current_phase: 'specialists', updated_at: now };
+  const phaseIds = ['environment', 'understanding', 'foundation', 'planning', 'specialists', 'operation'];
+  const rawPhases = Array.isArray(setupState.phases) ? setupState.phases : phaseIds;
+  const phases = phaseIds.map((phaseId, index) => {
+    const raw = rawPhases[index];
+    return typeof raw === 'object' && raw !== null ? { ...(raw as JsonRecord), phase_id: String((raw as JsonRecord).phase_id ?? (raw as JsonRecord).id ?? phaseId) } : { phase_id: String(raw ?? phaseId), order: index + 1 };
+  });
+  const canonical = { ...setupState, current_phase: undefined };
+  if (!batchIsTerminal(batch)) return { ...canonical, status: 'running', current_phase_id: 'specialists', updated_at: now };
 
   const failures = batch.requests
     .filter((request) => request.status === 'provisioning_failed')
@@ -251,9 +258,10 @@ function updateInitialSetupProjection(setupState: JsonRecord, batch: Provisionin
       observed_at: now
     };
     return {
-      ...setupState,
+      ...canonical,
       status: 'blocked',
-      current_phase: 'specialists',
+      current_phase_id: 'specialists',
+      phases: phases.map((phase) => ({ ...phase, status: phase.phase_id === 'specialists' ? 'blocked' : phase.phase_id === 'operation' ? 'waiting' : 'complete' })),
       current_activity: activity,
       recent_activities: [...recent, activity].slice(-16),
       next_activity: null,
@@ -264,20 +272,28 @@ function updateInitialSetupProjection(setupState: JsonRecord, batch: Provisionin
 
   const activity = {
     id: 'setup-operation-ready',
-    title: 'Operation ready',
-    detail: 'All specialist handoffs were accepted. Orquesta is ready for normal operation.',
+    title: '運用開始を確認中',
+    detail: '専門家の接続が完了しました。初期タスクと組織stateを確認しています。',
+    status: 'active',
+    observed_at: now
+  };
+  const specialistActivity = {
+    id: 'setup-specialists-complete',
+    title: '専門家編成が完了',
+    detail: 'All specialist handoffs were accepted.',
     status: 'complete',
     observed_at: now
   };
   return {
-    ...setupState,
-    status: 'completed',
-    current_phase: 'operation',
+    ...canonical,
+    status: 'running',
+    current_phase_id: 'operation',
+    phases: phases.map((phase) => ({ ...phase, status: phase.phase_id === 'operation' ? 'active' : 'complete' })),
     current_activity: activity,
-    recent_activities: [...recent, activity].slice(-16),
-    next_activity: null,
+    recent_activities: [...recent, specialistActivity].slice(-16),
+    next_activity: activity,
     provisioning_failures: [],
-    completed_at: setupState.completed_at ?? now,
+    completed_at: null,
     updated_at: now
   };
 }

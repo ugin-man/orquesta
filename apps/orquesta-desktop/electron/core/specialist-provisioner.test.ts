@@ -240,10 +240,14 @@ describe('provisionSpecialists', () => {
       })])
     });
     await expect(json(root, '.orquesta/setup/setup_state.json')).resolves.toMatchObject({
-      status: 'completed',
-      current_phase: 'operation',
-      completed_at: NOW,
-      current_activity: expect.objectContaining({ status: 'complete' })
+      status: 'running',
+      current_phase_id: 'operation',
+      completed_at: null,
+      current_activity: expect.objectContaining({ status: 'active' }),
+      phases: expect.arrayContaining([
+        expect.objectContaining({ phase_id: 'specialists', status: 'complete' }),
+        expect.objectContaining({ phase_id: 'operation', status: 'active' })
+      ])
     });
     await expect(json(root, '.orquesta/state/roles.json')).resolves.toMatchObject({ organization_revision: 3 });
     await expect(json(root, '.orquesta/state/agents.json')).resolves.toMatchObject({ organization_revision: 3 });
@@ -257,7 +261,7 @@ describe('provisionSpecialists', () => {
       handoff_turn_id: 'turn-implementation-001'
     });
     const snapshot = await readRepositorySnapshot(root);
-    expect(snapshot.setup).toMatchObject({ status: 'completed', currentPhaseId: 'operation' });
+    expect(snapshot.setup).toMatchObject({ status: 'running', currentPhaseId: 'operation' });
     expect(snapshot.agents.find((agent) => agent.id === 'implementation-001')).toMatchObject({
       lifecycleState: 'active',
       operationalStatus: 'standby'
@@ -320,7 +324,7 @@ describe('provisionSpecialists', () => {
     });
     await expect(json(root, '.orquesta/setup/setup_state.json')).resolves.toMatchObject({
       status: 'blocked',
-      current_phase: 'specialists',
+      current_phase_id: 'specialists',
       current_activity: expect.objectContaining({ status: 'failed' }),
       provisioning_failures: [expect.objectContaining({ agent_id: 'implementation-001' })]
     });

@@ -102,3 +102,79 @@ test("planning creates executable work and an adaptive specialist plan once", as
   assert.deepEqual(secondMap, firstMap);
   assert.deepEqual(secondPlan, firstPlan);
 });
+
+test("specialists prepares one provisioning batch and delegates real session creation", async () => {
+  const { root, setupState } = await repository();
+  const provisioningCalls = [];
+  const handlers = createDefaultPhaseHandlers({
+    now: () => NOW,
+    provisionSpecialists: async ({ batch }) => {
+      provisioningCalls.push(batch.provisioning_batch_id);
+      return {
+        ...batch,
+        requests: batch.requests.map((request, index) => ({
+          ...request,
+          status: "standby",
+          handoff_status: "accepted",
+          thread_id: `thread-${index + 1}`,
+          turn_id: `turn-${index + 1}`,
+          completed_at: NOW,
+        })),
+      };
+    },
+  });
+  await handlers.understanding({ rootPath: root, setupState });
+  await handlers.foundation({ rootPath: root, setupState });
+  await handlers.planning({ rootPath: root, setupState });
+
+  const result = await handlers.specialists({ rootPath: root, setupState });
+  const batch = await json(root, "setup/provisioning_batch.json");
+  const organization = await json(root, "state/organization.json");
+
+  assert.equal(provisioningCalls.length, 1);
+  assert.ok(batch.requests.length >= 1);
+  assert.ok(batch.requests.every(({ handoff_status }) => handoff_status === "accepted"));
+  assert.ok(organization.revision >= 2);
+  assert.equal(result.output.provisioningBatchId, batch.provisioning_batch_id);
+});
+
+test("operation requires persisted specialist sessions and tasks", async () => {
+  const { root, setupState } = await repository();
+  const handlers = createDefaultPhaseHandlers({
+    now: () => NOW,
+    provisionSpecialists: async ({ batch }) => ({
+      ...batch,
+      requests: batch.requests.map((request, index) => ({
+        ...request,
+        status: "standby",
+        handoff_status: "accepted",
+        thread_id: `thread-${index + 1}`,
+        turn_id: `turn-${index + 1}`,
+        completed_at: NOW,
+      })),
+    }),
+  });
+  await handlers.understanding({ rootPath: root, setupState });
+  await handlers.foundation({ rootPath: root, setupState });
+  await handlers.planning({ rootPath: root, setupState });
+  await handlers.specialists({ rootPath: root, setupState });
+  const batch = await json(root, "setup/provisioning_batch.json");
+
+  await assert.rejects(
+    handlers.operation({ rootPath: root, setupState }),
+    (error) => error.code === "OPERATION_NOT_READY" && error.retryable === true,
+  );
+
+  await writeFile(path.join(root, ".orquesta", "state", "sessions.json"), JSON.stringify({
+    version: 1,
+    sessions: batch.requests.map((request) => ({ agent_id: request.agent_id, thread_id: request.thread_id, operational_status: "standby" })),
+  }), "utf8");
+  await writeFile(path.join(root, ".orquesta", "state", "tasks.json"), JSON.stringify({
+    version: 1,
+    tasks: batch.requests.map((request) => ({ task_id: request.task_id, owner_agent_id: request.agent_id, state: "queued" })),
+  }), "utf8");
+
+  const result = await handlers.operation({ rootPath: root, setupState });
+  assert.equal(result.output.ready, true);
+  assert.equal((await json(root, "setup/checkpoints/operation.json")).status, "complete");
+});
