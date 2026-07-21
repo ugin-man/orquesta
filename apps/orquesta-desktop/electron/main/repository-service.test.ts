@@ -53,7 +53,11 @@ describe('RepositoryService', () => {
     expect((await service.getSnapshot()).project.title).toBe('first');
     const firstContext = service.getCurrentRuntimeContext()!;
     await service.setCoordinatorThread(firstContext.projectId, 'thread-1');
+    await service.setLucaThread(firstContext.projectId, 'thread-luca-1');
+    await service.markLucaHomeSeen(firstContext.projectId, '2026-07-18T11:05:00.000Z');
     expect(service.getCurrentRuntimeContext()).toMatchObject({ rootPath: first, threadId: 'thread-1' });
+    expect(service.getLucaRuntimeContext()).toMatchObject({ rootPath: first, threadId: 'thread-luca-1' });
+    expect(service.getLastLucaHomeSeenAt(firstContext.projectId)).toBe('2026-07-18T11:05:00.000Z');
     await expect(service.selectRoot(second)).resolves.toMatchObject({ status: 'accepted' });
     const projects = await service.listProjects();
     expect(projects.map((project) => project.title).sort()).toEqual(['first', 'second']);
@@ -61,9 +65,10 @@ describe('RepositoryService', () => {
     expect((await service.getSnapshot()).project.title).toBe('first');
     expect(snapshots).toContain('second');
     expect(await readFile(path.join(first, '.orquesta', 'state', 'agents.json'), 'utf8')).toBe(firstAgentsBefore);
-    const registry = JSON.parse(await readFile(registryPath, 'utf8')) as { projects: Array<{ title: string; coordinatorThreadId: string | null }> };
+    const registry = JSON.parse(await readFile(registryPath, 'utf8')) as { projects: Array<{ title: string; coordinatorThreadId: string | null; lucaThreadId: string | null }> };
     expect(registry.projects).toHaveLength(2);
     expect(registry.projects.find((project) => project.title === 'first')?.coordinatorThreadId).toBe('thread-1');
+    expect(registry.projects.find((project) => project.title === 'first')?.lucaThreadId).toBe('thread-luca-1');
     await service.stop();
     await projection.runtime.stop();
   });

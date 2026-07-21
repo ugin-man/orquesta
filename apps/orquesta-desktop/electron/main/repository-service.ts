@@ -113,6 +113,22 @@ export class RepositoryService {
     return this.#registry.setCoordinatorThread(projectId, threadId);
   }
 
+  getLucaRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null {
+    return this.#registry.getLucaRuntimeContext();
+  }
+
+  setLucaThread(projectId: string, threadId: string): Promise<void> {
+    return this.#registry.setLucaThread(projectId, threadId);
+  }
+
+  getLastLucaHomeSeenAt(projectId: string): string | null {
+    return this.#registry.getLastLucaHomeSeenAt(projectId);
+  }
+
+  markLucaHomeSeen(projectId: string, at: string): Promise<void> {
+    return this.#registry.markLucaHomeSeen(projectId, at);
+  }
+
   async openProject(): Promise<UiActionResult> {
     const rootPath = await this.#registry.chooseRoot();
     if (!rootPath) return result('rejected', 'No project folder was selected.');

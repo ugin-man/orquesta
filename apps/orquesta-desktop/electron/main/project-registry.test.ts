@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -64,6 +64,53 @@ describe('ProjectRegistry', () => {
       projects: Array<{ coordinatorThreadId: string | null }>;
     };
     expect(stored.projects[0].coordinatorThreadId).toBe('thread-1');
+  });
+
+  test('migrates a version 1 registry without losing the coordinator thread', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-project-registry-v1-'));
+    temporaryRoots.push(root);
+    const registryPath = path.join(root, 'repositories.json');
+    await writeFile(registryPath, JSON.stringify({
+      version: 1,
+      currentProjectId: 'repo-1',
+      projects: [{
+        id: 'repo-1', title: 'One', rootPath: 'C:\\project', rootPathLabel: 'C:\\project',
+        status: 'ready', connectionLabel: 'Watching', lastOpenedAt: '2026-07-18T00:00:00.000Z',
+        coordinatorThreadId: 'thread-coordinator'
+      }]
+    }), 'utf8');
+
+    const registry = new ProjectRegistry({ registryPath });
+    await registry.initialize();
+
+    expect(registry.getCurrentRuntimeContext()).toMatchObject({ threadId: 'thread-coordinator' });
+    expect(registry.getLucaRuntimeContext()).toMatchObject({ threadId: null });
+    expect(registry.getLastLucaHomeSeenAt('repo-1')).toBeNull();
+  });
+
+  test('persists Luca thread and Home baseline independently from coordinator state', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-project-registry-luca-'));
+    temporaryRoots.push(root);
+    const registryPath = path.join(root, 'repositories.json');
+    const registry = new ProjectRegistry({ registryPath });
+    await registry.initialize();
+    await registry.remember(snapshot('repo-1', 'Project', 'C:\\project'));
+    await registry.setCoordinatorThread('repo-1', 'thread-coordinator');
+    await registry.setLucaThread('repo-1', 'thread-luca');
+    await registry.markLucaHomeSeen('repo-1', '2026-07-22T00:00:00.000Z');
+
+    expect(registry.getCurrentRuntimeContext()).toMatchObject({ threadId: 'thread-coordinator' });
+    expect(registry.getLucaRuntimeContext()).toMatchObject({ threadId: 'thread-luca' });
+    expect(registry.getLastLucaHomeSeenAt('repo-1')).toBe('2026-07-22T00:00:00.000Z');
+    const stored = JSON.parse(await readFile(registryPath, 'utf8')) as {
+      version: number;
+      projects: Array<{ lucaThreadId: string | null; lastLucaHomeSeenAt: string | null }>;
+    };
+    expect(stored.version).toBe(2);
+    expect(stored.projects[0]).toMatchObject({
+      lucaThreadId: 'thread-luca',
+      lastLucaHomeSeenAt: '2026-07-22T00:00:00.000Z'
+    });
   });
 });
 

@@ -7,10 +7,12 @@ import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 interface RegistryEntry extends ProjectSummary {
   rootPath: string;
   coordinatorThreadId: string | null;
+  lucaThreadId: string | null;
+  lastLucaHomeSeenAt: string | null;
 }
 
 interface RegistryDocument {
-  version: 1;
+  version: 2;
   currentProjectId: string | null;
   projects: RegistryEntry[];
 }
@@ -24,7 +26,7 @@ export interface ProjectRegistryOptions {
 function validRegistry(value: unknown): RegistryDocument | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const document = value as Record<string, unknown>;
-  if (document.version !== 1 || !Array.isArray(document.projects)) return null;
+  if ((document.version !== 1 && document.version !== 2) || !Array.isArray(document.projects)) return null;
   const projects = document.projects.flatMap((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
     const entry = item as Record<string, unknown>;
@@ -40,11 +42,15 @@ function validRegistry(value: unknown): RegistryDocument | null {
       connectionLabel: typeof entry.connectionLabel === 'string' ? entry.connectionLabel : 'Saved project',
       lastOpenedAt: entry.lastOpenedAt,
       coordinatorThreadId: typeof entry.coordinatorThreadId === 'string'
-        && /^[a-zA-Z0-9._:-]{1,128}$/u.test(entry.coordinatorThreadId) ? entry.coordinatorThreadId : null
+        && /^[a-zA-Z0-9._:-]{1,128}$/u.test(entry.coordinatorThreadId) ? entry.coordinatorThreadId : null,
+      lucaThreadId: typeof entry.lucaThreadId === 'string'
+        && /^[a-zA-Z0-9._:-]{1,128}$/u.test(entry.lucaThreadId) ? entry.lucaThreadId : null,
+      lastLucaHomeSeenAt: typeof entry.lastLucaHomeSeenAt === 'string'
+        && Number.isFinite(Date.parse(entry.lastLucaHomeSeenAt)) ? entry.lastLucaHomeSeenAt : null
     }];
   });
   return {
-    version: 1,
+    version: 2,
     currentProjectId: typeof document.currentProjectId === 'string' ? document.currentProjectId : null,
     projects
   };
@@ -57,7 +63,7 @@ export function projectIdForRoot(rootPath: string): string {
 
 export class ProjectRegistry {
   readonly #options: ProjectRegistryOptions;
-  #document: RegistryDocument = { version: 1, currentProjectId: null, projects: [] };
+  #document: RegistryDocument = { version: 2, currentProjectId: null, projects: [] };
 
   constructor(options: ProjectRegistryOptions) {
     this.#options = options;
@@ -98,7 +104,9 @@ export class ProjectRegistry {
       status: snapshot.project.status,
       connectionLabel: snapshot.project.connectionLabel,
       lastOpenedAt: (this.#options.now?.() ?? new Date()).toISOString(),
-      coordinatorThreadId: existing?.coordinatorThreadId ?? null
+      coordinatorThreadId: existing?.coordinatorThreadId ?? null,
+      lucaThreadId: existing?.lucaThreadId ?? null,
+      lastLucaHomeSeenAt: existing?.lastLucaHomeSeenAt ?? null
     };
     this.#document.projects = [entry, ...this.#document.projects.filter((item) => item.id !== entry.id)].slice(0, 24);
     this.#document.currentProjectId = entry.id;
@@ -114,7 +122,13 @@ export class ProjectRegistry {
   }
 
   async listProjects(): Promise<ProjectSummary[]> {
-    return this.#document.projects.map(({ rootPath: _rootPath, coordinatorThreadId: _threadId, ...project }) => structuredClone(project));
+    return this.#document.projects.map(({
+      rootPath: _rootPath,
+      coordinatorThreadId: _coordinatorThreadId,
+      lucaThreadId: _lucaThreadId,
+      lastLucaHomeSeenAt: _lastLucaHomeSeenAt,
+      ...project
+    }) => structuredClone(project));
   }
 
   getCurrentRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null {
@@ -127,6 +141,31 @@ export class ProjectRegistry {
     const project = this.#document.projects.find((item) => item.id === projectId);
     if (!project) throw new Error('Unknown project for coordinator thread');
     project.coordinatorThreadId = threadId;
+    await this.#persist();
+  }
+
+  getLucaRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null {
+    const project = this.#document.projects.find((item) => item.id === this.#document.currentProjectId);
+    return project ? { projectId: project.id, rootPath: project.rootPath, threadId: project.lucaThreadId } : null;
+  }
+
+  async setLucaThread(projectId: string, threadId: string): Promise<void> {
+    if (!/^[a-zA-Z0-9._:-]{1,128}$/u.test(threadId)) throw new Error('Invalid Luca thread id');
+    const project = this.#document.projects.find((item) => item.id === projectId);
+    if (!project) throw new Error('Unknown project for Luca thread');
+    project.lucaThreadId = threadId;
+    await this.#persist();
+  }
+
+  getLastLucaHomeSeenAt(projectId: string): string | null {
+    return this.#document.projects.find((item) => item.id === projectId)?.lastLucaHomeSeenAt ?? null;
+  }
+
+  async markLucaHomeSeen(projectId: string, at: string): Promise<void> {
+    if (!Number.isFinite(Date.parse(at))) throw new Error('Invalid Luca Home timestamp');
+    const project = this.#document.projects.find((item) => item.id === projectId);
+    if (!project) throw new Error('Unknown project for Luca Home baseline');
+    project.lastLucaHomeSeenAt = at;
     await this.#persist();
   }
 
