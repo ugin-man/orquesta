@@ -2,6 +2,7 @@ import { ChevronDown, FolderOpen, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import type { ProjectUiModel } from '../../../contracts/orquesta-ui';
 import { useI18n } from '../i18n/I18nProvider';
+import { tutorialTargetProps } from '../tutorial/home-tutorial-targets';
 
 export function ProjectLauncher({ project, onSwitchProject, onOpenProject }: {
   project: ProjectUiModel;
@@ -16,7 +17,7 @@ export function ProjectLauncher({ project, onSwitchProject, onOpenProject }: {
   };
 
   return (
-    <section className={`project-launcher${expanded ? ' is-expanded' : ''}`} aria-label={t('projectLauncher')}>
+    <section {...tutorialTargetProps('project-launcher')} className={`project-launcher${expanded ? ' is-expanded' : ''}`} aria-label={t('projectLauncher')}>
       <button
         type="button"
         className="project-launcher__summary"

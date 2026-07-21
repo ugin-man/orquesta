@@ -3,6 +3,7 @@ import type { KeyboardEvent } from 'react';
 import type { ComposerAttachment } from '../../../contracts/bridge';
 import type { AgentUiModel } from '../../../contracts/orquesta-ui';
 import { useI18n } from '../i18n/I18nProvider';
+import { tutorialTargetProps } from '../tutorial/home-tutorial-targets';
 
 export function CommandComposer({
   agents,
@@ -49,7 +50,7 @@ export function CommandComposer({
     }
   };
   return (
-    <section className="command-composer" aria-label="Command composer">
+    <section {...tutorialTargetProps('composer')} className="command-composer" aria-label="Command composer">
       <div className="command-composer__topline">
         <label><span>{t('to')}</span><span className="composer-select-wrap"><select value={targetAgentId} onChange={(event) => onTargetChange(event.target.value)} aria-label="Target agent">
           {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}

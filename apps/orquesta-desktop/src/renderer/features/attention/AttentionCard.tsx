@@ -1,6 +1,7 @@
 import { AlertCircle, ArrowRight, CheckCircle2, Expand, HelpCircle, ShieldAlert, Wrench } from 'lucide-react';
 import type { AgentUiModel, AttentionType, AttentionUiItem, UserActionKind } from '../../../contracts/orquesta-ui';
 import { useI18n } from '../i18n/I18nProvider';
+import { tutorialTargetProps } from '../tutorial/home-tutorial-targets';
 import { sortAttentionItems, summarizeAttention } from './attention-summary';
 
 function AttentionIcon({ type }: { type: AttentionType }) {
@@ -32,7 +33,7 @@ export function AttentionCard({ items, agents, canResolve, onOpenItem, onResolve
     ['do', t('manualWork')]
   ] as const;
   return (
-    <section className={`floating-panel attention-card${items.length ? '' : ' attention-card--clear'}`} aria-label={t('userTasks')}>
+    <section {...tutorialTargetProps('user-tasks')} className={`floating-panel attention-card${items.length ? '' : ' attention-card--clear'}`} aria-label={t('userTasks')}>
       <header className="attention-card__header">
         <button type="button" className="attention-card__heading" onClick={onOpenAll} aria-label={t('openAllUserTasks')}>
           <span className="attention-card__title">{t('userTasks')} {summary.total}</span>

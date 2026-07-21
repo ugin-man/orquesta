@@ -620,6 +620,46 @@ describe('DesktopRendererApp', () => {
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
   });
 
+  test('starts the Home tutorial from Display settings and restores Home', async () => {
+    window.localStorage.removeItem('orquesta.desktop.home-tutorial.v1');
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 100, y: 100, left: 100, top: 100, right: 500, bottom: 300, width: 400, height: 200, toJSON: () => ({})
+    } as DOMRect);
+    const user = userEvent.setup();
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="ja" />);
+
+    const navigation = await screen.findByRole('navigation', { name: 'ワークスペース' });
+    await user.click(within(navigation).getByRole('button', { name: '設定' }));
+    await user.click(screen.getByRole('button', { name: 'ホーム画面のチュートリアルを開始' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Orquestaマップ' })).toBeVisible();
+    expect(screen.getByText('1 / 7')).toBeVisible();
+    expect(screen.getByLabelText('Orquesta Map')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: '次へ' }));
+    expect(await screen.findByRole('dialog', { name: '統括者への入力' })).toBeVisible();
+    rectSpy.mockRestore();
+  });
+
+  test('renders the Home tutorial in English after the locale changes', async () => {
+    window.localStorage.removeItem('orquesta.desktop.home-tutorial.v1');
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 100, y: 100, left: 100, top: 100, right: 500, bottom: 300, width: 400, height: 200, toJSON: () => ({})
+    } as DOMRect);
+    const user = userEvent.setup();
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="ja" />);
+
+    const navigation = await screen.findByRole('navigation', { name: 'ワークスペース' });
+    await user.click(within(navigation).getByRole('button', { name: '設定' }));
+    await user.click(screen.getByRole('button', { name: 'English' }));
+    await user.click(screen.getByRole('button', { name: 'Start tutorial' }));
+
+    expect(await screen.findByRole('dialog', { name: 'Orquesta map' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Skip' })).toBeVisible();
+    rectSpy.mockRestore();
+  });
+
   test('does not reload the project snapshot when the composer target changes', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const getInitialSnapshot = vi.spyOn(bridge, 'getInitialSnapshot');

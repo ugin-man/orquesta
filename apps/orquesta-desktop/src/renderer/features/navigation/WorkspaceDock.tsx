@@ -1,4 +1,5 @@
 import { House, LibraryBig, ListChecks, Settings, type LucideIcon } from 'lucide-react';
+import { tutorialTargetProps } from '../tutorial/home-tutorial-targets';
 
 export type WorkspaceId = 'home' | 'user-tasks' | 'records' | 'settings';
 
@@ -35,7 +36,7 @@ function workspaceCount(id: WorkspaceId, counts: WorkspaceCounts): number | unde
 
 export function WorkspaceDock({ active, counts, labels, onSelect }: WorkspaceDockProps) {
   return (
-    <nav className="workspace-dock" aria-label={labels.navigation}>
+    <nav {...tutorialTargetProps('dock')} className="workspace-dock" aria-label={labels.navigation}>
       {workspaces.map(({ id, icon: Icon }) => {
         const label = labels[id];
         const count = workspaceCount(id, counts);

@@ -4,6 +4,7 @@ import type { ProjectUiModel } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
 import { StatusDot } from '../../components/StatusDot';
 import { useI18n } from '../i18n/I18nProvider';
+import { tutorialTargetProps } from '../tutorial/home-tutorial-targets';
 
 export function ProjectStatusCard({ project, agentCount }: {
   project: ProjectUiModel;
@@ -13,7 +14,7 @@ export function ProjectStatusCard({ project, agentCount }: {
   const [expanded, setExpanded] = useState(false);
   const connectionTone = project.status === 'working' || project.status === 'ready' ? 'success' : project.status;
   return (
-    <section className={`floating-panel project-status${expanded ? ' is-expanded' : ''}`} aria-label={t('projectStatus')}>
+    <section {...tutorialTargetProps('project-status')} className={`floating-panel project-status${expanded ? ' is-expanded' : ''}`} aria-label={t('projectStatus')}>
       <button type="button" className="project-status__summary" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
         <header>
           <span>{t('projectStatus')} <StatusDot status={connectionTone} label={project.connectionLabel} /></span>

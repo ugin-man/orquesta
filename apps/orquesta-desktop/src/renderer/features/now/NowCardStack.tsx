@@ -2,6 +2,7 @@ import { Activity, Expand, ListTodo } from 'lucide-react';
 import type { AgentUiModel, TaskUiModel } from '../../../contracts/orquesta-ui';
 import { AgentGlyph } from '../../components/AgentGlyph';
 import { useI18n } from '../i18n/I18nProvider';
+import { tutorialTargetProps } from '../tutorial/home-tutorial-targets';
 
 export interface WorkItem { agent: AgentUiModel; task: TaskUiModel }
 
@@ -34,7 +35,7 @@ export function NowCardStack({ agents, tasks, allowActive, onOpenTask, onOpenAll
   const { t } = useI18n();
   const items = activeItems(agents, tasks, allowActive);
   return (
-    <section className={`now-stack floating-panel${items.length ? '' : ' now-stack--empty'}`} aria-label={t('now')}>
+    <section {...tutorialTargetProps('now')} className={`now-stack floating-panel${items.length ? '' : ' now-stack--empty'}`} aria-label={t('now')}>
       <header className="now-stack__header">
         <span className="now-label">{t('now')}<i /></span>
         <span>{items.length} {t('provenWorking')}</span>

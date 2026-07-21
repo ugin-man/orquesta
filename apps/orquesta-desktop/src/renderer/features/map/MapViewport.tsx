@@ -4,6 +4,7 @@ import type { AgentUiModel, InspectionKind, OrquestaUiSnapshot, TaskUiModel } fr
 import { AgentGlyph } from '../../components/AgentGlyph';
 import { StatusDot } from '../../components/StatusDot';
 import { useI18n } from '../i18n/I18nProvider';
+import { tutorialTargetProps } from '../tutorial/home-tutorial-targets';
 import { createStableLayout, edgePath, groupBoundsForPositions, type MapGroupLayout, type MapRegionLayout, type Point } from './layout';
 import {
   applyManualLayoutPositions,
@@ -623,6 +624,7 @@ export function MapViewport({
   return (
     <section
       ref={viewportRef}
+      {...tutorialTargetProps('map')}
       className={`map-viewport${panDrag ? ' is-dragging' : ''}`}
       aria-label="Orquesta Map"
       data-semantic-level={semanticLevel}

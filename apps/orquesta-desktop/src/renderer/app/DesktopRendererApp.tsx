@@ -34,6 +34,9 @@ import { ProjectSwitcher } from '../features/project/ProjectSwitcher';
 import { InitialSetupExperience } from '../features/setup/InitialSetupExperience';
 import { TeamManagement } from '../features/team/TeamManagement';
 import { ToastStack } from '../features/toast/ToastStack';
+import { HomeTutorialOverlay } from '../features/tutorial/HomeTutorialOverlay';
+import { HOME_TUTORIAL_STEPS, writeHomeTutorialPreference, type HomeTutorialOutcome } from '../features/tutorial/home-tutorial-model';
+import { tutorialTargetProps } from '../features/tutorial/home-tutorial-targets';
 
 export type OpenOverlay =
   | { kind: 'agent'; agentId: string }
@@ -94,6 +97,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<OpenOverlay>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>('home');
+  const [homeTutorialStep, setHomeTutorialStep] = useState<number | null>(null);
   const [userTaskKind, setUserTaskKind] = useState<UserTaskKind>('all');
   const [recordKind, setRecordKind] = useState<RecordKind>('task');
   const [taskRecordView, setTaskRecordView] = useState<TaskRecordView>(() => createDefaultTaskRecordView());
@@ -613,6 +617,26 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     setRecordKind('inspection');
     setActiveWorkspace('records');
   };
+  const startHomeTutorial = () => {
+    setOverlay(null);
+    setMapSelection(null);
+    setLucaContext(null);
+    setLucaState({ kind: 'idle' });
+    setActiveWorkspace('home');
+    requestAnimationFrame(() => setHomeTutorialStep(0));
+  };
+  const finishHomeTutorial = (outcome: HomeTutorialOutcome) => {
+    writeHomeTutorialPreference(window.localStorage, outcome);
+    setHomeTutorialStep(null);
+  };
+  const advanceHomeTutorial = () => {
+    if (homeTutorialStep == null) return;
+    if (homeTutorialStep >= HOME_TUTORIAL_STEPS.length - 1) {
+      finishHomeTutorial('completed');
+      return;
+    }
+    setHomeTutorialStep(homeTutorialStep + 1);
+  };
 
   return (
     <main className={`desktop-shell project-${snapshot.project.status}`} role="application" aria-label="Orquesta Desktop">
@@ -626,7 +650,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
         />
       ) : null}
       {activeWorkspace === 'home' ? (
-        <button type="button" className="luca-home-trigger" aria-label={locale === 'ja' ? 'Lucaに聞く' : 'Ask Luca'} aria-pressed={lucaContext?.kind === 'home'} onClick={() => openLuca({ kind: 'home' })}>
+        <button {...tutorialTargetProps('luca')} type="button" className="luca-home-trigger" aria-label={locale === 'ja' ? 'Lucaに聞く' : 'Ask Luca'} aria-pressed={lucaContext?.kind === 'home'} onClick={() => openLuca({ kind: 'home' })}>
           <MessageCircleQuestion size={15} /><span>Luca</span>
         </button>
       ) : null}
@@ -690,6 +714,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           onAskLuca={openLuca}
           onOpenRoute={() => setOverlay({ kind: 'project-route' })}
           onOpenOperations={() => setOverlay({ kind: 'operations' })}
+          onStartHomeTutorial={startHomeTutorial}
         />
       )}
 
@@ -802,6 +827,16 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           agents={snapshot.agents}
           onOpenAll={() => openUserTasks()}
           onClose={closeOverlay}
+        />
+      ) : null}
+      {homeTutorialStep != null ? (
+        <HomeTutorialOverlay
+          stepIndex={homeTutorialStep}
+          locale={locale}
+          reducedMotion={reducedMotion}
+          onBack={() => setHomeTutorialStep((current) => current == null ? null : Math.max(0, current - 1))}
+          onNext={advanceHomeTutorial}
+          onSkip={() => finishHomeTutorial('skipped')}
         />
       ) : null}
     </main>

@@ -69,7 +69,7 @@ function TaskList({ tasks, onOpen }: { tasks: TaskUiModel[]; onOpen(taskId: stri
   );
 }
 
-export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind, recordKind, taskRecordView, failureRecordView, selectedInspectionRunId, decisionRecords, decisionRecordKind, decisionRecordsLoading, timelineConversations, timelineDecisions, timelineLoading, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, activeLucaContext, canResolveAttention, getRuntimeInfo, readInspectionReport, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onSelectedInspectionRunIdChange, onDecisionRecordKindChange, onOpenTimelineRecord, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onAskLuca, onOpenRoute, onOpenOperations }: {
+export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind, recordKind, taskRecordView, failureRecordView, selectedInspectionRunId, decisionRecords, decisionRecordKind, decisionRecordsLoading, timelineConversations, timelineDecisions, timelineLoading, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, activeLucaContext, canResolveAttention, getRuntimeInfo, readInspectionReport, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onSelectedInspectionRunIdChange, onDecisionRecordKindChange, onOpenTimelineRecord, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onAskLuca, onOpenRoute, onOpenOperations, onStartHomeTutorial }: {
   active: Exclude<WorkspaceId, 'home'>;
   snapshot: OrquestaUiSnapshot;
   reducedMotion: boolean;
@@ -106,6 +106,7 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
   onAskLuca(context: LucaContextRef): void;
   onOpenRoute(): void;
   onOpenOperations(): void;
+  onStartHomeTutorial(): void;
 }) {
   const { t } = useI18n();
   const title = {
@@ -149,7 +150,7 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
         {active === 'records' && recordKind === 'decision' ? <DecisionRecordsWorkspace items={decisionRecords} agents={snapshot.agents} selectedKind={decisionRecordKind} loading={decisionRecordsLoading} onSelectKind={onDecisionRecordKindChange} /> : null}
         {active === 'records' && recordKind === 'timeline' ? <TimelineRecordsWorkspace snapshot={snapshot} conversations={timelineConversations} decisions={timelineDecisions} loading={timelineLoading} onOpenRecord={onOpenTimelineRecord} /> : null}
         {active === 'records' && recordKind === 'inspection' ? <InspectionRecordsWorkspace runs={snapshot.inspectionRuns} selectedRunId={selectedInspectionRunId} onSelectedRunIdChange={onSelectedInspectionRunIdChange} readReport={readInspectionReport} onAskLuca={(id) => onAskLuca({ kind: 'inspection', id })} lucaActive={activeLucaContext?.kind === 'inspection' && activeLucaContext.id === selectedInspectionRunId} /> : null}
-        {active === 'settings' ? <SettingsWorkspace project={snapshot.project} reducedMotion={reducedMotion} getRuntimeInfo={getRuntimeInfo} onOpenRoute={onOpenRoute} onOpenOperations={onOpenOperations} /> : null}
+        {active === 'settings' ? <SettingsWorkspace project={snapshot.project} reducedMotion={reducedMotion} getRuntimeInfo={getRuntimeInfo} onOpenRoute={onOpenRoute} onOpenOperations={onOpenOperations} onStartHomeTutorial={onStartHomeTutorial} /> : null}
       </div>
     </section>
   );
