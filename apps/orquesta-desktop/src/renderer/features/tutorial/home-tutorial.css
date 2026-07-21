@@ -1,0 +1,126 @@
+.home-tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.home-tutorial-overlay__mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.home-tutorial-overlay__shade {
+  fill: rgba(31, 30, 27, 0.62);
+}
+
+.home-tutorial-overlay__outline {
+  fill: none;
+  stroke: rgba(104, 176, 145, 0.88);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.68));
+  transition: x 190ms ease, y 190ms ease, width 190ms ease, height 190ms ease;
+}
+
+.home-tutorial-card {
+  position: fixed;
+  box-sizing: border-box;
+  max-height: calc(100vh - 56px);
+  overflow: auto;
+  padding: 22px 24px 20px;
+  border: 1px solid rgba(55, 53, 47, 0.24);
+  border-radius: 18px;
+  background: rgba(247, 244, 236, 0.98);
+  box-shadow: 0 18px 58px rgba(20, 20, 18, 0.28);
+  color: #25241f;
+  outline: none;
+  pointer-events: auto;
+  transition: left 190ms ease, top 190ms ease;
+}
+
+.home-tutorial-card__meta,
+.home-tutorial-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home-tutorial-card__meta {
+  color: #6f6b61;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.home-tutorial-card h2 {
+  margin: 15px 0 10px;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.home-tutorial-card p,
+.home-tutorial-card li {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.home-tutorial-card p {
+  margin: 0;
+}
+
+.home-tutorial-card ul {
+  margin: 12px 0 0;
+  padding-left: 20px;
+}
+
+.home-tutorial-card__actions {
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.home-tutorial-card button {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid rgba(55, 53, 47, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: inherit;
+  cursor: pointer;
+}
+
+.home-tutorial-card button:focus-visible {
+  outline: 2px solid #52a782;
+  outline-offset: 2px;
+}
+
+.home-tutorial-card button:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.home-tutorial-card__skip {
+  min-height: 30px !important;
+  padding-inline: 12px !important;
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+.home-tutorial-card__primary {
+  border-color: #3f8f6f !important;
+  background: #3f8f6f !important;
+  color: #fff !important;
+}
+
+.home-tutorial-overlay--reduced-motion .home-tutorial-overlay__outline,
+.home-tutorial-overlay--reduced-motion .home-tutorial-card {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-tutorial-overlay__outline,
+  .home-tutorial-card {
+    transition: none;
+  }
+}
