@@ -141,6 +141,47 @@ describe('DesktopRendererApp', () => {
     expect(screen.queryByLabelText('Orquesta map')).not.toBeInTheDocument();
   });
 
+  test('launches a temporary inspection from Team Management without approving a role', async () => {
+    const bridge = new MockOrquestaBridge('active-project');
+    const startInspection = vi.spyOn(bridge, 'startInspection');
+    const approveAgentProposal = vi.spyOn(bridge, 'approveAgentProposal');
+    render(<DesktopRendererApp bridge={bridge} initialLocale="ja" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'チーム管理' }));
+    await userEvent.click(screen.getByRole('button', { name: '外部比較を起動' }));
+
+    await waitFor(() => expect(startInspection).toHaveBeenCalledWith({
+      kind: 'external_benchmark', target: { kind: 'project', ids: [] }, focus: null
+    }));
+    expect(await screen.findByRole('button', { name: '外部比較を中止' })).toBeVisible();
+    expect(approveAgentProposal).not.toHaveBeenCalled();
+  });
+
+  test('opens a Team Management inspection report in the Records inspection workspace', async () => {
+    const bridge = new MockOrquestaBridge('active-project');
+    const snapshot = await bridge.getInitialSnapshot();
+    const completedRun = {
+      runId: 'AUDIT-001', kind: 'adversarial_audit' as const, displayName: 'Adversarial audit', status: 'report_ready' as const,
+      target: { kind: 'project' as const, ids: [], label: snapshot.project.title }, focus: null, threadId: 'thread-audit', turnId: 'turn-audit',
+      reportPath: '.orquesta/reports/inspections/AUDIT-001.md', sourceCount: 0, errorCode: null, errorMessage: null,
+      createdAt: '2026-07-21T10:00:00.000Z', completedAt: '2026-07-21T10:01:00.000Z'
+    };
+    snapshot.inspectionRuns = [completedRun];
+    snapshot.inspectionTemplates = snapshot.inspectionTemplates.map((template) => template.kind === 'adversarial_audit'
+      ? { ...template, lastReportRunId: completedRun.runId }
+      : template);
+    vi.spyOn(bridge, 'getInitialSnapshot').mockResolvedValue(snapshot);
+    vi.spyOn(bridge, 'readInspectionReport').mockResolvedValue({ runId: completedRun.runId, markdown: '## Audit finding\n\nNo critical issue.' });
+    render(<DesktopRendererApp bridge={bridge} initialLocale="ja" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'チーム管理' }));
+    await userEvent.click(screen.getByRole('button', { name: '敵対監査の直近レポート' }));
+
+    expect(await screen.findByRole('button', { name: '検査' })).toHaveAttribute('aria-current', 'page');
+    expect(await screen.findByRole('dialog', { name: '敵対監査レポート' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Audit finding' })).toBeVisible();
+  });
+
   test('uses the unresolved user task count for the only dock badge', async () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
     const navigation = await screen.findByRole('navigation', { name: 'Workspaces' });
@@ -188,6 +229,37 @@ describe('DesktopRendererApp', () => {
 
     await userEvent.click(within(navigation).getByRole('button', { name: 'Home' }));
     expect(screen.getByLabelText('Project launcher')).toBeVisible();
+  });
+
+  test('opens active work as a Home quick view before navigating to Records', async () => {
+    const user = userEvent.setup();
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
+
+    await user.click(await screen.findByRole('button', { name: 'View all work' }));
+
+    const quickView = screen.getByRole('dialog', { name: 'Active work' });
+    expect(quickView).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+
+    await user.click(within(quickView).getByRole('button', { name: 'View all Records' }));
+    expect(screen.getByRole('button', { name: 'Records' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('dialog', { name: 'Active work' })).not.toBeInTheDocument();
+  });
+
+  test('opens User Tasks as a Home quick view before navigating to the full workspace', async () => {
+    const user = userEvent.setup();
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Open all User Tasks' }));
+
+    const quickView = screen.getByRole('dialog', { name: 'User Tasks' });
+    expect(quickView).toBeVisible();
+    expect(within(quickView).getByText('Approve data access plan.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+
+    await user.click(within(quickView).getByRole('button', { name: 'View all User Tasks' }));
+    expect(screen.getByRole('button', { name: 'User Tasks 3' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('dialog', { name: 'User Tasks' })).not.toBeInTheDocument();
   });
 
   test('shows taskless canonical attention in the inline User Tasks detail', async () => {
@@ -485,6 +557,17 @@ describe('DesktopRendererApp', () => {
     expect(container.querySelector('.project-status .status-dot--success')).not.toBeNull();
   });
 
+  test('keeps Project Status and User Tasks in one aligned home rail', async () => {
+    const { container } = render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} />);
+    await screen.findByText('Demo data');
+
+    const rail = container.querySelector('.home-right-rail');
+    expect(rail).not.toBeNull();
+    expect(rail!.children).toHaveLength(2);
+    expect(rail!.children[0]).toHaveClass('project-status');
+    expect(rail!.children[1]).toHaveClass('attention-card');
+  });
+
   test('switches Japanese and English from Settings', async () => {
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
     await screen.findByText('Demo data');
@@ -505,6 +588,15 @@ describe('DesktopRendererApp', () => {
     await waitFor(() => expect(screen.getByLabelText('Target agent')).toHaveValue('analyst'));
 
     expect(getInitialSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  test('routes an active setup snapshot to the dedicated setup experience', async () => {
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('setup-running')} initialLocale="ja" />);
+
+    expect(await screen.findByRole('main', { name: 'Orquesta 初回セットアップ' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Orquestaの基盤を構築しています' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'ホーム' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Orquesta map')).not.toBeInTheDocument();
   });
 
 });

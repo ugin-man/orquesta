@@ -1,5 +1,5 @@
 import type { ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
-import { isV4OperationsSnapshot, type AttentionUiItem, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import { isV4OperationsSnapshot, type AttentionUiItem, type InspectionKind, type InspectionTargetUi, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 
 export interface RuntimeModelEvidence {
   recommendedModel: string | null;
@@ -86,9 +86,36 @@ export interface RepositoryAttentionHistoryRequest {
   correlationId: string;
 }
 
+export interface InspectionStartRequest {
+  type: 'inspection.start';
+  correlationId: string;
+  projectId: string;
+  rootPath: string;
+  kind: InspectionKind;
+  target: { kind: InspectionTargetUi['kind']; ids: string[] };
+  focus: string | null;
+}
+
+export interface InspectionCancelRequest {
+  type: 'inspection.cancel';
+  correlationId: string;
+  projectId: string;
+  rootPath: string;
+  runId: string;
+}
+
+export interface InspectionReadReportRequest {
+  type: 'inspection.read-report';
+  correlationId: string;
+  projectId: string;
+  rootPath: string;
+  runId: string;
+}
+
 export type CoreDispatchRequest = RuntimeSendRequest | RuntimeConversationRequest | RuntimeInfoRequest
   | RepositorySelectRequest | RepositorySnapshotRequest | RepositoryCloseRequest
-  | RuntimeApprovalRespondRequest | RepositoryAttentionHistoryRequest;
+  | RuntimeApprovalRespondRequest | RepositoryAttentionHistoryRequest
+  | InspectionStartRequest | InspectionCancelRequest | InspectionReadReportRequest;
 
 export type CoreRequest =
   | { type: 'core.shutdown' }
@@ -100,7 +127,10 @@ export type CoreRequest =
   | RepositorySnapshotRequest
   | RepositoryCloseRequest
   | RuntimeApprovalRespondRequest
-  | RepositoryAttentionHistoryRequest;
+  | RepositoryAttentionHistoryRequest
+  | InspectionStartRequest
+  | InspectionCancelRequest
+  | InspectionReadReportRequest;
 
 export type CoreEvent =
   | { type: 'core.ready'; version: 1 }
@@ -114,6 +144,8 @@ export type CoreEvent =
   | { type: 'repository.snapshot.changed'; snapshot: OrquestaUiSnapshot }
   | { type: 'runtime.approval.accepted'; correlationId: string; attentionId: string; decision: string }
   | { type: 'repository.attention-history.result'; correlationId: string; items: AttentionUiItem[] }
+  | { type: 'inspection.action.accepted'; correlationId: string; runId: string }
+  | { type: 'inspection.report.result'; correlationId: string; runId: string; markdown: string }
   | { type: 'core.stopped' };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -170,7 +202,17 @@ function isRepositorySnapshot(value: unknown): value is OrquestaUiSnapshot {
     && Array.isArray(value.attention)
     && Array.isArray(value.phases)
     && Array.isArray(value.recentEvents)
+    && Array.isArray(value.inspectionTemplates)
+    && Array.isArray(value.inspectionRuns)
     && isV4OperationsSnapshot(value.v4Operations);
+}
+
+function isInspectionTarget(value: unknown): value is InspectionStartRequest['target'] {
+  if (!isRecord(value) || !['project', 'line', 'team', 'agents'].includes(String(value.kind)) || !Array.isArray(value.ids)) return false;
+  if (value.ids.length > 32 || !value.ids.every(isSafeId)) return false;
+  if (value.kind === 'project') return value.ids.length === 0;
+  if (value.kind === 'line' || value.kind === 'team') return value.ids.length === 1;
+  return value.ids.length > 0;
 }
 
 export function isCoreRequest(value: unknown): value is CoreRequest {
@@ -201,6 +243,15 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     return isCorrelationId(value.correlationId) && isSafeId(value.attentionId) && isBoundedText(value.decision, 128);
   }
   if (value.type === 'repository.attention-history') return isCorrelationId(value.correlationId);
+  if (value.type === 'inspection.start') {
+    return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768)
+      && ['external_benchmark', 'adversarial_audit'].includes(String(value.kind))
+      && isInspectionTarget(value.target) && isNullableBoundedText(value.focus, 4_096);
+  }
+  if (value.type === 'inspection.cancel' || value.type === 'inspection.read-report') {
+    return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768)
+      && isSafeId(value.runId);
+  }
   return false;
 }
 
@@ -238,6 +289,12 @@ export function isCoreEvent(value: unknown): value is CoreEvent {
   }
   if (value.type === 'repository.attention-history.result') {
     return isCorrelationId(value.correlationId) && Array.isArray(value.items);
+  }
+  if (value.type === 'inspection.action.accepted') {
+    return isCorrelationId(value.correlationId) && isSafeId(value.runId);
+  }
+  if (value.type === 'inspection.report.result') {
+    return isCorrelationId(value.correlationId) && isSafeId(value.runId) && isBoundedText(value.markdown, 1_048_576);
   }
   return value.type === 'core.stopped';
 }

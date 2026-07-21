@@ -28,6 +28,20 @@ test('active Home at 1366 × 768 keeps the desktop composition intact', async ({
   await expect(page).toHaveScreenshot('home-active-1366x768.png');
 });
 
+test('inspection beacons remain distinct on Home at 1440 × 900', async ({ page }) => {
+  await openFixture(page, 'inspection-running', { width: 1440, height: 900 });
+  await saveReviewCapture(page, 'inspection-home-1440x900.png');
+  await expect(page).toHaveScreenshot('inspection-home-1440x900.png');
+});
+
+test('inspection launch cards remain legible in Team Management', async ({ page }) => {
+  await openFixture(page, 'inspection-running', { width: 1440, height: 900 });
+  await page.getByRole('button', { name: 'Team Management' }).click();
+  await expect(page.getByRole('dialog', { name: 'Team Management' })).toBeVisible();
+  await saveReviewCapture(page, 'inspection-team-management-1440x900.png');
+  await expect(page).toHaveScreenshot('inspection-team-management-1440x900.png');
+});
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1366, height: 768 }]) {
   test(`V4 Operations at ${viewport.width} × ${viewport.height} stays inside the desktop composition`, async ({ page }) => {
     await openFixture(page, 'active-project', viewport);

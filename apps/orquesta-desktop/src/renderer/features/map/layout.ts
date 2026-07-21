@@ -1,8 +1,10 @@
-import type { AgentUiModel } from '../../../contracts/orquesta-ui';
+import type { AgentUiModel, OrquestaUiSnapshot } from '../../../contracts/orquesta-ui';
 import type { AgentHierarchy, HierarchyParentId } from './hierarchy';
 import {
   buildOrganizationProjection,
+  type OrganizationLineProjection,
   type OrganizationProjection,
+  type OrganizationTeamProjection,
   type ProductionGroupId
 } from './organization';
 
@@ -23,6 +25,30 @@ export interface MapGroupLayout {
   anchor: Point;
 }
 
+export interface MapRegionLayout {
+  id: string;
+  kind: 'line' | 'team' | 'role' | 'proposal' | 'diagnostic';
+  parentId: string | null;
+  label: string;
+  meta?: string;
+  agentIds: string[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  headerHeight: number;
+  inputPort: Point;
+  responsibleAgentId?: string | null;
+}
+
+export interface MapLineLayout extends MapRegionLayout {
+  kind: 'line';
+  teamIds: string[];
+  ownerAgentId: string;
+  dedicatedLeadAgentId: string | null;
+  responsibleAgentId: string | null;
+}
+
 export interface MapLayout {
   width: number;
   height: number;
@@ -30,6 +56,8 @@ export interface MapLayout {
   user: Point;
   agentPositions: Map<string, Point>;
   groups: MapGroupLayout[];
+  regions: MapRegionLayout[];
+  lines: MapLineLayout[];
   edges: Array<{
     id: string;
     parentId: HierarchyParentId;
@@ -37,6 +65,9 @@ export interface MapLayout {
     from: Point;
     to: Point;
     kind: MapEdgeKind;
+    lineId?: string;
+    teamId?: string;
+    responsibleAgentId?: string;
   }>;
   hierarchy: AgentHierarchy;
   organization: OrganizationProjection;
@@ -201,7 +232,7 @@ export function groupBoundsForPositions(
   return { ...group, x, y, width: right - x, height: bottom - y, anchor: { x: (x + right) / 2, y } };
 }
 
-export function createStableLayout(agents: AgentUiModel[]): MapLayout {
+function createLegacyLayout(agents: AgentUiModel[]): MapLayout {
   const organization = buildOrganizationProjection(agents);
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const productionGroups = organization.groups.map((group) => layoutProductionGroup(group, organization));
@@ -314,14 +345,407 @@ export function createStableLayout(agents: AgentUiModel[]): MapLayout {
     user: shiftedUser,
     agentPositions: shiftedPositions,
     groups: shiftedGroups,
+    regions: [],
+    lines: [],
     edges: shiftedEdges,
     hierarchy: hierarchyView(organization),
     organization,
     nodeWidth: NODE_WIDTH,
     nodeHeight: NODE_HEIGHT,
     outerRadius: Math.max(width, height) / 2 - WORLD_MARGIN_X,
-    compact: agents.length > 12
+    compact: shiftedPositions.size > 12
   };
+}
+
+interface LocalAdaptiveLayout {
+  width: number;
+  height: number;
+  positions: Map<string, Point>;
+  regions: MapRegionLayout[];
+}
+
+interface LocalLineLayout extends LocalAdaptiveLayout {
+  line: OrganizationLineProjection;
+}
+
+const ADAPTIVE_HEADER_HEIGHT = 58;
+const ADAPTIVE_PADDING_X = 36;
+const ADAPTIVE_PADDING_BOTTOM = 36;
+const ADAPTIVE_REGION_GAP = 34;
+const ADAPTIVE_LINE_GAP_X = 92;
+const ADAPTIVE_LINE_GAP_Y = 96;
+
+function translateRegion(region: MapRegionLayout, dx: number, dy: number): MapRegionLayout {
+  return {
+    ...region,
+    x: region.x + dx,
+    y: region.y + dy,
+    inputPort: translated(region.inputPort, dx, dy)
+  };
+}
+
+function layoutRoleCluster(team: OrganizationTeamProjection, cluster: OrganizationTeamProjection['roleClusters'][number]): LocalAdaptiveLayout {
+  const columns = Math.max(1, Math.round(Math.sqrt(cluster.agentIds.length)));
+  const rows = Math.max(1, Math.ceil(cluster.agentIds.length / columns));
+  const width = columns * NODE_WIDTH + Math.max(0, columns - 1) * HORIZONTAL_GAP;
+  const roleHeaderHeight = team.roleClusters.length > 1 ? 32 : 0;
+  const height = roleHeaderHeight + rows * NODE_HEIGHT + Math.max(0, rows - 1) * ROW_GAP;
+  const positions = new Map<string, Point>();
+  cluster.agentIds.forEach((agentId, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    positions.set(agentId, {
+      x: NODE_WIDTH / 2 + column * (NODE_WIDTH + HORIZONTAL_GAP),
+      y: roleHeaderHeight + NODE_HEIGHT / 2 + row * (NODE_HEIGHT + ROW_GAP)
+    });
+  });
+  return {
+    width,
+    height,
+    positions,
+    regions: [{
+      id: `role:${cluster.id}`,
+      kind: 'role',
+      parentId: `team:${team.id}`,
+      label: cluster.roleId,
+      agentIds: [...cluster.agentIds],
+      x: 0,
+      y: 0,
+      width,
+      height,
+      headerHeight: roleHeaderHeight,
+      inputPort: { x: width / 2, y: 0 }
+    }]
+  };
+}
+
+function layoutAdaptiveTeam(team: OrganizationTeamProjection): LocalAdaptiveLayout {
+  if (team.agentIds.length < 3) {
+    const width = team.agentIds.length > 0
+      ? team.agentIds.length * NODE_WIDTH + Math.max(0, team.agentIds.length - 1) * HORIZONTAL_GAP
+      : 0;
+    const height = team.agentIds.length > 0 ? NODE_HEIGHT : 0;
+    const positions = new Map<string, Point>();
+    team.agentIds.forEach((agentId, index) => positions.set(agentId, {
+      x: NODE_WIDTH / 2 + index * (NODE_WIDTH + HORIZONTAL_GAP),
+      y: NODE_HEIGHT / 2
+    }));
+    return {
+      width,
+      height,
+      positions,
+      regions: [{
+        id: `team:${team.id}`,
+        kind: 'team',
+        parentId: team.lineId ? `line:${team.lineId}` : null,
+        label: team.displayName,
+        agentIds: [...team.agentIds],
+        x: 0,
+        y: 0,
+        width,
+        height,
+        headerHeight: 0,
+        inputPort: { x: width / 2, y: 0 },
+        responsibleAgentId: null
+      }]
+    };
+  }
+  const clusterLayouts = team.roleClusters.map((cluster) => layoutRoleCluster(team, cluster));
+  const contentWidth = Math.max(NODE_WIDTH, ...clusterLayouts.map((layout) => layout.width));
+  const positions = new Map<string, Point>();
+  const regions: MapRegionLayout[] = [];
+  let y = ADAPTIVE_HEADER_HEIGHT + ADAPTIVE_REGION_GAP;
+  for (const clusterLayout of clusterLayouts) {
+    const x = ADAPTIVE_PADDING_X + (contentWidth - clusterLayout.width) / 2;
+    translatePositions(positions, clusterLayout.positions, x, y);
+    regions.push(...clusterLayout.regions.map((region) => translateRegion(region, x, y)));
+    y += clusterLayout.height + ADAPTIVE_REGION_GAP;
+  }
+  if (!clusterLayouts.length) y += NODE_HEIGHT;
+  const width = contentWidth + ADAPTIVE_PADDING_X * 2;
+  const height = y - ADAPTIVE_REGION_GAP + ADAPTIVE_PADDING_BOTTOM;
+  regions.unshift({
+    id: `team:${team.id}`,
+    kind: 'team',
+    parentId: team.lineId ? `line:${team.lineId}` : null,
+    label: team.displayName,
+    agentIds: [...team.agentIds],
+    x: 0,
+    y: 0,
+    width,
+    height,
+    headerHeight: ADAPTIVE_HEADER_HEIGHT,
+    inputPort: { x: width / 2, y: 0 },
+    responsibleAgentId: team.leadAgentId
+  });
+  return { width, height, positions, regions };
+}
+
+function layoutAdaptiveLine(line: OrganizationLineProjection): LocalLineLayout {
+  const teamLayouts = line.teams.map((team) => layoutAdaptiveTeam(team));
+  const columns = teamLayouts.length <= 1 ? 1 : Math.min(2, Math.ceil(Math.sqrt(teamLayouts.length)));
+  const rows: Array<{ layouts: LocalAdaptiveLayout[]; width: number; height: number }> = [];
+  for (const layout of teamLayouts) {
+    let row = rows.at(-1);
+    if (!row || row.layouts.length >= columns) {
+      row = { layouts: [], width: 0, height: 0 };
+      rows.push(row);
+    }
+    row.width = row.layouts.length ? row.width + ADAPTIVE_REGION_GAP + layout.width : layout.width;
+    row.height = Math.max(row.height, layout.height);
+    row.layouts.push(layout);
+  }
+  const contentWidth = Math.max(0, ...rows.map((row) => row.width));
+  const positions = new Map<string, Point>();
+  const regions: MapRegionLayout[] = [];
+  let y = 0;
+  for (const row of rows) {
+    let x = (contentWidth - row.width) / 2;
+    for (const teamLayout of row.layouts) {
+      translatePositions(positions, teamLayout.positions, x, y);
+      regions.push(...teamLayout.regions.map((region) => translateRegion(region, x, y)));
+      x += teamLayout.width + ADAPTIVE_REGION_GAP;
+    }
+    y += row.height + ADAPTIVE_REGION_GAP;
+  }
+  const width = contentWidth;
+  const height = rows.length ? y - ADAPTIVE_REGION_GAP : 0;
+  return { line, width, height, positions, regions };
+}
+
+function createAdaptiveLayout(snapshot: OrquestaUiSnapshot): MapLayout {
+  const agents = snapshot.agents;
+  const organization = buildOrganizationProjection(snapshot);
+  const agentById = new Map(agents.map((agent) => [agent.id, agent]));
+  const localLines = organization.lines.map(layoutAdaptiveLine);
+  const columns = localLines.length <= 1 ? 1 : localLines.length === 2 ? 2 : Math.ceil(Math.sqrt(localLines.length));
+  const lineRows: Array<{ lines: LocalLineLayout[]; width: number; height: number }> = [];
+  for (const line of localLines) {
+    let row = lineRows.at(-1);
+    if (!row || row.lines.length >= columns) {
+      row = { lines: [], width: 0, height: 0 };
+      lineRows.push(row);
+    }
+    row.width = row.lines.length ? row.width + ADAPTIVE_LINE_GAP_X + line.width : line.width;
+    row.height = Math.max(row.height, line.height);
+    row.lines.push(line);
+  }
+
+  const productionWidth = lineRows.length ? Math.max(...lineRows.map((row) => row.width)) : NODE_WIDTH * 3;
+  const coreX = Math.max(640, productionWidth / 2 + WORLD_MARGIN_X);
+  const user: Point = { x: coreX, y: 100 };
+  const agentPositions = new Map<string, Point>();
+  const orchestratorId = organization.coreAgentIds.find((agentId) => agentById.get(agentId)?.roleId === 'orchestrator' || agentId === 'orchestrator');
+  if (orchestratorId) agentPositions.set(orchestratorId, { x: coreX, y: 430 });
+  const satelliteIds = organization.coreAgentIds.filter((agentId) => agentId !== orchestratorId);
+  satelliteIds.forEach((agentId, index) => {
+    const direction = index % 2 === 0 ? -1 : 1;
+    const distance = 260 + Math.floor(index / 2) * 190;
+    agentPositions.set(agentId, { x: coreX + direction * distance, y: 240 + Math.floor(index / 4) * 170 });
+  });
+
+  const regions: MapRegionLayout[] = [];
+  const lines: MapLineLayout[] = [];
+  const productionTop = 760;
+  let lineY = productionTop;
+  for (const row of lineRows) {
+    let lineX = coreX - row.width / 2;
+    for (const local of row.lines) {
+      translatePositions(agentPositions, local.positions, lineX, lineY);
+      const lineRegion: MapLineLayout = {
+        id: local.line.id,
+        kind: 'line',
+        parentId: null,
+        label: local.line.displayName,
+        meta: local.line.dedicatedLeadAgentId
+          ? `${local.line.status} · Lead ${agentById.get(local.line.dedicatedLeadAgentId)?.displayName ?? local.line.dedicatedLeadAgentId}`
+          : `${local.line.status} · Owner ${agentById.get(local.line.ownerAgentId)?.displayName ?? local.line.ownerAgentId}`,
+        agentIds: [...local.line.agentIds],
+        teamIds: local.line.teams.map((team) => team.id),
+        ownerAgentId: local.line.ownerAgentId,
+        dedicatedLeadAgentId: local.line.dedicatedLeadAgentId,
+        responsibleAgentId: local.line.responsibleAgentId,
+        x: lineX,
+        y: lineY,
+        width: local.width,
+        height: local.height,
+        headerHeight: 0,
+        inputPort: { x: lineX + local.width / 2, y: lineY }
+      };
+      lines.push(lineRegion);
+      regions.push(lineRegion, ...local.regions.map((region) => translateRegion(region, lineX, lineY)));
+      lineX += local.width + ADAPTIVE_LINE_GAP_X;
+    }
+    lineY += row.height + ADAPTIVE_LINE_GAP_Y;
+  }
+
+  const proposalWidth = 300;
+  const proposalHeight = 108;
+  const proposalX = coreX + productionWidth / 2 + ADAPTIVE_LINE_GAP_X;
+  organization.lineProposals.forEach((proposal, index) => {
+    const y = productionTop + index * (proposalHeight + ADAPTIVE_REGION_GAP);
+    regions.push({
+      id: `proposal:${proposal.id}`,
+      kind: 'proposal',
+      parentId: null,
+      label: proposal.displayName,
+      agentIds: [],
+      x: proposalX,
+      y,
+      width: proposalWidth,
+      height: proposalHeight,
+      headerHeight: 42,
+      inputPort: { x: proposalX + proposalWidth / 2, y }
+    });
+  });
+
+  if (organization.unassignedAgentIds.length) {
+    const diagnosticY = lineY + ADAPTIVE_REGION_GAP;
+    const columns = Math.max(1, Math.ceil(Math.sqrt(organization.unassignedAgentIds.length * 1.4)));
+    const rows = Math.ceil(organization.unassignedAgentIds.length / columns);
+    const diagnosticWidth = columns * NODE_WIDTH + Math.max(0, columns - 1) * HORIZONTAL_GAP + ADAPTIVE_PADDING_X * 2;
+    const diagnosticHeight = ADAPTIVE_HEADER_HEIGHT + ADAPTIVE_REGION_GAP + rows * NODE_HEIGHT + Math.max(0, rows - 1) * ROW_GAP + ADAPTIVE_PADDING_BOTTOM;
+    const diagnosticX = coreX - diagnosticWidth / 2;
+    organization.unassignedAgentIds.forEach((agentId, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      agentPositions.set(agentId, {
+        x: diagnosticX + ADAPTIVE_PADDING_X + NODE_WIDTH / 2 + column * (NODE_WIDTH + HORIZONTAL_GAP),
+        y: diagnosticY + ADAPTIVE_HEADER_HEIGHT + ADAPTIVE_REGION_GAP + NODE_HEIGHT / 2 + row * (NODE_HEIGHT + ROW_GAP)
+      });
+    });
+    regions.push({
+      id: 'diagnostic:unassigned',
+      kind: 'diagnostic',
+      parentId: null,
+      label: 'Organization issues',
+      agentIds: [...organization.unassignedAgentIds],
+      x: diagnosticX,
+      y: diagnosticY,
+      width: diagnosticWidth,
+      height: diagnosticHeight,
+      headerHeight: ADAPTIVE_HEADER_HEIGHT,
+      inputPort: { x: coreX, y: diagnosticY }
+    });
+  }
+
+  const edges: MapLayout['edges'] = [];
+  for (const coreAgentId of organization.coreAgentIds) {
+    const point = agentPositions.get(coreAgentId);
+    if (!point) continue;
+    const parentId = organization.parentByAgentId.get(coreAgentId) ?? 'user';
+    const parentPoint = parentId === 'user' ? user : agentPositions.get(parentId);
+    if (!parentPoint) continue;
+    edges.push({
+      id: `core:${parentId}:${coreAgentId}`,
+      parentId,
+      childId: coreAgentId,
+      from: parentPoint,
+      to: point,
+      kind: coreAgentId === orchestratorId ? 'spine' : coreAgentId === 'orquesta-admin' ? 'admin' : 'support'
+    });
+  }
+  for (const line of lines) {
+    const owner = agentPositions.get(line.ownerAgentId) ?? (orchestratorId ? agentPositions.get(orchestratorId) : undefined) ?? user;
+    const responsible = line.responsibleAgentId ? agentPositions.get(line.responsibleAgentId) : undefined;
+    const teamAnchors = line.teamIds.flatMap((teamId) => {
+      const teamRegion = regions.find((region) => region.id === `team:${teamId}`);
+      const agentId = teamRegion?.responsibleAgentId ?? teamRegion?.agentIds[0];
+      const point = agentId ? agentPositions.get(agentId) : undefined;
+      return teamRegion && agentId && point ? [{ teamId, agentId, point }] : [];
+    });
+    if (!responsible || !line.responsibleAgentId) {
+      for (const team of teamAnchors) {
+        edges.push({
+          id: `team:${line.id}:${team.teamId}`,
+          parentId: line.ownerAgentId,
+          childId: team.agentId,
+          from: owner,
+          to: team.point,
+          kind: 'production',
+          lineId: line.id,
+          teamId: team.teamId,
+          responsibleAgentId: team.agentId
+        });
+      }
+      continue;
+    }
+    edges.push({
+      id: `line:${line.ownerAgentId}:${line.id}`,
+      parentId: line.ownerAgentId,
+      childId: line.responsibleAgentId,
+      from: owner,
+      to: responsible,
+      kind: 'production',
+      lineId: line.id,
+      responsibleAgentId: line.responsibleAgentId
+    });
+    for (const team of teamAnchors) {
+      if (team.agentId === line.responsibleAgentId) continue;
+      edges.push({
+        id: `team:${line.id}:${team.teamId}`,
+        parentId: line.responsibleAgentId,
+        childId: team.agentId,
+        from: responsible,
+        to: team.point,
+        kind: 'production',
+        lineId: line.id,
+        teamId: team.teamId,
+        responsibleAgentId: team.agentId
+      });
+    }
+  }
+  for (const [childId, parentId] of organization.parentByAgentId) {
+    if (parentId === 'user' || parentId === orchestratorId) continue;
+    const child = agentById.get(childId);
+    const parent = agentById.get(parentId);
+    if (!child?.lineId || child.lineId !== parent?.lineId) continue;
+    const from = agentPositions.get(parentId);
+    const to = agentPositions.get(childId);
+    if (from && to) edges.push({ id: `reports:${parentId}:${childId}`, parentId, childId, from, to, kind: 'delegation' });
+  }
+
+  const nodePoints = [user, ...agentPositions.values()];
+  const minNodeX = Math.min(...nodePoints.map((point) => point.x - NODE_WIDTH / 2), ...regions.map((region) => region.x));
+  const maxNodeX = Math.max(...nodePoints.map((point) => point.x + NODE_WIDTH / 2), ...regions.map((region) => region.x + region.width));
+  const minNodeY = Math.min(...nodePoints.map((point) => point.y - NODE_HEIGHT / 2), ...regions.map((region) => region.y));
+  const maxNodeY = Math.max(...nodePoints.map((point) => point.y + NODE_HEIGHT / 2), ...regions.map((region) => region.y + region.height));
+  const contentWidth = maxNodeX - minNodeX;
+  const contentHeight = maxNodeY - minNodeY;
+  const width = Math.max(1200, contentWidth + WORLD_MARGIN_X * 2);
+  const height = Math.max(900, contentHeight + WORLD_MARGIN_Y * 2);
+  const dx = (width - contentWidth) / 2 - minNodeX;
+  const dy = (height - contentHeight) / 2 - minNodeY;
+  const shiftedPositions = new Map<string, Point>();
+  for (const [id, point] of agentPositions) shiftedPositions.set(id, translated(point, dx, dy));
+  const shiftedRegions = regions.map((region) => translateRegion(region, dx, dy));
+  const shiftedLines = lines.map((line) => translateRegion(line, dx, dy) as MapLineLayout);
+  const shiftedEdges = edges.map((edge) => ({ ...edge, from: translated(edge.from, dx, dy), to: translated(edge.to, dx, dy) }));
+  const shiftedUser = translated(user, dx, dy);
+  const center = (orchestratorId ? shiftedPositions.get(orchestratorId) : undefined) ?? shiftedUser;
+
+  return {
+    width,
+    height,
+    center,
+    user: shiftedUser,
+    agentPositions: shiftedPositions,
+    groups: [],
+    regions: shiftedRegions,
+    lines: shiftedLines,
+    edges: shiftedEdges,
+    hierarchy: hierarchyView(organization),
+    organization,
+    nodeWidth: NODE_WIDTH,
+    nodeHeight: NODE_HEIGHT,
+    outerRadius: Math.max(width, height) / 2 - WORLD_MARGIN_X,
+    compact: shiftedPositions.size > 12
+  };
+}
+
+export function createStableLayout(input: AgentUiModel[] | OrquestaUiSnapshot): MapLayout {
+  if (Array.isArray(input)) return createLegacyLayout(input);
+  return input.organization?.source === 'explicit' ? createAdaptiveLayout(input) : createLegacyLayout(input.agents);
 }
 
 export function orthogonalPath(from: Point, to: Point, axis: 'vertical' | 'horizontal' = 'vertical'): string {

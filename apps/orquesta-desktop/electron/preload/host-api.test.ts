@@ -5,7 +5,7 @@ import { createDesktopHostApi } from './host-api';
 
 describe('createDesktopHostApi', () => {
   test('exposes bounded methods instead of raw IPC', async () => {
-    const snapshot = { project: { id: 'repo-1', title: 'Repo' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [], v4Operations: emptyV4OperationsSnapshot() };
+    const snapshot = { project: { id: 'repo-1', title: 'Repo' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [], v4Operations: emptyV4OperationsSnapshot(), inspectionTemplates: [], inspectionRuns: [] };
     const invoke = vi.fn(async (channel: string, input?: unknown) => {
       if (channel === DESKTOP_IPC.getHostInfo) return { platform: 'win32', coreStatus: 'ready' };
       if (channel === DESKTOP_IPC.getRepositorySnapshot) return snapshot;
@@ -20,6 +20,8 @@ describe('createDesktopHostApi', () => {
       };
       if (channel === DESKTOP_IPC.respondRuntimeApproval) return { status: 'accepted', correlationId: 'approval-1' };
       if (channel === DESKTOP_IPC.listAttentionHistory) return [];
+      if (channel === DESKTOP_IPC.startInspection || channel === DESKTOP_IPC.cancelInspection) return { status: 'accepted', correlationId: 'inspection-1' };
+      if (channel === DESKTOP_IPC.readInspectionReport) return { runId: 'BENCH-001', markdown: '# Benchmark' };
       if (channel === DESKTOP_IPC.openCodexDraft) return { status: 'accepted', correlationId: 'draft-1' };
       if (channel === DESKTOP_IPC.selectImageAttachments) return [];
       return input;
@@ -43,6 +45,11 @@ describe('createDesktopHostApi', () => {
     await expect(api.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
     await expect(api.respondRuntimeApproval({ id: 'runtime-approval-1', decision: 'decline' })).resolves.toMatchObject({ status: 'accepted' });
     await expect(api.listAttentionHistory()).resolves.toEqual([]);
+    await expect(api.startInspection({
+      kind: 'external_benchmark', target: { kind: 'project', ids: [] }, focus: 'cost'
+    })).resolves.toMatchObject({ status: 'accepted' });
+    await expect(api.cancelInspection('BENCH-001')).resolves.toMatchObject({ status: 'accepted' });
+    await expect(api.readInspectionReport('BENCH-001')).resolves.toEqual({ runId: 'BENCH-001', markdown: '# Benchmark' });
     await expect(api.openCodexDraft({ targetAgentId: 'orchestrator', text: 'Keep as draft.' })).resolves.toMatchObject({ status: 'accepted' });
     const listener = vi.fn();
     const unsubscribe = api.subscribeRepository(listener);
@@ -62,6 +69,9 @@ describe('createDesktopHostApi', () => {
       [DESKTOP_IPC.getRuntimeInfo, { probe: false }],
       [DESKTOP_IPC.respondRuntimeApproval, { id: 'runtime-approval-1', decision: 'decline' }],
       [DESKTOP_IPC.listAttentionHistory],
+      [DESKTOP_IPC.startInspection, { kind: 'external_benchmark', target: { kind: 'project', ids: [] }, focus: 'cost' }],
+      [DESKTOP_IPC.cancelInspection, { runId: 'BENCH-001' }],
+      [DESKTOP_IPC.readInspectionReport, { runId: 'BENCH-001' }],
       [DESKTOP_IPC.openCodexDraft, { targetAgentId: 'orchestrator', text: 'Keep as draft.' }]
     ]);
     expect(api).not.toHaveProperty('invoke');

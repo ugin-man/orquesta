@@ -10,6 +10,7 @@ const { assertContract } = require("@orquesta/contracts");
 const {
   commitOrganizationTransition,
   migrateLegacyOrganization,
+  repairLegacyOrganizationMigration,
   readOrganizationBundle,
 } = require("./organization-state");
 
@@ -78,7 +79,12 @@ test("legacy support agents are superseded by one active user-support agent with
     assert.match(agent.thread_id, /^thread-/, `${agentId} thread history must be preserved`);
   }
 
-  assert.equal(migrated.agentsState.agents.some((agent) => agent.agent_id === "bootstrap-qa-001"), true);
+  assert.equal(migrated.agentsState.agents.find((agent) => agent.agent_id === "bootstrap-qa-001").organization_scope, "line");
+  assert.equal(migrated.agentsState.agents.find((agent) => agent.agent_id === "implementation-001").organization_scope, "line");
+  assert.equal(migrated.agentsState.agents.find((agent) => agent.agent_id === "orchestrator").organization_parent_agent_id, "user");
+  assert.equal(migrated.agentsState.agents.find((agent) => agent.agent_id === "user-support").organization_parent_agent_id, "user");
+  assert.equal(migrated.agentsState.agents.find((agent) => agent.agent_id === "orquesta-admin").organization_parent_agent_id, "user");
+  assert.equal(migrated.organizationState.relationships.some((relationship) => ["user-support", "orquesta-admin"].includes(relationship.from_agent_id)), false);
   assert.equal(migrated.agentsState.organization_migration.status, "review_required");
   assert.doesNotThrow(() => assertContract("organization-state", migrated.organizationState));
   assert.equal(JSON.stringify(migrated).includes("temporary_assignment"), false);
@@ -121,6 +127,31 @@ test("a new repository receives exactly the three unconditional foundation agent
     ["orchestrator", "orquesta-admin", "user-support"].sort(),
   );
   assert.equal(migrated.organizationState.agents.some((agent) => agent.agent_id === "bootstrap-qa-001"), false);
+});
+
+test("a completed development reset is not repopulated from legacy agent history", () => {
+  const migrated = migrateLegacyOrganization({
+    projectId: "development-project",
+    agentsState: legacyAgents(),
+    sessionsState: emptySessions(),
+    tasksState: emptyTasks(),
+    now: NOW,
+  });
+  const foundationIds = new Set(["orchestrator", "orquesta-admin", "user-support"]);
+  migrated.agentsState.organization_migration.status = "complete";
+  migrated.organizationState.agents = migrated.organizationState.agents.filter((agent) => foundationIds.has(agent.agent_id));
+  migrated.organizationState.teams = migrated.organizationState.teams.filter((team) => team.team_id === "foundation");
+  migrated.organizationState.memberships = migrated.organizationState.memberships.filter((membership) => foundationIds.has(membership.agent_id));
+  migrated.organizationState.lines = [];
+
+  const repaired = repairLegacyOrganizationMigration({
+    ...migrated,
+    now: "2026-07-21T15:00:00.000Z",
+  });
+
+  assert.equal(repaired.changed, false);
+  assert.deepEqual(repaired.bundle.organizationState.agents.map((agent) => agent.agent_id).sort(), [...foundationIds].sort());
+  assert.deepEqual(repaired.bundle.organizationState.lines, []);
 });
 
 test("an invalid transition writes no organization files", () => {

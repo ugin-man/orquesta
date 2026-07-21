@@ -9,4 +9,5 @@ export async function openFixture(
   await page.goto(`/?fixture=${encodeURIComponent(fixture)}`);
   await page.locator('.desktop-shell').waitFor();
   await page.locator('.repository-status-pill, .prototype-badge').waitFor();
+  await page.locator('#startup-curtain').waitFor({ state: 'detached' });
 }

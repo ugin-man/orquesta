@@ -14,7 +14,11 @@ const variants = [
   { label: '200pct-1366x768', scale: 2, width: 1366, height: 768 }
 ] as const;
 
-async function launchVariant(variant: typeof variants[number]): Promise<{ desktop: ElectronApplication; window: Page; userData: string }> {
+async function removeTemporaryDirectory(directory: string): Promise<void> {
+  await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+}
+
+async function launchVariant(variant: typeof variants[number], fixtureId = 'adaptive-large-roster'): Promise<{ desktop: ElectronApplication; window: Page; userData: string }> {
   const userData = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-map-user-'));
   try {
     const desktop = await electron.launch({
@@ -28,7 +32,7 @@ async function launchVariant(variant: typeof variants[number]): Promise<{ deskto
         '.'
       ],
       cwd: appRoot,
-      env: { ...process.env, ORQUESTA_E2E: '1', ORQUESTA_E2E_FIXTURE: 'large-roster' }
+      env: { ...process.env, ORQUESTA_E2E: '1', ORQUESTA_E2E_FIXTURE: fixtureId }
     });
     const window = await desktop.firstWindow();
     const session = await window.context().newCDPSession(window);
@@ -41,7 +45,7 @@ async function launchVariant(variant: typeof variants[number]): Promise<{ deskto
     await expect(window.getByRole('application', { name: 'Orquesta Desktop' })).toBeVisible();
     return { desktop, window, userData };
   } catch (error) {
-    await rm(userData, { recursive: true, force: true });
+    await removeTemporaryDirectory(userData);
     throw error;
   }
 }
@@ -73,14 +77,18 @@ async function startLongTaskObserver(window: Page) {
 }
 
 test('keeps the complete hierarchy crisp and responsive in Electron', async () => {
+  test.setTimeout(120_000);
   await mkdir(captureRoot, { recursive: true });
   const results: Array<{ label: string; width: number; height: number; requestedScale: number; actualScale: number; agentCount: number; overlapCount: number; maxLongTaskMs: number }> = [];
 
   for (const variant of variants) {
     const { desktop, window, userData } = await launchVariant(variant);
     try {
-      await expect(window.locator('[data-node-kind="agent"]')).toHaveCount(35);
-      expect(await window.locator('.map-edge--base').count()).toBeGreaterThanOrEqual(35);
+      await expect(window.locator('[data-node-kind="agent"]')).toHaveCount(80);
+      await expect(window.locator('[data-region-kind="line"]')).toHaveCount(0);
+      await expect(window.locator('[data-line-branch]')).toHaveCount(4);
+      await expect(window.locator('[data-region-kind="team"]')).toHaveCount(8);
+      expect(await window.locator('.map-edge--base').count()).toBeGreaterThanOrEqual(60);
       const actualScale = await window.evaluate(() => window.devicePixelRatio);
       expect(actualScale).toBeCloseTo(variant.scale, 1);
 
@@ -160,10 +168,60 @@ test('keeps the complete hierarchy crisp and responsive in Electron', async () =
       for (let index = 0; index < 5; index += 1) await window.getByRole('button', { name: 'Zoom in' }).click();
       for (let index = 0; index < 5; index += 1) await window.getByRole('button', { name: 'Zoom out' }).click();
       await window.getByRole('button', { name: 'Fit' }).click();
-      await window.locator('[data-agent-id="agent-15"]').click();
+      const hitboxAlignment = await window.locator('[data-agent-id="orchestrator"]').evaluate((button) => {
+        const buttonRect = button.getBoundingClientRect();
+        const iconRect = button.querySelector('.agent-node__icon')!.getBoundingClientRect();
+        const labelRect = button.querySelector('.agent-node__copy strong')!.getBoundingClientRect();
+        return {
+          centerDelta: Math.hypot(
+            (buttonRect.left + buttonRect.width / 2) - (iconRect.left + iconRect.width / 2),
+            (buttonRect.top + buttonRect.height / 2) - (iconRect.top + iconRect.height / 2)
+          ),
+          labelBelowButton: labelRect.top >= buttonRect.bottom
+        };
+      });
+      expect(hitboxAlignment.centerDelta).toBeLessThanOrEqual(1);
+      expect(hitboxAlignment.labelBelowButton).toBe(true);
+      await window.locator('[data-agent-id="implementation-01-01"]').click();
       await expect(window.locator('aside[aria-label$="detail"]')).toBeVisible();
       await window.keyboard.press('Escape');
       await expect(window.locator('aside[aria-label$="detail"]')).toHaveCount(0);
+
+      await window.locator('.now-item').first().click();
+      await expect(window.locator('aside[aria-label$="detail"]')).toBeVisible();
+      await window.keyboard.press('Escape');
+      await expect(window.locator('aside[aria-label$="detail"]')).toHaveCount(0);
+      await window.getByRole('button', { name: 'Home' }).click();
+      await expect(window.locator('.map-viewport')).toBeVisible();
+
+      for (const kind of ['line', 'team'] as const) {
+        const handle = window.locator(`[data-region-drag-handle="${kind}"]`).first();
+        const box = await handle.boundingBox();
+        expect(box).not.toBeNull();
+        const startX = box!.x + Math.min(60, box!.width / 2);
+        const startY = box!.y + Math.min(16, box!.height / 2);
+        const hitTarget = await window.evaluate(({ x, y }) => {
+          const element = document.elementFromPoint(x, y) as HTMLElement | null;
+          return {
+            kind: element?.dataset.regionDragHandle ?? null,
+            regionId: element?.dataset.regionId ?? null,
+            className: element?.className ?? null,
+            tagName: element?.tagName ?? null
+          };
+        }, { x: startX, y: startY });
+        expect(hitTarget.kind, `${kind} drag handle must own its visible header hit area: ${JSON.stringify(hitTarget)}`).toBe(kind);
+        await window.mouse.move(startX, startY);
+        await window.mouse.down();
+        await window.mouse.move(startX + 36, startY + 18, { steps: 4 });
+        await window.mouse.up();
+        const bucket = kind === 'line' ? 'lineOffsets' : 'teamOffsets';
+        await expect.poll(async () => window.evaluate(({ storageKey, bucketName }) => {
+          const saved = JSON.parse(localStorage.getItem(storageKey) ?? '{}');
+          return Object.keys(saved[bucketName] ?? {}).length;
+        }, { storageKey: 'orquesta.desktop.map-layout.adaptive-large-roster', bucketName: bucket }), { message: `${kind} offset should persist` }).toBe(1);
+        await window.getByRole('button', { name: 'Reset' }).click();
+        expect(await window.evaluate(() => localStorage.getItem('orquesta.desktop.map-layout.adaptive-large-roster'))).toBeNull();
+      }
       await window.getByRole('button', { name: 'Fit' }).click();
 
       await window.screenshot({ path: path.join(captureRoot, `electron-map-${variant.label}.png`), animations: 'disabled' });
@@ -174,15 +232,93 @@ test('keeps the complete hierarchy crisp and responsive in Electron', async () =
         height: variant.height,
         requestedScale: variant.scale,
         actualScale,
-        agentCount: 35,
+        agentCount: 80,
         overlapCount: projectedOverlaps.length,
         maxLongTaskMs: Math.max(0, ...longTasks)
       });
     } finally {
       await desktop.close();
-      await rm(userData, { recursive: true, force: true });
+      await removeTemporaryDirectory(userData);
     }
   }
 
+  const review = await launchVariant(variants[0], 'adaptive-two-line');
+  try {
+    await expect(review.window.locator('[data-node-kind="agent"]')).toHaveCount(13);
+    await expect(review.window.locator('[data-region-kind="line"]')).toHaveCount(0);
+    await expect(review.window.locator('[data-line-branch]')).toHaveCount(2);
+    await expect(review.window.locator('[data-line-branch="line-01"]')).toContainText('Desktop line');
+    await expect(review.window.locator('[data-line-branch="line-02"]')).toContainText('Core line');
+    await expect(review.window.locator('[data-region-kind="team"]')).toHaveCount(2);
+    await expect(review.window.locator('[data-team-lead="true"]')).toHaveCount(2);
+    await expect(review.window.locator('[data-agent-id^="implementation-01-"]')).toHaveCount(3);
+    await expect(review.window.locator('[data-agent-id^="implementation-02-"]')).toHaveCount(3);
+    await review.window.getByRole('button', { name: 'Fit' }).click();
+    await review.window.screenshot({ path: path.join(captureRoot, 'electron-map-adaptive-two-line.png'), animations: 'disabled' });
+    await expect(review.window).toHaveScreenshot('map-adaptive-two-line-100pct-1440x900.png', { animations: 'disabled', maxDiffPixelRatio: 0.003 });
+  } finally {
+    await review.desktop.close();
+    await removeTemporaryDirectory(review.userData);
+  }
+
+  const singleLine = await launchVariant(variants[0], 'adaptive-single-line');
+  try {
+    const teamBranches = singleLine.window.locator('[data-line-branch-edge="line-01"][data-team-branch-edge]');
+    await expect(teamBranches).toHaveCount(2);
+    expect((await teamBranches.evaluateAll((items) => items.map((item) => item.getAttribute('data-responsible-agent-id')))).sort())
+      .toEqual(['design-01-01', 'implementation-01-01']);
+  } finally {
+    await singleLine.desktop.close();
+    await removeTemporaryDirectory(singleLine.userData);
+  }
+
   await writeFile(path.join(appRoot, 'artifacts', 'map-stability-metrics.json'), `${JSON.stringify({ measuredAt: new Date().toISOString(), results }, null, 2)}\n`, 'utf8');
+});
+
+test('drags an inspection beacon from its visible icon and preserves its normal click action', async () => {
+  test.setTimeout(60_000);
+  const { desktop, window, userData } = await launchVariant(variants[0], 'inspection-running');
+  try {
+    await expect(window.locator('[data-node-kind="inspection"]')).toHaveCount(2);
+    await window.getByRole('button', { name: 'Fit' }).click();
+
+    const inspection = window.locator('[data-inspection-kind="external_benchmark"]');
+    const icon = inspection.locator('.inspection-node__icon');
+    const iconBox = await icon.boundingBox();
+    expect(iconBox).not.toBeNull();
+    const start = { x: iconBox!.x + iconBox!.width / 2, y: iconBox!.y + iconBox!.height / 2 };
+    const hitTarget = await window.evaluate(({ x, y }) => {
+      const button = document.querySelector('[data-inspection-kind="external_benchmark"]');
+      const target = document.elementFromPoint(x, y);
+      return target === button;
+    }, start);
+    expect(hitTarget).toBe(true);
+
+    const beforeNode = await inspection.boundingBox();
+    const beforeEdge = await window.locator('.map-edge--inspection-blue').getAttribute('d');
+    expect(beforeNode).not.toBeNull();
+    expect(beforeEdge).not.toBeNull();
+
+    await window.mouse.move(start.x, start.y);
+    await window.mouse.down();
+    await window.mouse.move(start.x + 64, start.y + 36, { steps: 6 });
+    await window.mouse.up();
+
+    await expect.poll(async () => {
+      const box = await inspection.boundingBox();
+      return box ? { x: box.x, y: box.y } : null;
+    }).not.toEqual({ x: beforeNode!.x, y: beforeNode!.y });
+    await expect.poll(async () => window.locator('.map-edge--inspection-blue').getAttribute('d')).not.toBe(beforeEdge);
+    await expect.poll(async () => window.evaluate(() => {
+      const saved = JSON.parse(localStorage.getItem('orquesta.desktop.map-layout.inspection-running') ?? '{}');
+      return saved.inspectionOffsets?.external_benchmark ?? null;
+    })).toEqual(expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }));
+    await expect(window.getByRole('dialog', { name: 'Team Management' })).toHaveCount(0);
+
+    await inspection.click();
+    await expect(window.getByRole('dialog', { name: 'Team Management' })).toBeVisible();
+  } finally {
+    await desktop.close();
+    await removeTemporaryDirectory(userData);
+  }
 });

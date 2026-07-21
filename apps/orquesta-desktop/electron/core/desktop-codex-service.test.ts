@@ -24,6 +24,12 @@ function createAdapterDouble() {
     createThread: vi.fn(async (input) => ({
       ok: true,
       thread_id: 'thread-new',
+      runtime_profile: {
+        cwd: input.params?.cwd ?? null,
+        sandbox: input.params?.sandbox ?? 'workspace-write',
+        approval_policy: input.params?.approvalPolicy ?? 'on-request',
+        requested_web_search_mode: input.params?.webSearchMode ?? null
+      },
       model_evidence: {
         recommended_model: input.recommendedModel ?? null,
         requested_model: input.requestedModel ?? null,
@@ -34,6 +40,12 @@ function createAdapterDouble() {
     resumeThread: vi.fn(async (input) => ({
       ok: true,
       thread_id: input.threadId,
+      runtime_profile: {
+        cwd: input.params?.cwd ?? null,
+        sandbox: input.params?.sandbox ?? 'workspace-write',
+        approval_policy: input.params?.approvalPolicy ?? 'on-request',
+        requested_web_search_mode: input.params?.webSearchMode ?? null
+      },
       model_evidence: {
         recommended_model: input.recommendedModel ?? null,
         requested_model: input.requestedModel ?? null,
@@ -42,6 +54,7 @@ function createAdapterDouble() {
       }
     })),
     startTurn: vi.fn(async (input) => ({ ok: true, thread_id: input.threadId, turn_id: 'turn-1' })),
+    interruptTurn: vi.fn(async (input) => ({ ok: true, thread_id: input.threadId, turn_id: input.turnId })),
     readThread: vi.fn(async (input) => ({ ok: true, thread_id: input.threadId, thread: thread(input.threadId) })),
     runtimeInfo: vi.fn(async ({ probe }) => ({
       ok: true,
@@ -72,6 +85,81 @@ function createAdapterDouble() {
 }
 
 describe('DesktopCodexService', () => {
+  test('starts external inspection in a fresh read-only thread with live Web search', async () => {
+    const double = createAdapterDouble();
+    const service = new DesktopCodexService({ adapter: double.adapter });
+
+    await expect(service.startInspection({
+      correlationId: 'inspect-external',
+      projectId: 'repo-1',
+      rootPath: 'C:\\repo',
+      kind: 'external_benchmark',
+      prompt: 'Inspect the project.'
+    })).resolves.toEqual({
+      threadId: 'thread-new',
+      turnId: 'turn-1',
+      runtimeBoundary: {
+        sandbox: 'read-only', approvalPolicy: 'never', webSearchMode: 'live'
+      }
+    });
+    expect(double.adapter.createThread).toHaveBeenCalledWith({
+      correlationId: 'inspect-external:thread',
+      params: {
+        cwd: 'C:\\repo', sandbox: 'read-only', approvalPolicy: 'never', webSearchMode: 'live'
+      }
+    });
+    expect(double.adapter.resumeThread).not.toHaveBeenCalled();
+    expect(double.adapter.startTurn).toHaveBeenCalledWith({
+      correlationId: 'inspect-external',
+      threadId: 'thread-new',
+      input: [{ type: 'text', text: 'Inspect the project.', text_elements: [] }]
+    });
+  });
+
+  test('starts adversarial inspection with Web search disabled', async () => {
+    const double = createAdapterDouble();
+    const service = new DesktopCodexService({ adapter: double.adapter });
+
+    await service.startInspection({
+      correlationId: 'inspect-audit', projectId: 'repo-1', rootPath: 'C:\\repo',
+      kind: 'adversarial_audit', prompt: 'Audit the project.'
+    });
+
+    expect(double.adapter.createThread).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({ webSearchMode: 'disabled' })
+    }));
+  });
+
+  test('rejects an inspection runtime profile mismatch before starting the turn', async () => {
+    const double = createAdapterDouble();
+    double.adapter.createThread.mockResolvedValue({
+      ok: true,
+      thread_id: 'thread-unsafe',
+      runtime_profile: {
+        cwd: 'C:\\repo', sandbox: 'workspace-write', approval_policy: 'never', requested_web_search_mode: 'live'
+      }
+    });
+    const service = new DesktopCodexService({ adapter: double.adapter });
+
+    await expect(service.startInspection({
+      correlationId: 'inspect-mismatch', projectId: 'repo-1', rootPath: 'C:\\repo',
+      kind: 'external_benchmark', prompt: 'Inspect.'
+    })).rejects.toThrow('read_only_boundary_violation');
+    expect(double.adapter.startTurn).not.toHaveBeenCalled();
+  });
+
+  test('interrupts an inspection using its exact thread and turn ids', async () => {
+    const double = createAdapterDouble();
+    const service = new DesktopCodexService({ adapter: double.adapter });
+
+    await expect(service.interruptInspection({
+      correlationId: 'inspect-cancel', threadId: 'thread-9', turnId: 'turn-7'
+    })).resolves.toBeUndefined();
+    expect(double.adapter.interruptTurn).toHaveBeenCalledWith({
+      correlationId: 'inspect-cancel', threadId: 'thread-9', turnId: 'turn-7'
+    });
+  });
+
   test('creates a coordinator thread, routes the target privately, and keeps model evidence separate', async () => {
     const double = createAdapterDouble();
     const service = new DesktopCodexService({ adapter: double.adapter });

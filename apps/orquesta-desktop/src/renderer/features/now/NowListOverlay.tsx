@@ -1,13 +1,15 @@
+import { ArrowRight } from 'lucide-react';
 import type { AgentUiModel, TaskUiModel } from '../../../contracts/orquesta-ui';
 import { OverlayFrame } from '../../components/OverlayFrame';
 import { statusLabel } from '../../components/format';
 import { useI18n } from '../i18n/I18nProvider';
 import { activeItems } from './NowCardStack';
 
-export function NowListOverlay({ agents, tasks, onOpenTask, onClose }: {
+export function NowListOverlay({ agents, tasks, onOpenTask, onOpenAllRecords, onClose }: {
   agents: AgentUiModel[];
   tasks: TaskUiModel[];
   onOpenTask(taskId: string): void;
+  onOpenAllRecords(): void;
   onClose(): void;
 }) {
   const { t } = useI18n();
@@ -22,6 +24,9 @@ export function NowListOverlay({ agents, tasks, onOpenTask, onClose }: {
           </button>
         ))}
       </div>
+      <footer className="quick-view-footer">
+        <button type="button" className="quick-view-footer__action" onClick={onOpenAllRecords}>{t('viewAllRecords')}<ArrowRight size={15} /></button>
+      </footer>
     </OverlayFrame>
   );
 }

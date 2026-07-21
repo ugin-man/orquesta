@@ -1,4 +1,4 @@
-import type { AttentionUiItem, OrquestaUiSnapshot, ProjectStatus, RuntimeUiEvent } from './orquesta-ui';
+import type { AttentionUiItem, InspectionKind, InspectionTargetUi, OrquestaUiSnapshot, ProjectStatus, RuntimeUiEvent } from './orquesta-ui';
 
 export type UiActionResult =
   | { status: 'accepted'; correlationId: string }
@@ -36,6 +36,17 @@ export interface RuntimeInfoUi {
   platformOs: string | null;
   userAgent: string | null;
   integrity: 'verified' | 'unverified' | 'failed';
+}
+
+export interface StartInspectionUiInput {
+  kind: InspectionKind;
+  target: Pick<InspectionTargetUi, 'kind' | 'ids'>;
+  focus: string | null;
+}
+
+export interface InspectionReportUi {
+  runId: string;
+  markdown: string;
 }
 
 export type AttentionResolutionInput =
@@ -92,6 +103,9 @@ export interface OrquestaRendererBridge {
   requestOpenProject(): Promise<UiActionResult>;
   selectImageAttachments(): Promise<ComposerAttachment[]>;
   listAttentionHistory(): Promise<AttentionUiItem[]>;
+  startInspection(input: StartInspectionUiInput): Promise<UiActionResult>;
+  cancelInspection(runId: string): Promise<UiActionResult>;
+  readInspectionReport(runId: string): Promise<InspectionReportUi>;
   listAgentProposals(): Promise<AgentProposal[]>;
   approveAgentProposal(proposalId: string): Promise<UiActionResult>;
 }

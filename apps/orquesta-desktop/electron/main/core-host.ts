@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
+import type { ConversationPage, InspectionReportUi, RuntimeInfoUi, StartInspectionUiInput } from '../../src/contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { CoreEvent, CoreRequest, RuntimeModelEvidence, RuntimeNotification } from '../core/protocol';
 import { isCoreEvent } from '../core/protocol';
@@ -49,6 +49,8 @@ export class CoreHost {
   readonly #pendingRepositorySnapshots = new Map<string, PendingRuntime<OrquestaUiSnapshot>>();
   readonly #pendingApprovalResponses = new Map<string, PendingRuntime<{ correlationId: string; attentionId: string; decision: string }>>();
   readonly #pendingAttentionHistory = new Map<string, PendingRuntime<AttentionUiItem[]>>();
+  readonly #pendingInspectionActions = new Map<string, PendingRuntime<{ correlationId: string; runId: string }>>();
+  readonly #pendingInspectionReports = new Map<string, PendingRuntime<InspectionReportUi>>();
   readonly #runtimeListeners = new Set<(notification: RuntimeNotification) => void>();
   readonly #repositoryListeners = new Set<(snapshot: OrquestaUiSnapshot) => void>();
   #child: CoreChildProcess | null = null;
@@ -190,6 +192,37 @@ export class CoreHost {
     });
   }
 
+  startInspection(input: { projectId: string; rootPath: string } & StartInspectionUiInput): Promise<{
+    correlationId: string;
+    runId: string;
+  }> {
+    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.startInspection(input));
+    const correlationId = randomUUID();
+    return this.#requestInspectionAction(correlationId, { type: 'inspection.start', correlationId, ...input });
+  }
+
+  cancelInspection(input: { projectId: string; rootPath: string; runId: string }): Promise<{
+    correlationId: string;
+    runId: string;
+  }> {
+    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.cancelInspection(input));
+    const correlationId = randomUUID();
+    return this.#requestInspectionAction(correlationId, { type: 'inspection.cancel', correlationId, ...input });
+  }
+
+  readInspectionReport(input: { projectId: string; rootPath: string; runId: string }): Promise<InspectionReportUi> {
+    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.readInspectionReport(input));
+    const correlationId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.#pendingInspectionReports.delete(correlationId);
+        reject(new Error('Inspection report read timed out'));
+      }, this.#options.runtimeTimeoutMs);
+      this.#pendingInspectionReports.set(correlationId, { resolve, reject, timeout });
+      this.#child?.postMessage({ type: 'inspection.read-report', correlationId, ...input });
+    });
+  }
+
   subscribeRuntime(listener: (notification: RuntimeNotification) => void): () => void {
     this.#runtimeListeners.add(listener);
     return () => this.#runtimeListeners.delete(listener);
@@ -205,6 +238,20 @@ export class CoreHost {
         reject(new Error('Orquesta repository projection timed out'));
       }, this.#options.runtimeTimeoutMs);
       this.#pendingRepositorySnapshots.set(correlationId, { resolve, reject, timeout });
+      this.#child?.postMessage(request);
+    });
+  }
+
+  #requestInspectionAction(
+    correlationId: string,
+    request: Extract<CoreRequest, { type: 'inspection.start' | 'inspection.cancel' }>
+  ): Promise<{ correlationId: string; runId: string }> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.#pendingInspectionActions.delete(correlationId);
+        reject(new Error('Inspection action timed out'));
+      }, this.#options.runtimeTimeoutMs);
+      this.#pendingInspectionActions.set(correlationId, { resolve, reject, timeout });
       this.#child?.postMessage(request);
     });
   }
@@ -325,13 +372,31 @@ export class CoreHost {
       pending.resolve(structuredClone(event.items));
       return;
     }
+    if (event.type === 'inspection.action.accepted') {
+      const pending = this.#pendingInspectionActions.get(event.correlationId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      this.#pendingInspectionActions.delete(event.correlationId);
+      pending.resolve({ correlationId: event.correlationId, runId: event.runId });
+      return;
+    }
+    if (event.type === 'inspection.report.result') {
+      const pending = this.#pendingInspectionReports.get(event.correlationId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      this.#pendingInspectionReports.delete(event.correlationId);
+      pending.resolve({ runId: event.runId, markdown: event.markdown });
+      return;
+    }
     if (event.type === 'runtime.request.failed') {
       const pending = this.#pendingDispatches.get(event.correlationId)
         ?? this.#pendingConversations.get(event.correlationId)
         ?? this.#pendingRuntimeInfo.get(event.correlationId)
         ?? this.#pendingRepositorySnapshots.get(event.correlationId)
         ?? this.#pendingApprovalResponses.get(event.correlationId)
-        ?? this.#pendingAttentionHistory.get(event.correlationId);
+        ?? this.#pendingAttentionHistory.get(event.correlationId)
+        ?? this.#pendingInspectionActions.get(event.correlationId)
+        ?? this.#pendingInspectionReports.get(event.correlationId);
       if (!pending) return;
       clearTimeout(pending.timeout);
       this.#pendingDispatches.delete(event.correlationId);
@@ -340,6 +405,8 @@ export class CoreHost {
       this.#pendingRepositorySnapshots.delete(event.correlationId);
       this.#pendingApprovalResponses.delete(event.correlationId);
       this.#pendingAttentionHistory.delete(event.correlationId);
+      this.#pendingInspectionActions.delete(event.correlationId);
+      this.#pendingInspectionReports.delete(event.correlationId);
       pending.reject(new Error(event.reason));
       return;
     }
@@ -375,7 +442,9 @@ export class CoreHost {
       ...this.#pendingRuntimeInfo.values(),
       ...this.#pendingRepositorySnapshots.values(),
       ...this.#pendingApprovalResponses.values(),
-      ...this.#pendingAttentionHistory.values()
+      ...this.#pendingAttentionHistory.values(),
+      ...this.#pendingInspectionActions.values(),
+      ...this.#pendingInspectionReports.values()
     ]) {
       clearTimeout(pending.timeout);
       pending.reject(new Error('Orquesta Core stopped'));
@@ -386,6 +455,8 @@ export class CoreHost {
     this.#pendingRepositorySnapshots.clear();
     this.#pendingApprovalResponses.clear();
     this.#pendingAttentionHistory.clear();
+    this.#pendingInspectionActions.clear();
+    this.#pendingInspectionReports.clear();
     this.#runtimeListeners.clear();
     this.#repositoryListeners.clear();
     const resolveStop = this.#resolveStop;

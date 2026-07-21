@@ -6,6 +6,7 @@ import { DesktopRepositoryBridge } from '../../bridges/desktop-repository-bridge
 import { MockOrquestaBridge } from '../../bridges/mock-bridge';
 import { fixtureKeys, type FixtureId } from '../../fixtures';
 import { AttentionCard } from '../features/attention/AttentionCard';
+import { UserTaskQuickView } from '../features/attention/UserTaskQuickView';
 import { CommandComposer } from '../features/composer/CommandComposer';
 import { AgentDetail } from '../features/details/AgentDetail';
 import { AttentionDetail } from '../features/details/AttentionDetail';
@@ -20,12 +21,14 @@ import { createDefaultFailureRecordView, type FailureRecordView } from '../featu
 import type { DecisionRecordKind } from '../features/records/DecisionRecordsWorkspace';
 import type { TimelineRecord } from '../features/records/TimelineRecordsWorkspace';
 import { NowCardStack } from '../features/now/NowCardStack';
+import { NowListOverlay } from '../features/now/NowListOverlay';
 import { V4Operations } from '../features/operations/V4Operations';
 import { ProjectLauncher } from '../features/project/ProjectLauncher';
 import { RepositoryStatusPill } from '../features/project/RepositoryStatusPill';
 import { ProjectRoute } from '../features/project/ProjectRoute';
 import { ProjectStatusCard } from '../features/project/ProjectStatusCard';
 import { ProjectSwitcher } from '../features/project/ProjectSwitcher';
+import { InitialSetupExperience } from '../features/setup/InitialSetupExperience';
 import { TeamManagement } from '../features/team/TeamManagement';
 import { ToastStack } from '../features/toast/ToastStack';
 
@@ -37,6 +40,8 @@ export type OpenOverlay =
   | { kind: 'project-switcher' }
   | { kind: 'team-management' }
   | { kind: 'operations' }
+  | { kind: 'now-list' }
+  | { kind: 'user-task-quick-view' }
   | null;
 
 type MapSelection = { kind: 'agent'; agentId: string } | { kind: 'task'; taskId: string } | null;
@@ -89,6 +94,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const [recordKind, setRecordKind] = useState<RecordKind>('task');
   const [taskRecordView, setTaskRecordView] = useState<TaskRecordView>(() => createDefaultTaskRecordView());
   const [failureRecordView, setFailureRecordView] = useState<FailureRecordView>(() => createDefaultFailureRecordView());
+  const [selectedInspectionRunId, setSelectedInspectionRunId] = useState<string | null>(null);
   const [decisionRecords, setDecisionRecords] = useState<AttentionUiItem[]>([]);
   const [decisionRecordKind, setDecisionRecordKind] = useState<DecisionRecordKind>('all');
   const [decisionRecordsLoading, setDecisionRecordsLoading] = useState(false);
@@ -172,6 +178,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     setActiveWorkspace('home');
     setTaskRecordView(createDefaultTaskRecordView());
     setFailureRecordView(createDefaultFailureRecordView());
+    setSelectedInspectionRunId(null);
     setDecisionRecords([]);
     setDecisionRecordKind('all');
     setDecisionRecordsLoading(false);
@@ -206,6 +213,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     setOverlay(null);
   }, []);
   const getRuntimeInfo = useCallback((input: { probe: boolean }) => bridge.getRuntimeInfo(input), [bridge]);
+  const readInspectionReport = useCallback((runId: string) => bridge.readInspectionReport(runId), [bridge]);
   const openProjects = async () => {
     try {
       setProjects(await bridge.listProjects());
@@ -414,6 +422,10 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     return <main className="desktop-shell loading-shell" role="application" aria-label="Orquesta Desktop"><div className="loading-mark"><i />{t('loading')}</div></main>;
   }
 
+  if (snapshot.setup && snapshot.setup.status !== 'completed' && snapshot.setup.status !== 'cancelled') {
+    return <InitialSetupExperience setup={snapshot.setup} />;
+  }
+
   if (snapshot.project.id === 'no-project') {
     const openFirstProject = async () => {
       if (openingProject) return;
@@ -512,8 +524,16 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   };
   const openRecords = (kind: RecordKind) => {
     if (kind === 'task') setTaskRecordView((current) => ({ ...current, scope: 'incomplete', selectedTaskId: null }));
+    if (kind !== 'inspection') setSelectedInspectionRunId(null);
     setRecordKind(kind);
     selectWorkspace('records');
+  };
+  const openInspectionReport = (runId: string) => {
+    setSelectedInspectionRunId(runId);
+    setMapSelection(null);
+    setOverlay(null);
+    setRecordKind('inspection');
+    setActiveWorkspace('records');
   };
 
   return (
@@ -551,6 +571,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           recordKind={recordKind}
           taskRecordView={taskRecordView}
           failureRecordView={failureRecordView}
+          selectedInspectionRunId={selectedInspectionRunId}
           decisionRecords={decisionRecords}
           decisionRecordKind={decisionRecordKind}
           decisionRecordsLoading={decisionRecordsLoading}
@@ -563,8 +584,10 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           conversationHasOlder={Boolean(conversationCursor)}
           canResolveAttention={bridge.capabilities.attentionResolution}
           getRuntimeInfo={getRuntimeInfo}
+          readInspectionReport={readInspectionReport}
           onSelectUserTaskKind={setUserTaskKind}
           onSelectRecordKind={(kind) => {
+            if (kind !== 'inspection') setSelectedInspectionRunId(null);
             if (kind === 'conversation') void openConversation();
             else if (kind === 'decision') void openDecisionHistory();
             else if (kind === 'timeline') void openTimeline();
@@ -572,6 +595,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           }}
           onTaskRecordViewChange={setTaskRecordView}
           onFailureRecordViewChange={setFailureRecordView}
+          onSelectedInspectionRunIdChange={setSelectedInspectionRunId}
           onDecisionRecordKindChange={setDecisionRecordKind}
           onOpenTimelineRecord={openTimelineRecord}
           onSelectConversationTarget={(agentId) => void openConversation(agentId)}
@@ -594,18 +618,20 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
                 setTargetAgentId(agentId);
                 openTaskRecord(taskId);
               }}
-              onOpenAll={() => openRecords('task')}
+              onOpenAll={() => setOverlay({ kind: 'now-list' })}
             />
-            <ProjectStatusCard project={snapshot.project} agentCount={snapshot.agents.length} />
-            <AttentionCard
-              items={snapshot.attention}
-              agents={snapshot.agents}
-              canResolve={bridge.capabilities.attentionResolution}
-              onOpenItem={openAttentionItem}
-              onResolve={(item, decision) => void resolveAttention(item, decision)}
-              onOpenAll={() => openUserTasks()}
-              onOpenKind={(kind: UserActionKind) => openUserTasks(kind)}
-            />
+            <div className="home-right-rail">
+              <ProjectStatusCard project={snapshot.project} agentCount={snapshot.agents.length} />
+              <AttentionCard
+                items={snapshot.attention}
+                agents={snapshot.agents}
+                canResolve={bridge.capabilities.attentionResolution}
+                onOpenItem={openAttentionItem}
+                onResolve={(item, decision) => void resolveAttention(item, decision)}
+                onOpenAll={() => setOverlay({ kind: 'user-task-quick-view' })}
+                onOpenKind={(kind: UserActionKind) => openUserTasks(kind)}
+              />
+            </div>
           </>
         ) : null}
         <CommandComposer
@@ -640,15 +666,46 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
         <TeamManagement
           agents={snapshot.agents}
           proposals={proposals}
+          inspectionTemplates={snapshot.inspectionTemplates}
+          inspectionRuns={snapshot.inspectionRuns}
+          organization={snapshot.organization}
           onApprove={async (id) => {
             const result = await bridge.approveAgentProposal(id);
             if (result.status === 'accepted') setProposals((current) => current.filter((proposal) => proposal.id !== id));
             return result;
           }}
+          onStartInspection={async (input) => {
+            const result = await bridge.startInspection(input);
+            if (result.status !== 'accepted') setActionError(result.reason);
+            return result;
+          }}
+          onCancelInspection={async (runId) => {
+            const result = await bridge.cancelInspection(runId);
+            if (result.status !== 'accepted') setActionError(result.reason);
+            return result;
+          }}
+          onOpenInspectionReport={openInspectionReport}
           onClose={closeOverlay}
         />
       ) : null}
       {overlay?.kind === 'operations' ? <V4Operations operations={snapshot.v4Operations} getRuntimeInfo={getRuntimeInfo} onClose={closeOverlay} /> : null}
+      {overlay?.kind === 'now-list' ? (
+        <NowListOverlay
+          agents={snapshot.agents}
+          tasks={snapshot.tasks}
+          onOpenTask={openTaskRecord}
+          onOpenAllRecords={() => openRecords('task')}
+          onClose={closeOverlay}
+        />
+      ) : null}
+      {overlay?.kind === 'user-task-quick-view' ? (
+        <UserTaskQuickView
+          items={snapshot.attention}
+          agents={snapshot.agents}
+          onOpenAll={() => openUserTasks()}
+          onClose={closeOverlay}
+        />
+      ) : null}
     </main>
   );
 }

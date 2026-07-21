@@ -7,6 +7,7 @@ import type {
   ConversationQuery,
   OrquestaRendererBridge,
   ProjectSummary,
+  StartInspectionUiInput,
   UiActionResult
 } from '../contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../contracts/orquesta-ui';
@@ -101,6 +102,18 @@ export class DesktopRepositoryBridge implements OrquestaRendererBridge {
 
   listAttentionHistory(): Promise<AttentionUiItem[]> {
     return this.host.listAttentionHistory();
+  }
+
+  startInspection(input: StartInspectionUiInput): Promise<UiActionResult> {
+    return this.host.startInspection(input);
+  }
+
+  cancelInspection(runId: string): Promise<UiActionResult> {
+    return this.host.cancelInspection(runId);
+  }
+
+  readInspectionReport(runId: string) {
+    return this.host.readInspectionReport(runId);
   }
 
   async listAgentProposals(): Promise<AgentProposal[]> {

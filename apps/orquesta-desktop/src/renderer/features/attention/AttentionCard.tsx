@@ -1,7 +1,7 @@
 import { AlertCircle, ArrowRight, CheckCircle2, Expand, HelpCircle, ShieldAlert, Wrench } from 'lucide-react';
 import type { AgentUiModel, AttentionType, AttentionUiItem, UserActionKind } from '../../../contracts/orquesta-ui';
 import { useI18n } from '../i18n/I18nProvider';
-import { summarizeAttention } from './attention-summary';
+import { sortAttentionItems, summarizeAttention } from './attention-summary';
 
 function AttentionIcon({ type }: { type: AttentionType }) {
   const props = { size: 19, strokeWidth: 1.6, 'aria-hidden': true } as const;
@@ -11,8 +11,6 @@ function AttentionIcon({ type }: { type: AttentionType }) {
   if (type === 'repair') return <Wrench {...props} />;
   return <ShieldAlert {...props} />;
 }
-
-const priorityRank: Record<AttentionUiItem['priority'], number> = { blocker: 0, high: 1, medium: 2, low: 3 };
 
 export function AttentionCard({ items, agents, canResolve, onOpenItem, onResolve, onOpenAll, onOpenKind }: {
   items: AttentionUiItem[];
@@ -26,9 +24,7 @@ export function AttentionCard({ items, agents, canResolve, onOpenItem, onResolve
   const { t } = useI18n();
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const summary = summarizeAttention(items);
-  const sorted = [...items].sort((a, b) => Number(b.blocking) - Number(a.blocking)
-    || priorityRank[a.priority] - priorityRank[b.priority]
-    || Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const sorted = sortAttentionItems(items);
   const actionCounts = [
     ['answer', t('questions')],
     ['approve', t('approvals')],

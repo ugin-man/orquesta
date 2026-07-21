@@ -1,5 +1,5 @@
 import type { FixtureDefinition } from './types';
-import { agent, attention, failure, fixtureV4Operations, observedAt, phase, task } from './helpers';
+import { agent, attention, failure, fixtureInspectionTemplates, fixtureV4Operations, observedAt, phase, task } from './helpers';
 
 const agents = [
   agent({
@@ -108,7 +108,9 @@ export const activeProjectFixture: FixtureDefinition = {
       phase({ id: 'phase-electron', title: 'Desktop integration', summary: 'Electron main, preload, and real bridge', status: 'queued', ownerAgentIds: ['connector'], itemCount: 10, completedItemCount: 0 })
     ],
     recentEvents: [{ id: 'toast-T66', tone: 'danger', title: 'Connector', message: 'Timeout connecting to API. Retrying in 15s.', taskId: 'T66', createdAt: observedAt }],
-    v4Operations: fixtureV4Operations
+    v4Operations: fixtureV4Operations,
+    inspectionTemplates: fixtureInspectionTemplates,
+    inspectionRuns: []
   },
   conversations: {
     orchestrator: [

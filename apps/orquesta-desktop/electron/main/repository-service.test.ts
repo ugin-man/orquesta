@@ -19,8 +19,10 @@ async function makeProject(parent: string, name: string) {
   return root;
 }
 
-function createProjectionHost() {
-  const runtime = new RepositoryRuntime();
+function createProjectionHost(options: { migrateLegacyOrganization?: boolean } = {}) {
+  const runtime = new RepositoryRuntime(options.migrateLegacyOrganization
+    ? {}
+    : { ensureOrganizationState: async () => 'not_applicable' });
   return {
     runtime,
     host: {
@@ -99,7 +101,7 @@ describe('RepositoryService', () => {
     await writeFile(path.join(brokenState, 'agents.json'), '{ broken', 'utf8');
     await writeFile(path.join(brokenState, 'tasks.json'), '{"tasks":[]}', 'utf8');
     const recovered = await makeProject(temporary, 'recovered');
-    const projection = createProjectionHost();
+    const projection = createProjectionHost({ migrateLegacyOrganization: true });
     const service = new RepositoryService({
       registryPath: path.join(temporary, 'repositories.json'),
       coreHost: projection.host,

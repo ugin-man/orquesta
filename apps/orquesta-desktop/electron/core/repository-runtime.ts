@@ -3,6 +3,7 @@ import path from 'node:path';
 import { emptyV4OperationsSnapshot, type OrquestaUiSnapshot, type V4OperationsSnapshot } from '../../src/contracts/orquesta-ui';
 import type { AttentionUiItem } from '../../src/contracts/orquesta-ui';
 import type { RuntimeApprovalRequest } from './protocol';
+import { ensureLegacyOrganizationState } from './legacy-organization-migration';
 import { readRepositorySnapshot } from './repository-reader';
 import { readProvisioningBatch, type ProvisioningBatch } from './specialist-provisioner';
 import { projectV4Operations } from './v4-operations-projection';
@@ -12,6 +13,7 @@ interface CloseableWatcher {
 }
 
 export interface RepositoryRuntimeOptions {
+  ensureOrganizationState?: (input: { projectId: string; rootPath: string }) => Promise<unknown>;
   readSnapshot?: (rootPath: string) => Promise<OrquestaUiSnapshot>;
   readV4Operations?: (rootPath: string) => Promise<V4OperationsSnapshot>;
   watchDirectory?: (directory: string, onChange: () => void, onError: (error: Error) => void) => CloseableWatcher;
@@ -46,6 +48,7 @@ function offlineSnapshot(snapshot: OrquestaUiSnapshot, reason: string): Orquesta
 }
 
 export class RepositoryRuntime {
+  readonly #ensureOrganizationState: NonNullable<RepositoryRuntimeOptions['ensureOrganizationState']>;
   readonly #readSnapshot: (rootPath: string) => Promise<OrquestaUiSnapshot>;
   readonly #readV4Operations: (rootPath: string) => Promise<V4OperationsSnapshot>;
   readonly #watchDirectory: (directory: string, onChange: () => void, onError: (error: Error) => void) => CloseableWatcher;
@@ -65,6 +68,7 @@ export class RepositoryRuntime {
   #provisioning: Promise<void> | null = null;
 
   constructor(options: RepositoryRuntimeOptions = {}) {
+    this.#ensureOrganizationState = options.ensureOrganizationState ?? ensureLegacyOrganizationState;
     this.#readSnapshot = options.readSnapshot ?? ((rootPath) => readRepositorySnapshot(rootPath));
     this.#readV4Operations = options.readV4Operations ?? projectV4Operations;
     this.#watchDirectory = options.watchDirectory ?? defaultWatchDirectory;
@@ -84,6 +88,7 @@ export class RepositoryRuntime {
     this.#clearRefreshTimer();
     this.#projectId = input.projectId;
     this.#rootPath = input.rootPath;
+    await this.#ensureOrganizationState(input);
     await this.provisionSetupSpecialists();
     const next = await this.#projectSnapshot(input.rootPath);
     this.#projectId = next.project.id;

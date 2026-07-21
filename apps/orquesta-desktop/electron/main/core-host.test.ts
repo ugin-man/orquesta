@@ -157,6 +157,35 @@ describe('CoreHost', () => {
     await expect(history).resolves.toEqual([]);
   });
 
+  test('binds inspection start, cancel and report reads to matching Core results', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+
+    const started = host.startInspection({
+      projectId: 'repo-1', rootPath: 'C:\\repo', kind: 'external_benchmark',
+      target: { kind: 'project', ids: [] }, focus: 'cost'
+    });
+    const startRequest = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(startRequest).toMatchObject({ type: 'inspection.start', projectId: 'repo-1', rootPath: 'C:\\repo' });
+    child.emit('message', { type: 'inspection.action.accepted', correlationId: startRequest.correlationId, runId: 'BENCH-001' });
+    await expect(started).resolves.toEqual({ correlationId: startRequest.correlationId, runId: 'BENCH-001' });
+
+    const cancelled = host.cancelInspection({ projectId: 'repo-1', rootPath: 'C:\\repo', runId: 'BENCH-001' });
+    const cancelRequest = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    child.emit('message', { type: 'inspection.action.accepted', correlationId: cancelRequest.correlationId, runId: 'BENCH-001' });
+    await expect(cancelled).resolves.toEqual({ correlationId: cancelRequest.correlationId, runId: 'BENCH-001' });
+
+    const report = host.readInspectionReport({ projectId: 'repo-1', rootPath: 'C:\\repo', runId: 'BENCH-001' });
+    const reportRequest = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    child.emit('message', {
+      type: 'inspection.report.result', correlationId: reportRequest.correlationId,
+      runId: 'BENCH-001', markdown: '# Benchmark'
+    });
+    await expect(report).resolves.toEqual({ runId: 'BENCH-001', markdown: '# Benchmark' });
+  });
+
   test('requests a clean shutdown and kills after the bounded timeout', async () => {
     vi.useFakeTimers();
     const child = new FakeCoreChild();

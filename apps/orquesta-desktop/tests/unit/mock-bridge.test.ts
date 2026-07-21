@@ -36,4 +36,20 @@ describe('MockOrquestaBridge', () => {
     const snapshot = await bridge.getInitialSnapshot();
     expect(snapshot.attention.some((item) => item.id === 'A67')).toBe(false);
   });
+
+  test('projects prototype inspection start and cancel without claiming a real Codex turn', async () => {
+    const bridge = new MockOrquestaBridge('active-project');
+    const listener = vi.fn();
+    bridge.subscribe(listener);
+    await expect(bridge.startInspection({
+      kind: 'external_benchmark', target: { kind: 'project', ids: [] }, focus: 'cost'
+    })).resolves.toMatchObject({ status: 'accepted' });
+    const running = await bridge.getInitialSnapshot();
+    expect(running.inspectionRuns[0]).toMatchObject({
+      kind: 'external_benchmark', status: 'running', threadId: null, turnId: null
+    });
+    await bridge.cancelInspection(running.inspectionRuns[0].runId);
+    expect((await bridge.getInitialSnapshot()).inspectionRuns[0].status).toBe('cancelled');
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ type: 'snapshot_changed' }));
+  });
 });

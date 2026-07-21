@@ -62,7 +62,8 @@ describe('Core protocol validation', () => {
   test('accepts repository snapshot result and changed events only with a projected snapshot', () => {
     const snapshot = {
       project: { id: 'repo-1', title: 'repo', rootPathLabel: 'C:\\repo', status: 'ready' },
-      agents: [], tasks: [], attention: [], phases: [], recentEvents: [], v4Operations: emptyV4OperationsSnapshot()
+      agents: [], tasks: [], attention: [], phases: [], recentEvents: [], v4Operations: emptyV4OperationsSnapshot(),
+      inspectionTemplates: [], inspectionRuns: []
     };
     expect(isCoreEvent({ type: 'repository.snapshot.result', correlationId: 'snapshot-1', snapshot })).toBe(true);
     expect(isCoreEvent({ type: 'repository.snapshot.changed', snapshot })).toBe(true);
@@ -72,6 +73,27 @@ describe('Core protocol validation', () => {
       type: 'repository.snapshot.changed', snapshot: { ...snapshot, v4Operations: { ...snapshot.v4Operations, evidenceChains: 'raw' } }
     })).toBe(false);
     expect(isCoreEvent({ type: 'repository.snapshot.changed', snapshot: { project: { id: '../escape' } } })).toBe(false);
+  });
+
+  test('accepts bounded inspection requests and rejects escaped or oversized targets', () => {
+    const valid = {
+      type: 'inspection.start', correlationId: 'inspect-1', projectId: 'repo-1', rootPath: 'C:\\repo',
+      kind: 'adversarial_audit', target: { kind: 'agents', ids: ['coder-1', 'coder-2'] }, focus: null
+    };
+    expect(isCoreRequest(valid)).toBe(true);
+    expect(isCoreRequest({ ...valid, target: { kind: 'agents', ids: ['../bad'] } })).toBe(false);
+    expect(isCoreRequest({ ...valid, target: { kind: 'agents', ids: Array.from({ length: 33 }, (_, index) => `agent-${index}`) } })).toBe(false);
+    expect(isCoreRequest({ ...valid, focus: 'x'.repeat(4_097) })).toBe(false);
+    expect(isCoreRequest({
+      type: 'inspection.cancel', correlationId: 'cancel-1', projectId: 'repo-1', rootPath: 'C:\\repo', runId: 'AUDIT-001'
+    })).toBe(true);
+    expect(isCoreRequest({
+      type: 'inspection.read-report', correlationId: 'report-1', projectId: 'repo-1', rootPath: 'C:\\repo', runId: '../bad'
+    })).toBe(false);
+    expect(isCoreEvent({ type: 'inspection.action.accepted', correlationId: 'inspect-1', runId: 'AUDIT-001' })).toBe(true);
+    expect(isCoreEvent({
+      type: 'inspection.report.result', correlationId: 'report-1', runId: 'AUDIT-001', markdown: '# Audit'
+    })).toBe(true);
   });
 
   test('accepts only bounded runtime approval and attention history messages', () => {

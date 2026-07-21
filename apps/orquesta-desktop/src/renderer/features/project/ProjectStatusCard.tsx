@@ -1,4 +1,4 @@
-import { Expand } from 'lucide-react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { useState } from 'react';
 import type { ProjectUiModel } from '../../../contracts/orquesta-ui';
 import { formatDateTime } from '../../components/format';
@@ -15,19 +15,25 @@ export function ProjectStatusCard({ project, agentCount }: {
   return (
     <section className={`floating-panel project-status${expanded ? ' is-expanded' : ''}`} aria-label={t('projectStatus')}>
       <button type="button" className="project-status__summary" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
-        <header><span>{t('projectStatus')} <StatusDot status={connectionTone} label={project.connectionLabel} /></span><Expand size={13} aria-hidden="true" /></header>
+        <header>
+          <span>{t('projectStatus')} <StatusDot status={connectionTone} label={project.connectionLabel} /></span>
+          <span className="project-status__toggle-icon" data-testid="project-status-toggle-icon" data-state={expanded ? 'expanded' : 'collapsed'} aria-hidden="true">
+            <Maximize2 className="project-status__icon project-status__icon--expand" size={13} />
+            <Minimize2 className="project-status__icon project-status__icon--collapse" size={13} />
+          </span>
+        </header>
         <strong>{project.title}</strong>
         <p>{agentCount} {t('agents')} <i /> {project.provenWorkingAgentCount} {t('provenWorking')}</p>
       </button>
-      {expanded ? (
-        <div className="project-status__expanded">
+      <div className="project-status__expanded" data-testid="project-status-expanded" aria-hidden={!expanded}>
+        <div className="project-status__expanded-inner">
           <dl>
             <div><dt>{t('status')}</dt><dd>{project.connectionLabel}</dd></div>
             <div><dt>{t('lastSynced')}</dt><dd>{project.lastSyncedAt ? formatDateTime(project.lastSyncedAt) : t('unknown')}</dd></div>
             <div><dt>{t('nextMilestone')}</dt><dd>{project.nextMilestone ?? t('unknown')}</dd></div>
           </dl>
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }

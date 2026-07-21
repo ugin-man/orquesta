@@ -195,5 +195,6 @@ test("the approved setup roster creates explicit initial lines, teams, and propo
   );
   assert.equal(next.organizationState.agents.filter((agent) => agent.organization_scope === "line").length, 3);
   assert.equal(next.organizationState.memberships.filter((membership) => membership.team_id.startsWith("desktop-")).length, 3);
+  assert.equal(next.organizationState.memberships.filter((membership) => membership.team_id.startsWith("desktop-") && membership.position === "lead").length, 0);
   assert.equal(JSON.stringify(next).includes("temporary_assignment"), false);
 });

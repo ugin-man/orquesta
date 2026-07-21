@@ -478,13 +478,25 @@ function organizationStateErrors(value) {
     }
   }
   for (const team of teams.values()) {
-    const leads = activeMemberships.filter((membership) => membership.team_id === team.team_id && membership.position === "lead");
-    if (leads.length > 1) errors.push(schemaError("$.memberships", "organization_team_lead", "a team may have at most one active lead"));
+    if (team.line_id === null || team.lifecycle_state !== "active") continue;
+    const members = activeMemberships.filter((membership) => membership.team_id === team.team_id);
+    const leads = members.filter((membership) => membership.position === "lead");
+    const requiredLeadCount = members.length >= 3 ? 1 : 0;
+    if (leads.length !== requiredLeadCount) {
+      errors.push(schemaError("$.memberships", "organization_team_lead", "an active production team requires no lead below three members and exactly one existing lead at three or more"));
+    }
   }
+  const activeLines = [...lines.values()].filter((line) => line.status === "active");
   for (const line of lines.values()) {
     if (!agents.has(line.owner_agent_id)) errors.push(schemaError("$.lines", "organization_line_owner", "line owner must reference an existing agent"));
-    if (line.dedicated_lead_agent_id !== null && !agents.has(line.dedicated_lead_agent_id)) {
-      errors.push(schemaError("$.lines", "organization_line_lead", "dedicated lead must reference an existing agent"));
+    const lineMemberIds = new Set(activeMemberships
+      .filter((membership) => teams.get(membership.team_id)?.line_id === line.line_id)
+      .map((membership) => membership.agent_id));
+    if (line.dedicated_lead_agent_id !== null && !lineMemberIds.has(line.dedicated_lead_agent_id)) {
+      errors.push(schemaError("$.lines", "organization_line_lead", "dedicated lead must reference an active existing member of the same line"));
+    }
+    if (activeLines.length >= 2 && line.status === "active" && lineMemberIds.size > 0 && line.dedicated_lead_agent_id === null) {
+      errors.push(schemaError("$.lines", "organization_line_responsibility", "each populated active line requires one existing responsible member when multiple active lines exist"));
     }
   }
   const reportsTo = new Map();

@@ -1,4 +1,4 @@
-import type { ComposerAttachment, ConversationMessage, ConversationPage, ProjectSummary, RuntimeInfoUi, UiActionResult } from '../../src/contracts/bridge';
+import type { ComposerAttachment, ConversationMessage, ConversationPage, InspectionReportUi, ProjectSummary, RuntimeInfoUi, StartInspectionUiInput, UiActionResult } from '../../src/contracts/bridge';
 import { isV4OperationsSnapshot, type AttentionUiItem, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
 import type { DesktopHostApi, DesktopHostInfo } from '../shared/host-contract';
@@ -21,6 +21,7 @@ function isRepositorySnapshot(value: unknown): value is OrquestaUiSnapshot {
     project && typeof project.id === 'string' && typeof project.title === 'string'
     && Array.isArray(snapshot.agents) && Array.isArray(snapshot.tasks)
     && Array.isArray(snapshot.attention) && Array.isArray(snapshot.phases) && Array.isArray(snapshot.recentEvents)
+    && Array.isArray(snapshot.inspectionTemplates) && Array.isArray(snapshot.inspectionRuns)
     && isV4OperationsSnapshot(snapshot.v4Operations)
   );
 }
@@ -104,6 +105,26 @@ function isAttentionItem(value: unknown): value is AttentionUiItem {
   return safeId(approval.requestId) && safeId(approval.threadId) && safeId(approval.turnId)
     && typeof approval.method === 'string' && Array.isArray(approval.responseOptions)
     && approval.responseOptions.length > 0 && approval.responseOptions.every((option) => typeof option === 'string');
+}
+
+function validateInspectionInput(input: StartInspectionUiInput): void {
+  if (!input || !['external_benchmark', 'adversarial_audit'].includes(input.kind)) throw new Error('Inspection kind is invalid');
+  const target = input.target;
+  if (!target || !['project', 'line', 'team', 'agents'].includes(target.kind) || !Array.isArray(target.ids)
+    || target.ids.length > 32 || !target.ids.every(safeId)) throw new Error('Inspection target is invalid');
+  if ((target.kind === 'project' && target.ids.length !== 0)
+    || ((target.kind === 'line' || target.kind === 'team') && target.ids.length !== 1)
+    || (target.kind === 'agents' && target.ids.length === 0)) throw new Error('Inspection target scope is invalid');
+  if (input.focus !== null && (typeof input.focus !== 'string' || !input.focus.trim() || input.focus.length > 4_096)) {
+    throw new Error('Inspection focus is invalid');
+  }
+}
+
+function isInspectionReport(value: unknown): value is InspectionReportUi {
+  if (!value || typeof value !== 'object') return false;
+  const report = value as Record<string, unknown>;
+  return safeId(report.runId) && typeof report.markdown === 'string' && report.markdown.trim().length > 0
+    && report.markdown.length <= 1_048_576;
 }
 
 export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe): DesktopHostApi {
@@ -201,6 +222,29 @@ export function createDesktopHostApi(invoke: IpcInvoke, subscribe: IpcSubscribe)
       const items = await invoke(DESKTOP_IPC.listAttentionHistory);
       if (!Array.isArray(items) || !items.every(isAttentionItem)) throw new Error('Desktop host returned invalid attention history');
       return items;
+    },
+    async startInspection(input) {
+      validateInspectionInput(input);
+      const normalized = {
+        kind: input.kind,
+        target: { kind: input.target.kind, ids: [...input.target.ids] },
+        focus: typeof input.focus === 'string' ? input.focus.trim() : null
+      };
+      const action = await invoke(DESKTOP_IPC.startInspection, normalized);
+      if (!isActionResult(action)) throw new Error('Desktop host returned an invalid inspection start result');
+      return action;
+    },
+    async cancelInspection(runId) {
+      if (!safeId(runId)) throw new Error('Inspection run id is invalid');
+      const action = await invoke(DESKTOP_IPC.cancelInspection, { runId });
+      if (!isActionResult(action)) throw new Error('Desktop host returned an invalid inspection cancel result');
+      return action;
+    },
+    async readInspectionReport(runId) {
+      if (!safeId(runId)) throw new Error('Inspection run id is invalid');
+      const report = await invoke(DESKTOP_IPC.readInspectionReport, { runId });
+      if (!isInspectionReport(report) || report.runId !== runId) throw new Error('Desktop host returned an invalid inspection report');
+      return report;
     },
     subscribeRuntime(listener) {
       return subscribe(DESKTOP_IPC.runtimeChanged, (payload) => {

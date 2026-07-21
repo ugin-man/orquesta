@@ -1,4 +1,4 @@
-import type { ComposerAttachment, ConversationPage, ConversationQuery, ProjectSummary, RuntimeInfoUi, UiActionResult } from '../../src/contracts/bridge';
+import type { ComposerAttachment, ConversationPage, ConversationQuery, InspectionReportUi, ProjectSummary, RuntimeInfoUi, StartInspectionUiInput, UiActionResult } from '../../src/contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { RuntimeNotification } from '../core/protocol';
 
@@ -24,6 +24,9 @@ export interface DesktopHostApi {
   openCodexDraft(input: { targetAgentId: string; text: string }): Promise<UiActionResult>;
   respondRuntimeApproval(input: { id: string; decision: string }): Promise<UiActionResult>;
   listAttentionHistory(): Promise<AttentionUiItem[]>;
+  startInspection(input: StartInspectionUiInput): Promise<UiActionResult>;
+  cancelInspection(runId: string): Promise<UiActionResult>;
+  readInspectionReport(runId: string): Promise<InspectionReportUi>;
   subscribeRuntime(listener: (notification: RuntimeNotification) => void): () => void;
 }
 
@@ -41,6 +44,9 @@ export const DESKTOP_IPC = {
   getRuntimeInfo: 'orquesta.desktop.runtime.get-info',
   respondRuntimeApproval: 'orquesta.desktop.runtime.respond-approval',
   listAttentionHistory: 'orquesta.desktop.repository.attention-history',
+  startInspection: 'orquesta.desktop.inspection.start',
+  cancelInspection: 'orquesta.desktop.inspection.cancel',
+  readInspectionReport: 'orquesta.desktop.inspection.read-report',
   openCodexDraft: 'orquesta.desktop.codex.open-draft',
   runtimeChanged: 'orquesta.desktop.runtime.changed'
 } as const;

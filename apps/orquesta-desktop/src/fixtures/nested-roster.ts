@@ -1,5 +1,5 @@
 import type { FixtureDefinition } from './types';
-import { agent, fixtureV4Operations, observedAt, phase } from './helpers';
+import { agent, fixtureInspectionTemplates, fixtureV4Operations, observedAt, phase } from './helpers';
 
 const roleAgent = (
   id: string,
@@ -46,7 +46,9 @@ export const nestedRosterFixture: FixtureDefinition = {
     failures: [],
     phases: [phase({ id: 'nested-phase', title: 'Hierarchy validation', summary: 'Keep every nested agent visible', status: 'current', ownerAgentIds: ['orchestrator'], itemCount: agents.length })],
     recentEvents: [],
-    v4Operations: fixtureV4Operations
+    v4Operations: fixtureV4Operations,
+    inspectionTemplates: fixtureInspectionTemplates,
+    inspectionRuns: []
   },
   conversations: { orchestrator: [] }, attentionHistory: [], agentProposals: [], lastOpenedAt: observedAt
 };

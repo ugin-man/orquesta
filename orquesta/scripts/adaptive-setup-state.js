@@ -2,6 +2,7 @@
 
 const crypto = require("node:crypto");
 const { assertContract } = require("@orquesta/contracts");
+const { normalizeOrganizationLeadership } = require("../../packages/core/src/organization-model");
 
 const FOUNDATION = Object.freeze([
   Object.freeze({ agent_id: "orchestrator", role_id: "orchestrator", organization_scope: "project", lifecycle_state: "active", operational_status: "working" }),
@@ -235,7 +236,7 @@ function createInitialRosterTransition({
     from_agent_id: request.agent_id,
     to_agent_id: "orchestrator",
   }));
-  const organizationState = {
+  const organizationState = normalizeOrganizationLeadership({
     ...clone(bundle.organizationState),
     revision: currentRevision + 1,
     agents: upsert(bundle.organizationState.agents, "agent_id", organizationAgents),
@@ -243,7 +244,7 @@ function createInitialRosterTransition({
     memberships: upsert(bundle.organizationState.memberships, "membership_id", memberships),
     relationships: upsert(bundle.organizationState.relationships, "relationship_id", relationships),
     lines: upsert(bundle.organizationState.lines, "line_id", lines),
-  };
+  });
   assertContract("organization-state", organizationState);
   for (const specialist of specialistPlan.selected_specialists || []) {
     if (!selectedByRoleTeamLine.has(`${specialist.role_id}\u0000${specialist.team_id}\u0000${specialist.line_id}`)) {

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { emptyV4OperationsSnapshot, type
+import { emptyV4OperationsSnapshot, INSPECTION_TEMPLATE_DEFINITIONS, type
   AgentUiModel,
   AgentUiStatus,
   AttentionUiItem,
@@ -10,6 +10,9 @@ import { emptyV4OperationsSnapshot, type
   FailureUiModel,
   FailureUiResolution,
   FailureUiSeverity,
+  InspectionRunStatus,
+  InspectionRunUiModel,
+  InspectionTemplateUiModel,
   OrganizationUiSnapshot,
   OrquestaUiSnapshot,
   ProjectPhaseUiModel,
@@ -20,6 +23,7 @@ import { emptyV4OperationsSnapshot, type
   TaskUiModel,
   TaskUiState
 } from '../../src/contracts/orquesta-ui';
+import { parseInspectionState } from './inspection-run-store';
 
 type JsonObject = Record<string, unknown>;
 
@@ -28,6 +32,7 @@ export interface RepositoryDocuments {
   tasks: unknown;
   roles?: unknown;
   organization?: unknown;
+  organizationDecisions?: unknown;
   setupState?: unknown;
   provisioningBatch?: unknown;
   sessions?: unknown;
@@ -38,6 +43,7 @@ export interface RepositoryDocuments {
   incidents?: unknown;
   incidentCandidates?: unknown;
   incidentClusters?: unknown;
+  inspectionRuns?: unknown;
   events?: unknown[];
 }
 
@@ -82,6 +88,10 @@ function string(value: unknown): string | null {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.flatMap((item) => string(item) ?? []) : [];
+}
+
+function integer(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isInteger(value) ? value : fallback;
 }
 
 function stringList(value: unknown): string[] {
@@ -409,8 +419,68 @@ function projectOrganization(documents: RepositoryDocuments): ExplicitOrganizati
     const memberships = rows(organization, 'memberships').filter((item) => item.active_to === null || item.active_to === undefined);
     const teams = rows(organization, 'teams');
     const relationships = rows(organization, 'relationships').filter((item) => string(item.type) === 'reports_to');
+    const lines = rows(organization, 'lines').flatMap((item) => {
+      const id = string(item.line_id);
+      const ownerAgentId = string(item.owner_agent_id);
+      if (!id || !ownerAgentId) return [];
+      return [{
+        id,
+        displayName: string(item.display_name) ?? id,
+        goal: string(item.goal),
+        status: string(item.status) ?? 'unknown',
+        ownerAgentId,
+        dedicatedLeadAgentId: string(item.dedicated_lead_agent_id),
+        displayOrder: integer(item.display_order),
+        approvalSource: string(item.approval_source)
+      }];
+    });
+    const projectedTeams = teams.flatMap((item) => {
+      const id = string(item.team_id);
+      if (!id) return [];
+      return [{
+        id,
+        lineId: string(item.line_id),
+        displayName: string(item.display_name) ?? id,
+        purpose: string(item.purpose),
+        lifecycleState: string(item.lifecycle_state) ?? 'unknown',
+        displayOrder: integer(item.display_order)
+      }];
+    });
+    const projectedRelationships = relationships.flatMap((item) => {
+      const id = string(item.relationship_id);
+      const type = string(item.type);
+      const fromAgentId = string(item.from_agent_id);
+      const toAgentId = string(item.to_agent_id);
+      return id && type && fromAgentId && toAgentId ? [{ id, type, fromAgentId, toAgentId }] : [];
+    });
+    const lineProposals = rows(documents.organizationDecisions, 'decisions').flatMap((item) => {
+      if (string(item.selected_action) !== 'propose_line' || string(item.approval_state) !== 'pending_user') return [];
+      const proposedLine = object(item.proposed_line);
+      const id = string(item.decision_id);
+      const lineId = string(proposedLine?.line_id);
+      const displayName = string(proposedLine?.display_name);
+      const goal = string(proposedLine?.goal);
+      if (!id || !lineId || !displayName || !goal) return [];
+      return [{
+        id,
+        lineId,
+        displayName,
+        goal,
+        reason: stringArray(item.reason_codes).join(', '),
+        status: 'approval_wait' as const,
+        ownerAgentId: string(proposedLine?.owner_agent_id)
+      }];
+    });
     return {
-      snapshot: { revision: Number(organization.revision), source: 'explicit', diagnostics: [] },
+      snapshot: {
+        revision: Number(organization.revision),
+        source: 'explicit',
+        diagnostics: [],
+        lines,
+        teams: projectedTeams,
+        relationships: projectedRelationships,
+        lineProposals
+      },
       agentById: new Map(organizationAgents.flatMap((item) => string(item.agent_id) ? [[string(item.agent_id)!, item] as const] : [])),
       membershipByAgentId: new Map(memberships.flatMap((item) => string(item.agent_id) ? [[string(item.agent_id)!, item] as const] : [])),
       teamById: new Map(teams.flatMap((item) => string(item.team_id) ? [[string(item.team_id)!, item] as const] : [])),
@@ -423,7 +493,15 @@ function projectOrganization(documents: RepositoryDocuments): ExplicitOrganizati
     };
   }
   return {
-    snapshot: { revision: 0, source: 'legacy', diagnostics: ['legacy_inferred_organization'] },
+    snapshot: {
+      revision: 0,
+      source: 'legacy',
+      diagnostics: ['legacy_inferred_organization'],
+      lines: [],
+      teams: [],
+      relationships: [],
+      lineProposals: []
+    },
     agentById: new Map(),
     membershipByAgentId: new Map(),
     teamById: new Map(),
@@ -454,6 +532,7 @@ function projectAgents(
   return rawAgents.flatMap((raw) => {
     const id = string(raw.agent_id);
     if (!id) return [];
+    if (organization.snapshot.source === 'explicit' && !organization.agentById.has(id)) return [];
     const declaredTaskId = string(raw.current_task);
     const declaredTask = declaredTaskId ? rawTaskById.get(declaredTaskId) : undefined;
     const validDeclaredTask = declaredTask && string(declaredTask.owner_agent_id) === id && rawTaskIsCurrent(declaredTask) ? declaredTask : undefined;
@@ -548,6 +627,10 @@ function projectAgents(
       organizationRevision: organization.snapshot.source === 'explicit'
         ? organization.snapshot.revision
         : typeof raw.organization_revision === 'number' && Number.isInteger(raw.organization_revision) ? raw.organization_revision : null,
+      membershipOrdinal: membership ? integer(membership.ordinal) : null,
+      displayOrder: organizationAgent && typeof organizationAgent.display_order === 'number' && Number.isInteger(organizationAgent.display_order)
+        ? organizationAgent.display_order
+        : null,
       blockedReason: string(raw.blocked_reason) ?? (currentTask?.state === 'blocked' ? currentTask.progressSummary : null),
       waitingOn: string(raw.waiting_on),
       contextScope: string(raw.context_scope),
@@ -816,6 +899,55 @@ function projectSetup(documents: RepositoryDocuments, rootPath: string, now: Dat
   };
 }
 
+const ACTIVE_INSPECTION_STATUSES = new Set<InspectionRunStatus>(['queued', 'running', 'cancelling']);
+const REPORT_INSPECTION_STATUSES = new Set<InspectionRunStatus>(['report_ready', 'partial', 'closed']);
+
+function projectInspections(
+  documents: RepositoryDocuments,
+  rootPath: string,
+  agents: AgentUiModel[],
+  organization: OrganizationUiSnapshot
+): { templates: InspectionTemplateUiModel[]; runs: InspectionRunUiModel[] } {
+  const state = parseInspectionState(documents.inspectionRuns ?? { version: 1, runs: [] });
+  const agentNames = new Map(agents.map((agent) => [agent.id, agent.displayName]));
+  const lineNames = new Map(organization.lines.map((line) => [line.id, line.displayName]));
+  const teamNames = new Map(organization.teams.map((team) => [team.id, team.displayName]));
+  const targetLabel = (target: { kind: 'project' | 'line' | 'team' | 'agents'; ids: string[] }): string => {
+    if (target.kind === 'project') return path.basename(path.resolve(rootPath)) || rootPath;
+    const names = target.kind === 'line'
+      ? target.ids.map((id) => lineNames.get(id) ?? id)
+      : target.kind === 'team'
+        ? target.ids.map((id) => teamNames.get(id) ?? id)
+        : target.ids.map((id) => agentNames.get(id) ?? id);
+    return names.join(', ') || target.kind;
+  };
+  const displayName = new Map(INSPECTION_TEMPLATE_DEFINITIONS.map((template) => [template.kind, template.displayName]));
+  const runs = state.runs
+    .map((run): InspectionRunUiModel => ({
+      runId: run.runId,
+      kind: run.kind,
+      displayName: displayName.get(run.kind) ?? run.kind,
+      status: run.status,
+      target: { ...run.target, ids: [...run.target.ids], label: targetLabel(run.target) },
+      focus: run.focus,
+      threadId: run.threadId,
+      turnId: run.turnId,
+      reportPath: run.reportPath,
+      sourceCount: run.sourceCount,
+      errorCode: run.errorCode,
+      errorMessage: run.errorMessage,
+      createdAt: run.createdAt,
+      completedAt: run.completedAt
+    }))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const templates = INSPECTION_TEMPLATE_DEFINITIONS.map((template): InspectionTemplateUiModel => ({
+    ...template,
+    activeRunId: runs.find((run) => run.kind === template.kind && ACTIVE_INSPECTION_STATUSES.has(run.status))?.runId ?? null,
+    lastReportRunId: runs.find((run) => run.kind === template.kind && REPORT_INSPECTION_STATUSES.has(run.status) && run.reportPath)?.runId ?? null
+  }));
+  return { templates, runs };
+}
+
 export function projectSnapshotFromDocuments({ rootPath, documents, now = new Date() }: SnapshotProjectionInput): OrquestaUiSnapshot {
   const rawAgents = rows(documents.agents, 'agents', true);
   const rawTasks = rows(documents.tasks, 'tasks', true);
@@ -842,6 +974,7 @@ export function projectSnapshotFromDocuments({ rootPath, documents, now = new Da
   const agentDocument = object(documents.agents);
   const taskDocument = object(documents.tasks);
   const sessionDocument = object(documents.sessions);
+  const inspections = projectInspections(documents, rootPath, agents, organization.snapshot);
 
   return {
     project: {
@@ -867,7 +1000,9 @@ export function projectSnapshotFromDocuments({ rootPath, documents, now = new Da
     recentEvents,
     v4Operations: emptyV4OperationsSnapshot(),
     organization: organization.snapshot,
-    setup: projectSetup(documents, rootPath, now)
+    setup: projectSetup(documents, rootPath, now),
+    inspectionTemplates: inspections.templates,
+    inspectionRuns: inspections.runs
   };
 }
 
@@ -917,6 +1052,7 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
   const tasksPath = await confinedFile(root, path.join('.orquesta', 'state', 'tasks.json'));
   const rolesPath = await confinedFile(root, path.join('.orquesta', 'state', 'roles.json'));
   const organizationPath = await confinedFile(root, path.join('.orquesta', 'state', 'organization.json'));
+  const organizationDecisionsPath = await confinedFile(root, path.join('.orquesta', 'state', 'organization-decisions.json'));
   const sessionsPath = await confinedFile(root, path.join('.orquesta', 'state', 'sessions.json'));
   const questionsPath = await confinedFile(root, path.join('.orquesta', 'vision', 'questions.json'));
   const userTasksPath = await confinedFile(root, path.join('.orquesta', 'user_tasks', 'queue.json'));
@@ -928,11 +1064,13 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
   const eventsPath = await confinedFile(root, path.join('.orquesta', 'state', 'events.jsonl'));
   const setupStatePath = await confinedFile(root, path.join('.orquesta', 'setup', 'setup_state.json'));
   const provisioningBatchPath = await confinedFile(root, path.join('.orquesta', 'setup', 'provisioning_batch.json'));
-  const [agents, tasks, roles, organization, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, events] = await Promise.all([
+  const inspectionRunsPath = await confinedFile(root, path.join('.orquesta', 'state', 'inspection-runs.json'));
+  const [agents, tasks, roles, organization, organizationDecisions, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, inspectionRuns, events] = await Promise.all([
     readBoundedJson(agentsPath, true),
     readBoundedJson(tasksPath, true),
     readBoundedJson(rolesPath, false),
     readBoundedJson(organizationPath, false),
+    readBoundedJson(organizationDecisionsPath, false),
     readBoundedJson(sessionsPath, false),
     readBoundedJson(questionsPath, false),
     readBoundedJson(userTasksPath, false),
@@ -943,11 +1081,12 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
     readBoundedJson(incidentClustersPath, false),
     readBoundedJson(setupStatePath, false),
     readBoundedJson(provisioningBatchPath, false),
+    readBoundedJson(inspectionRunsPath, false),
     readEvents(eventsPath)
   ]);
   return projectSnapshotFromDocuments({
     rootPath: root,
     now: options.now,
-    documents: { agents, tasks, roles, organization, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, events }
+    documents: { agents, tasks, roles, organization, organizationDecisions, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, inspectionRuns, events }
   });
 }

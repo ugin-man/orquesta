@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" role="img" aria-labelledby="title description">
+  <title id="title">Single horizontal gear on a vertical shaft, side elevation</title>
+  <desc id="description">A warm monochrome line drawing of one thin toothed gear seen directly from the side, mounted on one vertical shaft.</desc>
+
+  <rect width="960" height="720" fill="#f4f1e9" />
+
+  <g fill="none" stroke="#1f211e" stroke-linecap="square" stroke-linejoin="bevel">
+    <line x1="480" y1="72" x2="480" y2="648" stroke="#aaa69c" stroke-width="1.5" stroke-dasharray="5 9" />
+
+    <!-- The shaft stays vertical and passes behind the gear. -->
+    <path d="M461 94H499V626H461Z" fill="#f4f1e9" stroke-width="5" />
+    <path d="M470 112V608M490 112V608" stroke="#8f8b82" stroke-width="1.5" />
+    <path d="M461 119H499M461 601H499" stroke-width="3" />
+
+    <!-- One horizontal gear seen from a strict side elevation. -->
+    <path
+      d="M174 298
+         H196V282H224V298
+         H250V282H278V298
+         H304V282H332V298
+         H358V282H386V298
+         H412V282H440V298
+         H466V282H494V298
+         H520V282H548V298
+         H574V282H602V298
+         H628V282H656V298
+         H682V282H710V298
+         H736V282H764V298
+         H786V422
+         H764V438H736V422
+         H710V438H682V422
+         H656V438H628V422
+         H602V438H574V422
+         H548V438H520V422
+         H494V438H466V422
+         H440V438H412V422
+         H386V438H358V422
+         H332V438H304V422
+         H278V438H250V422
+         H224V438H196V422
+         H174Z"
+      fill="#f4f1e9"
+      stroke-width="5"
+    />
+
+    <!-- Thin edge bands make the disk read as a gear rim, not a flat bar. -->
+    <path d="M196 320H764M196 400H764" stroke="#555750" stroke-width="2" />
+    <path d="M216 334H744M216 386H744" stroke="#aaa69c" stroke-width="1.5" stroke-dasharray="8 8" />
+
+    <!-- Central collar around the shaft. -->
+    <path d="M420 306H540V414H420Z" fill="#f4f1e9" stroke-width="5" />
+    <path d="M440 322H520V398H440Z" stroke="#555750" stroke-width="2" />
+    <path d="M461 306V414M499 306V414" stroke="#1f211e" stroke-width="3" />
+
+    <!-- Small section marks keep the drawing mechanical and wireframe-like. -->
+    <path d="M196 320L216 334M764 320L744 334M196 400L216 386M764 400L744 386" stroke="#8f8b82" stroke-width="1.5" />
+  </g>
+
+  <g fill="#555750" font-family="Segoe UI, sans-serif" text-anchor="middle">
+    <text x="480" y="42" font-size="15" letter-spacing="4">SIDE ELEVATION / ONE GEAR</text>
+    <text x="480" y="683" font-size="13" letter-spacing="2">VERTICAL SHAFT · HORIZONTAL TOOTHED DISC</text>
+  </g>
+</svg>

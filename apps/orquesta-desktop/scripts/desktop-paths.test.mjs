@@ -8,6 +8,8 @@ const paths = resolveDesktopPaths(appRoot);
 assert.equal(paths.appRoot, appRoot);
 assert.equal(paths.rendererDist, path.join(appRoot, 'dist'));
 assert.equal(paths.electronDist, path.join(appRoot, 'dist-electron'));
+assert.equal(paths.contractSchemasSource, path.resolve(appRoot, '..', '..', 'packages', 'contracts', 'schemas'));
+assert.equal(paths.contractSchemasDist, path.join(appRoot, 'schemas'));
 assert.equal(paths.mainEntry, path.join(appRoot, 'electron', 'main', 'index.ts'));
 assert.equal(paths.preloadEntry, path.join(appRoot, 'electron', 'preload', 'index.ts'));
 assert.equal(paths.coreEntry, path.join(appRoot, 'electron', 'core', 'index.ts'));

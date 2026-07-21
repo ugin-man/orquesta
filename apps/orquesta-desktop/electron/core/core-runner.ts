@@ -1,6 +1,7 @@
 import type { DesktopCodexService } from './desktop-codex-service';
 import { handleCoreRequest } from './handler';
 import type { CoreDispatchRequest, CoreEvent } from './protocol';
+import { InspectionRunController } from './inspection-run-controller';
 import { RepositoryRuntime } from './repository-runtime';
 import { provisionSpecialists } from './specialist-provisioner';
 
@@ -13,9 +14,17 @@ export function runDesktopCore(runtime: DesktopCodexService): void {
       await provisionSpecialists({ root: rootPath, projectId, batch, runtime });
     }
   });
+  const inspections = new InspectionRunController({ runtime });
   const send = (event: CoreEvent) => parentPort.postMessage(event);
-  runtime.subscribe((notification) => send({ type: 'runtime.notification', notification }));
-  runtime.subscribeApprovals((approval) => repository.addRuntimeApproval(approval));
+  runtime.subscribe((notification) => {
+    send({ type: 'runtime.notification', notification });
+    void inspections.handleRuntimeNotification(notification);
+  });
+  runtime.subscribeApprovals((approval) => {
+    void inspections.handleRuntimeApproval(approval).then((handled) => {
+      if (!handled) repository.addRuntimeApproval(approval);
+    });
+  });
   repository.subscribe((snapshot) => send({ type: 'repository.snapshot.changed', snapshot }));
 
   const stop = () => {
@@ -29,7 +38,9 @@ export function runDesktopCore(runtime: DesktopCodexService): void {
     void (async () => {
       try {
         if (request.type === 'repository.select') {
-          const snapshot = await repository.select(request);
+          await repository.select(request);
+          await inspections.reconcileProject(request.projectId, request.rootPath);
+          const snapshot = await repository.refresh();
           send({ type: 'repository.snapshot.result', correlationId: request.correlationId, snapshot });
         } else if (request.type === 'repository.get-snapshot') {
           const snapshot = await repository.refresh();
@@ -64,6 +75,15 @@ export function runDesktopCore(runtime: DesktopCodexService): void {
             requestedModel: request.requestedModel ?? null
           });
           send({ type: 'runtime.dispatch.accepted', correlationId: request.correlationId, ...result });
+        } else if (request.type === 'inspection.start') {
+          const result = await inspections.start(request);
+          send({ type: 'inspection.action.accepted', correlationId: request.correlationId, runId: result.runId });
+        } else if (request.type === 'inspection.cancel') {
+          await inspections.cancel(request);
+          send({ type: 'inspection.action.accepted', correlationId: request.correlationId, runId: request.runId });
+        } else if (request.type === 'inspection.read-report') {
+          const markdown = await inspections.readReport(request);
+          send({ type: 'inspection.report.result', correlationId: request.correlationId, runId: request.runId, markdown });
         } else if (request.type === 'runtime.conversation') {
           const page = await runtime.listConversation(request);
           send({ type: 'runtime.conversation.result', correlationId: request.correlationId, page });

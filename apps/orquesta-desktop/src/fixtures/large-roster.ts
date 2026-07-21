@@ -1,5 +1,5 @@
 import type { FixtureDefinition } from './types';
-import { agent, fixtureV4Operations, observedAt, phase, task } from './helpers';
+import { agent, fixtureInspectionTemplates, fixtureV4Operations, observedAt, phase, task } from './helpers';
 
 const roles = ['Analyst', 'Connector', 'Coder', 'Writer', 'Researcher', 'Reviewer', 'Planner', 'Designer', 'Tester', 'Auditor'];
 const icons = ['chart', 'database', 'code', 'file', 'search', 'shield', 'route', 'pen', 'flask', 'scan'];
@@ -28,7 +28,9 @@ export const largeRosterFixture: FixtureDefinition = {
     failures: [],
     phases: [phase({ id: 'L-phase', title: 'Capacity test', summary: 'Validate a 35-agent map', status: 'current', ownerAgentIds: ['orchestrator'], itemCount: 35, completedItemCount: 4 })],
     recentEvents: [],
-    v4Operations: fixtureV4Operations
+    v4Operations: fixtureV4Operations,
+    inspectionTemplates: fixtureInspectionTemplates,
+    inspectionRuns: []
   },
   conversations: { orchestrator: [] }, attentionHistory: [], agentProposals: [], lastOpenedAt: observedAt
 };

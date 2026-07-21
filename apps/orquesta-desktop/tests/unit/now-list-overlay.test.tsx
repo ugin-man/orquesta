@@ -31,6 +31,7 @@ describe('NowListOverlay', () => {
             })
           ]}
           onOpenTask={vi.fn()}
+          onOpenAllRecords={vi.fn()}
           onClose={vi.fn()}
         />
       </I18nProvider>

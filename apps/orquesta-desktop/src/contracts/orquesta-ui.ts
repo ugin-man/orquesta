@@ -39,6 +39,63 @@ export type SetupUiStatus = 'preparing' | 'running' | 'paused' | 'blocked' | 'co
 export type SetupPhaseUiStatus = 'complete' | 'active' | 'waiting' | 'blocked';
 export type SetupActivityUiStatus = 'complete' | 'active' | 'waiting' | 'failed';
 export type SetupTechnicalDetailTone = 'neutral' | 'success' | 'warning' | 'danger';
+export type InspectionKind = 'external_benchmark' | 'adversarial_audit';
+export type InspectionRunStatus =
+  | 'queued'
+  | 'running'
+  | 'cancelling'
+  | 'report_ready'
+  | 'partial'
+  | 'failed'
+  | 'cancelled'
+  | 'closed';
+
+export interface InspectionTargetUi {
+  kind: 'project' | 'line' | 'team' | 'agents';
+  ids: string[];
+  label: string;
+}
+
+export interface InspectionTemplateUiModel {
+  kind: InspectionKind;
+  displayName: string;
+  summary: string;
+  color: 'blue' | 'red';
+  activeRunId: string | null;
+  lastReportRunId: string | null;
+}
+
+export interface InspectionRunUiModel {
+  runId: string;
+  kind: InspectionKind;
+  displayName: string;
+  status: InspectionRunStatus;
+  target: InspectionTargetUi;
+  focus: string | null;
+  threadId: string | null;
+  turnId: string | null;
+  reportPath: string | null;
+  sourceCount: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export const INSPECTION_TEMPLATE_DEFINITIONS = [
+  {
+    kind: 'external_benchmark',
+    displayName: 'External benchmark',
+    summary: 'Compare this project with current competing products and reusable external assets.',
+    color: 'blue'
+  },
+  {
+    kind: 'adversarial_audit',
+    displayName: 'Adversarial audit',
+    summary: 'Challenge the current organization and workflow using project evidence only.',
+    color: 'red'
+  }
+] as const satisfies ReadonlyArray<Omit<InspectionTemplateUiModel, 'activeRunId' | 'lastReportRunId'>>;
 
 export interface RuntimeEvidenceUi {
   id: string;
@@ -77,6 +134,8 @@ export interface AgentUiModel {
   lifecycleState?: 'proposed' | 'provisioning' | 'active' | 'retired' | 'superseded' | null;
   operationalStatus?: string | null;
   organizationRevision?: number | null;
+  membershipOrdinal?: number | null;
+  displayOrder?: number | null;
   blockedReason: string | null;
   waitingOn: string | null;
   contextScope: string | null;
@@ -150,10 +209,51 @@ export interface ProjectPhaseUiModel {
   completedItemCount: number;
 }
 
+export interface OrganizationLineUiModel {
+  id: string;
+  displayName: string;
+  goal: string | null;
+  status: string;
+  ownerAgentId: string;
+  dedicatedLeadAgentId: string | null;
+  displayOrder: number;
+  approvalSource: string | null;
+}
+
+export interface OrganizationTeamUiModel {
+  id: string;
+  lineId: string | null;
+  displayName: string;
+  purpose: string | null;
+  lifecycleState: string;
+  displayOrder: number;
+}
+
+export interface OrganizationRelationshipUiModel {
+  id: string;
+  type: string;
+  fromAgentId: string;
+  toAgentId: string;
+}
+
+export interface OrganizationLineProposalUiModel {
+  id: string;
+  lineId: string;
+  displayName: string;
+  goal: string;
+  reason: string;
+  status: 'approval_wait';
+  ownerAgentId: string | null;
+}
+
 export interface OrganizationUiSnapshot {
   revision: number;
   source: 'explicit' | 'legacy';
   diagnostics: string[];
+  lines: OrganizationLineUiModel[];
+  teams: OrganizationTeamUiModel[];
+  relationships: OrganizationRelationshipUiModel[];
+  lineProposals: OrganizationLineProposalUiModel[];
 }
 
 export interface SetupPhaseUiModel {
@@ -578,4 +678,6 @@ export interface OrquestaUiSnapshot {
   v4Operations: V4OperationsSnapshot;
   organization?: OrganizationUiSnapshot;
   setup?: SetupUiSnapshot | null;
+  inspectionTemplates: InspectionTemplateUiModel[];
+  inspectionRuns: InspectionRunUiModel[];
 }

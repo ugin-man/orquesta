@@ -26,14 +26,14 @@ export function ProjectLauncher({ project, onSwitchProject, onOpenProject }: {
       >
         <span><FolderOpen size={15} aria-hidden="true" /></span>
         <span className="project-launcher__copy"><strong>{project.title}</strong><small title={project.rootPathLabel ?? t('pathUnavailable')}>{project.rootPathLabel ?? t('pathUnavailable')}</small></span>
-        <ChevronDown size={14} aria-hidden="true" />
+        <ChevronDown className="project-launcher__toggle-icon" size={14} aria-hidden="true" />
       </button>
-      {expanded ? (
-        <div className="project-launcher__menu">
-          <button type="button" onClick={() => run(onSwitchProject)}><RefreshCw size={14} />{t('switchProject')}</button>
-          <button type="button" onClick={() => run(onOpenProject)}><FolderOpen size={14} />{t('openProjectFolder')}</button>
+      <div className="project-launcher__menu" data-testid="project-launcher-menu" aria-hidden={!expanded}>
+        <div className="project-launcher__menu-inner">
+          <button type="button" tabIndex={expanded ? 0 : -1} onClick={() => run(onSwitchProject)}><RefreshCw size={14} />{t('switchProject')}</button>
+          <button type="button" tabIndex={expanded ? 0 : -1} onClick={() => run(onOpenProject)}><FolderOpen size={14} />{t('openProjectFolder')}</button>
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }

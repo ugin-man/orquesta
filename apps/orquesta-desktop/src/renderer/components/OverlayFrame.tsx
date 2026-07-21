@@ -1,6 +1,8 @@
 import { X } from 'lucide-react';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useI18n } from '../features/i18n/I18nProvider';
+
+const OVERLAY_CLOSE_DURATION_MS = 160;
 
 function getFocusable(panel: HTMLElement): HTMLElement[] {
   return Array.from(panel.querySelectorAll<HTMLElement>(
@@ -27,6 +29,27 @@ export function OverlayFrame({
 }) {
   const { t } = useI18n();
   const panelRef = useRef<HTMLElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const closingRef = useRef(false);
+  const [closing, setClosing] = useState(false);
+
+  const requestClose = useCallback(() => {
+    if (closingRef.current) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      onClose();
+      return;
+    }
+    closingRef.current = true;
+    setClosing(true);
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      onClose();
+    }, OVERLAY_CLOSE_DURATION_MS);
+  }, [onClose]);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -37,7 +60,7 @@ export function OverlayFrame({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        requestClose();
         return;
       }
       if (!modal || event.key !== 'Tab') return;
@@ -59,7 +82,7 @@ export function OverlayFrame({
       window.removeEventListener('keydown', onKeyDown);
       if (modal) previous?.focus?.();
     };
-  }, [modal, onClose]);
+  }, [modal, requestClose]);
 
   const header = (
     <header className="context-overlay__header">
@@ -69,7 +92,7 @@ export function OverlayFrame({
         {subtitle ? <p>{subtitle}</p> : null}
       </div>
       <div className="context-overlay__actions">
-        <button type="button" className="icon-button" onClick={onClose} aria-label={`${t('close')} ${ariaLabel}`}>
+        <button type="button" className="icon-button" onClick={requestClose} aria-label={`${t('close')} ${ariaLabel}`} disabled={closing}>
           <X size={18} />
         </button>
       </div>
@@ -78,7 +101,7 @@ export function OverlayFrame({
 
   if (!modal) {
     return (
-      <aside ref={panelRef} tabIndex={-1} className={`context-overlay ${className}`} aria-label={ariaLabel}>
+      <aside ref={panelRef} tabIndex={-1} className={`context-overlay ${className}`} aria-label={ariaLabel} data-motion-state={closing ? 'closing' : 'open'}>
         {header}
         <div className="context-overlay__body">{children}</div>
       </aside>
@@ -86,8 +109,8 @@ export function OverlayFrame({
   }
 
   return (
-    <div className="overlay-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section ref={panelRef} tabIndex={-1} className={`context-overlay ${className}`} role="dialog" aria-modal="true" aria-label={ariaLabel}>
+    <div className="overlay-backdrop" role="presentation" data-motion-state={closing ? 'closing' : 'open'} onMouseDown={(event) => { if (event.target === event.currentTarget) requestClose(); }}>
+      <section ref={panelRef} tabIndex={-1} className={`context-overlay ${className}`} role="dialog" aria-modal="true" aria-label={ariaLabel} data-motion-state={closing ? 'closing' : 'open'}>
         {header}
         <div className="context-overlay__body">{children}</div>
       </section>

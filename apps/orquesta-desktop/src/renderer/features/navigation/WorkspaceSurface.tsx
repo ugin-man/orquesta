@@ -8,11 +8,12 @@ import { FailureRecordsWorkspace, type FailureRecordView } from '../records/Fail
 import { ConversationRecordsWorkspace } from '../records/ConversationRecordsWorkspace';
 import { DecisionRecordsWorkspace, type DecisionRecordKind } from '../records/DecisionRecordsWorkspace';
 import { TimelineRecordsWorkspace, type TimelineRecord } from '../records/TimelineRecordsWorkspace';
+import { InspectionRecordsWorkspace } from '../records/InspectionRecordsWorkspace';
 import { SettingsWorkspace } from '../settings/SettingsWorkspace';
 import type { WorkspaceId } from './WorkspaceDock';
 
 export type { UserTaskKind } from '../attention/UserTasksWorkspace';
-export type RecordKind = 'task' | 'error' | 'conversation' | 'decision' | 'timeline';
+export type RecordKind = 'task' | 'error' | 'conversation' | 'decision' | 'timeline' | 'inspection';
 
 const taskRank: Record<TaskUiModel['state'], number> = {
   blocked: 0,
@@ -67,7 +68,7 @@ function TaskList({ tasks, onOpen }: { tasks: TaskUiModel[]; onOpen(taskId: stri
   );
 }
 
-export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind, recordKind, taskRecordView, failureRecordView, decisionRecords, decisionRecordKind, decisionRecordsLoading, timelineConversations, timelineDecisions, timelineLoading, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, canResolveAttention, getRuntimeInfo, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onDecisionRecordKindChange, onOpenTimelineRecord, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenRoute, onOpenOperations }: {
+export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind, recordKind, taskRecordView, failureRecordView, selectedInspectionRunId, decisionRecords, decisionRecordKind, decisionRecordsLoading, timelineConversations, timelineDecisions, timelineLoading, messages, conversationTargetAgentId, conversationLoading, conversationHasOlder, canResolveAttention, getRuntimeInfo, readInspectionReport, onSelectUserTaskKind, onSelectRecordKind, onTaskRecordViewChange, onFailureRecordViewChange, onSelectedInspectionRunIdChange, onDecisionRecordKindChange, onOpenTimelineRecord, onSelectConversationTarget, onLoadOlderConversation, onOpenAttention, onResolveAttention, onOpenRoute, onOpenOperations }: {
   active: Exclude<WorkspaceId, 'home'>;
   snapshot: OrquestaUiSnapshot;
   reducedMotion: boolean;
@@ -75,6 +76,7 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
   recordKind: RecordKind;
   taskRecordView: TaskRecordView;
   failureRecordView: FailureRecordView;
+  selectedInspectionRunId: string | null;
   decisionRecords: AttentionUiItem[];
   decisionRecordKind: DecisionRecordKind;
   decisionRecordsLoading: boolean;
@@ -87,10 +89,12 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
   conversationHasOlder: boolean;
   canResolveAttention: boolean;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
+  readInspectionReport(runId: string): Promise<import('../../../contracts/bridge').InspectionReportUi>;
   onSelectUserTaskKind(kind: UserTaskKind): void;
   onSelectRecordKind(kind: RecordKind): void;
   onTaskRecordViewChange(view: TaskRecordView): void;
   onFailureRecordViewChange(view: FailureRecordView): void;
+  onSelectedInspectionRunIdChange(runId: string | null): void;
   onDecisionRecordKindChange(kind: DecisionRecordKind): void;
   onOpenTimelineRecord(record: TimelineRecord): void;
   onSelectConversationTarget(agentId: string): void;
@@ -111,7 +115,8 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
     ['error', t('recordErrors')],
     ['conversation', t('recordConversation')],
     ['decision', t('recordDecisions')],
-    ['timeline', t('recordTimeline')]
+    ['timeline', t('recordTimeline')],
+    ['inspection', t('recordInspections')]
   ];
 
   return (
@@ -122,7 +127,7 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
           {recordTypes.map(([kind, label]) => <button type="button" key={kind} aria-current={recordKind === kind ? 'page' : undefined} onClick={() => onSelectRecordKind(kind)}>{label}</button>)}
         </nav>
       ) : null}
-      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}${active === 'records' && recordKind === 'task' ? ' workspace-surface__body--task-records' : ''}${active === 'records' && recordKind === 'error' ? ' workspace-surface__body--failure-records' : ''}${active === 'records' && recordKind === 'conversation' ? ' workspace-surface__body--conversation-records' : ''}${active === 'records' && recordKind === 'decision' ? ' workspace-surface__body--decision-records' : ''}${active === 'records' && recordKind === 'timeline' ? ' workspace-surface__body--timeline-records' : ''}${active === 'settings' ? ' workspace-surface__body--settings' : ''}`}>
+      <div className={`workspace-surface__body${active === 'user-tasks' ? ' workspace-surface__body--user-tasks' : ''}${active === 'records' && recordKind === 'task' ? ' workspace-surface__body--task-records' : ''}${active === 'records' && recordKind === 'error' ? ' workspace-surface__body--failure-records' : ''}${active === 'records' && recordKind === 'conversation' ? ' workspace-surface__body--conversation-records' : ''}${active === 'records' && recordKind === 'decision' ? ' workspace-surface__body--decision-records' : ''}${active === 'records' && recordKind === 'timeline' ? ' workspace-surface__body--timeline-records' : ''}${active === 'records' && recordKind === 'inspection' ? ' workspace-surface__body--inspection-records' : ''}${active === 'settings' ? ' workspace-surface__body--settings' : ''}`}>
         {active === 'user-tasks' ? (
           <UserTasksWorkspace
             items={snapshot.attention}
@@ -140,6 +145,7 @@ export function WorkspaceSurface({ active, snapshot, reducedMotion, userTaskKind
         ) : null}
         {active === 'records' && recordKind === 'decision' ? <DecisionRecordsWorkspace items={decisionRecords} agents={snapshot.agents} selectedKind={decisionRecordKind} loading={decisionRecordsLoading} onSelectKind={onDecisionRecordKindChange} /> : null}
         {active === 'records' && recordKind === 'timeline' ? <TimelineRecordsWorkspace snapshot={snapshot} conversations={timelineConversations} decisions={timelineDecisions} loading={timelineLoading} onOpenRecord={onOpenTimelineRecord} /> : null}
+        {active === 'records' && recordKind === 'inspection' ? <InspectionRecordsWorkspace runs={snapshot.inspectionRuns} selectedRunId={selectedInspectionRunId} onSelectedRunIdChange={onSelectedInspectionRunIdChange} readReport={readInspectionReport} /> : null}
         {active === 'settings' ? <SettingsWorkspace project={snapshot.project} reducedMotion={reducedMotion} getRuntimeInfo={getRuntimeInfo} onOpenRoute={onOpenRoute} onOpenOperations={onOpenOperations} /> : null}
       </div>
     </section>

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ConversationPage, ProjectSummary, RuntimeInfoUi, UiActionResult } from '../../src/contracts/bridge';
+import type { ConversationPage, InspectionReportUi, ProjectSummary, RuntimeInfoUi, StartInspectionUiInput, UiActionResult } from '../../src/contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { CoreHostStatus } from './core-host';
 import { DESKTOP_IPC, type CoreStatus } from '../shared/host-contract';
@@ -16,6 +16,9 @@ export interface CoreController {
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
   respondRuntimeApproval(input: { attentionId: string; decision: string }): Promise<{ correlationId: string }>;
   listAttentionHistory(): Promise<AttentionUiItem[]>;
+  startInspection(input: { projectId: string; rootPath: string } & StartInspectionUiInput): Promise<{ correlationId: string; runId: string }>;
+  cancelInspection(input: { projectId: string; rootPath: string; runId: string }): Promise<{ correlationId: string; runId: string }>;
+  readInspectionReport(input: { projectId: string; rootPath: string; runId: string }): Promise<InspectionReportUi>;
 }
 
 export interface AttachmentController {
@@ -110,6 +113,39 @@ function readCodexDraftInput(input: unknown): { targetAgentId: string; text: str
   return { targetAgentId: value.targetAgentId, text: value.text.trim() };
 }
 
+function readInspectionStartInput(input: unknown): StartInspectionUiInput {
+  if (!input || typeof input !== 'object') throw new Error('Inspection input is required');
+  const value = input as Record<string, unknown>;
+  if (!['external_benchmark', 'adversarial_audit'].includes(String(value.kind))) throw new Error('Inspection kind is invalid');
+  if (!value.target || typeof value.target !== 'object' || Array.isArray(value.target)) throw new Error('Inspection target is invalid');
+  const target = value.target as Record<string, unknown>;
+  if (!['project', 'line', 'team', 'agents'].includes(String(target.kind)) || !Array.isArray(target.ids)
+    || target.ids.length > 32 || !target.ids.every((id) => typeof id === 'string' && /^[a-zA-Z0-9._:-]{1,128}$/u.test(id))) {
+    throw new Error('Inspection target is invalid');
+  }
+  if ((target.kind === 'project' && target.ids.length !== 0)
+    || ((target.kind === 'line' || target.kind === 'team') && target.ids.length !== 1)
+    || (target.kind === 'agents' && target.ids.length === 0)) {
+    throw new Error('Inspection target scope is invalid');
+  }
+  const focus = value.focus;
+  if (focus !== null && (typeof focus !== 'string' || !focus.trim() || focus.length > 4_096)) {
+    throw new Error('Inspection focus is invalid');
+  }
+  return {
+    kind: value.kind as StartInspectionUiInput['kind'],
+    target: { kind: target.kind as StartInspectionUiInput['target']['kind'], ids: [...target.ids] as string[] },
+    focus: typeof focus === 'string' ? focus.trim() : null
+  };
+}
+
+function readInspectionRunId(input: unknown): string {
+  if (!input || typeof input !== 'object') throw new Error('Inspection run id is required');
+  const runId = (input as Record<string, unknown>).runId;
+  if (typeof runId !== 'string' || !/^[a-zA-Z0-9._:-]{1,128}$/u.test(runId)) throw new Error('Inspection run id is invalid');
+  return runId;
+}
+
 function draftPrompt(input: { targetAgentId: string; text: string }): string {
   return input.targetAgentId === 'orchestrator'
     ? input.text
@@ -175,6 +211,42 @@ export function registerDesktopIpc(
     }
   });
   ipcMain.handle(DESKTOP_IPC.listAttentionHistory, async () => coreHost.listAttentionHistory());
+  ipcMain.handle(DESKTOP_IPC.startInspection, async (_event, input) => {
+    const inspection = readInspectionStartInput(input);
+    const context = repositories.getCurrentRuntimeContext();
+    if (!context) {
+      return { status: 'unavailable', correlationId: randomUUID(), reason: 'Open an Orquesta project before starting an inspection.', retryable: false } satisfies UiActionResult;
+    }
+    try {
+      const result = await coreHost.startInspection({ projectId: context.projectId, rootPath: context.rootPath, ...inspection });
+      return { status: 'accepted', correlationId: result.correlationId } satisfies UiActionResult;
+    } catch (error) {
+      return {
+        status: 'failed', correlationId: randomUUID(), reason: error instanceof Error ? error.message : String(error), retryable: true
+      } satisfies UiActionResult;
+    }
+  });
+  ipcMain.handle(DESKTOP_IPC.cancelInspection, async (_event, input) => {
+    const runId = readInspectionRunId(input);
+    const context = repositories.getCurrentRuntimeContext();
+    if (!context) {
+      return { status: 'unavailable', correlationId: randomUUID(), reason: 'Open an Orquesta project before cancelling an inspection.', retryable: false } satisfies UiActionResult;
+    }
+    try {
+      const result = await coreHost.cancelInspection({ projectId: context.projectId, rootPath: context.rootPath, runId });
+      return { status: 'accepted', correlationId: result.correlationId } satisfies UiActionResult;
+    } catch (error) {
+      return {
+        status: 'failed', correlationId: randomUUID(), reason: error instanceof Error ? error.message : String(error), retryable: true
+      } satisfies UiActionResult;
+    }
+  });
+  ipcMain.handle(DESKTOP_IPC.readInspectionReport, async (_event, input) => {
+    const runId = readInspectionRunId(input);
+    const context = repositories.getCurrentRuntimeContext();
+    if (!context) throw new Error('Open an Orquesta project before reading an inspection report.');
+    return coreHost.readInspectionReport({ projectId: context.projectId, rootPath: context.rootPath, runId });
+  });
   ipcMain.handle(DESKTOP_IPC.openCodexDraft, async (_event, input) => {
     const draft = readCodexDraftInput(input);
     const context = repositories.getCurrentRuntimeContext();

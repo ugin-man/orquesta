@@ -1,25 +1,78 @@
-# Design QA
+# 初回セットアップ画面 Design QA
+
+source visual truth path: `C:\Users\kouki\.codex\generated_images\019f6291-cd59-7183-b799-aee36005b738\exec-24795962-b029-423a-9e25-6ddfec5d8762.png`
+
+implementation screenshot path: `output/playwright/setup-running-review-1440x900.png`
+
+alternate viewport screenshot: `output/playwright/setup-running-review-1366x768.png`
+
+full-view comparison evidence: `output/playwright/setup-source-vs-render-final.png`
+
+focused region comparison evidence: `output/playwright/setup-gears-source-vs-render-final.png`
+
+viewport: 1440×900、1366×768
+
+state: 初回セットアップ実行中、フェーズ3「基盤構築」
+
+## Findings
+
+現時点で、直す必要があるP0、P1、P2は残っていない。
+
+- フォントと文字組み
+  - 見出しは明朝系、状態や操作はサンセリフ系に分けた。1440×900と1366×768の両方で、見出し、現在処理、六段階の名前が欠けていない。
+  - 右側の補足文は小さいが、段階名と状態は独立して読める。待機状態の弱い表示も、状態名を残している。
+
+- 余白と配置
+  - 左に処理詳細、中央奥にパイプオルガン、右に六段階の機構という三分割を維持した。
+  - 六つの歯車は中心が同じ縦軸上にある。大、中、小の外径差があっても軸がずれていない。
+  - 1366×768でもフッター、停止操作、技術詳細の入口が画面内に残る。
+
+- 色と状態
+  - 暖かいアイボリー、黒、薄いグレー、緑の構成を既存Desktopとそろえた。
+  - 完了はチェック、実行中は輪と「実行中」、待機は空円と「待機」を併用しているため、色だけに依存していない。
+
+- 画像品質
+  - パイプオルガンはロゴではなく実物の楽器として描かれている。透過処理後に四角い画像背景や緑の縁は残っていない。
+  - 歯車はユーザーの追加指定に合わせ、元コンセプトの斜め円盤から正投影の歯車へ変更した。歯数とスポークが異なる三資産を使い、遠近感を回転させる破綻を避けた。
+  - 装飾画像はPNG資産を使い、CSSや独自SVGで代用していない。
+
+- 文言
+  - 現在処理、直近完了、次処理、各フェーズの説明はfixtureの状態契約から表示されている。
+  - 進捗率を作らず、「6段階中3段階目」と実行中フェーズで表現している。
+
+- 操作とアクセシビリティ
+  - Playwrightで技術詳細の開閉と、セットアップ中止の確認ダイアログを操作した。
+  - 主要領域、進捗、段階一覧、開閉ボタン、確認ダイアログに名前がある。
+  - `prefers-reduced-motion`では歯車の回転と脈動を停止する。
+  - 新しいブラウザセッションでコンソールを確認し、エラー0件、警告0件だった。
+
+## Comparison history
+
+### 1回目
+
+- [P1] パイプオルガン画像の不透明な紙背景が長方形として見えた。
+  - 修正: パイプオルガンをクロマキーで透過し、楽器本体だけのPNGへ変更した。
+- [P2] パイプオルガンが小さく、中央背景としての存在感が元コンセプトより弱かった。
+  - 修正: 透過領域を切り詰め、画面高に近い大きさで表示した。
+- [P1] 最初の歯車資産が斜め視点で、回転時に遠近感が一緒に回る構造だった。
+  - 修正: 正投影の三種類の歯車へ変更し、共通の縦軸へ配置した。
+
+### 2回目
+
+- `output/playwright/setup-running-review-1440x900.png`と`output/playwright/setup-running-review-1366x768.png`で再確認した。
+- 四角い背景境界、歯車の軸ずれ、主要情報の欠けは見つからなかった。
+- 元コンセプトの斜め歯車を再現していない点は、ユーザーの最新指定を優先した意図的な変更である。
+
+## Primary interactions tested
+
+- 技術的な詳細を表示する
+- 技術的な詳細を閉じる
+- セットアップ中止確認を開く
+- 「中止せず戻る」で閉じる
+
+## Follow-up polish
+
+- 実エンジン接続後、停止、再開、エラー状態の実データで文字量を確認する。
+- フェーズ完了時の歯車停止と次フェーズ起動の切り替えは、第3実装で状態イベントに接続する。
 
 final result: passed
-
-## Source
-
-- Reference image: `C:/Users/kouki/AppData/Local/Temp/codex-clipboard-13e0634f-ba2d-40c6-a3e4-4de829efed2e.png`
-- Prototype screenshot: `output/playwright/dashboard-executive-glass-tree.png`
-- Viewport: 1536 x 1050
-
-## Checks
-
-- Overall structure now follows the reference: top navigation, main Command Board, right Your Turn rail, and lower Project Route.
-- Team visualizer remains an interactive pan/zoom map rather than a fixed one-screen tree.
-- Live Orquesta data still renders: 10 API agents and 10 DOM agent nodes.
-- Relationship links still render: 8 team links.
-- Cursor-follow glass lighting is present on the Team Visualizer.
-- Console errors: none.
-- Existing dashboard smoke test passed.
-
-## Remaining P3 Polish
-
-- The right Your Turn rail uses Orquesta's real user-task categories, so it is denser and less editorial than the reference cards.
-- The topology uses the existing Orquesta pixel-worker agent nodes rather than the reference icon tiles.
-- The Project Route preserves Orquesta's current completion-map content, so it is more information-dense than the mock.

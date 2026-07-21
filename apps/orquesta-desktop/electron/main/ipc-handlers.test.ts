@@ -25,7 +25,10 @@ describe('registerDesktopIpc', () => {
         platformFamily: null, platformOs: null, userAgent: null, integrity: 'verified' as const
       })),
       respondRuntimeApproval: vi.fn(async () => ({ correlationId: 'approval-1' })),
-      listAttentionHistory: vi.fn(async () => [])
+      listAttentionHistory: vi.fn(async () => []),
+      startInspection: vi.fn(async () => ({ correlationId: 'inspection-1', runId: 'BENCH-001' })),
+      cancelInspection: vi.fn(async () => ({ correlationId: 'inspection-2', runId: 'BENCH-001' })),
+      readInspectionReport: vi.fn(async () => ({ runId: 'BENCH-001', markdown: '# Benchmark' }))
     };
     const snapshot = {
       project: { id: 'repo-1' }, agents: [], tasks: [], attention: [], phases: [], recentEvents: [],
@@ -57,6 +60,9 @@ describe('registerDesktopIpc', () => {
       DESKTOP_IPC.getRuntimeInfo,
       DESKTOP_IPC.respondRuntimeApproval,
       DESKTOP_IPC.listAttentionHistory,
+      DESKTOP_IPC.startInspection,
+      DESKTOP_IPC.cancelInspection,
+      DESKTOP_IPC.readInspectionReport,
       DESKTOP_IPC.openCodexDraft
     ]);
     await expect(handlers.get(DESKTOP_IPC.getHostInfo)?.({})).resolves.toEqual({
@@ -80,6 +86,17 @@ describe('registerDesktopIpc', () => {
     })).resolves.toMatchObject({ status: 'accepted', correlationId: 'approval-1' });
     expect(coreHost.respondRuntimeApproval).toHaveBeenCalledWith({ attentionId: 'runtime-approval-1', decision: 'decline' });
     await expect(handlers.get(DESKTOP_IPC.listAttentionHistory)?.({})).resolves.toEqual([]);
+    await expect(handlers.get(DESKTOP_IPC.startInspection)?.({}, {
+      kind: 'external_benchmark', target: { kind: 'project', ids: [] }, focus: 'cost'
+    })).resolves.toMatchObject({ status: 'accepted', correlationId: 'inspection-1' });
+    expect(coreHost.startInspection).toHaveBeenCalledWith({
+      projectId: 'repo-1', rootPath: 'C:\\repo', kind: 'external_benchmark',
+      target: { kind: 'project', ids: [] }, focus: 'cost'
+    });
+    await expect(handlers.get(DESKTOP_IPC.cancelInspection)?.({}, { runId: 'BENCH-001' }))
+      .resolves.toMatchObject({ status: 'accepted', correlationId: 'inspection-2' });
+    await expect(handlers.get(DESKTOP_IPC.readInspectionReport)?.({}, { runId: 'BENCH-001' }))
+      .resolves.toEqual({ runId: 'BENCH-001', markdown: '# Benchmark' });
     await expect(handlers.get(DESKTOP_IPC.openCodexDraft)?.({}, {
       targetAgentId: 'worker', text: '日本語の下書き', url: 'https://evil.example', rootPath: 'C:\\evil'
     })).resolves.toMatchObject({ status: 'accepted' });
@@ -101,7 +118,8 @@ describe('registerDesktopIpc', () => {
     const coreHost = {
       status: () => 'ready' as const,
       ping: vi.fn(), sendMessage: vi.fn(), listConversation: vi.fn(), getRuntimeInfo: vi.fn(),
-      respondRuntimeApproval: vi.fn(), listAttentionHistory: vi.fn()
+      respondRuntimeApproval: vi.fn(), listAttentionHistory: vi.fn(), startInspection: vi.fn(),
+      cancelInspection: vi.fn(), readInspectionReport: vi.fn()
     };
     const repositories = {
       getSnapshot: vi.fn(), listProjects: vi.fn(), switchProject: vi.fn(), openProject: vi.fn(),
@@ -121,6 +139,10 @@ describe('registerDesktopIpc', () => {
       id: 'runtime-approval-1', decision: ''
     })).rejects.toThrow('decision');
     expect(coreHost.respondRuntimeApproval).not.toHaveBeenCalled();
+    await expect(handlers.get(DESKTOP_IPC.startInspection)?.({}, {
+      kind: 'adversarial_audit', target: { kind: 'agents', ids: ['../bad'] }, focus: null
+    })).rejects.toThrow('target');
+    expect(coreHost.startInspection).not.toHaveBeenCalled();
     await expect(handlers.get(DESKTOP_IPC.openCodexDraft)?.({}, {
       targetAgentId: 'orchestrator', text: ''
     })).rejects.toThrow('text');

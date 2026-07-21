@@ -24,6 +24,7 @@
     "verify:packaged-runtime": "node scripts/verify-packaged-runtime.mjs out/Orquesta-win32-x64/resources",
     "test:packaged-runtime": "playwright test --config=playwright.electron.config.ts tests/electron/packaged-runtime.spec.ts",
     "test:interaction-retention": "playwright test --config=playwright.electron.config.ts --trace off tests/electron/interaction-retention.spec.ts",
+    "test:inspection-runtime": "playwright test --config=playwright.electron.config.ts tests/electron/inspection-runtime.spec.ts",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",

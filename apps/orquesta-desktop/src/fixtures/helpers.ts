@@ -1,6 +1,11 @@
-import type { AgentUiModel, AttentionUiItem, FailureUiModel, ProjectPhaseUiModel, TaskUiModel, V4OperationsSnapshot } from '../contracts/orquesta-ui';
+import { INSPECTION_TEMPLATE_DEFINITIONS, type AgentUiModel, type AttentionUiItem, type FailureUiModel, type InspectionTemplateUiModel, type ProjectPhaseUiModel, type TaskUiModel, type V4OperationsSnapshot } from '../contracts/orquesta-ui';
 
 export const observedAt = '2026-07-17T13:28:00.000Z';
+export const fixtureInspectionTemplates: InspectionTemplateUiModel[] = INSPECTION_TEMPLATE_DEFINITIONS.map((template) => ({
+  ...template,
+  activeRunId: null,
+  lastReportRunId: null
+}));
 export const fixtureV4Operations: V4OperationsSnapshot = {
   available: true,
   revision: 42,

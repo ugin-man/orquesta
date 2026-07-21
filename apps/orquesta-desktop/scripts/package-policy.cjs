@@ -11,6 +11,7 @@ function createPackageIgnore(appRoot) {
     if (/\/dist-electron\/core-e2e\.cjs(?:\.map)?$/.test(portablePath)) return true;
     if (portablePath.endsWith('/package.json')) return false;
     if (/\/(?:dist|dist-electron)(?:\/|$)/.test(portablePath)) return false;
+    if (/\/schemas(?:\/|$)/.test(portablePath)) return false;
     return true;
   };
 }

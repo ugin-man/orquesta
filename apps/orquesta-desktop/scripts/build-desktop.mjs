@@ -1,4 +1,4 @@
-import { rm, mkdir } from 'node:fs/promises';
+import { cp, rm, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { build } from 'esbuild';
@@ -9,7 +9,9 @@ const paths = resolveDesktopPaths(path.resolve(scriptDirectory, '..'));
 
 export async function buildDesktopHost() {
   await rm(paths.electronDist, { recursive: true, force: true });
+  await rm(paths.contractSchemasDist, { recursive: true, force: true });
   await mkdir(paths.electronDist, { recursive: true });
+  await cp(paths.contractSchemasSource, paths.contractSchemasDist, { recursive: true });
 
   const shared = {
     bundle: true,

@@ -1,7 +1,9 @@
 import path from 'node:path';
 import * as canonicalAdapterModule from '@orquesta/codex-adapter';
 import type { ConversationMessage, ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
+import type { InspectionKind } from '../../src/contracts/orquesta-ui';
 import type { RuntimeApprovalRequest, RuntimeModelEvidence, RuntimeNotification as DesktopRuntimeNotification } from './protocol';
+import type { InspectionRuntimeBoundary } from './inspection-run-store';
 import { resolveDesktopSdkPackageRoot } from './runtime-location';
 import { verifyDesktopRuntimeIntegrity } from './runtime-integrity';
 
@@ -11,6 +13,7 @@ export interface CanonicalCodexAdapter {
   createThread(input: UnknownRecord): Promise<UnknownRecord>;
   resumeThread(input: UnknownRecord): Promise<UnknownRecord>;
   startTurn(input: UnknownRecord): Promise<UnknownRecord>;
+  interruptTurn(input: UnknownRecord): Promise<UnknownRecord>;
   readThread(input: UnknownRecord): Promise<UnknownRecord>;
   runtimeInfo(input: UnknownRecord): Promise<UnknownRecord>;
   respondToApproval(input: UnknownRecord): Promise<UnknownRecord>;
@@ -38,6 +41,14 @@ export interface DesktopRuntimeSendInput {
   localImagePaths: string[];
   recommendedModel: string | null;
   requestedModel: string | null;
+}
+
+export interface DesktopInspectionStartInput {
+  correlationId: string;
+  projectId: string;
+  rootPath: string;
+  kind: InspectionKind;
+  prompt: string;
 }
 
 function record(value: unknown): UnknownRecord | null {
@@ -301,6 +312,75 @@ export class DesktopCodexService {
     if (!turnId) throw new Error('Codex App Server did not accept the turn');
     this.runtimeStarted = true;
     return { threadId, turnId, modelEvidence: structuredClone(evidence) };
+  }
+
+  async startInspection(input: DesktopInspectionStartInput): Promise<{
+    threadId: string;
+    turnId: string;
+    runtimeBoundary: InspectionRuntimeBoundary;
+  }> {
+    if (this.shutdownRequested) throw new Error('Codex runtime is shutting down');
+    const adapter = await this.adapter();
+    const runtimeBoundary: InspectionRuntimeBoundary = {
+      sandbox: 'read-only',
+      approvalPolicy: 'never',
+      webSearchMode: input.kind === 'external_benchmark' ? 'live' : 'disabled'
+    };
+    const threadResult = requireSuccessfulResult(await adapter.createThread({
+      correlationId: `${input.correlationId}:thread`,
+      params: {
+        cwd: input.rootPath,
+        sandbox: runtimeBoundary.sandbox,
+        approvalPolicy: runtimeBoundary.approvalPolicy,
+        webSearchMode: runtimeBoundary.webSearchMode
+      }
+    }), 'createThread');
+    const threadId = nonEmptyString(threadResult.thread_id);
+    if (!threadId) throw new Error('Codex App Server did not return a thread id');
+    const profile = record(threadResult.runtime_profile);
+    if (profile?.sandbox !== runtimeBoundary.sandbox
+      || profile.approval_policy !== runtimeBoundary.approvalPolicy
+      || profile.requested_web_search_mode !== runtimeBoundary.webSearchMode) {
+      throw new Error('read_only_boundary_violation: Codex App Server did not apply the requested inspection profile');
+    }
+    this.evidenceByThread.set(threadId, unknownModelEvidence());
+    this.projectByThread.set(threadId, input.projectId);
+    const turnResult = requireSuccessfulResult(await adapter.startTurn({
+      correlationId: input.correlationId,
+      threadId,
+      input: [{ type: 'text', text: input.prompt, text_elements: [] }]
+    }), 'startTurn');
+    const turnId = nonEmptyString(turnResult.turn_id);
+    if (!turnId) throw new Error('Codex App Server did not accept the inspection turn');
+    this.runtimeStarted = true;
+    return { threadId, turnId, runtimeBoundary: structuredClone(runtimeBoundary) };
+  }
+
+  async interruptInspection(input: { correlationId: string; threadId: string; turnId: string }): Promise<void> {
+    if (this.shutdownRequested) throw new Error('Codex runtime is shutting down');
+    const adapter = await this.adapter();
+    requireSuccessfulResult(await adapter.interruptTurn(input), 'interruptTurn');
+  }
+
+  async readInspectionThread(input: { correlationId: string; threadId: string }): Promise<{
+    finalResponse: string | null;
+    completed: boolean;
+  }> {
+    const adapter = await this.adapter();
+    const result = requireSuccessfulResult(await adapter.readThread({
+      correlationId: input.correlationId,
+      threadId: input.threadId,
+      includeTurns: true
+    }), 'readThread');
+    const thread = record(result.thread);
+    if (!thread) throw new Error('Codex App Server returned invalid inspection thread history');
+    const turns = Array.isArray(thread.turns) ? thread.turns.flatMap((value) => record(value) ?? []) : [];
+    const latestTurn = turns.at(-1) ?? null;
+    const messages = projectConversation(thread, this.options.now()).filter((message) => message.role === 'agent');
+    return {
+      finalResponse: messages.at(-1)?.text ?? null,
+      completed: latestTurn?.status === 'completed' || latestTurn?.status === 'failed'
+    };
   }
 
   async listConversation(input: {

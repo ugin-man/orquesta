@@ -1,5 +1,5 @@
 import type { FixtureDefinition } from './types';
-import { agent, attention, fixtureV4Operations, observedAt, phase, task } from './helpers';
+import { agent, attention, fixtureInspectionTemplates, fixtureV4Operations, observedAt, phase, task } from './helpers';
 
 export const unknownEvidenceFixture: FixtureDefinition = {
   snapshot: {
@@ -22,7 +22,9 @@ export const unknownEvidenceFixture: FixtureDefinition = {
     failures: [],
     phases: [phase({ id: 'phase-plan', title: 'Planning', summary: 'Prepare migration route', status: 'current', ownerAgentIds: ['planner'], itemCount: 4, completedItemCount: 0 })],
     recentEvents: [],
-    v4Operations: fixtureV4Operations
+    v4Operations: fixtureV4Operations,
+    inspectionTemplates: fixtureInspectionTemplates,
+    inspectionRuns: []
   },
   conversations: { orchestrator: [] },
   attentionHistory: [],

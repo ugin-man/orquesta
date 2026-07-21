@@ -57,6 +57,11 @@ describe('repository reader', () => {
     expect(snapshot.tasks[0]).toMatchObject({ turnStarted: true, progressObserved: true, actualModel: null, actualModelEvidence: 'unknown' });
     expect(snapshot.attention).toMatchObject([{ id: 'question:Q1', actionKind: 'answer' }]);
     expect(snapshot.recentEvents[0]).toMatchObject({ taskId: 'T1', message: 'Reader tests are running.' });
+    expect(snapshot.inspectionTemplates.map((item) => item.kind)).toEqual([
+      'external_benchmark',
+      'adversarial_audit'
+    ]);
+    expect(snapshot.inspectionRuns).toEqual([]);
   });
 
   test('projects accepted incidents and repeated candidate clusters without changing user attention', () => {
@@ -245,6 +250,16 @@ describe('repository reader', () => {
       display_name: 'Alpha',
       current_task: 'T1'
     };
+    source.agents.agents.push({
+      agent_id: 'beta',
+      role: 'opaque-second-label',
+      display_name: 'Beta',
+      status: 'standby',
+      current_task: null,
+      assigned_by_agent_id: 'orchestrator',
+      mission: 'Implement a separate bounded line.',
+      last_heartbeat: '2026-07-18T10:59:30.000Z'
+    });
     source.tasks.tasks[0].owner_agent_id = 'alpha';
     const snapshot = projectSnapshotFromDocuments({
       rootPath: 'C:\\work\\sample',
@@ -258,16 +273,62 @@ describe('repository reader', () => {
         organization: {
           schema_version: 2,
           revision: 4,
-          agents: [{ agent_id: 'alpha', role_id: 'implementation', organization_scope: 'line', lifecycle_state: 'active', operational_status: 'working' }],
-          teams: [{ team_id: 'desktop-implementation', line_id: 'desktop-line' }],
-          memberships: [{ membership_id: 'M1', agent_id: 'alpha', team_id: 'desktop-implementation', position: 'lead', ordinal: 1, active_to: null }],
-          relationships: [{ relationship_id: 'R1', type: 'reports_to', from_agent_id: 'alpha', to_agent_id: 'orchestrator' }],
-          lines: [{ line_id: 'desktop-line' }]
+          agents: [
+            { agent_id: 'alpha', role_id: 'implementation', organization_scope: 'line', lifecycle_state: 'active', operational_status: 'working', display_order: 2 },
+            { agent_id: 'beta', role_id: 'implementation', organization_scope: 'line', lifecycle_state: 'active', operational_status: 'standby', display_order: 3 }
+          ],
+          teams: [
+            { team_id: 'desktop-implementation', line_id: 'desktop-line', display_name: 'Desktop 実装チーム', purpose: 'Desktop rendererを実装する', lifecycle_state: 'active', display_order: 1 },
+            { team_id: 'core-implementation', line_id: 'core-line', display_name: 'Core 実装チーム', purpose: 'Coreを実装する', lifecycle_state: 'active', display_order: 2 }
+          ],
+          memberships: [
+            { membership_id: 'M1', agent_id: 'alpha', team_id: 'desktop-implementation', position: 'lead', ordinal: 1, active_to: null },
+            { membership_id: 'M2', agent_id: 'beta', team_id: 'core-implementation', position: 'member', ordinal: 1, active_to: null }
+          ],
+          relationships: [
+            { relationship_id: 'R1', type: 'reports_to', from_agent_id: 'alpha', to_agent_id: 'orchestrator' },
+            { relationship_id: 'R2', type: 'reports_to', from_agent_id: 'beta', to_agent_id: 'orchestrator' }
+          ],
+          lines: [
+            { line_id: 'desktop-line', display_name: 'Desktop', goal: 'Windowsアプリを完成させる', status: 'active', owner_agent_id: 'orchestrator', dedicated_lead_agent_id: 'alpha', display_order: 1, approval_source: 'setup_confirmation' },
+            { line_id: 'core-line', display_name: 'Core', goal: '組織Coreを完成させる', status: 'active', owner_agent_id: 'orchestrator', dedicated_lead_agent_id: null, display_order: 2, approval_source: 'setup_confirmation' }
+          ]
+        },
+        organizationDecisions: {
+          schema_version: 1,
+          decisions: [{
+            decision_id: 'OD-0123456789ab', task_intent_id: 'TI-0123456789ab', organization_revision: 4,
+            selected_action: 'propose_line', approval_state: 'pending_user', status: 'approval_wait',
+            reason_codes: ['INDEPENDENT_DELIVERABLE'],
+            proposed_line: {
+              line_id: 'research-line', display_name: 'Research', goal: '外部資産を調査する',
+              deliverable_ids: ['research-report'], completion_root_ids: ['CM-RESEARCH'], scope: ['research'], owner_agent_id: 'orchestrator'
+            }
+          }]
         }
       } as never
     });
 
-    expect(snapshot.organization).toMatchObject({ revision: 4, source: 'explicit', diagnostics: [] });
+    expect(snapshot.organization).toMatchObject({
+      revision: 4,
+      source: 'explicit',
+      diagnostics: [],
+      lines: [
+        expect.objectContaining({ id: 'desktop-line', displayName: 'Desktop', dedicatedLeadAgentId: 'alpha', displayOrder: 1 }),
+        expect.objectContaining({ id: 'core-line', displayName: 'Core', dedicatedLeadAgentId: null, displayOrder: 2 })
+      ],
+      teams: [
+        expect.objectContaining({ id: 'desktop-implementation', lineId: 'desktop-line', displayName: 'Desktop 実装チーム' }),
+        expect.objectContaining({ id: 'core-implementation', lineId: 'core-line', displayName: 'Core 実装チーム' })
+      ],
+      relationships: [
+        expect.objectContaining({ id: 'R1', type: 'reports_to', fromAgentId: 'alpha', toAgentId: 'orchestrator' }),
+        expect.objectContaining({ id: 'R2', type: 'reports_to', fromAgentId: 'beta', toAgentId: 'orchestrator' })
+      ],
+      lineProposals: [
+        expect.objectContaining({ id: 'OD-0123456789ab', lineId: 'research-line', displayName: 'Research', status: 'approval_wait' })
+      ]
+    });
     expect(snapshot.agents.find((agent) => agent.id === 'alpha')).toMatchObject({
       role: 'implementation',
       roleId: 'implementation',
@@ -279,8 +340,43 @@ describe('repository reader', () => {
       organizationScope: 'line',
       lifecycleState: 'active',
       operationalStatus: 'working',
+      membershipOrdinal: 1,
+      displayOrder: 2,
       organizationRevision: 4
     });
+    expect(snapshot.agents.find((agent) => agent.id === 'beta')).toMatchObject({
+      roleId: 'implementation',
+      teamId: 'core-implementation',
+      lineId: 'core-line',
+      membershipOrdinal: 1,
+      displayOrder: 3
+    });
+  });
+
+  test('uses the explicit organization roster instead of reviving archived agent rows', () => {
+    const source = documents();
+    const snapshot = projectSnapshotFromDocuments({
+      rootPath: 'C:\\work\\sample',
+      documents: {
+        ...source,
+        organization: {
+          schema_version: 2,
+          revision: 5,
+          agents: [
+            { agent_id: 'orchestrator', role_id: 'orchestrator', organization_scope: 'project', lifecycle_state: 'active', operational_status: 'working' },
+            { agent_id: 'worker', role_id: 'implementation', organization_scope: 'line', lifecycle_state: 'active', operational_status: 'standby' }
+          ],
+          teams: [{ team_id: 'implementation', line_id: 'desktop', display_name: 'Implementation', purpose: 'Desktop work', lifecycle_state: 'active' }],
+          memberships: [{ membership_id: 'M-worker', agent_id: 'worker', team_id: 'implementation', position: 'lead', ordinal: 1, active_to: null }],
+          relationships: [{ relationship_id: 'R-worker', type: 'reports_to', from_agent_id: 'worker', to_agent_id: 'orchestrator' }],
+          lines: [{ line_id: 'desktop', display_name: 'Desktop', goal: 'Build Desktop', status: 'active', owner_agent_id: 'orchestrator', dedicated_lead_agent_id: 'worker', approval_source: 'setup_confirmation' }]
+        }
+      } as never
+    });
+
+    expect(snapshot.agents.map((agent) => agent.id)).toEqual(['orchestrator', 'worker']);
+    expect(snapshot.project.agentCount).toBe(2);
+    expect(snapshot.agents.some((agent) => agent.id === 'idle')).toBe(false);
   });
 
   test('marks legacy organization inference and projects real six-phase setup state', () => {

@@ -24,6 +24,9 @@ describe('DesktopRepositoryBridge', () => {
       })),
       respondRuntimeApproval: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'approval-1' })),
       listAttentionHistory: vi.fn(async () => []),
+      startInspection: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'inspection-1' })),
+      cancelInspection: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'inspection-2' })),
+      readInspectionReport: vi.fn(async () => ({ runId: 'BENCH-001', markdown: '# Benchmark' })),
       openCodexDraft: vi.fn(async () => ({ status: 'accepted' as const, correlationId: 'draft-1' })),
       subscribeRuntime: vi.fn((listener) => { runtimeSubscription.listener = listener; return () => { runtimeSubscription.listener = null; }; }),
       getHostInfo: vi.fn(),
@@ -59,5 +62,10 @@ describe('DesktopRepositoryBridge', () => {
     expect(host.respondRuntimeApproval).toHaveBeenCalledTimes(1);
     await expect(bridge.getRuntimeInfo({ probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
     await expect(bridge.openCodexDraft({ targetAgentId: 'orchestrator', text: 'Draft.' })).resolves.toMatchObject({ status: 'accepted' });
+    await expect(bridge.startInspection({
+      kind: 'external_benchmark', target: { kind: 'project', ids: [] }, focus: null
+    })).resolves.toMatchObject({ status: 'accepted' });
+    await expect(bridge.cancelInspection('BENCH-001')).resolves.toMatchObject({ status: 'accepted' });
+    await expect(bridge.readInspectionReport('BENCH-001')).resolves.toEqual({ runId: 'BENCH-001', markdown: '# Benchmark' });
   });
 });

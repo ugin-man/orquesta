@@ -89,6 +89,43 @@ function replaceRecords(current, replacements, field) {
   return [...byId.values()].sort((left, right) => compareText(left[field], right[field]));
 }
 
+function compareMembership(left, right) {
+  return Number(left.ordinal || 0) - Number(right.ordinal || 0)
+    || compareText(left.team_id, right.team_id)
+    || compareText(left.agent_id, right.agent_id)
+    || compareText(left.membership_id, right.membership_id);
+}
+
+function normalizeOrganizationLeadership(input) {
+  const state = clone(input);
+  const teams = new Map((state.teams || []).map((team) => [team.team_id, team]));
+  const activeMemberships = (state.memberships || []).filter((membership) => membership.active_to === null);
+  const selectedLeadByTeam = new Map();
+
+  for (const team of teams.values()) {
+    if (team.lifecycle_state !== "active" || team.line_id === null) continue;
+    const members = activeMemberships.filter((membership) => membership.team_id === team.team_id).sort(compareMembership);
+    const currentLeads = members.filter((membership) => membership.position === "lead");
+    const selected = members.length >= 3 ? (currentLeads[0] || members[0]) : null;
+    if (selected) selectedLeadByTeam.set(team.team_id, selected.agent_id);
+    for (const membership of members) membership.position = selected && membership.membership_id === selected.membership_id ? "lead" : "member";
+  }
+
+  const activeLines = (state.lines || []).filter((line) => line.status === "active");
+  const requireResponsibleMember = activeLines.length >= 2;
+  for (const line of state.lines || []) {
+    const members = activeMemberships
+      .filter((membership) => teams.get(membership.team_id)?.line_id === line.line_id)
+      .sort(compareMembership);
+    const memberIds = new Set(members.map((membership) => membership.agent_id));
+    if (!memberIds.has(line.dedicated_lead_agent_id)) line.dedicated_lead_agent_id = null;
+    if (line.status !== "active" || !requireResponsibleMember || members.length === 0) continue;
+    const selectedTeamLead = members.find((membership) => selectedLeadByTeam.get(membership.team_id) === membership.agent_id);
+    line.dedicated_lead_agent_id = (selectedTeamLead || members[0]).agent_id;
+  }
+  return state;
+}
+
 function applyOrganizationDecision({ state, decision, changes = {} }) {
   assertOrganizationInvariants(state);
   assertContract("organization-decision", decision);
@@ -112,7 +149,7 @@ function applyOrganizationDecision({ state, decision, changes = {} }) {
   const memberships = replaceRecords(state.memberships, changes.replace_memberships, "membership_id");
   const relationships = replaceRecords(state.relationships, changes.replace_relationships, "relationship_id");
   const lines = replaceRecords(state.lines, changes.replace_lines, "line_id");
-  const next = {
+  const next = normalizeOrganizationLeadership({
     ...clone(state),
     revision: state.revision + 1,
     agents: mergeRecords(agents, changes.agents, "agent_id"),
@@ -121,7 +158,7 @@ function applyOrganizationDecision({ state, decision, changes = {} }) {
     relationships: mergeRecords(relationships, changes.relationships, "relationship_id"),
     lines: mergeRecords(lines, changes.lines, "line_id"),
     applied_decision_ids: [...state.applied_decision_ids, decision.decision_id].sort(compareText)
-  };
+  });
   assertOrganizationInvariants(next);
   return { state: next, idempotency_key, idempotent: false };
 }
@@ -132,5 +169,6 @@ module.exports = {
   canonicalRoleId,
   assertOrganizationInvariants,
   applyOrganizationDecision,
-  agentCapabilityProviders
+  agentCapabilityProviders,
+  normalizeOrganizationLeadership
 };

@@ -343,6 +343,12 @@ function createAppServerAdapter({
         return success("createThread", correlationId, {
           thread_id: result.thread.id,
           applied_model: result.model ?? null,
+          runtime_profile: {
+            cwd: result.cwd ?? null,
+            sandbox: result.sandbox ?? null,
+            approval_policy: result.approvalPolicy ?? null,
+            requested_web_search_mode: params.webSearchMode ?? null
+          },
           model_evidence: createModelEvidence({
             recommended: recommendedModel,
             requested: requestedModel ?? params.model,
@@ -374,6 +380,12 @@ function createAppServerAdapter({
         return success("resumeThread", correlationId, {
           thread_id: result.thread.id,
           applied_model: result.model ?? null,
+          runtime_profile: {
+            cwd: result.cwd ?? null,
+            sandbox: result.sandbox ?? null,
+            approval_policy: result.approvalPolicy ?? null,
+            requested_web_search_mode: params.webSearchMode ?? null
+          },
           model_evidence: createModelEvidence({
             recommended: recommendedModel,
             requested: requestedModel ?? params.model,

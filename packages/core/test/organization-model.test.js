@@ -54,6 +54,7 @@ test("organization invariants keep references, memberships, leads, and reporting
 
   const projectOwner = clone(state);
   projectOwner.lines.push({ ...projectOwner.lines[0], line_id: "core-line", display_name: "Core", deliverable_ids: ["core"], completion_root_ids: ["CM-CORE"], scope: ["packages/core"] });
+  projectOwner.lines[0].dedicated_lead_agent_id = "implementation-001";
   assert.doesNotThrow(() => assertOrganizationInvariants(projectOwner));
 
   const duplicateLead = clone(state);
@@ -97,6 +98,27 @@ test("canonical roles, capability providers, and decision application stay deter
   });
   assert.equal(first.state.revision, 2);
   assert.equal(first.state.agents.some((agent) => agent.agent_id === "implementation-002"), true);
+  assert.equal(first.state.memberships.some((membership) => membership.position === "lead"), false);
+  const third = applyOrganizationDecision({
+    state: first.state,
+    decision: decision("add_member", { decision_id: "OD-abcdef012345", organization_revision: 2 }),
+    changes: {
+      agents: [{ agent_id: "implementation-003", role_id: "implementation", organization_scope: "line", lifecycle_state: "provisioning", operational_status: "standby" }],
+      memberships: [{ membership_id: "membership-implementation-003", agent_id: "implementation-003", team_id: "desktop-implementation", position: "member", ordinal: 3, active_from: timestamp, active_to: null }]
+    }
+  });
+  assert.deepEqual(third.state.memberships.filter((membership) => membership.position === "lead").map((membership) => membership.agent_id), ["implementation-001"]);
+  const secondLine = applyOrganizationDecision({
+    state: third.state,
+    decision: decision("propose_line", {
+      decision_id: "OD-fedcba543210",
+      organization_revision: 3,
+      proposed_line: { line_id: "core-line", display_name: "Core", goal: "Core deliverable", deliverable_ids: ["core"], completion_root_ids: ["CM-CORE"], scope: ["packages/core"], owner_agent_id: "orchestrator" }
+    }),
+    changes: { lines: [{ line_id: "core-line", display_name: "Core", goal: "Core deliverable", deliverable_ids: ["core"], completion_root_ids: ["CM-CORE"], scope: ["packages/core"], owner_agent_id: "orchestrator", dedicated_lead_agent_id: null, status: "active", approval_source: "user_approval" }] }
+  });
+  assert.equal(secondLine.state.lines.find((line) => line.line_id === "desktop-line").dedicated_lead_agent_id, "implementation-001");
+  assert.equal(secondLine.state.lines.find((line) => line.line_id === "core-line").dedicated_lead_agent_id, null);
   assert.equal(applyOrganizationDecision({ state: first.state, decision: addMember, changes: {} }).idempotent, true);
 
   assert.throws(() => applyOrganizationDecision({ state, decision: decision("propose_line", { approval_state: "pending_user" }), changes: {} }), /approved/);

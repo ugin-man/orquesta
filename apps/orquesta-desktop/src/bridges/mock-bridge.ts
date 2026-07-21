@@ -7,9 +7,10 @@ import type {
   ConversationQuery,
   OrquestaRendererBridge,
   ProjectSummary,
+  StartInspectionUiInput,
   UiActionResult
 } from '../contracts/bridge';
-import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent } from '../contracts/orquesta-ui';
+import type { AttentionUiItem, InspectionRunUiModel, OrquestaUiSnapshot, RuntimeUiEvent } from '../contracts/orquesta-ui';
 import { fixtureCatalog, fixtureIdForProject, fixtureKeys, type FixtureId } from '../fixtures';
 
 function correlationId(): string {
@@ -35,6 +36,7 @@ export class MockOrquestaBridge implements OrquestaRendererBridge {
   private conversations = new Map<string, ConversationMessage[]>();
   private resolvedAttention = new Map<string, AttentionUiItem>();
   private approvedProposals = new Set<string>();
+  private inspectionRunsByProject = new Map<string, InspectionRunUiModel[]>();
 
   constructor(initialFixture: FixtureId = 'active-project') {
     this.fixtureId = initialFixture;
@@ -43,6 +45,15 @@ export class MockOrquestaBridge implements OrquestaRendererBridge {
   async getInitialSnapshot(): Promise<OrquestaUiSnapshot> {
     const snapshot = structuredClone(fixtureCatalog[this.fixtureId].snapshot);
     snapshot.attention = snapshot.attention.filter((item) => !this.resolvedAttention.has(item.id));
+    const storedRuns = this.inspectionRunsByProject.get(snapshot.project.id);
+    if (storedRuns) snapshot.inspectionRuns = structuredClone(storedRuns);
+    const activeStatuses = new Set(['queued', 'running', 'cancelling']);
+    const reportStatuses = new Set(['report_ready', 'partial', 'closed']);
+    snapshot.inspectionTemplates = snapshot.inspectionTemplates.map((template) => ({
+      ...template,
+      activeRunId: snapshot.inspectionRuns.find((run) => run.kind === template.kind && activeStatuses.has(run.status))?.runId ?? null,
+      lastReportRunId: snapshot.inspectionRuns.find((run) => run.kind === template.kind && reportStatuses.has(run.status) && run.reportPath)?.runId ?? null
+    }));
     return snapshot;
   }
 
@@ -169,6 +180,63 @@ export class MockOrquestaBridge implements OrquestaRendererBridge {
   async listAttentionHistory(): Promise<AttentionUiItem[]> {
     const fixtureHistory = structuredClone(fixtureCatalog[this.fixtureId].attentionHistory);
     return [...Array.from(this.resolvedAttention.values()).map((item) => structuredClone(item)), ...fixtureHistory];
+  }
+
+  async startInspection(input: StartInspectionUiInput): Promise<UiActionResult> {
+    const snapshot = await this.getInitialSnapshot();
+    if (snapshot.inspectionRuns.some((run) => run.kind === input.kind && ['queued', 'running', 'cancelling'].includes(run.status))) {
+      return rejected('An inspection of this kind is already active.');
+    }
+    const template = snapshot.inspectionTemplates.find((item) => item.kind === input.kind);
+    if (!template) return rejected('Unknown inspection kind.');
+    const runId = `prototype-inspection-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const run: InspectionRunUiModel = {
+      runId,
+      kind: input.kind,
+      displayName: template.displayName,
+      status: 'running',
+      target: {
+        kind: input.target.kind,
+        ids: [...input.target.ids],
+        label: input.target.kind === 'project' ? snapshot.project.title : `${input.target.kind}: ${input.target.ids.join(', ')}`
+      },
+      focus: input.focus,
+      threadId: null,
+      turnId: null,
+      reportPath: null,
+      sourceCount: 0,
+      errorCode: null,
+      errorMessage: null,
+      createdAt: new Date().toISOString(),
+      completedAt: null
+    };
+    this.inspectionRunsByProject.set(snapshot.project.id, [...snapshot.inspectionRuns, run]);
+    this.emit({ type: 'snapshot_changed', snapshot: await this.getInitialSnapshot() });
+    return accepted();
+  }
+
+  async cancelInspection(runId: string): Promise<UiActionResult> {
+    const snapshot = await this.getInitialSnapshot();
+    const index = snapshot.inspectionRuns.findIndex((run) => run.runId === runId);
+    if (index < 0 || !['queued', 'running', 'cancelling'].includes(snapshot.inspectionRuns[index].status)) {
+      return rejected('Inspection is not active.');
+    }
+    snapshot.inspectionRuns[index] = {
+      ...snapshot.inspectionRuns[index], status: 'cancelled', completedAt: new Date().toISOString()
+    };
+    this.inspectionRunsByProject.set(snapshot.project.id, snapshot.inspectionRuns);
+    this.emit({ type: 'snapshot_changed', snapshot: await this.getInitialSnapshot() });
+    return accepted();
+  }
+
+  async readInspectionReport(runId: string) {
+    const snapshot = await this.getInitialSnapshot();
+    const run = snapshot.inspectionRuns.find((candidate) => candidate.runId === runId);
+    if (!run || !['report_ready', 'partial', 'closed'].includes(run.status)) throw new Error('Prototype inspection report is unavailable.');
+    return {
+      runId,
+      markdown: `# ${run.displayName}\n\n> Evidence: Prototype inspection\n\nThis report is fixture data. No real Codex inspection turn ran.\n`
+    };
   }
 
   async listAgentProposals(): Promise<AgentProposal[]> {

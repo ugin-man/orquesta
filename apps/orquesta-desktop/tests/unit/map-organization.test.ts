@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { agent } from '../../src/fixtures/helpers';
 import { buildOrganizationProjection, productionGroupFor } from '../../src/renderer/features/map/organization';
+import { adaptiveTwoLineSnapshot } from './adaptive-map-fixture';
 
 function makeAgent(id: string, role: string, assignedByAgentId: string | null) {
   return agent({
@@ -79,5 +80,75 @@ describe('buildOrganizationProjection', () => {
     expect([...second.parentByAgentId]).toEqual([...first.parentByAgentId]);
     expect([...second.groupByAgentId]).toEqual([...first.groupByAgentId]);
     expect(second.groups).toEqual(first.groups);
+  });
+
+  test('keeps proposals outside active lines and diagnoses invalid explicit membership and cycles', () => {
+    const base = adaptiveTwoLineSnapshot();
+    const implementationOne = base.agents.find((item) => item.id === 'implementation-001')!;
+    const implementationTwo = base.agents.find((item) => item.id === 'implementation-002')!;
+    const snapshot = {
+      ...base,
+      agents: [
+        ...base.agents.map((item) => item.id === implementationOne.id
+          ? { ...item, organizationParentAgentId: implementationTwo.id }
+          : item.id === implementationTwo.id
+            ? { ...item, organizationParentAgentId: implementationOne.id, lineId: 'core-line', teamId: 'core-implementation' }
+            : item),
+        { ...implementationOne, id: 'missing-line-agent', displayName: 'Missing line', lineId: 'missing-line', teamId: 'desktop-implementation' },
+        { ...implementationOne, id: 'missing-team-agent', displayName: 'Missing team', lineId: 'desktop-line', teamId: 'missing-team' }
+      ],
+      organization: {
+        ...base.organization!,
+        lineProposals: [{
+          id: 'decision-propose-mobile',
+          lineId: 'mobile-line',
+          displayName: 'Mobile line',
+          goal: 'Build mobile client',
+          reason: 'Independent delivery path',
+          status: 'approval_wait' as const,
+          ownerAgentId: 'orchestrator'
+        }]
+      }
+    };
+
+    const projection = buildOrganizationProjection(snapshot);
+    const placedIds = projection.lines.flatMap((line) => line.agentIds);
+
+    expect(projection.lines.map((line) => line.id)).not.toContain('mobile-line');
+    expect(projection.lineProposals).toEqual([expect.objectContaining({ lineId: 'mobile-line', status: 'approval_wait' })]);
+    expect(placedIds.filter((id) => id === 'implementation-002')).toHaveLength(1);
+    expect(projection.lines.find((line) => line.id === 'core-line')?.agentIds).toContain('implementation-002');
+    expect(projection.lines.find((line) => line.id === 'desktop-line')?.agentIds).not.toContain('implementation-002');
+    expect(projection.unassignedAgentIds).toEqual(expect.arrayContaining(['missing-line-agent', 'missing-team-agent']));
+    expect(projection.sourceDiagnostics).toEqual(expect.arrayContaining([
+      'missing_line:missing-line-agent:missing-line',
+      'missing_team:missing-team-agent:missing-team'
+    ]));
+    expect(projection.diagnostics).toEqual(expect.arrayContaining([
+      { agentId: 'implementation-001', kind: 'cycle' },
+      { agentId: 'implementation-002', kind: 'cycle' }
+    ]));
+  });
+
+  test('diagnoses legacy lead violations instead of inventing renderer leadership', () => {
+    const base = adaptiveTwoLineSnapshot();
+    const snapshot = {
+      ...base,
+      agents: base.agents.map((item) => item.id === 'implementation-001' ? { ...item, position: 'lead' as const } : item),
+      organization: {
+        ...base.organization!,
+        lines: base.organization!.lines.map((line) => line.id === 'core-line' ? { ...line, dedicatedLeadAgentId: 'missing-agent' } : line)
+      }
+    };
+
+    const projection = buildOrganizationProjection(snapshot);
+
+    expect(projection.lines[0].teams[0].leadAgentId).toBeNull();
+    expect(projection.lines.find((line) => line.id === 'core-line')?.responsibleAgentId).toBeNull();
+    expect(projection.sourceDiagnostics).toEqual(expect.arrayContaining([
+      'invalid_team_lead:desktop-implementation:expected_0:found_1',
+      'invalid_line_lead:core-line:missing-agent',
+      'missing_line_lead:core-line'
+    ]));
   });
 });

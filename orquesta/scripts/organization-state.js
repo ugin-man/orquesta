@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { assertContract } = require("@orquesta/contracts");
+const { normalizeOrganizationLeadership } = require("../../packages/core/src/organization-model");
 const {
   readJsonFile,
   writeJsonAtomic,
@@ -65,11 +66,17 @@ function migratedAgent(agent, now) {
   const supportLegacy = SUPPORT_AGENT_IDS.has(agent.agent_id);
   const roleId = roleIdFor(agent);
   const foundation = FOUNDATION_AGENT_IDS.has(agent.agent_id) || supportLegacy;
+  const organizationParentAgentId = FOUNDATION_AGENT_IDS.has(agent.agent_id)
+    ? "user"
+    : supportLegacy
+      ? "user-support"
+      : agent.organization_parent_agent_id;
   return {
     ...clone(agent),
     role_id: roleId,
     role_version: 1,
-    organization_scope: "project",
+    organization_scope: foundation ? "project" : "line",
+    ...(organizationParentAgentId ? { organization_parent_agent_id: organizationParentAgentId } : {}),
     lifecycle_state: supportLegacy ? "superseded" : "active",
     operational_status: supportLegacy ? "standby" : operationalStatus(agent.status),
     superseded_by: supportLegacy ? "user-support" : agent.superseded_by || null,
@@ -88,6 +95,7 @@ function newUserSupport(now) {
     status: "standby",
     mission: "Coordinate user questions, user decisions, manual actions, vision ambiguity, and repeated failure guidance.",
     organization_scope: "project",
+    organization_parent_agent_id: "user",
     lifecycle_state: "active",
     operational_status: "standby",
     superseded_by: null,
@@ -117,6 +125,7 @@ function newFoundationAgent(agentId, now) {
     status: working ? "active" : "standby",
     mission: missions[agentId],
     organization_scope: "project",
+    organization_parent_agent_id: "user",
     lifecycle_state: "active",
     operational_status: working ? "working" : "standby",
     superseded_by: null,
@@ -126,6 +135,51 @@ function newFoundationAgent(agentId, now) {
     display_name_en: names.en,
     created_at: now,
     updated_at: now,
+  };
+}
+
+function migrationProductionRecords(agents, now) {
+  const productionAgents = agents.filter((agent) => agent.organization_scope === "line");
+  if (!productionAgents.length) return { teams: [], memberships: [], lines: [] };
+  const lineId = "migration-existing-project";
+  const roleIds = [...new Set(productionAgents.map((agent) => agent.role_id))].sort(compareText);
+  const teamIdForRole = (roleId) => `${lineId}-${roleId}`;
+  const teams = roleIds.map((roleId) => ({
+    team_id: teamIdForRole(roleId),
+    line_id: lineId,
+    display_name: displayName(roleId).ja,
+    purpose: `Preserve the existing ${roleId} specialists while explicit production lines are reviewed.`,
+    lifecycle_state: "active",
+  }));
+  const roleOrdinal = new Map();
+  const memberships = productionAgents.map((agent) => {
+    const ordinal = (roleOrdinal.get(agent.role_id) || 0) + 1;
+    roleOrdinal.set(agent.role_id, ordinal);
+    return {
+      membership_id: `membership-${lineId}-${agent.agent_id}`,
+      agent_id: agent.agent_id,
+      team_id: teamIdForRole(agent.role_id),
+      position: ordinal === 1 ? "lead" : "member",
+      ordinal,
+      active_from: now,
+      active_to: null,
+    };
+  });
+  return {
+    teams,
+    memberships,
+    lines: [{
+      line_id: lineId,
+      display_name: "既存プロジェクト",
+      goal: "Keep the existing production organization operational while its explicit lines are reviewed.",
+      deliverable_ids: ["existing-project-delivery"],
+      completion_root_ids: ["existing-project-completion"],
+      scope: ["existing-project"],
+      owner_agent_id: "orchestrator",
+      dedicated_lead_agent_id: null,
+      status: "active",
+      approval_source: "setup_confirmation",
+    }],
   };
 }
 
@@ -186,7 +240,8 @@ function migrateLegacyOrganization({
   };
   const foundationMembers = ["orchestrator", "orquesta-admin", "user-support"]
     .filter((agentId) => migratedAgents.some((agent) => agent.agent_id === agentId));
-  const nextOrganizationState = {
+  const productionRecords = migrationProductionRecords(migratedAgents, now);
+  const nextOrganizationState = normalizeOrganizationLeadership({
     schema_version: 2,
     revision,
     policy: {
@@ -208,8 +263,8 @@ function migrateLegacyOrganization({
       display_name: "Orquesta Foundation",
       purpose: "Project-wide orchestration and user support",
       lifecycle_state: "active",
-    }],
-    memberships: foundationMembers.map((agentId, index) => ({
+    }, ...productionRecords.teams],
+    memberships: [...foundationMembers.map((agentId, index) => ({
       membership_id: `membership-foundation-${agentId}`,
       agent_id: agentId,
       team_id: "foundation",
@@ -217,18 +272,11 @@ function migrateLegacyOrganization({
       ordinal: index + 1,
       active_from: now,
       active_to: null,
-    })),
-    relationships: foundationMembers
-      .filter((agentId) => agentId !== "orchestrator")
-      .map((agentId) => ({
-        relationship_id: `relationship-${agentId}-orchestrator`,
-        type: "reports_to",
-        from_agent_id: agentId,
-        to_agent_id: "orchestrator",
-      })),
-    lines: [],
+    })), ...productionRecords.memberships],
+    relationships: [],
+    lines: productionRecords.lines,
     applied_decision_ids: [],
-  };
+  });
 
   return {
     rolesState: nextRolesState,
@@ -236,6 +284,124 @@ function migrateLegacyOrganization({
     organizationState: nextOrganizationState,
     sessionsState: clone(sessionsState),
     tasksState: clone(tasksState),
+  };
+}
+
+function repairLegacyOrganizationMigration({
+  rolesState,
+  agentsState,
+  organizationState,
+  sessionsState = { version: 1, sessions: [] },
+  tasksState = { version: 1, tasks: [] },
+  now,
+} = {}) {
+  if (!rolesState || !agentsState || !organizationState || !now) {
+    throw new TypeError("rolesState, agentsState, organizationState, and now are required");
+  }
+  const migration = agentsState.organization_migration;
+  if (!migration || typeof migration !== "object" || migration.status !== "review_required") {
+    return {
+      changed: false,
+      bundle: {
+        rolesState: clone(rolesState),
+        agentsState: clone(agentsState),
+        organizationState: clone(organizationState),
+        sessionsState: clone(sessionsState),
+        tasksState: clone(tasksState),
+      },
+    };
+  }
+
+  const desiredScope = (agentId) => FOUNDATION_AGENT_IDS.has(agentId) || SUPPORT_AGENT_IDS.has(agentId) ? "project" : "line";
+  const desiredParent = (agent) => FOUNDATION_AGENT_IDS.has(agent.agent_id)
+    ? "user"
+    : SUPPORT_AGENT_IDS.has(agent.agent_id)
+      ? "user-support"
+      : agent.organization_parent_agent_id;
+  const repairedAgents = (agentsState.agents || []).map((agent) => {
+    const parent = desiredParent(agent);
+    const next = {
+      ...clone(agent),
+      organization_scope: desiredScope(agent.agent_id),
+      ...(parent ? { organization_parent_agent_id: parent } : {}),
+    };
+    return next;
+  });
+  const repairedOrganizationAgents = (organizationState.agents || []).map((agent) => ({
+    ...clone(agent),
+    organization_scope: desiredScope(agent.agent_id),
+  }));
+  const repairedRelationships = (organizationState.relationships || []).filter((relationship) => (
+    !["user-support", "orquesta-admin"].includes(relationship.from_agent_id)
+  ));
+  const teamById = new Map((organizationState.teams || []).map((team) => [team.team_id, team]));
+  const lineScopedMemberIds = new Set((organizationState.memberships || [])
+    .filter((membership) => membership.active_to === null && teamById.get(membership.team_id)?.line_id)
+    .map((membership) => membership.agent_id));
+  const unmappedProductionAgents = repairedAgents.filter((agent) => (
+    agent.organization_scope === "line" && !lineScopedMemberIds.has(agent.agent_id)
+  ));
+  const productionRecords = migrationProductionRecords(unmappedProductionAgents, now);
+  const appendUnique = (current, additions, key) => {
+    const ids = new Set((current || []).map((item) => item[key]));
+    return [...clone(current || []), ...additions.filter((item) => !ids.has(item[key]))];
+  };
+  const repairedTeams = appendUnique(organizationState.teams, productionRecords.teams, "team_id");
+  const repairedMemberships = appendUnique(organizationState.memberships, productionRecords.memberships, "membership_id");
+  const repairedLines = appendUnique(organizationState.lines, productionRecords.lines, "line_id");
+  const repairedOrganizationState = normalizeOrganizationLeadership({
+    ...clone(organizationState),
+    agents: repairedOrganizationAgents,
+    teams: repairedTeams,
+    memberships: repairedMemberships,
+    relationships: repairedRelationships,
+    lines: repairedLines,
+  });
+  const layoutAlreadyCanonical = JSON.stringify(repairedAgents) === JSON.stringify(agentsState.agents || [])
+    && JSON.stringify(repairedOrganizationAgents) === JSON.stringify(organizationState.agents || [])
+    && JSON.stringify(repairedRelationships) === JSON.stringify(organizationState.relationships || [])
+    && JSON.stringify(repairedTeams) === JSON.stringify(organizationState.teams || [])
+    && JSON.stringify(repairedOrganizationState.memberships) === JSON.stringify(organizationState.memberships || [])
+    && JSON.stringify(repairedOrganizationState.lines) === JSON.stringify(organizationState.lines || []);
+  if (layoutAlreadyCanonical) {
+    return {
+      changed: false,
+      bundle: {
+        rolesState: clone(rolesState),
+        agentsState: clone(agentsState),
+        organizationState: clone(organizationState),
+        sessionsState: clone(sessionsState),
+        tasksState: clone(tasksState),
+      },
+    };
+  }
+
+  const revision = Number(organizationState.revision || 0) + 1;
+  return {
+    changed: true,
+    bundle: {
+      rolesState: {
+        ...clone(rolesState),
+        organization_revision: revision,
+        updated_at: now,
+      },
+      agentsState: {
+        ...clone(agentsState),
+        organization_revision: revision,
+        agents: repairedAgents,
+        organization_migration: {
+          ...clone(migration),
+          layout_repaired_at: now,
+        },
+        updated_at: now,
+      },
+      organizationState: {
+        ...repairedOrganizationState,
+        revision,
+      },
+      sessionsState: clone(sessionsState),
+      tasksState: clone(tasksState),
+    },
   };
 }
 
@@ -379,5 +545,6 @@ module.exports = {
   FOUNDATION_AGENT_IDS,
   commitOrganizationTransition,
   migrateLegacyOrganization,
+  repairLegacyOrganizationMigration,
   readOrganizationBundle,
 };

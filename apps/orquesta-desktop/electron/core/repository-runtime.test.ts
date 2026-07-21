@@ -1,10 +1,22 @@
 import path from 'node:path';
+import os from 'node:os';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import { emptyV4OperationsSnapshot } from '../../src/contracts/orquesta-ui';
 import { RepositoryRuntime } from './repository-runtime';
 
-afterEach(() => vi.useRealTimers());
+const temporaryRepositories: string[] = [];
+
+afterEach(async () => {
+  vi.useRealTimers();
+  await Promise.all(temporaryRepositories.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+async function writeJson(filePath: string, value: unknown): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
 
 function snapshot(id: string, rootPath: string): OrquestaUiSnapshot {
   return {
@@ -55,6 +67,121 @@ function snapshot(id: string, rootPath: string): OrquestaUiSnapshot {
 }
 
 describe('RepositoryRuntime', () => {
+  test('migrates a legacy organization before the first Desktop projection', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-desktop-legacy-'));
+    temporaryRepositories.push(root);
+    const stateRoot = path.join(root, '.orquesta', 'state');
+    await writeJson(path.join(stateRoot, 'agents.json'), {
+      version: 1,
+      agents: [
+        { agent_id: 'orchestrator', role: 'orchestrator', status: 'active', thread_id: 'thread-orchestrator' },
+        { agent_id: 'implementation-001', role: 'implementation', status: 'working', thread_id: 'thread-implementation' },
+        { agent_id: 'user-liaison', role: 'user-liaison', status: 'standby', thread_id: 'thread-liaison' }
+      ]
+    });
+    await writeJson(path.join(stateRoot, 'sessions.json'), { version: 1, sessions: [] });
+    await writeJson(path.join(stateRoot, 'tasks.json'), { version: 1, tasks: [] });
+    const runtime = new RepositoryRuntime({
+      watchDirectory: vi.fn(() => ({ close: vi.fn() }))
+    });
+
+    const selected = await runtime.select({ projectId: 'legacy-project', rootPath: root });
+
+    expect(selected.organization).toMatchObject({ source: 'explicit', revision: 1 });
+    expect(selected.agents.map((agent) => agent.id)).toEqual(expect.arrayContaining([
+      'orchestrator', 'implementation-001', 'user-liaison', 'user-support'
+    ]));
+    const migratedAgents = JSON.parse(await readFile(path.join(stateRoot, 'agents.json'), 'utf8')) as {
+      schema_version: number;
+      agents: Array<{ agent_id: string; lifecycle_state: string; superseded_by?: string | null }>;
+    };
+    expect(migratedAgents.schema_version).toBe(2);
+    expect(migratedAgents.agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ agent_id: 'implementation-001', lifecycle_state: 'active', organization_scope: 'line' }),
+      expect.objectContaining({ agent_id: 'user-liaison', lifecycle_state: 'superseded', superseded_by: 'user-support' }),
+      expect.objectContaining({ agent_id: 'user-support', lifecycle_state: 'active', organization_parent_agent_id: 'user' }),
+      expect.objectContaining({ agent_id: 'orquesta-admin', lifecycle_state: 'active', organization_parent_agent_id: 'user' })
+    ]));
+  });
+
+  test('repairs the malformed first Desktop migration without deleting agent history', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-desktop-repair-'));
+    temporaryRepositories.push(root);
+    const stateRoot = path.join(root, '.orquesta', 'state');
+    await writeJson(path.join(stateRoot, 'agents.json'), {
+      version: 1,
+      agents: [
+        { agent_id: 'orchestrator', role: 'orchestrator', status: 'active', thread_id: 'thread-orchestrator' },
+        { agent_id: 'implementation-001', role: 'implementation', status: 'working', thread_id: 'thread-implementation' },
+        { agent_id: 'user-liaison', role: 'user-liaison', status: 'standby', thread_id: 'thread-liaison' }
+      ]
+    });
+    await writeJson(path.join(stateRoot, 'sessions.json'), { version: 1, sessions: [] });
+    await writeJson(path.join(stateRoot, 'tasks.json'), { version: 1, tasks: [] });
+    const firstRuntime = new RepositoryRuntime({ watchDirectory: vi.fn(() => ({ close: vi.fn() })) });
+    await firstRuntime.select({ projectId: 'repair-project', rootPath: root });
+    await firstRuntime.stop();
+
+    const agentsState = JSON.parse(await readFile(path.join(stateRoot, 'agents.json'), 'utf8')) as {
+      agents: Array<Record<string, unknown>>;
+    };
+    const organizationState = JSON.parse(await readFile(path.join(stateRoot, 'organization.json'), 'utf8')) as {
+      revision: number;
+      agents: Array<Record<string, unknown>>;
+      relationships: Array<Record<string, unknown>>;
+    };
+    agentsState.agents = agentsState.agents.map((agent) => ({ ...agent, organization_scope: 'project', organization_parent_agent_id: undefined }));
+    organizationState.agents = organizationState.agents.map((agent) => ({ ...agent, organization_scope: 'project' }));
+    organizationState.relationships = [
+      { relationship_id: 'relationship-orquesta-admin-orchestrator', type: 'reports_to', from_agent_id: 'orquesta-admin', to_agent_id: 'orchestrator' },
+      { relationship_id: 'relationship-user-support-orchestrator', type: 'reports_to', from_agent_id: 'user-support', to_agent_id: 'orchestrator' }
+    ];
+    await writeJson(path.join(stateRoot, 'agents.json'), agentsState);
+    await writeJson(path.join(stateRoot, 'organization.json'), organizationState);
+
+    const repairedRuntime = new RepositoryRuntime({ watchDirectory: vi.fn(() => ({ close: vi.fn() })) });
+    const selected = await repairedRuntime.select({ projectId: 'repair-project', rootPath: root });
+    const repairedAgents = JSON.parse(await readFile(path.join(stateRoot, 'agents.json'), 'utf8')) as {
+      organization_revision: number;
+      agents: Array<Record<string, unknown>>;
+    };
+    const repairedOrganization = JSON.parse(await readFile(path.join(stateRoot, 'organization.json'), 'utf8')) as {
+      revision: number;
+      relationships: Array<Record<string, unknown>>;
+    };
+
+    expect(selected.organization).toMatchObject({ source: 'explicit', revision: 2 });
+    expect(selected.agents.find((agent) => agent.id === 'implementation-001')).toMatchObject({ organizationScope: 'line' });
+    expect(selected.agents.find((agent) => agent.id === 'user-support')).toMatchObject({ organizationParentAgentId: 'user' });
+    expect(selected.agents.find((agent) => agent.id === 'orquesta-admin')).toMatchObject({ organizationParentAgentId: 'user' });
+    expect(repairedAgents.organization_revision).toBe(2);
+    expect(repairedAgents.agents.find((agent) => agent.agent_id === 'user-liaison')).toMatchObject({
+      lifecycle_state: 'superseded',
+      thread_id: 'thread-liaison'
+    });
+    expect(repairedOrganization.revision).toBe(2);
+    expect(repairedOrganization.relationships.some((relationship) => ['user-support', 'orquesta-admin'].includes(String(relationship.from_agent_id)))).toBe(false);
+  });
+
+  test('refuses to overwrite a partial organization migration', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-desktop-partial-'));
+    temporaryRepositories.push(root);
+    const stateRoot = path.join(root, '.orquesta', 'state');
+    const legacyAgents = {
+      version: 1,
+      agents: [{ agent_id: 'orchestrator', role: 'orchestrator', status: 'active', thread_id: 'thread-orchestrator' }]
+    };
+    await writeJson(path.join(stateRoot, 'agents.json'), legacyAgents);
+    await writeJson(path.join(stateRoot, 'roles.json'), { schema_version: 1, organization_revision: 1, roles: [] });
+    const runtime = new RepositoryRuntime({
+      readSnapshot: vi.fn(async () => snapshot('partial-project', root)),
+      watchDirectory: vi.fn(() => ({ close: vi.fn() }))
+    });
+
+    await expect(runtime.select({ projectId: 'partial-project', rootPath: root })).rejects.toThrow(/incomplete organization state/i);
+    expect(JSON.parse(await readFile(path.join(stateRoot, 'agents.json'), 'utf8'))).toEqual(legacyAgents);
+  });
+
   test('provisions pending setup specialists before projecting the selected repository', async () => {
     const first = snapshot('repo-first', 'C:\\first');
     const events: string[] = [];

@@ -10,8 +10,8 @@
 
 ## Global Constraints
 
-- Rebase this branch onto the committed Desktop baseline containing the current inspection, initial-setup, adaptive-tree, hitbox, and inspection-drag work before editing product code.
-- Do not copy or overwrite another worktree's uncommitted files.
+- Use the read-only Desktop baseline snapshot imported into this isolated branch on 2026-07-22. The source tracked-diff SHA-256 was `9BA2286A52B2CF8C0C3BEA26EDA8A19F46AC1A3AF8091F66756E7EE1E89868C6` and remained unchanged during the copy.
+- Do not write to or overwrite the original Desktop worktree.
 - Preserve machine ID `orquesta-admin`; render the human-facing name as `Luca`.
 - Luca remains attached directly to the user, never below the orchestrator.
 - Luca is read-only: no task mutation, retry, approval, user-response submission, reassignment, organization mutation, or file edit.
@@ -1104,4 +1104,4 @@ git commit -m "test(desktop): verify Luca runtime and layout"
 - Spec coverage: Home, task, failure, inspection, conversation history, dedicated thread, model/effort, read-only boundary, project switching, response structure, and Desktop verification each have an implementation task.
 - Deferred by design: mesh goldfish, automatic user-model learning, proactive notifications, voice, and any Luca mutation.
 - Type consistency: `LucaQuestionId`, `LucaContextRef`, `AskLucaInput`, `LucaAnswerPayload`, `askLuca`, and `sendLucaQuestion` retain the same names across contracts, Main, Core, bridge, renderer, and tests.
-- Baseline condition: product edits remain blocked until the original Desktop changes are committed and this branch is rebased onto that commit; documentation can be reviewed independently now.
+- Baseline condition: the original Desktop state was copied read-only into this isolated branch with before/after hash equality, its existing repository-service regression was repaired, and the baseline passed 306 Desktop tests plus 80 adaptive-organization/setup tests before Luca product edits.

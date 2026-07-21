@@ -6,6 +6,8 @@ export function resolveDesktopPaths(appRoot) {
     appRoot: resolvedRoot,
     rendererDist: path.join(resolvedRoot, 'dist'),
     electronDist: path.join(resolvedRoot, 'dist-electron'),
+    contractSchemasSource: path.resolve(resolvedRoot, '..', '..', 'packages', 'contracts', 'schemas'),
+    contractSchemasDist: path.join(resolvedRoot, 'schemas'),
     mainEntry: path.join(resolvedRoot, 'electron', 'main', 'index.ts'),
     preloadEntry: path.join(resolvedRoot, 'electron', 'preload', 'index.ts'),
     coreEntry: path.join(resolvedRoot, 'electron', 'core', 'index.ts'),

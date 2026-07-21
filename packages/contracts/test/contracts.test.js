@@ -368,6 +368,31 @@ test("organization state rejects temporary assignments and invalid cross-record 
   assert.equal(validateContract("organization-state", invalid).ok, false);
 });
 
+test("organization state enforces adaptive team leads and multi-line responsibility", () => {
+  const twoMembers = clone(organizationState);
+  for (const ordinal of [2]) {
+    twoMembers.agents.push({ ...twoMembers.agents[0], agent_id: `implementation-00${ordinal}` });
+    twoMembers.memberships.push({ ...twoMembers.memberships[0], membership_id: `membership-${ordinal}`, agent_id: `implementation-00${ordinal}`, ordinal });
+  }
+  assert.equal(validateContract("organization-state", twoMembers).ok, true);
+  const prematureLead = clone(twoMembers);
+  prematureLead.memberships[0].position = "lead";
+  assert.equal(validateContract("organization-state", prematureLead).ok, false);
+
+  const threeMembers = clone(twoMembers);
+  threeMembers.agents.push({ ...threeMembers.agents[0], agent_id: "implementation-003" });
+  threeMembers.memberships.push({ ...threeMembers.memberships[0], membership_id: "membership-3", agent_id: "implementation-003", ordinal: 3 });
+  assert.equal(validateContract("organization-state", threeMembers).ok, false);
+  threeMembers.memberships[0].position = "lead";
+  assert.equal(validateContract("organization-state", threeMembers).ok, true);
+
+  const multiLine = clone(threeMembers);
+  multiLine.lines.push({ ...multiLine.lines[0], line_id: "desktop-line", display_name: "Desktop", deliverable_ids: ["desktop"], completion_root_ids: ["CM-DESKTOP"], scope: ["apps/orquesta-desktop"], dedicated_lead_agent_id: null });
+  assert.equal(validateContract("organization-state", multiLine).ok, false);
+  multiLine.lines[0].dedicated_lead_agent_id = "implementation-001";
+  assert.equal(validateContract("organization-state", multiLine).ok, true);
+});
+
 test("specialist plans keep the same role distinct across separate lines", () => {
   const plan = clone(specialistPlanV2);
   plan.selected_specialists.push({

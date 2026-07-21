@@ -11,6 +11,7 @@ assert.equal(ignore(root), false);
 assert.equal(ignore(path.join(root, 'package.json')), false);
 assert.equal(ignore(path.join(root, 'dist', 'index.html')), false);
 assert.equal(ignore(path.join(root, 'dist-electron', 'main.cjs')), false);
+assert.equal(ignore(path.join(root, 'schemas', 'role-definition.schema.json')), false);
 assert.equal(ignore(path.join(root, 'dist-electron', 'core-e2e.cjs')), true);
 assert.equal(ignore(path.join(root, 'dist-electron', 'core-e2e.cjs.map')), true);
 assert.equal(ignore(path.join(root, 'node_modules', 'electron', 'index.js')), true);
@@ -20,6 +21,7 @@ assert.equal(ignore(path.join(root, 'tests', 'electron', 'desktop-shell.spec.ts'
 assert.equal(ignore('C:/Temp/electron-packager/resources/app/package.json'), false);
 assert.equal(ignore('C:/Temp/electron-packager/resources/app/dist/index.html'), false);
 assert.equal(ignore('C:/Temp/electron-packager/resources/app/dist-electron/main.cjs'), false);
+assert.equal(ignore('C:/Temp/electron-packager/resources/app/schemas/organization-state.schema.json'), false);
 assert.equal(ignore('C:/Temp/electron-packager/resources/app/node_modules/react/index.js'), true);
 
 console.log('desktop package policy tests passed');

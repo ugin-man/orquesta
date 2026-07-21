@@ -139,6 +139,57 @@ test("spawns App Server without a shell and initializes exactly once before thre
   ]);
 });
 
+test("returns the applied inspection runtime profile from thread start", async () => {
+  const process = new FakeAppServerProcess();
+  process.on("clientMessage", (message) => {
+    if (message.method === "initialize") {
+      process.send({
+        id: message.id,
+        result: {
+          codexHome: "C:\\codex-home",
+          platformFamily: "windows",
+          platformOs: "windows",
+          userAgent: "codex-cli/0.144.5"
+        }
+      });
+    } else if (message.method === "thread/start") {
+      process.send({
+        id: message.id,
+        result: {
+          approvalPolicy: "never",
+          approvalsReviewer: "user",
+          cwd: "C:\\repo",
+          model: "requested-model",
+          modelProvider: "openai",
+          sandbox: "read-only",
+          thread: makeThread("thread-inspection")
+        }
+      });
+    }
+  });
+  const adapter = createAppServerAdapter({
+    resolveRuntime: () => bundledRuntime(),
+    spawnProcess: () => process
+  });
+
+  const result = await adapter.createThread({
+    correlationId: "corr-inspection",
+    params: {
+      cwd: "C:\\repo",
+      sandbox: "read-only",
+      approvalPolicy: "never",
+      webSearchMode: "live"
+    }
+  });
+
+  assert.deepEqual(result.runtime_profile, {
+    cwd: "C:\\repo",
+    sandbox: "read-only",
+    approval_policy: "never",
+    requested_web_search_mode: "live"
+  });
+});
+
 test("reads canonical thread history with turns included by default", async () => {
   const { adapter, process } = createHarness();
   const result = await adapter.readThread({
