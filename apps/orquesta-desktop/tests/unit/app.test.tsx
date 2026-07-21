@@ -4,8 +4,10 @@ import type { FailureUiModel, OrquestaUiSnapshot } from '../../src/contracts/orq
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { MockOrquestaBridge } from '../../src/bridges/mock-bridge';
+import { fixtureCatalog } from '../../src/fixtures';
 import { attention } from '../../src/fixtures/helpers';
 import { DesktopRendererApp, resolveInitialLocale } from '../../src/renderer/app/DesktopRendererApp';
+import { writeHomeTutorialPreference } from '../../src/renderer/features/tutorial/home-tutorial-model';
 
 describe('DesktopRendererApp', () => {
   test('reports startup readiness once after the snapshot is prepared', async () => {
@@ -679,6 +681,64 @@ describe('DesktopRendererApp', () => {
     expect(screen.getByRole('heading', { name: 'Orquestaの基盤を構築しています' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'ホーム' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Orquesta map')).not.toBeInTheDocument();
+  });
+
+  test('auto-starts the Home tutorial once when setup changes from running to completed', async () => {
+    window.localStorage.removeItem('orquesta.desktop.home-tutorial.v1');
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 100, y: 100, left: 100, top: 100, right: 500, bottom: 300, width: 400, height: 200, toJSON: () => ({})
+    } as DOMRect);
+    const bridge = new MockOrquestaBridge('setup-running');
+    let publish!: (event: BridgeEvent) => void;
+    vi.spyOn(bridge, 'subscribe').mockImplementation((listener) => { publish = listener; return () => undefined; });
+    render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
+    await screen.findByRole('main', { name: 'Orquesta 初回セットアップ' });
+
+    const complete = structuredClone(fixtureCatalog['active-project'].snapshot);
+    complete.setup = {
+      ...structuredClone(fixtureCatalog['setup-running'].snapshot.setup!),
+      status: 'completed',
+      currentPhaseId: null,
+      currentActivity: null,
+      nextActivity: null,
+      phases: fixtureCatalog['setup-running'].snapshot.setup!.phases.map((phase) => ({ ...phase, status: 'complete' as const })),
+      canCancel: false
+    };
+    act(() => publish({ type: 'snapshot_changed', snapshot: complete }));
+
+    expect(await screen.findByRole('dialog', { name: 'Orquesta map' })).toBeVisible();
+    rectSpy.mockRestore();
+  });
+
+  test('does not auto-start for an already completed setup or after a saved outcome', async () => {
+    window.localStorage.removeItem('orquesta.desktop.home-tutorial.v1');
+    const complete = structuredClone(fixtureCatalog['active-project'].snapshot);
+    complete.setup = {
+      ...structuredClone(fixtureCatalog['setup-running'].snapshot.setup!),
+      status: 'completed',
+      currentPhaseId: null,
+      currentActivity: null,
+      nextActivity: null,
+      phases: fixtureCatalog['setup-running'].snapshot.setup!.phases.map((phase) => ({ ...phase, status: 'complete' as const })),
+      canCancel: false
+    };
+    const completedBridge = new MockOrquestaBridge('active-project');
+    vi.spyOn(completedBridge, 'getInitialSnapshot').mockResolvedValue(complete);
+    const first = render(<DesktopRendererApp bridge={completedBridge} initialLocale="en" />);
+    await screen.findByText('Demo data');
+    expect(screen.queryByRole('dialog', { name: 'Orquesta map' })).not.toBeInTheDocument();
+    first.unmount();
+
+    writeHomeTutorialPreference(window.localStorage, 'skipped', new Date('2026-07-22T00:00:00.000Z'));
+    const runningBridge = new MockOrquestaBridge('setup-running');
+    let publish!: (event: BridgeEvent) => void;
+    vi.spyOn(runningBridge, 'subscribe').mockImplementation((listener) => { publish = listener; return () => undefined; });
+    render(<DesktopRendererApp bridge={runningBridge} initialLocale="en" />);
+    await screen.findByRole('main', { name: 'Orquesta 初回セットアップ' });
+    act(() => publish({ type: 'snapshot_changed', snapshot: complete }));
+
+    await screen.findByText('Demo data');
+    expect(screen.queryByRole('dialog', { name: 'Orquesta map' })).not.toBeInTheDocument();
   });
 
 });

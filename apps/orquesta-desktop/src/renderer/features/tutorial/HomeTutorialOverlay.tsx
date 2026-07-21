@@ -46,10 +46,24 @@ function cardPosition(rects: readonly TutorialTargetRect[]): React.CSSProperties
   const clampLeft = (value: number) => Math.max(margin, Math.min(value, window.innerWidth - cardWidth - margin));
   const clampTop = (value: number) => Math.max(margin, Math.min(value, window.innerHeight - cardHeight - margin));
 
-  if (preferred.side === 'left') return { width: cardWidth, left: clampLeft(left - cardWidth - gap), top: clampTop(top) };
-  if (preferred.side === 'right') return { width: cardWidth, left: clampLeft(right + gap), top: clampTop(top) };
-  if (preferred.side === 'top') return { width: cardWidth, left: clampLeft(left), top: clampTop(top - cardHeight - gap) };
-  return { width: cardWidth, left: clampLeft(left), top: clampTop(bottom + gap) };
+  if (preferred.side === 'left') {
+    const cardTop = clampTop(top);
+    return { width: cardWidth, left: clampLeft(left - cardWidth - gap), top: cardTop, maxHeight: window.innerHeight - cardTop - margin };
+  }
+  if (preferred.side === 'right') {
+    const cardTop = clampTop(top);
+    return { width: cardWidth, left: clampLeft(right + gap), top: cardTop, maxHeight: window.innerHeight - cardTop - margin };
+  }
+  if (preferred.side === 'top') {
+    return {
+      width: cardWidth,
+      left: clampLeft(left),
+      bottom: Math.max(margin, window.innerHeight - top + gap),
+      maxHeight: Math.max(180, top - gap - margin)
+    };
+  }
+  const cardTop = Math.max(margin, bottom + gap);
+  return { width: cardWidth, left: clampLeft(left), top: cardTop, maxHeight: Math.max(180, window.innerHeight - cardTop - margin) };
 }
 
 export function HomeTutorialOverlay({

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { FolderOpen, MessageCircleQuestion } from 'lucide-react';
 import type { AgentProposal, ComposerAttachment, ConversationMessage, OrquestaRendererBridge, ProjectSummary, UiActionResult } from '../../contracts/bridge';
 import { LUCA_AGENT_ID, type AskLucaInput, type LucaContextRef } from '../../contracts/luca';
-import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent, UserActionKind } from '../../contracts/orquesta-ui';
+import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent, SetupUiStatus, UserActionKind } from '../../contracts/orquesta-ui';
 import { DesktopRepositoryBridge } from '../../bridges/desktop-repository-bridge';
 import { MockOrquestaBridge } from '../../bridges/mock-bridge';
 import { fixtureKeys, type FixtureId } from '../../fixtures';
@@ -35,7 +35,7 @@ import { InitialSetupExperience } from '../features/setup/InitialSetupExperience
 import { TeamManagement } from '../features/team/TeamManagement';
 import { ToastStack } from '../features/toast/ToastStack';
 import { HomeTutorialOverlay } from '../features/tutorial/HomeTutorialOverlay';
-import { HOME_TUTORIAL_STEPS, writeHomeTutorialPreference, type HomeTutorialOutcome } from '../features/tutorial/home-tutorial-model';
+import { HOME_TUTORIAL_STEPS, readHomeTutorialPreference, shouldAutoStartHomeTutorial, writeHomeTutorialPreference, type HomeTutorialOutcome } from '../features/tutorial/home-tutorial-model';
 import { tutorialTargetProps } from '../features/tutorial/home-tutorial-targets';
 
 export type OpenOverlay =
@@ -138,20 +138,30 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const currentProjectIdRef = useRef<string | null>(null);
   const lucaPendingProjectIdRef = useRef<string | null>(null);
   const lucaPendingThreadIdRef = useRef<string | null>(null);
+  const previousSetupStatusRef = useRef<SetupUiStatus | null>(null);
 
   useEffect(() => {
     let alive = true;
+    let tutorialFrame = 0;
     void bridge.getInitialSnapshot()
       .then((next) => {
         if (!alive) return;
         availableAgentIdsRef.current = new Set(next.agents.map((agent) => agent.id));
         currentProjectIdRef.current = next.project.id;
+        previousSetupStatusRef.current = next.setup?.status ?? null;
         setSnapshot(next);
         setToasts(next.recentEvents);
       })
       .catch((error: unknown) => setLoadingError(error instanceof Error ? error.message : String(error)));
     const unsubscribe = bridge.subscribe((event) => {
       if (event.type === 'snapshot_changed') {
+        const nextSetupStatus = event.snapshot.setup?.status ?? null;
+        const startTutorial = shouldAutoStartHomeTutorial(
+          previousSetupStatusRef.current,
+          nextSetupStatus,
+          readHomeTutorialPreference(window.localStorage)
+        );
+        previousSetupStatusRef.current = nextSetupStatus;
         availableAgentIdsRef.current = new Set(event.snapshot.agents.map((agent) => agent.id));
         currentProjectIdRef.current = event.snapshot.project.id;
         const fallbackAgentId = event.snapshot.agents.find((agent) => agent.id === 'orchestrator')?.id
@@ -160,6 +170,15 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
         setSnapshot(event.snapshot);
         setLoadingError(null);
         setActionError(null);
+        if (startTutorial) {
+          setOverlay(null);
+          setMapSelection(null);
+          setLucaContext(null);
+          setLucaState({ kind: 'idle' });
+          setActiveWorkspace('home');
+          cancelAnimationFrame(tutorialFrame);
+          tutorialFrame = requestAnimationFrame(() => setHomeTutorialStep(0));
+        }
         setTargetAgentId((current) => event.snapshot.agents.some((agent) => agent.id === current) ? current : fallbackAgentId);
         if (conversationTargetAgentIdRef.current !== LUCA_AGENT_ID && !event.snapshot.agents.some((agent) => agent.id === conversationTargetAgentIdRef.current)) {
           conversationRequest.current += 1;
@@ -205,6 +224,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     });
     return () => {
       alive = false;
+      cancelAnimationFrame(tutorialFrame);
       unsubscribe();
     };
   }, [bridge]);

@@ -66,6 +66,19 @@ describe('HomeTutorialOverlay', () => {
     expect(screen.getByRole('button', { name: 'Complete' })).toBeVisible();
   });
 
+  test('constrains a long card inside the viewport beside a bottom target', async () => {
+    const target = document.createElement('nav');
+    target.setAttribute('data-orquesta-tutorial-target', 'dock');
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue(rect(30, 650, 300, 40));
+    document.body.append(target);
+
+    render(<HomeTutorialOverlay stepIndex={4} locale="en" reducedMotion onBack={vi.fn()} onNext={vi.fn()} onSkip={vi.fn()} />);
+
+    const dialog = await screen.findByRole('dialog', { name: 'Switch workspaces' });
+    expect(dialog.style.maxHeight).not.toBe('');
+    expect(Number.parseFloat(dialog.style.top) + Number.parseFloat(dialog.style.maxHeight)).toBeLessThanOrEqual(window.innerHeight - 28);
+  });
+
   test('handles arrows, Escape, and keeps Tab focus inside the card', async () => {
     const target = document.createElement('div');
     target.setAttribute('data-orquesta-tutorial-target', 'composer');
