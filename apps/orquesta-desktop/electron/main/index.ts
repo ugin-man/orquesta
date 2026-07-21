@@ -10,6 +10,7 @@ import { AttachmentService } from './attachment-service';
 import { useFakeRuntimeCore } from './startup-mode';
 import { SetupDraftStore } from './setup-draft-store';
 import { resolveSetupLaunchIntent } from './setup-launch-intent';
+import { SetupSourceService } from './setup-source-service';
 
 if (squirrelStartup) app.quit();
 
@@ -21,6 +22,7 @@ const coreHost = new CoreHost({
   coreEntryPath,
   fork: (entryPath) => utilityProcess.fork(entryPath, [], { serviceName: 'Orquesta Core' })
 });
+const setupSources = new SetupSourceService();
 
 let mainWindow: BrowserWindow | null = null;
 let repositories: RepositoryService | null = null;
@@ -138,12 +140,14 @@ if (!hasSingleInstanceLock) {
         return selection.canceled || !selection.filePaths[0] ? null : { kind, rootPath: selection.filePaths[0] };
       },
       start: async (draft) => {
-        const rootPath = draft.source.kind === 'detected_root' || draft.source.kind === 'existing_folder'
-          ? draft.source.rootPath
-          : draft.source.kind === 'new_project'
-            ? path.join(draft.source.parentPath, draft.source.folderName)
-            : path.join(draft.source.parentPath, draft.projectName);
-        const started = await coreHost.startSetup({ rootPath, draft });
+        const materialized = await setupSources.materialize(draft.source);
+        let started;
+        try {
+          started = await coreHost.startSetup({ rootPath: materialized.rootPath, draft });
+        } catch (error) {
+          await materialized.rollback().catch(() => undefined);
+          throw error;
+        }
         const selected = await repositories?.selectRoot(started.rootPath);
         if (!selected || selected.status !== 'accepted') {
           throw new Error(selected && selected.status !== 'accepted' ? selected.reason : 'Setup project could not be opened');

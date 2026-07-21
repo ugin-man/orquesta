@@ -43,6 +43,7 @@
     "@openai/codex-sdk": "0.144.5",
     "@openai/codex-win32-x64": "npm:@openai/codex@0.144.5-win32-x64",
     "@orquesta/codex-adapter": "file:../../packages/codex-adapter",
+    "isomorphic-git": "1.38.10",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
