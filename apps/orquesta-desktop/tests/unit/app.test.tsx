@@ -231,6 +231,18 @@ describe('DesktopRendererApp', () => {
     expect(screen.getByLabelText('Project launcher')).toBeVisible();
   });
 
+  test('opens the temporary Luca question panel from Home', async () => {
+    const bridge = new MockOrquestaBridge('active-project');
+    render(<DesktopRendererApp bridge={bridge} initialLocale="en" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ask Luca' }));
+    const luca = screen.getByRole('complementary', { name: 'Luca' });
+    expect(within(luca).getByRole('button', { name: 'Ask freely' })).toBeVisible();
+    await userEvent.click(within(luca).getByRole('button', { name: 'What is happening now?' }));
+
+    expect(await within(luca).findByText('これはプロトタイプのLuca回答です。現在のプロジェクト記録だけを説明しています。')).toBeVisible();
+  });
+
   test('opens active work as a Home quick view before navigating to Records', async () => {
     const user = userEvent.setup();
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
@@ -374,6 +386,20 @@ describe('DesktopRendererApp', () => {
     expect(screen.getByText('agent_id=analyst')).toBeVisible();
     expect(screen.getByText('The analysis route is active.')).toBeVisible();
     expect(screen.getByLabelText('Target agent')).toHaveValue('analyst');
+  });
+
+  test('keeps Luca available as an independent read-only conversation channel', async () => {
+    const user = userEvent.setup();
+    render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);
+    await user.click(await screen.findByRole('button', { name: 'Records' }));
+    await user.click(screen.getByRole('button', { name: 'Conversation' }));
+
+    const channels = await screen.findByRole('navigation', { name: 'Conversation channels' });
+    await user.click(within(channels).getByRole('button', { name: 'Luca · Project explainer' }));
+
+    expect(await screen.findByRole('heading', { name: 'Conversation · Luca' })).toBeVisible();
+    expect(screen.getByText('Luca Codex thread')).toBeVisible();
+    expect(screen.getByText('Read-only project explanation')).toBeVisible();
   });
 
   test('shows resolved user decisions with filters and the recorded outcome', async () => {

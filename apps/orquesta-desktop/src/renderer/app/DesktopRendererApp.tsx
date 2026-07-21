@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { FolderOpen } from 'lucide-react';
+import { FolderOpen, MessageCircleQuestion } from 'lucide-react';
 import type { AgentProposal, ComposerAttachment, ConversationMessage, OrquestaRendererBridge, ProjectSummary, UiActionResult } from '../../contracts/bridge';
-import type { AskLucaInput, LucaContextRef } from '../../contracts/luca';
+import { LUCA_AGENT_ID, type AskLucaInput, type LucaContextRef } from '../../contracts/luca';
 import type { AttentionUiItem, OrquestaUiSnapshot, RuntimeUiEvent, UserActionKind } from '../../contracts/orquesta-ui';
 import { DesktopRepositoryBridge } from '../../bridges/desktop-repository-bridge';
 import { MockOrquestaBridge } from '../../bridges/mock-bridge';
@@ -155,7 +155,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
         setLoadingError(null);
         setActionError(null);
         setTargetAgentId((current) => event.snapshot.agents.some((agent) => agent.id === current) ? current : fallbackAgentId);
-        if (!event.snapshot.agents.some((agent) => agent.id === conversationTargetAgentIdRef.current)) {
+        if (conversationTargetAgentIdRef.current !== LUCA_AGENT_ID && !event.snapshot.agents.some((agent) => agent.id === conversationTargetAgentIdRef.current)) {
           conversationRequest.current += 1;
           conversationTargetAgentIdRef.current = fallbackAgentId;
           setConversationTargetAgentId(fallbackAgentId);
@@ -297,11 +297,11 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     }
   };
   const openConversation = async (requestedTargetAgentId = targetAgentId) => {
-    if (!availableAgentIdsRef.current.has(requestedTargetAgentId)) return;
+    if (requestedTargetAgentId !== LUCA_AGENT_ID && !availableAgentIdsRef.current.has(requestedTargetAgentId)) return;
     const request = ++conversationRequest.current;
     conversationTargetAgentIdRef.current = requestedTargetAgentId;
     setConversationTargetAgentId(requestedTargetAgentId);
-    setTargetAgentId(requestedTargetAgentId);
+    if (requestedTargetAgentId !== LUCA_AGENT_ID) setTargetAgentId(requestedTargetAgentId);
     setMessages([]);
     setConversationCursor(null);
     setLoadingConversation(true);
@@ -312,7 +312,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     setActiveWorkspace('records');
     try {
       const page = await bridge.listConversation({ targetAgentId: requestedTargetAgentId, cursor: null, limit: 100 });
-      if (request !== conversationRequest.current || !availableAgentIdsRef.current.has(requestedTargetAgentId)) return;
+      if (request !== conversationRequest.current || (requestedTargetAgentId !== LUCA_AGENT_ID && !availableAgentIdsRef.current.has(requestedTargetAgentId))) return;
       setMessages(page.items);
       setConversationCursor(page.nextCursor);
     } catch (error) {
@@ -612,6 +612,11 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           onSwitchProject={() => void openProjects()}
           onOpenProject={() => void openProjectFolder()}
         />
+      ) : null}
+      {activeWorkspace === 'home' ? (
+        <button type="button" className="luca-home-trigger" aria-label={locale === 'ja' ? 'Lucaに聞く' : 'Ask Luca'} aria-pressed={lucaContext?.kind === 'home'} onClick={() => openLuca({ kind: 'home' })}>
+          <MessageCircleQuestion size={15} /><span>Luca</span>
+        </button>
       ) : null}
       {snapshot.project.status === 'offline' ? (
         <div className="stale-ribbon" role="status">{t('offlineSnapshot')} · {t('lastSynced')} {snapshot.project.lastSyncedAt ? new Date(snapshot.project.lastSyncedAt).toLocaleTimeString() : t('unknown')}</div>
