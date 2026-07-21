@@ -40,7 +40,7 @@ Orquesta also keeps model cost visible. Policy automatically recommends Luna, Te
 
 ## Try the Desktop App
 
-The fastest review path is the Windows x64 installer attached to the latest GitHub release. The build is unsigned preview software.
+The fastest review path is [the Windows x64 installer](https://github.com/ugin-man/orquesta/releases/download/v0.1.0-v4-preview/OrquestaSetup.exe). The build is unsigned preview software.
 
 To run from source, install Node.js 22.12.0 or newer, then run:
 

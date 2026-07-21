@@ -27,7 +27,7 @@ Production specialists, such as implementation, dashboard UX, visual art, worldb
 
 ## Install the Desktop Preview
 
-Download the Windows x64 installer from the latest GitHub release. Windows may show an unknown-publisher warning because this preview is not code-signed.
+Download [the Windows x64 installer](https://github.com/ugin-man/orquesta/releases/download/v0.1.0-v4-preview/OrquestaSetup.exe). Windows may show an unknown-publisher warning because this preview is not code-signed.
 
 To run the Desktop from source:
 

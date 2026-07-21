@@ -42,7 +42,7 @@ Inside the product, Orquesta starts the packaged Codex App Server only when work
 
 ### Recommended path
 
-1. Download the Windows x64 installer from the latest GitHub release.
+1. Download [the Windows x64 installer](https://github.com/ugin-man/orquesta/releases/download/v0.1.0-v4-preview/OrquestaSetup.exe).
 2. Install and open Orquesta.
 3. Choose an existing local project or create a new project folder.
 4. Complete the one-screen intake.
