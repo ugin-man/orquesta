@@ -16,7 +16,7 @@ const setup: SetupUiSnapshot = {
     { id: 'foundation', order: 3, title: '基盤構築', summary: '状態領域を作ります', status: 'active' },
     { id: 'planning', order: 4, title: '初期計画', summary: '最初の計画を作ります', status: 'waiting' },
     { id: 'specialists', order: 5, title: '専門家編成', summary: '必要な専門家を作ります', status: 'waiting' },
-    { id: 'launch', order: 6, title: '運用開始', summary: '通常運用へ移ります', status: 'waiting' }
+    { id: 'operation', order: 6, title: '運用開始', summary: '通常運用へ移ります', status: 'waiting' }
   ],
   currentActivity: {
     id: 'activity-foundation',
@@ -41,7 +41,7 @@ const setup: SetupUiSnapshot = {
   },
   technicalDetails: [
     { id: 'runtime', label: 'Codex runtime', value: '接続済み', tone: 'success' },
-    { id: 'journal', label: 'Setup journal', value: '.orquesta/setup/session.json', tone: 'neutral' }
+    { id: 'journal', label: 'Setup state', value: '.orquesta/setup/setup_state.json', tone: 'neutral' }
   ],
   canCancel: true
 };
@@ -49,6 +49,10 @@ const setup: SetupUiSnapshot = {
 describe('initial setup UI contract', () => {
   test('accepts one active phase in a six-stage setup snapshot', () => {
     expect(isSetupUiSnapshot(setup)).toBe(true);
+    expect(setup.phases.map((phase) => phase.id)).toEqual([
+      'environment', 'understanding', 'foundation', 'planning', 'specialists', 'operation'
+    ]);
+    expect(JSON.stringify(setup)).not.toContain('session.json');
   });
 
   test('rejects setup state without all six ordered phases', () => {

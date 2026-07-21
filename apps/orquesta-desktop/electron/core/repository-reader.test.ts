@@ -36,6 +36,34 @@ function documents(lastSeen = '2026-07-18T10:59:30.000Z') {
 }
 
 describe('repository reader', () => {
+  test('reads an active setup repository before agents and tasks exist', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-active-setup-'));
+    temporaryRoots.push(root);
+    const setupRoot = path.join(root, '.orquesta', 'setup');
+    await mkdir(setupRoot, { recursive: true });
+    await writeFile(path.join(setupRoot, 'setup_state.json'), JSON.stringify({
+      schema_version: 1,
+      setup_id: 'setup-001',
+      status: 'active',
+      project_title: 'Fresh project',
+      current_phase_id: 'environment',
+      phases: ['environment', 'understanding', 'foundation', 'planning', 'specialists', 'operation'],
+      created_at: '2026-07-22T00:00:00.000Z',
+      updated_at: '2026-07-22T00:00:01.000Z'
+    }), 'utf8');
+
+    const snapshot = await readRepositorySnapshot(root, { now: new Date('2026-07-22T00:00:02.000Z') });
+
+    expect(snapshot.setup).toMatchObject({
+      status: 'running',
+      projectTitle: 'Fresh project',
+      currentPhaseId: 'environment'
+    });
+    expect(snapshot.setup?.phases.find((phase) => phase.id === 'environment')).toMatchObject({ status: 'active' });
+    expect(snapshot.agents).toEqual([]);
+    expect(snapshot.tasks).toEqual([]);
+  });
+
   test('presents legacy orquesta-admin state as Luca without changing its machine identity', () => {
     const source = documents();
     source.agents.agents.push({
