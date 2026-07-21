@@ -8,6 +8,8 @@ import { RepositoryService } from './repository-service';
 import { DESKTOP_IPC } from '../shared/host-contract';
 import { AttachmentService } from './attachment-service';
 import { useFakeRuntimeCore } from './startup-mode';
+import { SetupDraftStore } from './setup-draft-store';
+import { resolveSetupLaunchIntent } from './setup-launch-intent';
 
 if (squirrelStartup) app.quit();
 
@@ -22,7 +24,9 @@ const coreHost = new CoreHost({
 
 let mainWindow: BrowserWindow | null = null;
 let repositories: RepositoryService | null = null;
+let setupDrafts: SetupDraftStore | null = null;
 let quittingAfterServiceStop = false;
+const initialLaunchIntent = resolveSetupLaunchIntent({ argv: process.argv, env: process.env, cwd: process.cwd() });
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow(createMainWindowOptions(preloadPath));
@@ -54,7 +58,9 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    const intent = resolveSetupLaunchIntent({ argv, env: process.env, cwd: workingDirectory });
+    if (intent && repositories) void repositories.selectRoot(intent.rootPath, 'detected_root');
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
@@ -62,10 +68,22 @@ if (!hasSingleInstanceLock) {
 
   void app.whenReady().then(async () => {
     app.setAppUserModelId('com.orquesta.desktop');
+    setupDrafts = new SetupDraftStore({ storePath: path.join(app.getPath('userData'), 'setup-draft.json') });
     repositories = new RepositoryService({
       registryPath: path.join(app.getPath('userData'), 'repositories.json'),
       coreHost,
-      initialRootPath: process.env.ORQUESTA_E2E === '1' ? process.env.ORQUESTA_E2E_PROJECT_ROOT : null,
+      initialRootPath: initialLaunchIntent?.rootPath ?? null,
+      prepareSetupSource: async (source) => {
+        await setupDrafts?.save({
+          revision: 1,
+          status: 'draft',
+          source,
+          projectName: path.basename(source.rootPath),
+          description: '',
+          questions: [],
+          answers: []
+        });
+      },
       chooseDirectory: async () => {
         const options = { title: 'Open Orquesta project', properties: ['openDirectory' as const] };
         const selection = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);

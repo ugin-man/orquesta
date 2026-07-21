@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { access } from 'node:fs/promises';
+import path from 'node:path';
 import type { ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
 import { emptyV4OperationsSnapshot, INSPECTION_TEMPLATE_DEFINITIONS, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
+import type { SetupSourceDraft } from '../../src/contracts/setup';
 import { ProjectRegistry, projectIdForRoot } from './project-registry';
 
 export interface RepositoryProjectionHost {
@@ -14,7 +17,29 @@ export interface RepositoryServiceOptions {
   coreHost: RepositoryProjectionHost;
   initialRootPath?: string | null;
   chooseDirectory?: () => Promise<string | null>;
+  prepareSetupSource?: (source: Extract<SetupSourceDraft, { kind: 'detected_root' | 'existing_folder' }>) => Promise<void>;
+  requiresSetup?: (rootPath: string) => Promise<boolean>;
   now?: () => Date;
+}
+
+async function exists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function defaultRequiresSetup(rootPath: string): Promise<boolean> {
+  const setupState = path.join(rootPath, '.orquesta', 'setup', 'setup_state.json');
+  if (await exists(setupState)) return false;
+  const stateRoot = path.join(rootPath, '.orquesta', 'state');
+  const [hasAgents, hasTasks] = await Promise.all([
+    exists(path.join(stateRoot, 'agents.json')),
+    exists(path.join(stateRoot, 'tasks.json'))
+  ]);
+  return !hasAgents || !hasTasks;
 }
 
 function result(status: 'accepted'): UiActionResult;
@@ -80,7 +105,7 @@ export class RepositoryService {
     });
 
     if (this.#options.initialRootPath) {
-      const selected = await this.selectRoot(this.#options.initialRootPath);
+      const selected = await this.selectRoot(this.#options.initialRootPath, 'detected_root');
       if (selected.status !== 'accepted') this.#snapshotError = selected.reason;
       return;
     }
@@ -138,8 +163,16 @@ export class RepositoryService {
     return this.selectRoot(rootPath);
   }
 
-  async selectRoot(rootPath: string): Promise<UiActionResult> {
+  async selectRoot(rootPath: string, sourceKind: 'detected_root' | 'existing_folder' = 'existing_folder'): Promise<UiActionResult> {
     try {
+      const requiresSetup = await (this.#options.requiresSetup ?? defaultRequiresSetup)(rootPath);
+      if (requiresSetup && this.#options.prepareSetupSource) {
+        await this.#options.prepareSetupSource({ kind: sourceKind, rootPath });
+        this.#snapshot = emptySnapshot();
+        this.#snapshotError = null;
+        this.#emit();
+        return result('accepted');
+      }
       const next = await this.#options.coreHost.selectRepository(projectIdForRoot(rootPath), rootPath);
       this.#snapshot = structuredClone(next);
       this.#snapshotError = null;
