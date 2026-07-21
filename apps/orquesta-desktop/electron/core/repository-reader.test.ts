@@ -36,6 +36,29 @@ function documents(lastSeen = '2026-07-18T10:59:30.000Z') {
 }
 
 describe('repository reader', () => {
+  test('presents legacy orquesta-admin state as Luca without changing its machine identity', () => {
+    const source = documents();
+    source.agents.agents.push({
+      agent_id: 'orquesta-admin',
+      role: 'orquesta-admin',
+      display_name: 'Orquesta 管理係',
+      status: 'standby',
+      current_task: null,
+      mission: 'Manage setup.',
+      last_heartbeat: '2026-07-18T10:59:30.000Z'
+    });
+
+    const snapshot = projectSnapshotFromDocuments({ rootPath: 'C:\\work\\sample', documents: source });
+
+    expect(snapshot.agents.find((agent) => agent.id === 'orquesta-admin')).toMatchObject({
+      id: 'orquesta-admin',
+      displayName: 'Luca',
+      role: 'プロジェクト説明係',
+      roleId: 'orquesta-admin',
+      assignedByAgentId: 'user'
+    });
+  });
+
   test('projects canonical state into an evidence-honest UI snapshot', () => {
     const snapshot = projectSnapshotFromDocuments({
       rootPath: 'C:\\work\\sample',

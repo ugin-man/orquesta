@@ -34,7 +34,7 @@ function foundationAgents(): AgentUiModel[] {
       assignedByAgentId: 'user', roleId: 'user-support', organizationScope: 'project', organizationParentAgentId: 'user', lifecycleState: 'active', displayOrder: 1
     }),
     agent({
-      id: 'orquesta-admin', displayName: 'Orquesta Admin', role: 'Orquesta Admin', roleSummary: 'Explains project and task state', iconKey: 'database',
+      id: 'orquesta-admin', displayName: 'Luca', role: 'プロジェクト説明係', roleSummary: 'Orquestaの記録を読み取り、ユーザーの質問へ短く説明する読み取り専用の質問係。', iconKey: 'database',
       assignedByAgentId: 'user', roleId: 'orquesta-admin', organizationScope: 'project', organizationParentAgentId: 'user', lifecycleState: 'active', displayOrder: 2
     })
   ];

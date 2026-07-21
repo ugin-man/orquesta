@@ -24,6 +24,7 @@ import { emptyV4OperationsSnapshot, INSPECTION_TEMPLATE_DEFINITIONS, type
   TaskUiState
 } from '../../src/contracts/orquesta-ui';
 import { parseInspectionState } from './inspection-run-store';
+import { LUCA_AGENT_ID, LUCA_DISPLAY_NAME, LUCA_ROLE_LABEL, LUCA_ROLE_SUMMARY } from '../../src/contracts/luca';
 
 type JsonObject = Record<string, unknown>;
 
@@ -582,6 +583,11 @@ function projectAgents(
     const roleDefinition = organization.roleById.get(roleId);
     const roleNames = object(roleDefinition?.display_names);
     const role = organization.snapshot.source === 'explicit' ? roleId : string(raw.role) ?? roleId;
+    const displayName = string(raw.display_name) ?? string(raw.display_name_ja) ?? string(raw.display_name_en) ?? string(roleNames?.ja) ?? string(roleNames?.en) ?? id;
+    const roleSummary = string(raw.role_summary) ?? string(raw.mission) ?? role.replaceAll('-', ' ');
+    const presentation = id === LUCA_AGENT_ID
+      ? { displayName: LUCA_DISPLAY_NAME, role: LUCA_ROLE_LABEL, roleSummary: LUCA_ROLE_SUMMARY }
+      : { displayName, role, roleSummary };
     const delegatedByAgentId = string(currentRawTask?.assigned_by_agent_id) ?? string(raw.delegated_by_agent_id) ?? string(raw.assigned_by_agent_id);
     const history = rawTasks
       .filter((task) => string(task.owner_agent_id) === id && TERMINAL_TASK_STATES.has(string(task.state) ?? ''))
@@ -601,16 +607,16 @@ function projectAgents(
 
     return [{
       id,
-      displayName: string(raw.display_name) ?? string(raw.display_name_ja) ?? string(raw.display_name_en) ?? string(roleNames?.ja) ?? string(roleNames?.en) ?? id,
-      role,
-      roleSummary: string(raw.role_summary) ?? string(raw.mission) ?? role.replaceAll('-', ' '),
+      displayName: presentation.displayName,
+      role: presentation.role,
+      roleSummary: presentation.roleSummary,
       iconKey: roleIcon(role),
       status,
       statusLabel: statusLabel(status),
       statusEvidence,
       currentTaskId: currentTask?.id ?? null,
       currentTaskTitle: currentTask?.title ?? null,
-      assignedByAgentId: organizationParentAgentId ?? (id === 'orchestrator' ? 'user' : string(raw.assigned_by_agent_id) ?? 'orchestrator'),
+      assignedByAgentId: organizationParentAgentId ?? (id === 'orchestrator' || id === LUCA_AGENT_ID ? 'user' : string(raw.assigned_by_agent_id) ?? 'orchestrator'),
       roleId,
       teamId,
       lineId: string(team?.line_id) ?? string(raw.line_id),
