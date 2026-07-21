@@ -43,10 +43,12 @@
     "@openai/codex-sdk": "0.144.5",
     "@openai/codex-win32-x64": "npm:@openai/codex@0.144.5-win32-x64",
     "@orquesta/codex-adapter": "file:../../packages/codex-adapter",
+    "@react-three/fiber": "9.6.1",
     "isomorphic-git": "1.38.10",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "three": "0.185.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
@@ -60,6 +62,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@types/three": "0.185.1",
     "@vitejs/plugin-react": "5.2.0",
     "electron": "43.1.1",
     "electron-squirrel-startup": "1.0.1",
