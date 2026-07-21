@@ -68,7 +68,7 @@ function installPointerCapture() {
   };
 }
 
-function mapElement(snapshot = fixtureCatalog['large-roster'].snapshot, onSelectAgent = vi.fn(), selectedAgentId: string | null = null, selectedTaskId: string | null = null, onOpenTeam = vi.fn()) {
+function mapElement(snapshot = fixtureCatalog['large-roster'].snapshot, onSelectAgent = vi.fn(), selectedAgentId: string | null = null, selectedTaskId: string | null = null, onOpenTeam = vi.fn(), onSelectInspection = vi.fn()) {
   const viewport = createElement(MapViewport, {
     snapshot,
     selectedAgentId,
@@ -76,6 +76,7 @@ function mapElement(snapshot = fixtureCatalog['large-roster'].snapshot, onSelect
     reducedMotion: true,
     onSelectAgent,
     onSelectTask: vi.fn(),
+    onSelectInspection,
     onClearSelection: vi.fn(),
     onOpenTeam
   });
@@ -93,6 +94,17 @@ afterEach(() => {
 });
 
 describe('Map viewport projection', () => {
+  test('renders three ambient orbit arcs outside the pannable map world', () => {
+    const animationFrames = installAnimationFrames();
+    const { container } = render(mapElement());
+    act(() => animationFrames.flush());
+
+    const orbit = container.querySelector('[data-testid="map-orbit"]');
+    expect(orbit).toBeInTheDocument();
+    expect(orbit).toHaveAttribute('aria-hidden', 'true');
+    expect(orbit?.querySelectorAll('.map-orbit__arc')).toHaveLength(3);
+    expect(container.querySelector('.map-world')?.contains(orbit)).toBe(false);
+  });
   test.each(Object.entries(adaptiveFixtureScenarios))('renders every %s fixture agent exactly once', (_name, fixture) => {
     const animationFrames = installAnimationFrames();
     const { container } = render(mapElement(fixture.snapshot));
@@ -358,13 +370,14 @@ describe('Map viewport projection', () => {
     expect(animationFrames.pending()).toBe(1);
   });
 
-  test('drags an inspection beacon, saves its stable offset, and only suppresses its immediate click', () => {
+  test('drags an inspection beacon, then opens that inspection without navigating to Team Management', () => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     const animationFrames = installAnimationFrames();
     installPointerCapture();
     const onOpenTeam = vi.fn();
+    const onSelectInspection = vi.fn();
     const snapshot = inspectionRunningFixture.snapshot;
-    const { container } = render(mapElement(snapshot, vi.fn(), null, null, onOpenTeam));
+    const { container } = render(mapElement(snapshot, vi.fn(), null, null, onOpenTeam, onSelectInspection));
     act(() => animationFrames.flush());
     const inspection = container.querySelector<HTMLButtonElement>('[data-inspection-kind="external_benchmark"]');
     const edge = container.querySelector<SVGPathElement>('.map-edge--inspection-blue');
@@ -388,8 +401,10 @@ describe('Map viewport projection', () => {
 
     fireEvent.click(inspection!);
     expect(onOpenTeam).not.toHaveBeenCalled();
+    expect(onSelectInspection).not.toHaveBeenCalled();
     fireEvent.click(inspection!);
-    expect(onOpenTeam).toHaveBeenCalledTimes(1);
+    expect(onSelectInspection).toHaveBeenCalledWith('BENCH-RUNNING');
+    expect(onOpenTeam).not.toHaveBeenCalled();
   });
 
   test.each([

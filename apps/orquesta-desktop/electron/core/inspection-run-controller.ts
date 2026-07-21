@@ -248,6 +248,13 @@ export class InspectionRunController {
     const state = await readInspectionState(input.rootPath);
     const run = state.runs.find((candidate) => candidate.runId === input.runId);
     if (!run || !ACTIVE_STATUSES.has(run.status)) throw new Error('Inspection run is not active');
+    if (run.status === 'queued' && (!run.threadId || !run.turnId)) {
+      const completedAt = this.now().toISOString();
+      await this.updateRun(input.rootPath, run.runId, (current) => ({
+        ...current, status: 'cancelled', completedAt, closedAt: completedAt
+      }));
+      return;
+    }
     if (!run.threadId || !run.turnId) throw new Error('Inspection runtime ids are unavailable');
     await this.updateRun(input.rootPath, run.runId, (current) => ({ ...current, status: 'cancelling' }));
     try {

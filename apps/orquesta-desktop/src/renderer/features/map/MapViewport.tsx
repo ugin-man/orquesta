@@ -120,6 +120,7 @@ export function MapViewport({
   reducedMotion,
   onSelectAgent,
   onSelectTask,
+  onSelectInspection,
   onClearSelection,
   onOpenTeam
 }: {
@@ -129,6 +130,7 @@ export function MapViewport({
   reducedMotion: boolean;
   onSelectAgent(agentId: string): void;
   onSelectTask(taskId: string): void;
+  onSelectInspection(runId: string): void;
   onClearSelection(): void;
   onOpenTeam(): void;
 }) {
@@ -633,6 +635,17 @@ export function MapViewport({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
     >
+      <svg
+        className={`map-orbit${reducedMotion ? ' is-reduced-motion' : ''}`}
+        data-testid="map-orbit"
+        viewBox="0 0 100 100"
+        aria-hidden="true"
+      >
+        <circle className="map-orbit__arc map-orbit__arc--outer" cx="50" cy="50" r="49.1" pathLength="100" />
+        <circle className="map-orbit__arc map-orbit__arc--middle" cx="50" cy="50" r="48.1" pathLength="100" />
+        <circle className="map-orbit__arc map-orbit__arc--inner" cx="50" cy="50" r="47.1" pathLength="100" />
+      </svg>
+
       <div className="map-world" data-zoom={camera.zoom.toFixed(2)}>
         <svg className="map-geometry" aria-hidden="true">
           {visibleRegions.filter((region) => ['line', 'team', 'role', 'proposal', 'diagnostic'].includes(region.kind)).map((region) => {
@@ -822,7 +835,7 @@ export function MapViewport({
               onClick={(event) => {
                 event.stopPropagation();
                 if (suppressClickRef.current?.type === 'inspection' && suppressClickRef.current.kind === run.kind) { suppressClickRef.current = null; return; }
-                onOpenTeam();
+                onSelectInspection(run.runId);
               }}
             >
               <span className="inspection-node__visual" style={{ transform: `translate(-50%, -50%) scale(${visualScaleForZoom(camera.zoom)})` }}>

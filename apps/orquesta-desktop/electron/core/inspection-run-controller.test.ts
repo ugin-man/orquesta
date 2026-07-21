@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import type { RuntimeApprovalRequest, RuntimeNotification } from './protocol';
 import { InspectionRunController, type InspectionRuntime } from './inspection-run-controller';
-import { readInspectionState } from './inspection-run-store';
+import { readInspectionState, writeInspectionState } from './inspection-run-store';
 
 const roots: string[] = [];
 
@@ -156,6 +156,46 @@ describe('InspectionRunController', () => {
       threadId: 'thread-adversarial_audit', turnId: 'turn-adversarial_audit'
     });
     expect((await readInspectionState(rootPath)).runs[0]).toMatchObject({ status: 'cancelled' });
+  });
+
+  test('cancels a queued inspection before runtime ids are assigned', async () => {
+    const rootPath = await projectRoot();
+    const runtime = runtimeDouble();
+    const controller = new InspectionRunController({
+      runtime,
+      now: () => new Date('2026-07-22T03:00:00.000Z')
+    });
+    await writeInspectionState(rootPath, {
+      version: 1,
+      runs: [{
+        runId: 'AUDIT-QUEUED',
+        kind: 'adversarial_audit',
+        requestedBy: 'user',
+        target: { kind: 'project', ids: [] },
+        focus: null,
+        status: 'queued',
+        threadId: null,
+        turnId: null,
+        reportPath: null,
+        sourceCount: 0,
+        errorCode: null,
+        errorMessage: null,
+        runtimeBoundary: null,
+        createdAt: '2026-07-22T02:59:00.000Z',
+        startedAt: null,
+        completedAt: null,
+        closedAt: null
+      }]
+    });
+
+    await controller.cancel({ projectId: 'repo-1', rootPath, runId: 'AUDIT-QUEUED' });
+
+    expect(runtime.interruptInspection).not.toHaveBeenCalled();
+    expect((await readInspectionState(rootPath)).runs[0]).toMatchObject({
+      status: 'cancelled',
+      completedAt: '2026-07-22T03:00:00.000Z',
+      closedAt: '2026-07-22T03:00:00.000Z'
+    });
   });
 
   test('declines an unexpected approval, interrupts the run and records a boundary violation', async () => {

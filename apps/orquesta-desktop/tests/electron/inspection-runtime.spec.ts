@@ -47,9 +47,6 @@ test('runs, records, and cancels read-only inspection agents without changing ca
     agents: [{ agent_id: 'orchestrator', role: 'orchestrator', display_name: 'Coordinator', status: 'standby', mission: 'Coordinate this project.' }]
   }, null, 2)}\n`, 'utf8');
   await writeFile(tasksPath, `${JSON.stringify({ updated_at: new Date().toISOString(), tasks: [] }, null, 2)}\n`, 'utf8');
-  const canonicalAgentsBefore = await readFile(agentsPath, 'utf8');
-  const canonicalTasksBefore = await readFile(tasksPath, 'utf8');
-
   const desktop = await electron.launch({
     args: [`--user-data-dir=${userData}`, '--lang=en-US', '.'],
     cwd: appRoot,
@@ -65,6 +62,8 @@ test('runs, records, and cancels read-only inspection agents without changing ca
   try {
     const window = await desktop.firstWindow();
     await expect(window.getByLabel('Orquesta Map')).toBeVisible();
+    const canonicalAgentsBefore = await readFile(agentsPath, 'utf8');
+    const canonicalTasksBefore = await readFile(tasksPath, 'utf8');
     await window.getByRole('button', { name: 'Team Management' }).click();
 
     await window.getByRole('textbox', { name: 'Optional focus' }).fill('Desktop orchestration competitors');
@@ -80,11 +79,16 @@ test('runs, records, and cancels read-only inspection agents without changing ca
     await window.getByRole('textbox', { name: 'Optional focus' }).fill('HOLD_FOR_CANCEL');
     await window.getByRole('button', { name: 'Start external benchmark' }).click();
     await expect(window.locator('[data-inspection-kind="external_benchmark"]')).toHaveCount(2);
-    await expect(window.getByRole('button', { name: /External benchmark, Running/u })).toBeVisible();
     const runningState = await readInspectionState(inspectionsPath);
     const running = runningState.runs.find((run) => run.kind === 'external_benchmark' && run.status === 'running')!;
+    await window.getByRole('button', { name: 'Close Team Management' }).click();
+    await window.getByRole('button', { name: /External benchmark, Running/u }).click();
+    await expect(window.getByRole('complementary', { name: 'External benchmark detail' })).toBeVisible();
+    await expect(window.getByRole('dialog', { name: 'Team Management' })).toHaveCount(0);
     await window.getByRole('button', { name: 'Cancel external benchmark' }).click();
     await expect.poll(async () => (await readInspectionState(inspectionsPath)).runs.find((run) => run.runId === running.runId)?.status).toBe('cancelled');
+    await expect(window.getByRole('complementary', { name: 'External benchmark detail' })).toHaveCount(0);
+    await expect(window.getByRole('button', { name: /External benchmark, Running/u })).toHaveCount(0);
 
     const log = await readRuntimeLog(logPath);
     const threadStarts = log.filter((entry) => entry.method === 'thread/start');

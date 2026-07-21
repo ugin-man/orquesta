@@ -157,6 +157,23 @@ describe('DesktopRendererApp', () => {
     expect(approveAgentProposal).not.toHaveBeenCalled();
   });
 
+  test('opens an inspection detail from the map and cancels it without opening Team Management', async () => {
+    const bridge = new MockOrquestaBridge('inspection-running');
+    const cancelInspection = vi.spyOn(bridge, 'cancelInspection');
+    render(<DesktopRendererApp bridge={bridge} initialLocale="ja" />);
+
+    await userEvent.click(await screen.findByRole('button', { name: '敵対監査, 実行中' }));
+
+    expect(await screen.findByRole('complementary', { name: '敵対監査の詳細' })).toBeVisible();
+    expect(screen.queryByRole('dialog', { name: 'チーム管理' })).not.toBeInTheDocument();
+    expect(screen.getByText('Two independent production lines')).toBeVisible();
+
+    await userEvent.click(screen.getByRole('button', { name: '敵対監査を中止' }));
+
+    await waitFor(() => expect(cancelInspection).toHaveBeenCalledWith('AUDIT-RUNNING'));
+    await waitFor(() => expect(screen.queryByRole('complementary', { name: '敵対監査の詳細' })).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: '敵対監査, 実行中' })).not.toBeInTheDocument();
+  });
   test('opens a Team Management inspection report in the Records inspection workspace', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     const snapshot = await bridge.getInitialSnapshot();
@@ -242,7 +259,6 @@ describe('DesktopRendererApp', () => {
 
     expect(await within(luca).findByText('これはプロトタイプのLuca回答です。現在のプロジェクト記録だけを説明しています。')).toBeVisible();
   });
-
   test('opens active work as a Home quick view before navigating to Records', async () => {
     const user = userEvent.setup();
     render(<DesktopRendererApp bridge={new MockOrquestaBridge('active-project')} initialLocale="en" />);

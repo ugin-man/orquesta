@@ -11,6 +11,7 @@ import { UserTaskQuickView } from '../features/attention/UserTaskQuickView';
 import { CommandComposer } from '../features/composer/CommandComposer';
 import { AgentDetail } from '../features/details/AgentDetail';
 import { AttentionDetail } from '../features/details/AttentionDetail';
+import { InspectionDetail } from '../features/details/InspectionDetail';
 import { TaskDetail } from '../features/details/TaskDetail';
 import { I18nProvider, useI18n } from '../features/i18n/I18nProvider';
 import type { Locale } from '../features/i18n/messages';
@@ -38,6 +39,7 @@ export type OpenOverlay =
   | { kind: 'agent'; agentId: string }
   | { kind: 'task'; taskId: string }
   | { kind: 'attention'; attentionId: string }
+  | { kind: 'inspection'; runId: string }
   | { kind: 'project-route' }
   | { kind: 'project-switcher' }
   | { kind: 'team-management' }
@@ -528,10 +530,20 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const selectedAgent = overlay?.kind === 'agent' ? snapshot.agents.find((agent) => agent.id === overlay.agentId) ?? null : null;
   const selectedTask = overlay?.kind === 'task' ? snapshot.tasks.find((task) => task.id === overlay.taskId) ?? null : null;
   const selectedAttention = overlay?.kind === 'attention' ? snapshot.attention.find((item) => item.id === overlay.attentionId) ?? null : null;
+  const selectedInspection = overlay?.kind === 'inspection' ? snapshot.inspectionRuns.find((item) => item.runId === overlay.runId) ?? null : null;
   const selectedAgentTask = selectedAgent?.currentTaskId ? snapshot.tasks.find((task) => task.id === selectedAgent.currentTaskId) ?? null : null;
   const selectAgent = (agentId: string) => {
     setMapSelection({ kind: 'agent', agentId });
     setOverlay({ kind: 'agent', agentId });
+  };
+  const selectInspection = (runId: string) => {
+    setMapSelection(null);
+    setOverlay({ kind: 'inspection', runId });
+  };
+  const cancelInspection = async (runId: string): Promise<UiActionResult> => {
+    const result = await bridge.cancelInspection(runId);
+    if (result.status !== 'accepted') setActionError(result.reason);
+    return result;
   };
   const openTaskRecord = (taskId: string) => {
     const task = snapshot.tasks.find((candidate) => candidate.id === taskId);
@@ -630,6 +642,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           reducedMotion={reducedMotion}
           onSelectAgent={selectAgent}
           onSelectTask={openTaskRecord}
+          onSelectInspection={selectInspection}
           onClearSelection={clearMapSelection}
           onOpenTeam={() => void openTeam()}
         />
@@ -746,6 +759,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
       {selectedAgent ? <AgentDetail agent={selectedAgent} task={selectedAgentTask} onOpenTask={openTaskRecord} onClose={clearMapSelection} /> : null}
       {selectedTask ? <TaskDetail task={selectedTask} agents={snapshot.agents} onClose={clearMapSelection} /> : null}
       {selectedAttention ? <AttentionDetail item={selectedAttention} sourceLabel={selectedAttention.sourceAgentId ? snapshot.agents.find((agent) => agent.id === selectedAttention.sourceAgentId)?.displayName ?? selectedAttention.sourceAgentId : 'System'} canResolve={bridge.capabilities.attentionResolution} onResolve={(decision) => void resolveAttention(selectedAttention, decision)} onClose={closeOverlay} /> : null}
+      {selectedInspection ? <InspectionDetail run={selectedInspection} history={snapshot.inspectionRuns} onCancel={cancelInspection} onOpenReport={openInspectionReport} onClose={clearMapSelection} /> : null}
       {overlay?.kind === 'project-route' ? <ProjectRoute project={snapshot.project} phases={snapshot.phases} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'project-switcher' ? <ProjectSwitcher projects={projects} currentProjectId={snapshot.project.id} onSwitch={(id) => bridge.switchProject(id)} onOpenProject={() => bridge.requestOpenProject()} onClose={closeOverlay} /> : null}
       {overlay?.kind === 'team-management' ? (
@@ -766,9 +780,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
             return result;
           }}
           onCancelInspection={async (runId) => {
-            const result = await bridge.cancelInspection(runId);
-            if (result.status !== 'accepted') setActionError(result.reason);
-            return result;
+            return cancelInspection(runId);
           }}
           onOpenInspectionReport={openInspectionReport}
           onClose={closeOverlay}

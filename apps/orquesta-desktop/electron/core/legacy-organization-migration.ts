@@ -52,12 +52,7 @@ async function exists(filePath: string): Promise<boolean> {
 }
 
 async function readJsonObject(filePath: string): Promise<JsonRecord> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await readFile(filePath, 'utf8'));
-  } catch (error) {
-    throw new Error(`Cannot read ${path.basename(filePath)}: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  const parsed: unknown = JSON.parse(await readFile(filePath, 'utf8'));
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error(`Invalid JSON object: ${filePath}`);
   }
