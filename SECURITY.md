@@ -2,14 +2,16 @@
 
 ## Supported version
 
-Security fixes currently target the newest `0.4.0-preview.x` release candidate. Older previews are not maintained as separate supported lines.
+Security fixes currently target the newest public `0.4.0-preview.x` release.
 
 ## Reporting a vulnerability
 
-Use the repository's GitHub Security Advisory “Report a vulnerability” form when it is available. Do not publish secrets, credentials, or working exploit details in a public issue. If private reporting is unavailable, contact the maintainer through the GitHub profile before sharing sensitive details.
+Please use GitHub's private vulnerability reporting or Security Advisory flow when available. Do not publish credentials, secrets, private project data, or working exploit details in a public issue.
 
-## Preview security boundary
+If private reporting is unavailable, contact the maintainer through the GitHub profile before sending sensitive details.
 
-Orquesta relies on the Codex harness for sandboxing and approvals. The Desktop does not add a second sandbox. A prepared or accepted dispatch is not proof that a Codex turn ran, and repository-only fallback cannot claim live execution.
+## Security model
 
-The release-candidate audit on 2026-08-07 reported zero known vulnerabilities for the root production dependency tree and zero for the Desktop production dependency tree. The full Desktop development/build tree reported 28 transitive findings: 1 critical, 23 high, 1 moderate, and 3 low. They are associated with the Electron Forge build toolchain and its transitive `tar`/`tmp` paths, not the packaged runtime dependency set. This is a disclosed preview-build risk, not a claim that the development environment is vulnerability-free. It must be reviewed again before publishing the tag.
+Orquesta is local-first and uses the existing Codex sandbox and approval boundaries for Codex actions. The Desktop renderer does not directly access the filesystem or launch project commands.
+
+Preview builds are currently unsigned. Verify release checksums when downloading binaries from GitHub Releases.

@@ -1,50 +1,41 @@
-# Orquesta V4 Desktop
+# Orquesta
 
-Orquesta is a local-first Windows command room that turns Codex into an evidence-backed team of long-lived specialists.
+Orquesta is a local-first Windows application and Codex skill for running long-lived AI specialists as a coordinated project team.
 
-Coding agents are strong once a task is clear. The harder problem is deciding what capabilities the task needs, whether an existing tool should be reused, who should own each part, which context that specialist should read, and whether claimed work actually ran. Orquesta makes that decision layer visible and keeps its project truth in the repository instead of relying on one enormous chat history.
+Instead of putting an entire project into one growing conversation, Orquesta gives different kinds of work to persistent specialist roles, keeps project state in the repository, and makes handoffs, questions, user decisions, and results visible in one Desktop workspace.
 
-The core goal is not a short multi-agent demo. Orquesta is designed for one-, two-, or three-month development efforts where the team must keep operating without losing the user's intent. Specialists accumulate questions as they work. The user's answers are curated into explicit vision, constraints, and decisions, so human metacognition and tacit knowledge become durable project state instead of disappearing inside old chat messages.
+## What it does
 
-The V4 Desktop application combines a live organization map, user-task queue, conversation history, project switching, a read-only explainer named Luca, and evidence views for capability resolution, acquisition, audit, and execution. The Codex harness remains the runtime boundary; Orquesta does not add a second sandbox or pretend that a dispatched request is a completed turn.
+- Creates persistent specialist roles for implementation, visual work, writing, QA, research, and other project needs.
+- Routes work to the relevant specialist instead of making one agent handle everything.
+- Keeps project-owned state under `.orquesta/` so important context survives long projects and new sessions.
+- Shows the active team, tasks, records, pending user actions, and conversations in Orquesta Desktop.
+- Lets specialists return reports or artifacts that can be reviewed before the project moves on.
+- Uses the user's existing Codex environment and approval boundaries.
 
-New here? Start with [START_HERE.md](START_HERE.md).
+Orquesta is intended for projects that last days or months and benefit from multiple distinct areas of expertise. For a small one-file task, it is usually unnecessary.
 
-[BUILD_WEEK.md](BUILD_WEEK.md) is retained as historical submission evidence. It is not the current release status or installation guide.
+## Download
 
-Orquesta is not just one Codex thread with a team-themed dashboard. Real operation requires evidence: a task is routed to a non-orchestrator specialist when the work belongs to that lane, the handoff is recorded, the specialist returns a report or artifact, and the orchestrator accepts, holds, or requests changes in state. Direct orchestrator work is reserved for orchestration bookkeeping, tiny state/report updates, emergency unblockers, or explicit user instruction.
+The current public preview is **Orquesta Desktop 0.4.0-preview.1** for Windows x64.
 
-The Desktop is a mission-control workspace for that loop. It is meant to make delegation, pending user actions, live and idle specialists, runtime evidence, and project history visible. The interface alone is not proof that the team is operating correctly; the underlying state must show real handoffs, reports, and acceptance evidence.
+Download the installer or portable ZIP from [GitHub Releases](https://github.com/ugin-man/orquesta/releases/latest).
 
-## Current Status
+The preview is currently unsigned, so Windows may show an unknown-publisher warning. Code signing, automatic updates, macOS, and Linux packages are not available yet.
 
-Current public release candidate: **Orquesta V4 Desktop, 0.4.0-preview.1**.
+## First run
 
-The current application targets Windows x64. It is unsigned preview software, so Windows may show an unknown-publisher warning. Code signing, automatic updates, and macOS/Linux packaging are not included in this preview.
+1. Install and open Orquesta.
+2. Choose an existing project folder or create a new one.
+3. Describe what you are building and answer the initial setup questions.
+4. Orquesta creates the initial team and opens the project workspace.
+5. Continue working through the Desktop or through the connected Codex project.
 
-V5 is a separate development line for reusable business workflows. Its Phase 1 work is not included in this V4 candidate. Build Week material is historical evidence for part of V4, not a second current edition.
+Existing Orquesta projects keep their state in `.orquesta/`. Do not delete that directory when updating the app.
 
-The first GitHub-install bootstrap smoke test passed on 2026-06-22. It is historical evidence, not proof that every current environment will install successfully. During OpenAI Build Week, Orquesta was extended into a Windows desktop product with a one-screen project intake, six-phase setup experience, Home tutorial, adaptive organization projection, inspection agents, Luca explanations, and a packaged Codex runtime. See [BUILD_WEEK.md](BUILD_WEEK.md) for that dated evidence boundary.
+## Run from source
 
-Bootstrap smoke and delegation-loop smoke are separate checks. Bootstrap smoke proves setup, project-owned `/api/state`, foundation agents, dashboard rendering, and encoding health. Delegation-loop smoke proves the operating model: a real specialist receives a task, reports back, and the orchestrator records an acceptance decision. Do not treat the dashboard alone as proof of multi-agent operation.
-
-## V4 System
-
-Phase 2A adds bounded discovery of existing tools from official documentation, registries, GitHub, and approved UI catalogs. Candidates keep source hashes and expiry evidence, pass hard gates before ranking, and run through a source-bound Audition before they can be proposed for use. Audition approval and install authorization are separate; Core does not install a dependency.
-
-Phase 2B adds pinned Codex App Server and SDK adapters, repository-only fallback, explicit approval relay, truthful model evidence, and a bounded Event Journal chain from dispatch through acceptance. The Codex harness remains the runtime safety boundary. Orquesta adds no second sandbox.
-
-The Windows application uses Electron, React, TypeScript, and Vite. Its sandboxed Renderer talks through a typed, context-isolated Preload bridge to Electron Main and a separate Core utility process. Repository access and Codex communication do not run in the Renderer.
-
-Codex App Server is the primary execution path, with an SDK fallback and a repository-only preparation fallback. Requested, applied, and observed model identity stay separate. `actual_model` remains unknown unless runtime evidence proves it.
-
-Orquesta also keeps model cost visible. Policy automatically recommends Luna, Terra, or Sol from task signals; the orchestrator can accept or override that route when dispatching a specialist, with bounded escalation for harder work. The Desktop passes the requested model to Codex App Server, but does not present it as applied or observed unless runtime evidence proves it.
-
-## Try the Desktop App
-
-When a reviewed installer is published, it will appear on [GitHub Releases](https://github.com/ugin-man/orquesta/releases/latest). Until then, run the candidate from source. Published preview builds are unsigned.
-
-To run from source, use Windows x64 with Node.js 22.12.0 or newer and an installed, signed-in Codex Desktop environment. Then run:
+Windows x64, Node.js 22.12.0 or newer, and an available Codex session are required.
 
 ```powershell
 git clone https://github.com/ugin-man/orquesta.git
@@ -54,166 +45,29 @@ npm install --prefix apps/orquesta-desktop
 npm run start:desktop --prefix apps/orquesta-desktop
 ```
 
-For architecture, packaging, and validation details, see [the Desktop README](apps/orquesta-desktop/README.md) and [Desktop validation evidence](apps/orquesta-desktop/VALIDATION.md).
-
-## Desktop Preview
-
-![Orquesta Desktop Home](apps/orquesta-desktop/docs/audits/2026-07-19-current-ux/01-home.png)
-
-![Orquesta V4 Operations fixture](apps/orquesta-desktop/tests/visual/__screenshots__/operations-1440x900.png)
-
-The first image is a repository-backed Desktop capture. The Operations image is a deterministic review fixture, not a claim that a live Codex turn was running when it was captured.
-
-## Looking For Collaborators
-
-I am sincerely looking for people who want to develop Orquesta together.
-
-This project is still small and experimental, but I believe there is something important here: a way to make Codex work with the user as a long-lived creative team instead of a pile of disposable tasks.
-
-If you are interested in multi-agent workflows, Codex skills, game-development tools, human-in-the-loop creative systems, dashboard design, or just making this strange thing actually usable, please reach out. I am genuinely, urgently looking for collaborators.
-
-If you want a bounded first test instead, use the [Moltbook AI preview test](docs/testing/moltbook-ai-preview-test.md). It separates documentation review from a disposable Windows execution test and asks for failures as well as successful runs.
-
-## What Orquesta Provides
-
-- A long-lived orchestrator thread for routing, state, blockers, approvals, and final reports.
-- Foundation roles:
-  - `orchestrator`
-  - `user-support`
-  - `orquesta-admin`
-- The Desktop presents `orquesta-admin` as Luca, a read-only project explainer grounded in bounded saved records.
-- Numbered production specialist roles such as `visual-art-001`, `implementation-001`, `world-lore-001`, and `playtest-qa-001`.
-- File-backed project state under `.orquesta/` in the target project.
-- A Windows Desktop for organization visualization, task state, delegation evidence, user actions, records, setup, and Codex messaging. The earlier browser dashboard remains in the repository as a legacy review surface.
-- A merged `user-support` role that handles user communication, vision-question curation, and failure intake instead of three separate foundation agents.
-- Atomic control-state writes, deterministic `control_audit.json`, and completion-envelope validation for staged-in specialist work.
-- A separate Control Plane view that distinguishes dispatch acceptance, turn start, progress, report production, capacity circuits, fallbacks, and model evidence.
-- Question observations before curator promotion, and incident candidates/clusters before concierge repair cards or user tasks.
-- Policy-driven Luna, Terra, and Sol recommendations that the orchestrator can accept or override at dispatch, with bounded escalation and separate requested, applied, and observed evidence.
-
-## Repository Layout
-
-```text
-START_HERE.md                  First-reader guide for trying Orquesta
-orquesta/
-  SKILL.md                     Codex skill entrypoint
-  references/                  Operating protocols and state schemas
-  assets/dashboard/            Static dashboard app
-  dashboard-server.js          Local dashboard API/server
-  agents/openai.yaml           Skill metadata
-docs/
-  design/                      Design notes
-  release/                     Maintainer publication checklists
-  release-notes/               Versioned public release notes
-  superpowers/                 Historical design and implementation records
-benchmarks/
-  orquesta-v4-product/         Reproducible V4 product benchmark harness
-package.json                   Dashboard start script
-```
-
-Local runtime folders are intentionally not published:
-
-```text
-.orquesta/   target-project state and reports
-.agents/     local installed skill mirror
-.codex/      local Codex metadata
-```
-
-## Install From GitHub For Testing
-
-Clone this repository or add it as a source in the project where you want to test Orquesta.
-
-Manual local install:
+## Install the Codex skill only
 
 ```powershell
-$skillRoot = "$env:USERPROFILE\\.codex\\skills\\orquesta"
+$skillRoot = "$env:USERPROFILE\.codex\skills\orquesta"
 New-Item -ItemType Directory -Force -Path $skillRoot
-node .\\scripts\\sync-orquesta-skill.js --target $skillRoot
-node .\\scripts\\sync-orquesta-skill.js --check --target $skillRoot
+node .\scripts\sync-orquesta-skill.js --target $skillRoot
+node .\scripts\sync-orquesta-skill.js --check --target $skillRoot
 ```
 
-The sync command copies every canonical V4 skill file and verifies the result. It preserves target-only metadata such as a local `package.json`.
+Restart Codex after installing the skill, then start a new project thread and ask it to use the `orquesta` skill.
 
-Then start a new Codex thread in your target project and ask Codex to use the `orquesta` skill.
+## Project data
 
-Expected bootstrap behavior:
+Orquesta stores project state inside the managed project rather than in one chat history. The Desktop is local-first; repository access and Codex communication are handled outside the sandboxed renderer.
 
-1. The calling chat becomes the orchestrator.
-2. The orchestrator thread is renamed to `★ Orquesta 統括者` and pinned when thread tools are available.
-3. Orquesta creates or reuses foundation roles.
-4. Orquesta initializes file-backed state under `.orquesta/`.
-5. Orquesta launches Orquesta Desktop with the selected project root.
-6. Orquesta Desktop loads that project instead of handing a dashboard URL to the default browser.
-7. The browser dashboard stays available as a diagnostic surface only when the user explicitly requests it.
-8. Only after setup does Orquesta plan production specialists for the user's actual task.
+The browser dashboard included in the repository is a diagnostic surface. Orquesta Desktop is the normal interface.
 
-## Diagnostic Browser Dashboard
+## Contributing and feedback
 
-Orquesta Desktop is the normal operating surface. Use the browser dashboard only for explicit state diagnostics; setup and resume do not open it automatically.
+Bug reports, usability feedback, and contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-From the repository root:
-
-```powershell
-npm run dashboard
-```
-
-Open:
-
-```text
-the URL printed by `npm run dashboard`
-```
-
-The dashboard starts on `http://127.0.0.1:4177/` when that port is free. If another local dashboard or process already owns the port, Orquesta scans for a free nearby port before starting, then writes the verified URL to `.orquesta/setup/options.json`.
-
-The dashboard reads `.orquesta/` state from the current project. While visible, it checks for changes about every five seconds, but unchanged state returns `304 Not Modified` and does not trigger a full re-render. Hidden tabs slow down their polling.
-
-When verifying a dashboard after setup, check `/api/state` for the current project. A plain HTTP 200 on the dashboard port is not enough, because another local Orquesta dashboard may already be using that port.
-
-The current dashboard direction is a mission-control interface rather than the early simple status page:
-
-- Command Board style layout with glass lighting and dense operational panels.
-- DAG/tree layout support for specialist command maps and project route views.
-- User-action and delegation surfaces that distinguish prepared, sent, reviewed, accepted, and blocked work.
-- Trigger audit visibility for event-driven foundation roles, including pending question-candidate summaries that may require `user-support` review.
-
-Trigger audit is visibility, not automation. It can show that question-curation conditions exist, but it must not turn `user-support` into a continuous watcher or promote raw question candidates without an explicit Orquesta route.
-
-## Beta V3 Evidence Boundaries
-
-Beta V3 applies hard gates progressively to staged-in `specialist_required` and medium/high-risk work. A valid handoff, specialist report, `question_candidates`, completion envelope, and task-scoped control audit are required before acceptance. Older accepted work remains compatible as a legacy warning unless it is reopened.
-
-Capacity is separate from task state and agent health. A `dispatch_accepted` result is not a started specialist turn. If a required capacity circuit is open, Orquesta stops that work, evaluates only bounded role-compatible fallbacks, and does not let the orchestrator quietly do the specialist work itself.
-
-Model routing is repository-owned recommendation and evidence by default. `recommended_model`, `requested_model`, `applied_model`, and `actual_model` are separate fields. The repository-only adapter records `unsupported` for product switching; it cannot prove the actual runtime model. Local counters are not presented as billing-token truth.
-
-When proof depends on visual judgment, tacit knowledge, credentialed judgment, or direct user experience, Orquesta may create a narrow user capability review task with a concrete procedure and expected response. This is not a generic ask-the-user fallback. If automation is unsafe or unstable, the affected task pauses rather than inventing evidence.
-
-The Codex in-app Browser currently has a reproducible crash path that can restart Codex Desktop. This is an external tool limitation, not an Orquesta defect by itself. Do not retry that route during a task. Use external-browser UAT only when the user can verify named behaviors and the result is recorded as user evidence.
-
-## Development Checks
-
-```powershell
-npm run check
-```
-
-Focused checks are also available when working on specific release risks:
-
-```powershell
-npm run test:triggers
-npm run test:question-candidates
-npm run test:ports
-```
-
-For dashboard UI changes, also run a browser DOM smoke check against a running dashboard when the browser surface is stable:
-
-```powershell
-npm run smoke:dashboard -- http://127.0.0.1:4177/
-```
-
-This check catches the user-only visualizer failure mode by asserting that agent nodes render and that the browser console has no render-stopping errors. If the in-app Browser is unstable, pause that verification route and use the documented external-browser UAT procedure instead of claiming a smoke pass.
-
-See [GitHub install bootstrap smoke test](docs/testing/github-install-bootstrap-smoke-test.md) for historical external-install evidence and its limits.
+For a small disposable test project, see [the public preview test](docs/testing/moltbook-ai-preview-test.md).
 
 ## License
 
-MIT License. See [LICENSE](LICENSE). Third-party and adapted components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MIT. See [LICENSE](LICENSE). Third-party notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
