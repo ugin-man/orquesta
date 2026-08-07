@@ -37,6 +37,24 @@ async function writeCanonicalState(root: string, includeReviewer: boolean): Prom
   ]);
 }
 
+async function writeStructureState(root: string): Promise<void> {
+  const derived = path.join(root, '.orquesta', 'project', 'derived');
+  const context = path.join(root, '.orquesta', 'context');
+  const applied = path.join(root, '.orquesta', 'project', 'migrations', 'applied', 'PSMP-0123456789abcdef');
+  await Promise.all([mkdir(derived, { recursive: true }), mkdir(context, { recursive: true }), mkdir(applied, { recursive: true })]);
+  await Promise.all([
+    writeFile(path.join(derived, 'structure-inventory.json'), JSON.stringify({ generated_at: new Date().toISOString(), stats: { indexed_files: 3 }, files: [
+      { source_ref: '.orquesta/project/layout.json', component_id: 'runtime-state', lifecycle: 'current', authority: 'canonical', read_policy: 'task_candidate' },
+      { source_ref: 'docs/design.md', component_id: 'docs', lifecycle: 'current', authority: 'supporting', read_policy: 'task_candidate' },
+      { source_ref: '.orquesta/archive/tasks.json.bak', component_id: 'runtime-state', lifecycle: 'archived', authority: 'supporting', read_policy: 'explicit_only' }
+    ] }), 'utf8'),
+    writeFile(path.join(derived, 'structure-audit.json'), JSON.stringify({ blocked: false, summary: { error: 0, warning: 0, suggestion: 1 }, issues: [{ severity: 'suggestion', code: 'review_duplicate', message: 'Review duplicate content.', source_refs: ['docs/design.md'] }] }), 'utf8'),
+    writeFile(path.join(context, 'initial-context-view.json'), JSON.stringify({ view_id: 'PSCV-0123456789abcdef', sources: { candidate_count: 2, excluded_count: 1 }, warnings: [] }), 'utf8'),
+    writeFile(path.join(root, '.orquesta', 'project', 'migration-plan.json'), JSON.stringify({ plan_id: 'PSMP-0123456789abcdef', status: 'review_required', operations: [{ action: 'quarantine', destructive: false }], rollback: { steps: [{}] } }), 'utf8'),
+    writeFile(path.join(applied, 'result.json'), JSON.stringify({ result_id: 'PSMR-0123456789abcdef', plan_id: 'PSMP-0123456789abcdef', status: 'applied', approval: { decision: 'accepted' }, operations: [{ action: 'quarantine', status: 'applied' }], verification: { runtime_ephemeral_warning: false, remaining_audit_summary: { error: 0, warning: 0 } }, rollback: { reverse_operations: [{}] }, applied_at: new Date().toISOString() }), 'utf8')
+  ]);
+}
+
 test('loads a real .orquesta repository read-only and preserves the governed organization across raw agent changes', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-live-'));
   const userData = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-user-'));
@@ -73,6 +91,36 @@ test('loads a real .orquesta repository read-only and preserves the governed org
 
     expect(await readFile(tasksPath, 'utf8')).toBe(originalTasks);
     expect((await readFile(agentsPath, 'utf8')).includes('Reviewer')).toBe(true);
+  } finally {
+    await desktop.close();
+    await Promise.all([rm(root, { recursive: true, force: true }), rm(userData, { recursive: true, force: true })]);
+  }
+});
+
+test('shows project structure evidence in the real Desktop settings surface', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-structure-'));
+  const userData = await mkdtemp(path.join(os.tmpdir(), 'orquesta-electron-structure-user-'));
+  await writeCanonicalState(root, false);
+  await writeStructureState(root);
+  const tasksPath = path.join(root, '.orquesta', 'state', 'tasks.json');
+  const tasks = JSON.parse(await readFile(tasksPath, 'utf8')) as { tasks: Array<Record<string, unknown>> };
+  tasks.tasks[0].required_reading = ['docs/design.md'];
+  await writeFile(tasksPath, JSON.stringify(tasks), 'utf8');
+  const desktop = await electron.launch({
+    args: [`--user-data-dir=${userData}`, '--lang=en-US', '.'],
+    cwd: appRoot,
+    env: { ...process.env, ORQUESTA_E2E: '1', ORQUESTA_E2E_PROJECT_ROOT: root }
+  });
+
+  try {
+    const window = await desktop.firstWindow();
+    await window.getByRole('button', { name: 'Settings' }).click();
+    await window.getByRole('button', { name: 'Project structure' }).click();
+    await expect(window.getByText('.orquesta/project/layout.json')).toBeVisible();
+    await window.getByRole('button', { name: /Specialist reading/u }).click();
+    await expect(window.getByText('docs/design.md')).toBeVisible();
+    await window.getByRole('button', { name: /Migration Plan/u }).click();
+    await expect(window.getByText('PSMR-0123456789abcdef')).toBeVisible();
   } finally {
     await desktop.close();
     await Promise.all([rm(root, { recursive: true, force: true }), rm(userData, { recursive: true, force: true })]);

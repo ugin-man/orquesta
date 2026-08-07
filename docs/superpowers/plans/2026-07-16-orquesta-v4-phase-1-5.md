@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Use the existing isolated worktree at C:\Users\kouki\OneDrive\ドキュメント\Orquesta\.worktrees\orquesta-v4-phase1 on branch codex/orquesta-v4-phase1.
+- Use the existing isolated worktree at C:\Users\example\OneDrive\ドキュメント\Orquesta\.worktrees\orquesta-v4-phase1 on branch codex/orquesta-v4-phase1.
 - Preserve the V3 dashboard and npm run check command exactly.
 - Preserve all existing Phase 1 fixtures and their 18 batches / 42 events unless the new Execution Plan command is explicitly invoked.
 - Do not add live Web exploration, install, Audition, Codex dispatch, Desktop, Experience Ledger, Intent Graph, or dashboard redesign.
@@ -20,7 +20,7 @@
 - Phase 1.5 corrections and reviews remain execution_cycles on the original task. Do not create R, F, or RR task entries.
 - Write every production behavior with a failing test first and observe the expected RED before implementation.
 - Keep actual_model null unless independent runtime evidence proves it.
-- Use the canonical checkout state at C:\Users\kouki\OneDrive\ドキュメント\Orquesta\.orquesta for Orquesta routing evidence. The product worktree .orquesta snapshot is not authoritative.
+- Use the canonical checkout state at C:\Users\example\OneDrive\ドキュメント\Orquesta\.orquesta for Orquesta routing evidence. The product worktree .orquesta snapshot is not authoritative.
 - Do not push.
 
 ## File Map

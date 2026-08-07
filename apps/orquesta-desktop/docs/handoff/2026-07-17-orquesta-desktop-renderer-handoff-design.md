@@ -1565,8 +1565,8 @@ rosterの全agentを、idleやstandbyを含めて個別にmapへ表示してく�
 
 参照:
 
-- [Orquesta V4詳細設計](./2026-07-15-orquesta-v4-design.md)
-- [旧Dashboard Mission Control設計](./2026-06-23-dashboard-mission-control-redesign.md)
+- [Orquesta V4詳細設計](../../../../docs/superpowers/specs/2026-07-15-orquesta-v4-design.md)
+- [旧Dashboard Mission Control設計](../../../../docs/superpowers/specs/2026-06-23-dashboard-mission-control-redesign.md)
 - [ChatGPT Sites](https://learn.chatgpt.com/docs/sites.md)
 - [Codex pricing](https://learn.chatgpt.com/docs/pricing.md)
 - [Codex App Server](https://learn.chatgpt.com/docs/app-server.md)

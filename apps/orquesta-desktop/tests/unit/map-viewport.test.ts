@@ -3,7 +3,7 @@ import { act, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { fixtureCatalog } from '../../src/fixtures';
 import { I18nProvider } from '../../src/renderer/features/i18n/I18nProvider';
-import { MapViewport, compactAgentName, fitCamera, interactionSizeForZoom, semanticLevelForZoom, visualScaleForZoom, worldToScreen } from '../../src/renderer/features/map/MapViewport';
+import { MapViewport, agentVisualScaleForZoom, compactAgentName, fitCamera, interactionSizeForZoom, semanticLevelForZoom, visualScaleForZoom, worldToScreen } from '../../src/renderer/features/map/MapViewport';
 import { adaptiveTwoLineSnapshot } from './adaptive-map-fixture';
 import { adaptiveFixtureScenarios } from '../../src/fixtures/adaptive-organization';
 import { inspectionRunningFixture } from '../../src/fixtures/inspection-running';
@@ -301,6 +301,12 @@ describe('Map viewport projection', () => {
     expect(visualScaleForZoom(0.2)).toBeCloseTo(0.36);
     expect(visualScaleForZoom(0.3)).toBeCloseTo(0.5769, 3);
     expect(visualScaleForZoom(0.72)).toBe(1);
+  });
+
+  test('does not shrink legacy nodes twice after semantic CSS has sized them', () => {
+    expect(agentVisualScaleForZoom(0.2, 'legacy')).toBe(1);
+    expect(agentVisualScaleForZoom(0.3, 'legacy')).toBe(1);
+    expect(agentVisualScaleForZoom(0.3, 'explicit')).toBeCloseTo(0.5769, 3);
   });
 
   test('projects world coordinates without scaling node contents', () => {

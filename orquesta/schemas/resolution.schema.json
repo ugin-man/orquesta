@@ -1,0 +1,8 @@
+{
+  "$id": "resolution", "type": "object", "required": ["resolution_id", "need_id", "mode", "status", "selected_provider_id", "rejected_provider_ids", "rationale", "evidence_refs", "total_cost", "approval_status", "reevaluate_when"],
+  "properties": {
+    "resolution_id": { "type": "string", "pattern": ".+" }, "need_id": { "type": "string", "pattern": ".+" }, "mode": { "enum": ["reuse", "adapt", "build", "ask", "abandon"] }, "status": { "enum": ["proposed", "approved", "changes_requested", "rejected"] },
+    "selected_provider_id": { "anyOf": [{ "type": "string", "pattern": ".+" }, { "type": "null" }] }, "rejected_provider_ids": { "type": "array", "items": { "type": "string" } }, "rationale": { "type": "string", "pattern": ".+" }, "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "total_cost": { "type": "number", "minimum": 0 }, "approval_status": { "enum": ["pending_user", "approved", "not_required"] }, "reevaluate_when": { "type": "array" }
+  }, "additionalProperties": false
+}

@@ -5,7 +5,7 @@ const { access, mkdir, mkdtemp, readFile, rm } = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { createSetupEngine } = require("./setup-engine");
+const { buildCurrentOrchestra, createSetupEngine } = require("./setup-engine");
 
 const roots = [];
 test.afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
@@ -54,6 +54,37 @@ test("starts an atomic idempotent six-phase setup before creating foundation age
   const organization = JSON.parse(await readFile(path.join(root, ".orquesta", "state", "organization.json"), "utf8"));
   assert.equal(organization.revision, 0);
   assert.deepEqual(organization.agents, []);
+  const options = JSON.parse(await readFile(path.join(root, ".orquesta", "setup", "options.json"), "utf8"));
+  assert.equal(options.setup_status, "in_progress");
+  assert.equal(options.bootstrap_status, "in_progress");
+  assert.equal(options.desktop_project_root, root);
+  assert.equal(options.foundation_session_status, "pending");
+  const wizard = JSON.parse(await readFile(path.join(root, ".orquesta", "setup", "wizard.json"), "utf8"));
+  assert.equal(wizard.status, "in_progress");
+  assert.equal(wizard.current_step, "auto_finalize");
+  assert.equal(wizard.gates.setup_autopilot_finalized, false);
+  const directives = JSON.parse(await readFile(path.join(root, ".orquesta", "state", "directives.json"), "utf8"));
+  assert.deepEqual(directives.directives, []);
+  const currentOrchestra = await readFile(path.join(root, ".orquesta", "CURRENT_ORCHESTRA.md"), "utf8");
+  assert.match(currentOrchestra, /Setup status: in_progress/u);
+  assert.match(currentOrchestra, /Current phase: environment/u);
+});
+
+test("starts setup when .orquesta contains only empty directories", async () => {
+  const parent = await mkdtemp(path.join(os.tmpdir(), "orquesta-setup-engine-empty-state-"));
+  roots.push(parent);
+  const root = path.join(parent, "project");
+  await mkdir(path.join(root, ".orquesta", "v4"), { recursive: true });
+  const engine = createSetupEngine({
+    now: () => "2026-07-22T05:00:00.000Z",
+    randomUUID: () => "66666666-7777-4888-8999-000000000000"
+  });
+
+  const result = await engine.start(input(root));
+
+  assert.equal(result.setup_state.current_phase_id, "environment");
+  assert.equal(await missing(path.join(root, ".orquesta", "v4")), true);
+  assert.equal(await missing(path.join(root, ".orquesta", "setup", "setup_state.json")), false);
 });
 
 test("leaves no partial .orquesta tree when preparation fails", async () => {
@@ -69,4 +100,18 @@ test("leaves no partial .orquesta tree when preparation fails", async () => {
 
   await assert.rejects(engine.start(input(root)), /injected setup failure/u);
   assert.equal(await missing(path.join(root, ".orquesta")), true);
+});
+
+test("current orchestra does not claim superseded initial tasks are queued", () => {
+  const markdown = buildCurrentOrchestra({
+    setupState: { project_title: "Test Project", project_id: "repo-test" },
+    now: "2026-07-22T05:00:00.000Z",
+    status: "ready",
+    tasksState: {
+      tasks: [{ task_id: "SETUP-OLD-001", state: "superseded", owner_agent_id: "implementation-001" }],
+    },
+  });
+
+  assert.doesNotMatch(markdown, /initial queued tasks/u);
+  assert.match(markdown, /No initial work is open/u);
 });

@@ -99,7 +99,12 @@ function normalizeModelPolicy(input = {}) {
 
 function scoreControlSignals(task = {}, context = {}, policyInput = defaultModelPolicy()) {
   const policy = normalizeModelPolicy(policyInput);
-  const source = { ...(task.control_signals || {}), ...(context.control_signals || {}) };
+  const source = {
+    ...(task.control_signals || {}),
+    ...(task.task_profile?.control_signals || {}),
+    ...(context.control_signals || {}),
+    ...(context.task_profile?.control_signals || {})
+  };
   const signals = {};
   for (const name of policy.signals) signals[name] = normalizeLevel(source[name]);
   const high = Object.entries(signals).filter(([, level]) => level === "high").map(([name]) => name);
@@ -164,7 +169,7 @@ function capacityRoute(task, context = {}) {
 }
 
 function baseRoute(task, policy, score, context) {
-  const workMode = context.work_mode || "implementation";
+  const workMode = context.work_mode || task.task_profile?.recommended_work_mode || task.work_mode || "implementation";
   const high = new Set(score.high_signals);
   const reviewRule = policyRule(policy, "MP004");
   const reviewSignals = reviewRule?.if_any_high || ["ambiguity", "consequence", "reversibility", "context_breadth", "failure_history"];

@@ -32,10 +32,30 @@
       "params_required": ["threadId"],
       "response_required": ["approvalPolicy", "approvalsReviewer", "cwd", "model", "modelProvider", "sandbox", "thread"]
     },
+    "thread/name/set": {
+      "required": ["id", "method", "params"],
+      "params_required": ["name", "threadId"],
+      "response_required": []
+    },
+    "thread/archive": {
+      "required": ["id", "method", "params"],
+      "params_required": ["threadId"],
+      "response_required": []
+    },
+    "thread/list": {
+      "required": ["id", "method", "params"],
+      "params_required": [],
+      "response_required": ["data"]
+    },
     "thread/read": {
       "required": ["id", "method", "params"],
       "params_required": ["threadId"],
       "response_required": ["thread"]
+    },
+    "thread/turns/list": {
+      "required": ["id", "method", "params"],
+      "params_required": ["threadId"],
+      "response_required": ["data"]
     },
     "turn/start": {
       "required": ["id", "method", "params"],

@@ -1,0 +1,4 @@
+{
+  "schema_version": 1,
+  "instruction": "Review only lore/world.md, characters/aria.md, and scenes/chapter-4.md for cross-artifact continuity conflicts. Create reports/worldbuilding-consistency.json with an issues array. Each issue must include category, severity, summary, and source_refs. Report every concrete contradiction supported by two source files. Do not rewrite the lore."
+}

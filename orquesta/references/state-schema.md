@@ -137,15 +137,15 @@ Every organization preflight result is recorded before it changes the organizati
 {
   "version": 1,
   "source": "codex_app.list_threads",
-  "project_cwd": "C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta",
+  "project_cwd": "C:\\Users\\example\\OneDrive\\ドキュメント\\Orquesta",
   "synced_at": "2026-06-22T00:00:00.000Z",
   "sessions": [
     {
-      "thread_id": "019ee896-9dbf-7d30-aee8-7e8c8d8e19f1",
+      "thread_id": "018f0000-0000-7000-8000-000000000002",
       "host_id": "local",
       "title": "Orquesta visual-art-001",
       "status": "idle",
-      "cwd": "C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta",
+      "cwd": "C:\\Users\\example\\OneDrive\\ドキュメント\\Orquesta",
       "created_at": 1782018650,
       "updated_at": 1782038749
     }
@@ -154,6 +154,10 @@ Every organization preflight result is recorded before it changes the organizati
 ```
 
 Refresh this file from the Codex thread list when the user asks to reflect actual project sessions, after creating or archiving specialist threads, or before relying on the visualizer as an operations view.
+
+## session-rotation-recovery.json
+
+When a `codex_hosted` session needs a fresh generation, Desktop writes a `manual_recovery` request instead of creating a hidden task. A Codex host turn creates the successor in the selected project and records its returned ID with `scripts/session-rotation-bind.js`. The request moves through `manual_recovery -> bound -> dispatching -> completed`. Desktop must verify the bound thread against the exact project listing before handoff. Missing runtime binding, another project's thread ID, a stale generation, or a rejected receipt leaves the predecessor as owner.
 
 ## tasks.json
 
@@ -196,10 +200,11 @@ Delegation gate fields:
 - `specialist_report_path`: `.orquesta/reports/*.md` path for the specialist report. The legacy `report` field may be used by older tasks, but new tasks should prefer `specialist_report_path`.
 - `direct_exception_reason`: required when `routing_class` is `direct_exception`; keep it short and specific.
 - `bypass_review_owner`: optional specialist `agent_id` that should later review a direct exception.
+- `acceptance_claim`: transient durable compare-and-swap marker written only after target checks pass and before the canonical report changes. It binds the full normalized receipt, prepared report, review, and pre-acceptance task snapshot by SHA-256. The supplied review must match its durable review file, implementation evidence must be present in the review evidence set, and implementation change paths must remain project-relative. A matching retry may resume; a different receipt or evidence set must stop. Successful acceptance removes the marker.
 
-For specialist-domain implementation, use task state rather than chat memory. A task with `routing_class: "specialist_required"` should not be accepted until it has `handoff_sent_at` and either `specialist_report_path`, `report`, or a specialist report artifact. A task with `routing_class: "direct_exception"` should not be accepted without `direct_exception_reason`.
+For specialist-domain implementation, use task state rather than chat memory. A task with `routing_class: "specialist_required"` should not be accepted until it has `handoff_sent_at` and its assigned durable evidence. Require `specialist_report_path`, `report`, or a report artifact only when `specialist_report_required` is not `false`. A task with `routing_class: "direct_exception"` should not be accepted without `direct_exception_reason`.
 
-Specialist report review uses task state rather than a separate task store. When a specialist has finished a task but the orchestrator has not accepted it yet, set the task to `completed`, `report_submitted`, `needs_review`, or `needs_orchestrator_review` and include a `.orquesta/reports/*.md` artifact. The dashboard turns those tasks into report review cards.
+Specialist report review uses task state rather than a separate task store. When a report-producing specialist has finished a task but the orchestrator has not accepted it yet, set the task to `completed`, `report_submitted`, `needs_review`, or `needs_orchestrator_review` and include a `.orquesta/reports/*.md` artifact. A report-free task records only its assigned deterministic evidence and is not turned into a report review card.
 
 Report review decisions:
 
@@ -240,7 +245,7 @@ Tasks without `execution_policy_version` remain compatible with the legacy Deleg
     "budget": {
       "max_handoffs": 2,
       "max_independent_reviews": 1,
-      "max_correction_batches": 1,
+    "max_correction_batches": 1,
       "max_reports": 1,
       "max_auxiliary_tasks": 0
     },
@@ -267,6 +272,8 @@ Tasks without `execution_policy_version` remain compatible with the legacy Deleg
   }
 }
 ```
+
+For policy V1, lane budgets remain hard escalation boundaries. For policy V2, `max_correction_batches` is a replanning threshold: a revised plan with reason code `correction_threshold_replanned` may continue on the same TaskIntent when authority, effects, `execution_mode`, and `review_intensity` are unchanged. Other budget overruns keep their existing escalation behavior.
 
 `fast` is the normal `inline_verified` route with no handoff or review report. `standard` uses one owner and one independent review. `critical` allows up to two independent reviews and optional QA. Do not create `R`, `F`, or `RR` auxiliary task IDs; append the cycle to the parent task. `escalation_triggers` records the actual automatic triggers for the current lane: fast uses `acceptance_uncertain`, `new_risk`, `scope_drift`, and `test_failure`; standard uses `budget_exhausted`, `critical_risk_discovered`, `scope_drift`, and `semantic_finding_not_machine_verifiable`; critical has no automatic escalation trigger.
 
@@ -327,13 +334,13 @@ Beta V3 adds controls when a task is staged into the progressive gate. Legacy ac
 
 `recommended_model` is not `requested_model`; a request is not `applied_model`; and an applied override is not `actual_model` without independent runtime evidence. The repository-only adapter records recommendations and `unsupported` status, but cannot switch a product model.
 
-For staged-in `specialist_required` and medium/high-risk work, a valid report `completion_envelope`, `question_candidates`, delegation evidence, and task-scoped control audit are acceptance gates. Low-risk report-only work and older accepted tasks stay on the progressive warning path unless reopened.
+For staged-in report-producing `specialist_required` and medium/high-risk work, a valid report `completion_envelope`, delegation evidence, and task-scoped control audit are acceptance gates. Validate `question_candidates` when present or explicitly required by the task. Low-risk report-only work, explicit report-free work, and older accepted tasks stay on their assigned evidence path unless reopened.
 
 ## completion_envelope Report Block
 
 Specialist reports contain a JSON `completion_envelope` block. The checker validates `task_id`, `agent_id`, delegation evidence, changed files, verification, fallback approval, timestamps, and question-candidate status against task state.
 
-The envelope records model evidence under `model_route` and must keep requested, applied, and actual values separate. A report-only task may have an empty command list only when it explicitly says why all changes are `report_only`.
+The envelope records model evidence under `model_route` and must keep requested, applied, and actual values separate. A report-only task may have an empty command list only when `verification.no_commands_reason` explicitly says why all changes are `report_only`. `question_candidates_status` is `submitted`, `none`, or `omitted`; `omitted` means the optional metadata was absent, not that a specialist explicitly decided there were no useful questions.
 
 ## Handoff Drafts
 
@@ -385,7 +392,7 @@ Useful delegation event types:
 - `direct_exception_used`: the orchestrator used a documented direct-work exception.
 - `specialist_report_received`: a specialist report path or artifact was recorded.
 - `question_candidates_recorded`: specialist report question candidates were extracted into `.orquesta/vision/question_candidates.json`.
-- `question_candidates_missing`: a specialist report was held because required `question_candidates` metadata was missing.
+- `question_candidates_missing`: a specialist report was held because the task explicitly required question-decision metadata and it was missing.
 - `orchestrator_acceptance_decision`: the orchestrator accepted, held, rejected, or requested changes after review.
 
 ## control_audit.json
@@ -591,7 +598,7 @@ Required candidate fields:
 - `source_report_path`
 - `created_at`
 
-`question_candidates` is required report metadata for specialist-owned tasks. A report may use `status: "none"` instead of items, but must include a valid `none_reason`.
+`question_candidates` is optional unless a useful candidate exists or the task explicitly requires a question decision. When an explicit decision is required but no useful candidate exists, a report may use `status: "none"` with a valid `none_reason` and rationale.
 
 ## vision/questions.json
 
@@ -1076,7 +1083,7 @@ Production Start is a compatibility view of the provisioning batch. It may prepa
       "status": "handoff_ready",
       "requested_at": "2026-06-23T00:00:00+09:00",
       "note": "Prepared from the production start dashboard gate.",
-      "thread_id": "019eed9a-7d5a-7652-9038-fa855dbac9d6"
+      "thread_id": "018f0000-0000-7000-8000-000000000003"
     }
   ],
   "policy": {
@@ -1099,7 +1106,7 @@ Production Start is a compatibility view of the provisioning batch. It may prepa
   "foundation_id_policy": "unnumbered_for_new_projects",
   "orchestrator_agent_id": "orchestrator",
   "orchestrator_thread_id": null,
-  "orchestrator_display_title": "★ Orquesta 統括",
+  "orchestrator_display_title": "★ Orquesta 統括者",
   "orchestrator_title_policy": "rename_calling_thread_to_starred_Orquesta_orchestrator",
   "orchestrator_pin_policy": "pin_calling_thread",
   "foundation_agent_ids": [

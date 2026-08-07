@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orquesta.local/contracts/session-rotation-registry.schema.json",
+  "type": "object",
+  "required": ["schema_version", "revision", "policy", "sessions", "applied_event_ids", "updated_at"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "revision": { "type": "integer", "minimum": 0 },
+    "policy": {
+      "type": "object",
+      "required": ["prepare_at", "pending_at", "required_at"],
+      "properties": {
+        "prepare_at": { "type": "integer", "minimum": 1 },
+        "pending_at": { "type": "integer", "minimum": 2 },
+        "required_at": { "type": "integer", "minimum": 3 }
+      },
+      "additionalProperties": false
+    },
+    "sessions": { "type": "object", "additionalProperties": { "type": "object" } },
+    "applied_event_ids": { "type": "array", "items": { "type": "string" } },
+    "updated_at": { "anyOf": [{ "type": "string" }, { "type": "null" }] }
+  },
+  "additionalProperties": false
+}

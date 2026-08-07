@@ -38,6 +38,11 @@ interface DesktopSetupControllerOptions {
   engine?: SetupEngineLike;
   runner?: SetupRunnerLike;
   readSetupState?: (rootPath: string) => Promise<Record<string, unknown> | null>;
+  provisionFoundation?: (input: {
+    rootPath: string;
+    projectId: string;
+    agentIds: string[];
+  }) => Promise<Array<Record<string, unknown>>>;
   provisionSpecialists?: (input: { rootPath: string; projectId: string; batch: ProvisioningBatch }) => Promise<ProvisioningBatch>;
   onProgress?: (progress: SetupProgressEvent) => void | Promise<void>;
   onBackgroundError?: (error: unknown) => void;
@@ -59,7 +64,10 @@ export function createDesktopSetupController(options: DesktopSetupControllerOpti
   }).createSetupRunner({
     handlers: (setupPhaseHandlersModule as {
       createDefaultPhaseHandlers(input: Record<string, unknown>): Record<string, unknown>;
-    }).createDefaultPhaseHandlers({ provisionSpecialists: options.provisionSpecialists }),
+    }).createDefaultPhaseHandlers({
+      provisionFoundation: options.provisionFoundation,
+      provisionSpecialists: options.provisionSpecialists
+    }),
     onProgress: options.onProgress
   });
   const readState = options.readSetupState ?? readSetupState;
@@ -72,6 +80,10 @@ export function createDesktopSetupController(options: DesktopSetupControllerOpti
   return {
     async start(input: { rootPath: string; draft: SetupDraft }): Promise<SetupStartResult> {
       const started = await engine.start(input);
+      launch(runner.run({
+        rootPath: started.result.rootPath,
+        setupId: started.result.setupId
+      }));
       return started.result;
     },
 
@@ -79,7 +91,11 @@ export function createDesktopSetupController(options: DesktopSetupControllerOpti
       const state = await readState(input.rootPath);
       const setupId = typeof state?.setup_id === 'string' ? state.setup_id : null;
       const status = typeof state?.status === 'string' ? state.status : null;
-      if (!setupId || !['active', 'preparing', 'running', 'in_progress', 'provisioning'].includes(status ?? '')) return;
+      const retryableBlocked = status === 'blocked'
+        && typeof state?.blocking_issue === 'object'
+        && state.blocking_issue !== null
+        && (state.blocking_issue as Record<string, unknown>).retryable === true;
+      if (!setupId || (!['active', 'preparing', 'running', 'in_progress', 'provisioning'].includes(status ?? '') && !retryableBlocked)) return;
       launch(runner.resume({ rootPath: input.rootPath, setupId }));
     },
 

@@ -24,10 +24,26 @@ test("initial projection exposes bounded Phase 2 operational collections", () =>
   assert.deepEqual(state.acquisition_snapshots, []);
   assert.deepEqual(state.audit_evaluations, []);
   assert.deepEqual(state.audition_results, []);
+  assert.deepEqual(state.task_profiles, []);
   const projectors = createProjectors();
   assert.equal(typeof projectors["acquisition.snapshot.recorded"], "function");
   assert.equal(typeof projectors["candidate.audit.recorded"], "function");
   assert.equal(typeof projectors["candidate.audition.recorded"], "function");
+});
+
+test("execution plan projection retains the task profile evidence trace", () => {
+  const taskProfile = {
+    task_intent_id: "TI-123456789abc",
+    reason_codes: ["critical_effect:external_write"],
+    evidence_refs: ["work_item:effects"],
+  };
+  const state = replayProjection([batch(1, "execution.plan.created", {
+    execution_plan: { execution_plan_id: "EP-123456789abc", task_intent_id: taskProfile.task_intent_id },
+    task_profile: taskProfile,
+  })]);
+  assert.deepEqual(state.task_profiles[0].reason_codes, taskProfile.reason_codes);
+  assert.deepEqual(state.task_profiles[0].evidence_refs, taskProfile.evidence_refs);
+  assert.equal(state.current_task_profile_id, taskProfile.task_intent_id);
 });
 
 test("Phase 2 projectors replace stable identities and retain the newest 128 records", () => {

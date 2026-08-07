@@ -68,6 +68,9 @@ function createDefaultBridge(): OrquestaRendererBridge {
   return new MockOrquestaBridge('active-project');
 }
 const LOCALE_STORAGE_KEY = 'orquesta.desktop.locale';
+const CONVERSATION_PAGE_LIMIT = 40;
+const CONVERSATION_REFRESH_LIMIT = 20;
+const TIMELINE_AGENT_PREVIEW_LIMIT = 8;
 
 export function resolveInitialLocale(explicit?: Locale): Locale {
   if (typeof window === 'undefined') return explicit ?? 'en';
@@ -116,6 +119,11 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const [draft, setDraft] = useState('');
   const [targetAgentId, setTargetAgentId] = useState('orchestrator');
   const [sending, setSending] = useState(false);
+  const [composerDelivery, setComposerDelivery] = useState<{
+    correlationId: string | null;
+    targetAgentId: string;
+    state: 'queued' | 'accepted' | 'started' | 'completed' | 'failed';
+  } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [directSendFailure, setDirectSendFailure] = useState<string | null>(null);
   const [toasts, setToasts] = useState<RuntimeUiEvent[]>([]);
@@ -136,6 +144,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
   const decisionHistoryRequest = useRef(0);
   const timelineRequest = useRef(0);
   const conversationTargetAgentIdRef = useRef('orchestrator');
+  const conversationHasLoadedOlderRef = useRef(false);
   const availableAgentIdsRef = useRef<Set<string>>(new Set());
   const currentProjectIdRef = useRef<string | null>(null);
   const lucaPendingProjectIdRef = useRef<string | null>(null);
@@ -228,34 +237,66 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
         }
       } else if (event.type === 'toast') {
         setToasts((current) => [...current, event.toast].slice(-6));
-      } else if (event.notification.targetAgentId === 'orquesta-admin'
-        && lucaPendingProjectIdRef.current === currentProjectIdRef.current) {
+      } else if (event.type === 'runtime_notification') {
         const notification = event.notification;
-        if (notification.kind === 'turn_started') {
-          lucaPendingThreadIdRef.current = notification.threadId;
-        } else if (!lucaPendingThreadIdRef.current || lucaPendingThreadIdRef.current === notification.threadId) {
-          lucaPendingThreadIdRef.current = notification.threadId;
-          if (notification.kind === 'turn_failed') {
-            setLucaState({ kind: 'error', message: notification.text ?? 'Luca could not answer this question.', retryable: true });
-          } else if (notification.kind === 'agent_message' || notification.kind === 'turn_completed') {
-            void bridge.listConversation({ targetAgentId: 'orquesta-admin', cursor: null, limit: 100 })
-              .then((page) => {
-                if (lucaPendingProjectIdRef.current !== currentProjectIdRef.current) return;
-                setLucaMessages(page.items);
-                const latest = [...page.items].reverse().find((message) => message.role === 'agent');
-                if (!latest && notification.kind !== 'agent_message') return;
-                setLucaState({
-                  kind: 'answer',
-                  payload: latest?.lucaAnswer ?? {
-                    answer: latest?.text ?? notification.text ?? 'Luca returned an empty answer.',
-                    points: [], uncertainties: [], references: []
-                  }
-                });
-              })
-              .catch((error: unknown) => setLucaState({
-                kind: 'error', message: error instanceof Error ? error.message : String(error), retryable: true
-              }));
+        if (notification.kind === 'turn_started' || notification.kind === 'turn_completed' || notification.kind === 'turn_failed') {
+          setComposerDelivery((current) => {
+            if (!current || current.targetAgentId !== notification.targetAgentId) return current;
+            if (current.correlationId && notification.correlationId && current.correlationId !== notification.correlationId) return current;
+            return {
+              ...current,
+              correlationId: notification.correlationId ?? current.correlationId,
+              state: notification.kind === 'turn_started' ? 'started' : notification.kind === 'turn_completed' ? 'completed' : 'failed'
+            };
+          });
+        }
+        if (notification.targetAgentId === 'orquesta-admin'
+          && lucaPendingProjectIdRef.current === currentProjectIdRef.current) {
+          if (notification.kind === 'turn_started') {
+            lucaPendingThreadIdRef.current = notification.threadId;
+          } else if (!lucaPendingThreadIdRef.current || lucaPendingThreadIdRef.current === notification.threadId) {
+            lucaPendingThreadIdRef.current = notification.threadId;
+            if (notification.kind === 'turn_failed') {
+              setLucaState({ kind: 'error', message: notification.text ?? 'Luca could not answer this question.', retryable: true });
+            } else if (notification.kind === 'agent_message' || notification.kind === 'turn_completed') {
+              void bridge.listConversation({ targetAgentId: 'orquesta-admin', cursor: null, limit: 100 })
+                .then((page) => {
+                  if (lucaPendingProjectIdRef.current !== currentProjectIdRef.current) return;
+                  setLucaMessages(page.items);
+                  const latest = [...page.items].reverse().find((message) => message.role === 'agent');
+                  if (!latest && notification.kind !== 'agent_message') return;
+                  setLucaState({
+                    kind: 'answer',
+                    payload: latest?.lucaAnswer ?? {
+                      answer: latest?.text ?? notification.text ?? 'Luca returned an empty answer.',
+                      points: [], uncertainties: [], references: []
+                    }
+                  });
+                })
+                .catch((error: unknown) => setLucaState({
+                  kind: 'error', message: error instanceof Error ? error.message : String(error), retryable: true
+                }));
+            }
           }
+        }
+        if (notification.targetAgentId === conversationTargetAgentIdRef.current
+          && notification.targetAgentId !== LUCA_AGENT_ID
+          && ['agent_message', 'turn_completed', 'turn_failed'].includes(notification.kind)) {
+          const projectId = currentProjectIdRef.current;
+          void bridge.listConversation({ targetAgentId: notification.targetAgentId, cursor: null, limit: 100 })
+            .then((page) => {
+              if (projectId !== currentProjectIdRef.current
+                || notification.targetAgentId !== conversationTargetAgentIdRef.current) return;
+              setMessages((current) => {
+                if (!conversationHasLoadedOlderRef.current) return page.items;
+                const latestById = new Map(page.items.map((message) => [message.id, message]));
+                const merged = current.map((message) => latestById.get(message.id) ?? message);
+                const known = new Set(current.map((message) => message.id));
+                return [...merged, ...page.items.filter((message) => !known.has(message.id))];
+              });
+              if (!conversationHasLoadedOlderRef.current) setConversationCursor(page.nextCursor);
+            })
+            .catch(() => undefined);
         }
       }
     });
@@ -267,6 +308,82 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
       setupCompletionTimerRef.current = null;
     };
   }, [bridge]);
+
+  useEffect(() => {
+    if (activeWorkspace !== 'records' || recordKind !== 'conversation' || !snapshot) return undefined;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const projectId = snapshot.project.id;
+    const poll = async () => {
+      if (!stopped && !document.hidden) {
+        const agentId = conversationTargetAgentIdRef.current;
+        try {
+          const page = await bridge.listConversation({ targetAgentId: agentId, cursor: null, limit: CONVERSATION_REFRESH_LIMIT });
+          if (!stopped && projectId === currentProjectIdRef.current && agentId === conversationTargetAgentIdRef.current) {
+            setMessages((current) => {
+              if (!conversationHasLoadedOlderRef.current) return page.items;
+              const latestById = new Map(page.items.map((message) => [message.id, message]));
+              const merged = current.map((message) => latestById.get(message.id) ?? message);
+              const known = new Set(current.map((message) => message.id));
+              return [...merged, ...page.items.filter((message) => !known.has(message.id))];
+            });
+            if (!conversationHasLoadedOlderRef.current) setConversationCursor(page.nextCursor);
+          }
+        } catch {
+          // The next poll or a runtime notification retries without disturbing the visible history.
+        }
+      }
+      if (!stopped) timer = setTimeout(() => void poll(), 8_000);
+    };
+    timer = setTimeout(() => void poll(), 8_000);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeWorkspace, bridge, recordKind, snapshot?.project.id]);
+
+  useEffect(() => {
+    if (!snapshot || snapshot.project.id === 'no-project') return undefined;
+    let stopped = false;
+    let inFlight = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleNextRefresh = () => {
+      if (stopped) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void refreshRuntimeProjection(), 15_000);
+    };
+    const refreshRuntimeProjection = async () => {
+      if (stopped) return;
+      if (inFlight || document.hidden) {
+        scheduleNextRefresh();
+        return;
+      }
+      inFlight = true;
+      try {
+        // The host emits snapshot_changed after reconciling the persisted Codex task list.
+        // Ignore the duplicate return value so every snapshot still follows one update path.
+        await bridge.getInitialSnapshot();
+      } catch {
+        // Repository watching and the next visible poll remain available after a transient failure.
+      } finally {
+        inFlight = false;
+        scheduleNextRefresh();
+      }
+    };
+    const refreshWhenVisible = () => {
+      if (document.hidden) return;
+      if (timer) clearTimeout(timer);
+      timer = null;
+      void refreshRuntimeProjection();
+    };
+    scheduleNextRefresh();
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [bridge, snapshot?.project.id]);
 
   useEffect(() => {
     if (startupReadyReported.current || (!snapshot && !loadingError)) return;
@@ -369,6 +486,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     if (requestedTargetAgentId !== LUCA_AGENT_ID) setTargetAgentId(requestedTargetAgentId);
     setMessages([]);
     setConversationCursor(null);
+    conversationHasLoadedOlderRef.current = false;
     setLoadingConversation(true);
     setActionError(null);
     setOverlay(null);
@@ -376,7 +494,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     setRecordKind('conversation');
     setActiveWorkspace('records');
     try {
-      const page = await bridge.listConversation({ targetAgentId: requestedTargetAgentId, cursor: null, limit: 100 });
+      const page = await bridge.listConversation({ targetAgentId: requestedTargetAgentId, cursor: null, limit: CONVERSATION_PAGE_LIMIT });
       if (request !== conversationRequest.current || (requestedTargetAgentId !== LUCA_AGENT_ID && !availableAgentIdsRef.current.has(requestedTargetAgentId))) return;
       setMessages(page.items);
       setConversationCursor(page.nextCursor);
@@ -420,7 +538,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     try {
       const [decisions, conversationPages] = await Promise.all([
         bridge.listAttentionHistory(),
-        Promise.all(snapshot.agents.map((agent) => bridge.listConversation({ targetAgentId: agent.id, cursor: null, limit: 100 })))
+        Promise.all(snapshot.agents.map((agent) => bridge.listConversation({ targetAgentId: agent.id, cursor: null, limit: TIMELINE_AGENT_PREVIEW_LIMIT })))
       ]);
       if (request !== timelineRequest.current || draftProjectId.current !== projectId) return;
       const byId = new Map(conversationPages.flatMap((page) => page.items).map((message) => [message.id, message]));
@@ -441,11 +559,12 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     if (!conversationCursor || loadingOlderMessages) return;
     setLoadingOlderMessages(true);
     try {
-      const page = await bridge.listConversation({ targetAgentId: conversationTargetAgentId, cursor: conversationCursor, limit: 100 });
+      const page = await bridge.listConversation({ targetAgentId: conversationTargetAgentId, cursor: conversationCursor, limit: CONVERSATION_PAGE_LIMIT });
       setMessages((current) => {
         const byId = new Map([...page.items, ...current].map((message) => [message.id, message]));
         return [...byId.values()];
       });
+      conversationHasLoadedOlderRef.current = true;
       setConversationCursor(page.nextCursor);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
@@ -466,12 +585,25 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
     setSending(true);
     setActionError(null);
     setDirectSendFailure(null);
+    const sendingTargetAgentId = targetAgentId;
+    setComposerDelivery({ correlationId: null, targetAgentId: sendingTargetAgentId, state: 'queued' });
     try {
       const result = await bridge.sendMessage({ targetAgentId, text: draft.trim(), attachmentIds: attachments.map((attachment) => attachment.id), selectedContextIds: [] });
-      if (result.status === 'accepted') { setDraft(''); setAttachments([]); }
-      else setDirectSendFailure(result.reason);
+      if (result.status === 'accepted') {
+        setDraft('');
+        setAttachments([]);
+        setComposerDelivery((current) => {
+          if (current?.targetAgentId !== sendingTargetAgentId) return current;
+          if (current.state === 'started' || current.state === 'completed' || current.state === 'failed') return current;
+          return { correlationId: result.correlationId, targetAgentId: sendingTargetAgentId, state: 'accepted' };
+        });
+      } else {
+        setComposerDelivery({ correlationId: result.correlationId, targetAgentId: sendingTargetAgentId, state: 'failed' });
+        setDirectSendFailure(result.reason);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      setComposerDelivery({ correlationId: null, targetAgentId: sendingTargetAgentId, state: 'failed' });
       setDirectSendFailure(`Message was not sent. ${message}`);
     } finally {
       setSending(false);
@@ -787,6 +919,7 @@ function Workspace({ bridge, onStartupReady }: { bridge: OrquestaRendererBridge;
           targetAgentId={targetAgentId}
           error={actionError}
           directSendFailure={directSendFailure}
+          deliveryState={composerDelivery?.targetAgentId === targetAgentId ? composerDelivery.state : null}
           attachments={attachments}
           canAttach={bridge.capabilities.imageAttachments}
           onTargetChange={changeTargetAgent}

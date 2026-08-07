@@ -43,10 +43,7 @@ describe('registerDesktopIpc', () => {
       listProjects: vi.fn(async () => [{ id: 'repo-1' }]),
       switchProject: vi.fn(async () => ({ status: 'accepted', correlationId: 'switch-1' })),
       openProject: vi.fn(async () => ({ status: 'accepted', correlationId: 'open-1' })),
-      getCurrentRuntimeContext: vi.fn(() => ({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-1' })),
-      setCoordinatorThread: vi.fn(async () => undefined),
-      getLucaRuntimeContext: vi.fn(() => ({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null })),
-      setLucaThread: vi.fn(async () => undefined),
+      getCurrentProjectContext: vi.fn(() => ({ projectId: 'repo-1', rootPath: 'C:\\repo' })),
       getLastLucaHomeSeenAt: vi.fn(() => null),
       markLucaHomeSeen: vi.fn(async () => undefined)
     };
@@ -106,7 +103,7 @@ describe('registerDesktopIpc', () => {
     await expect(handlers.get(DESKTOP_IPC.switchRepository)?.({}, { projectId: 'repo-1' })).resolves.toMatchObject({ status: 'accepted' });
     await expect(handlers.get(DESKTOP_IPC.openRepository)?.({})).resolves.toMatchObject({ status: 'accepted' });
     await expect(handlers.get(DESKTOP_IPC.sendMessage)?.({}, { targetAgentId: 'orchestrator', text: 'Continue.', attachmentIds: [], selectedContextIds: [] })).resolves.toMatchObject({ status: 'accepted', correlationId: 'send-1' });
-    expect(coreHost.sendMessage).toHaveBeenCalledWith({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-1', targetAgentId: 'orchestrator', text: 'Continue.', localImagePaths: [] });
+    expect(coreHost.sendMessage).toHaveBeenCalledWith({ projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null, targetAgentId: 'orchestrator', text: 'Continue.', localImagePaths: [] });
     const taskId = snapshot.tasks[0].id;
     await expect(handlers.get(DESKTOP_IPC.askLuca)?.({}, {
       questionId: 'task.explain', context: { kind: 'task', id: taskId }, locale: 'ja', customText: null
@@ -115,13 +112,26 @@ describe('registerDesktopIpc', () => {
       projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null,
       prompt: expect.stringContaining('"questionId":"task.explain"')
     }));
-    expect(repositories.setLucaThread).toHaveBeenCalledWith('repo-1', 'thread-luca');
     await expect(handlers.get(DESKTOP_IPC.listConversation)?.({}, { targetAgentId: 'orchestrator', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
     await expect(handlers.get(DESKTOP_IPC.listConversation)?.({}, { targetAgentId: 'orquesta-admin', limit: 20 })).resolves.toEqual({ items: [], nextCursor: null });
-    expect(coreHost.listConversation).toHaveBeenCalledTimes(1);
+    const logicalCursor = 'logical:eyJ2ZXJzaW9uIjoxLCJnZW5lcmF0aW9uSW5kZXgiOjEsImxvY2FsQ3Vyc29yIjpudWxsfQ';
+    await expect(handlers.get(DESKTOP_IPC.listConversation)?.({}, {
+      targetAgentId: 'orchestrator', cursor: logicalCursor, limit: 20
+    })).resolves.toEqual({ items: [], nextCursor: null });
+    expect(coreHost.listConversation).toHaveBeenCalledTimes(3);
+    expect(coreHost.listConversation).toHaveBeenNthCalledWith(1, {
+      projectId: 'repo-1', rootPath: 'C:\\repo', targetAgentId: 'orchestrator', cursor: null, limit: 20
+    });
+    expect(coreHost.listConversation).toHaveBeenNthCalledWith(2, {
+      projectId: 'repo-1', rootPath: 'C:\\repo', targetAgentId: 'orquesta-admin', cursor: null, limit: 20
+    });
+    expect(coreHost.listConversation).toHaveBeenNthCalledWith(3, {
+      projectId: 'repo-1', rootPath: 'C:\\repo', targetAgentId: 'orchestrator', cursor: logicalCursor, limit: 20
+    });
     await expect(handlers.get(DESKTOP_IPC.getRuntimeInfo)?.({}, { probe: false })).resolves.toMatchObject({ status: 'not_started', integrity: 'verified' });
     expect(coreHost.getRuntimeInfo).toHaveBeenCalledWith({ probe: false });
     await expect(handlers.get(DESKTOP_IPC.readSetupAccount)?.({})).resolves.toMatchObject({ status: 'authenticated', accountType: 'chatgpt' });
+    expect(coreHost.readSetupAccount).toHaveBeenCalledWith({ releaseAfterRead: false });
     await expect(handlers.get(DESKTOP_IPC.startSetupLogin)?.({})).resolves.toMatchObject({ type: 'chatgpt', loginId: 'login-1' });
     expect(external.openExternal).toHaveBeenCalledWith('https://auth.openai.com/authorize');
     await expect(handlers.get(DESKTOP_IPC.startSetup)?.({}, setupDraft)).resolves.toMatchObject({ setupId: 'SETUP-1' });
@@ -168,8 +178,7 @@ describe('registerDesktopIpc', () => {
     };
     const repositories = {
       getSnapshot: vi.fn(), listProjects: vi.fn(), switchProject: vi.fn(), openProject: vi.fn(),
-      getCurrentRuntimeContext: vi.fn(), setCoordinatorThread: vi.fn(), getLucaRuntimeContext: vi.fn(),
-      setLucaThread: vi.fn(), getLastLucaHomeSeenAt: vi.fn(), markLucaHomeSeen: vi.fn()
+      getCurrentProjectContext: vi.fn(), getLastLucaHomeSeenAt: vi.fn(), markLucaHomeSeen: vi.fn()
     };
     registerDesktopIpc(ipcMain, coreHost, repositories, { chooseImages: vi.fn(async () => []), resolveImagePaths: vi.fn(() => []) });
 
@@ -196,5 +205,25 @@ describe('registerDesktopIpc', () => {
     await expect(handlers.get(DESKTOP_IPC.openCodexDraft)?.({}, {
       targetAgentId: 'orchestrator', text: ''
     })).rejects.toThrow('text');
+  });
+
+  test('releases the setup account runtime when no project is selected', async () => {
+    const handlers = new Map<string, (event: unknown, input?: unknown) => unknown>();
+    const ipcMain = { handle(channel: string, handler: (event: unknown, input?: unknown) => unknown) { handlers.set(channel, handler); } };
+    const coreHost = {
+      status: () => 'ready' as const,
+      ping: vi.fn(), sendMessage: vi.fn(), sendLucaQuestion: vi.fn(), listConversation: vi.fn(), getRuntimeInfo: vi.fn(),
+      readSetupAccount: vi.fn(async () => ({ status: 'unauthenticated' as const, accountType: null, requiresOpenaiAuth: true })),
+      startSetupLogin: vi.fn(), respondRuntimeApproval: vi.fn(), listAttentionHistory: vi.fn(), startInspection: vi.fn(),
+      cancelInspection: vi.fn(), readInspectionReport: vi.fn()
+    };
+    const repositories = {
+      getSnapshot: vi.fn(), listProjects: vi.fn(), switchProject: vi.fn(), openProject: vi.fn(),
+      getCurrentProjectContext: vi.fn(() => null), getLastLucaHomeSeenAt: vi.fn(), markLucaHomeSeen: vi.fn()
+    };
+    registerDesktopIpc(ipcMain, coreHost, repositories, { chooseImages: vi.fn(async () => []), resolveImagePaths: vi.fn(() => []) });
+
+    await expect(handlers.get(DESKTOP_IPC.readSetupAccount)?.({})).resolves.toMatchObject({ status: 'unauthenticated' });
+    expect(coreHost.readSetupAccount).toHaveBeenCalledWith({ releaseAfterRead: true });
   });
 });

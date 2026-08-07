@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "status",
+    "implementation_allowed",
+    "safe_default",
+    "conflicts",
+    "questions"
+  ],
+  "properties": {
+    "status": {
+      "enum": [
+        "implemented",
+        "needs_user_input"
+      ]
+    },
+    "implementation_allowed": {
+      "type": "boolean"
+    },
+    "safe_default": {
+      "enum": [
+        "local_only_no_upload",
+        "approved_remote_upload"
+      ]
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "documents",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -15,7 +15,7 @@ export function ConversationHistory({ targetAgentId, agents, messages, nextCurso
   onLoadOlder(): void;
   onClose(): void;
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const scroller = useRef<HTMLDivElement>(null);
   const target = agents.find((agent) => agent.id === targetAgentId)?.displayName ?? targetAgentId;
   const scrollLatest = () => scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' });
@@ -24,7 +24,15 @@ export function ConversationHistory({ targetAgentId, agents, messages, nextCurso
     <OverlayFrame title={`${t('conversation')} · ${target}`} ariaLabel={`${t('conversation')} · ${target}`} className="conversation-overlay" onClose={onClose}>
       <div ref={scroller} className="conversation-scroll" data-testid="conversation-scroll">
         {nextCursor ? <button type="button" className="conversation-load-older" onClick={onLoadOlder} disabled={loadingOlder}><ArrowUp size={14} />{loadingOlder ? t('loadingOlder') : t('loadOlder')}</button> : null}
-        {messages.length ? messages.map((message) => (
+        {messages.length ? messages.map((message) => message.kind === 'session_boundary' && message.sessionBoundary ? (
+          <div key={message.id} className="session-boundary" role="separator">
+            <span />
+            <p>{locale === 'ja'
+              ? `会話を保ったまま、実行セッションを世代${message.sessionBoundary.toGeneration}へ引き継ぎました。`
+              : `Execution continued in generation ${message.sessionBoundary.toGeneration} while preserving this conversation.`}</p>
+            <span />
+          </div>
+        ) : (
           <article key={message.id} className={`conversation-message conversation-message--${message.role}`}>
             <span className="conversation-message__avatar">{message.role === 'user' ? <UserRound size={16} /> : <Bot size={16} />}</span>
             <div><header><strong>{message.authorLabel}</strong><time>{formatDateTime(message.createdAt)}</time></header><p>{message.text}</p>{message.evidenceLabel ? <small>{message.evidenceLabel}</small> : null}</div>

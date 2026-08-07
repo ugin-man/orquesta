@@ -476,6 +476,10 @@ function writeJsonAtomic(filePath, data, options = {}) {
   return withTargetLock(filePath, options, () => writeJsonUnlocked(filePath, data, options));
 }
 
+function writeTextAtomic(filePath, data, options = {}) {
+  return withTargetLock(filePath, options, () => writeTextUnlocked(filePath, String(data), options));
+}
+
 function updateJsonAtomic(filePath, defaultValue, updater, options = {}) {
   return withTargetLock(filePath, options, () => {
     const current = readJsonFile(filePath, defaultValue);
@@ -487,6 +491,12 @@ function updateJsonAtomic(filePath, defaultValue, updater, options = {}) {
 function appendJsonlAtomic(filePath, event, options = {}) {
   return withTargetLock(filePath, options, () => {
     const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+    if (event?.event_id) {
+      const duplicate = existing.split(/\r?\n/).filter(Boolean).some((line) => (
+        JSON.parse(line).event_id === event.event_id
+      ));
+      if (duplicate) return { path: filePath, status: "already_present" };
+    }
     const prefix = existing && !existing.endsWith("\n") ? `${existing}\n` : existing;
     const result = writeTextUnlocked(filePath, `${prefix}${JSON.stringify(event)}\n`, options);
     return { ...result, status: "appended" };
@@ -620,5 +630,6 @@ module.exports = {
   readJsonFile,
   recoverJsonFile,
   updateJsonAtomic,
-  writeJsonAtomic
+  writeJsonAtomic,
+  writeTextAtomic
 };

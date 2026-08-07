@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { mkdir, mkdtemp, readFile, rm } = require("node:fs/promises");
+const { mkdir, mkdtemp, readFile, readdir, rm } = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
@@ -73,6 +73,8 @@ test("runs all six handlers in order and completes only after operation", async 
   assert.equal(completed.current_phase_id, "operation");
   assert.ok(completed.completed_at);
   assert.equal(progress.at(-1).status, "completed");
+  const setupEntries = await readdir(path.join(root, ".orquesta", "setup"));
+  assert.ok(setupEntries.every((name) => !name.includes(".tmp-") && !name.endsWith(".lock")));
 });
 
 test("blocks on the failing phase and resumes from that phase", async () => {

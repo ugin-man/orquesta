@@ -1,5 +1,7 @@
 # GitHub Install Bootstrap Smoke Test
 
+> Historical evidence: this test was run against the June 2026 bootstrap and older foundation-role layout. It is kept for provenance and does not prove that the current three-seat V4 setup or current installer passes. Re-run a clean-project install before the next public tag.
+
 Date: 2026-06-22
 
 ## Purpose
@@ -92,9 +94,9 @@ This retest must be done from a separate project or chat. The current Orquesta d
 
 ### Setup
 
-1. Open or create a small disposable project folder that is not `C:\Users\kouki\OneDrive\ドキュメント\Orquesta`.
+1. Open or create a small disposable project folder that is not `C:\Users\example\OneDrive\ドキュメント\Orquesta`.
 2. Start a fresh Codex chat in that folder.
-3. Confirm the Orquesta skill is installed at `C:\Users\kouki\.codex\skills\orquesta\SKILL.md`.
+3. Confirm the Orquesta skill is installed at `C:\Users\example\.codex\skills\orquesta\SKILL.md`.
 4. Ask Codex to initialize Orquesta in that disposable project.
 
 Suggested prompt:
@@ -140,7 +142,7 @@ After the result comes back, the orchestrator should write `.orquesta/reports/T0
 
 Status: failed, repaired locally, public reinstall still pending
 
-The user ran the clean test in `C:\Users\kouki\OneDrive\ドキュメント\New project`. The setup created the foundation agents and found a verified project-owned dashboard on `http://127.0.0.1:4179/`, but the visible dashboard was stale:
+The user ran the clean test in `C:\Users\example\OneDrive\ドキュメント\New project`. The setup created the foundation agents and found a verified project-owned dashboard on `http://127.0.0.1:4179/`, but the visible dashboard was stale:
 
 - Team Visualizer showed only the user node.
 - Setup tab was missing.
@@ -149,7 +151,7 @@ The user ran the clean test in `C:\Users\kouki\OneDrive\ドキュメント\New p
 
 Root cause:
 
-- The installed skill at `C:\Users\kouki\.codex\skills\orquesta` had stale dashboard assets compared with the current Orquesta source checkout.
+- The installed skill at `C:\Users\example\.codex\skills\orquesta` had stale dashboard assets compared with the current Orquesta source checkout.
 - The clean project copied those stale assets, so `/api/state` was correct but the rendered dashboard shell was old.
 
 Local repair:

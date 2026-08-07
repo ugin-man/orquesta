@@ -5,7 +5,8 @@ const path = require("path");
 
 const {
   inspectCompletionEnvelope,
-  isStagedInTask
+  isStagedInTask,
+  validateCompletionEnvelope
 } = require("./completion-envelope-check");
 const {
   createEmptyCapacityLedger,
@@ -247,7 +248,8 @@ function buildControlAudit(inputs = {}, options = {}) {
     const taskForEvidence = effectiveReportPath
       ? { ...task, specialist_report_path: effectiveReportPath }
       : task;
-    const taskReportExists = reportExists(root, effectiveReportPath);
+    const completionOverride = options.completionEnvelopes?.[task.task_id] || null;
+    const taskReportExists = Boolean(completionOverride) || reportExists(root, effectiveReportPath);
     const taskDispatches = dispatches.filter((dispatch) => dispatch.task_id === task.task_id);
 
     if (hard && task.routing_class === "specialist_required" && !validTime(task.handoff_sent_at)) {
@@ -271,10 +273,15 @@ function buildControlAudit(inputs = {}, options = {}) {
 
     if (COMPLETION_STATES.has(task.state)) {
       if (effectiveReportPath && taskReportExists) {
-        const check = inspectCompletionEnvelope(safeReportPath(root, effectiveReportPath), taskForEvidence, {
-          stagedIn: hard,
-          rolloutMode
-        });
+        const check = completionOverride
+          ? validateCompletionEnvelope(completionOverride, taskForEvidence, {
+            stagedIn: hard,
+            rolloutMode
+          })
+          : inspectCompletionEnvelope(safeReportPath(root, effectiveReportPath), taskForEvidence, {
+            stagedIn: hard,
+            rolloutMode
+          });
         addCompletionFindings(findings, check, taskForEvidence, hard, now);
         if (check.envelope) auditCapacityEvidence(findings, task, check.envelope, now);
       } else if (hard) {
@@ -487,7 +494,14 @@ function runControlAudit(options = {}) {
   return { audit, write, outputPath };
 }
 
-function reviewTaskControl({ root, task, reportPath, now = new Date().toISOString(), rolloutMode = "progressive" }) {
+function reviewTaskControl({
+  root,
+  task,
+  reportPath,
+  completionEnvelope = null,
+  now = new Date().toISOString(),
+  rolloutMode = "progressive"
+}) {
   const projectRoot = path.resolve(root);
   const taskForReview = {
     ...task,
@@ -495,14 +509,26 @@ function reviewTaskControl({ root, task, reportPath, now = new Date().toISOStrin
   };
   const inputs = readAuditInputs(projectRoot);
   inputs.tasks = { version: 1, tasks: [taskForReview] };
-  const audit = buildControlAudit(inputs, { root: projectRoot, now, rolloutMode });
+  const audit = buildControlAudit(inputs, {
+    root: projectRoot,
+    now,
+    rolloutMode,
+    completionEnvelopes: completionEnvelope
+      ? { [taskForReview.task_id]: completionEnvelope }
+      : null
+  });
   const hard = isHardGateTask(taskForReview, { rolloutMode });
-  const completion = reportPath
-    ? inspectCompletionEnvelope(safeReportPath(projectRoot, reportPath), taskForReview, {
+  const completion = completionEnvelope
+    ? validateCompletionEnvelope(completionEnvelope, taskForReview, {
       stagedIn: hard,
       rolloutMode
     })
-    : null;
+    : reportPath
+      ? inspectCompletionEnvelope(safeReportPath(projectRoot, reportPath), taskForReview, {
+      stagedIn: hard,
+      rolloutMode
+    })
+      : null;
   return {
     status: audit.status,
     blockers: audit.findings.filter((item) => item.severity === "blocker"),

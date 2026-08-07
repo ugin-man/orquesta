@@ -6,7 +6,7 @@ const { writeJsonAtomic } = require("./json-state");
 
 const FOUNDATION_AGENT_IDS = ["user-support", "orquesta-admin"];
 const OPEN_USER_TASK_STATES = new Set(["ready", "active", "pending", "blocked", "needs_review", "needs_user_review"]);
-const CLOSED_STATES = new Set(["accepted", "adopted", "curated", "resolved", "retired", "skipped", "rejected", "done", "completed", "archived"]);
+const CLOSED_STATES = new Set(["accepted", "adopted", "curated", "resolved", "retired", "superseded", "skipped", "rejected", "done", "completed", "archived"]);
 const SESSION_STALE_MINUTES = 60;
 const LIVE_CLAIM_STALE_MINUTES = 5;
 const HEARTBEAT_STALE_HOURS = 24;

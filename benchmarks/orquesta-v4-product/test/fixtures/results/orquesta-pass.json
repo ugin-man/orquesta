@@ -1,0 +1,10 @@
+{
+  "task_id": "parallel-integration",
+  "mode": "orquesta",
+  "status": "finalized",
+  "wall_time_ms": 210000,
+  "verifier": { "status": "passed", "passed": true },
+  "credit": { "status": "complete", "consumed": 180 },
+  "token_usage": { "coverage": "complete" },
+  "diagnostics": { "participating_threads": 3, "agent_turns": 8, "handoffs": 2, "independent_reviews": 1, "correction_batches": 0, "user_interventions": 0 }
+}

@@ -289,6 +289,7 @@ test("keeps steer, direct approval, and actual-model evidence explicitly unsuppo
     })
   });
   for (const [method, input] of [
+    ["archiveThread", { correlationId: "corr-archive" }],
     ["steerTurn", { correlationId: "corr-steer" }],
     ["respondToApproval", { correlationId: "corr-approval" }],
     ["readActualModel", { correlationId: "corr-model" }]

@@ -308,6 +308,20 @@ try {
     assert.deepStrictEqual(tempFilesFor(filePath), []);
   });
 
+  test("appendJsonlAtomic makes a deterministic event_id idempotent", () => {
+    const filePath = makePath("events-idempotent", "events.jsonl");
+    appendJsonlAtomic(filePath, { event_id: "acceptance:TASK-1", type: "task_accepted" });
+    const repeated = appendJsonlAtomic(filePath, {
+      event_id: "acceptance:TASK-1",
+      type: "task_accepted",
+      repeated: true
+    });
+
+    const lines = fs.readFileSync(filePath, "utf8").trimEnd().split(/\r?\n/).map(JSON.parse);
+    assert.deepStrictEqual(lines, [{ event_id: "acceptance:TASK-1", type: "task_accepted" }]);
+    assert.strictEqual(repeated.status, "already_present");
+  });
+
   test("recoverJsonFile does not rewrite a valid Japanese UTF-8 file", () => {
     const filePath = makePath("display-only", "state.json");
     fs.mkdirSync(path.dirname(filePath), { recursive: true });

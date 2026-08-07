@@ -28,20 +28,6 @@ function createEmptyCapacityLedger(overrides = {}) {
   return {
     version: 1,
     updated_at: null,
-    policy: { ...DEFAULT_POLICY, ...(overrides.policy || {}) },
-    orchestra: {
-      mode: "normal",
-      reason_codes: [],
-      affected_task_ids: [],
-      safe_work_task_ids: [],
-      changed_at: null,
-      notification_key: null,
-      ...(overrides.orchestra || {})
-    },
-    capacity_records: [],
-    dispatches: [],
-    evidence: [],
-    notifications: [],
     ...overrides,
     policy: { ...DEFAULT_POLICY, ...(overrides.policy || {}) },
     orchestra: {

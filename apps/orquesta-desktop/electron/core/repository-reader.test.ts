@@ -28,7 +28,16 @@ function documents(lastSeen = '2026-07-18T10:59:30.000Z') {
         routing_class: 'specialist_required', acceptance_checks: ['Snapshot is truthful.'], updated_at: '2026-07-18T10:59:40.000Z'
       }]
     },
-    sessions: { synced_at: '2026-07-18T11:00:00.000Z', sessions: [{ agent_id: 'worker', status: 'active', last_seen: lastSeen }] },
+    sessions: {
+      synced_at: '2026-07-18T11:00:00.000Z',
+      sessions: [{
+        agent_id: 'worker',
+        thread_id: 'thread-worker',
+        binding_status: 'bound',
+        status: 'active',
+        last_seen: lastSeen
+      }]
+    },
     questions: { questions: [{ question_id: 'Q1', status: 'pending', question: 'Choose the next milestone.', source_agent_id: 'orchestrator', created_at: '2026-07-18T10:57:00.000Z' }] },
     incidents: { incidents: [{ incident_id: 'F1', status: 'open', severity: 'medium', title: 'Watcher retrying', current_action: 'Wait for the next read.', source_agent_id: 'worker', task_id: 'T1', detected_at: '2026-07-18T10:56:00.000Z', user_action_required: false }] },
     events: [{ ts: '2026-07-18T10:59:40.000Z', type: 'progress_observed', task_id: 'T1', summary: 'Reader tests are running.' }]
@@ -62,6 +71,26 @@ describe('repository reader', () => {
     expect(snapshot.setup?.phases.find((phase) => phase.id === 'environment')).toMatchObject({ status: 'active' });
     expect(snapshot.agents).toEqual([]);
     expect(snapshot.tasks).toEqual([]);
+  });
+
+  test('requires explicit migration before reading a nonempty legacy organization', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-legacy-read-'));
+    temporaryRoots.push(root);
+    const stateRoot = path.join(root, '.orquesta', 'state');
+    await mkdir(stateRoot, { recursive: true });
+    await writeFile(path.join(stateRoot, 'agents.json'), JSON.stringify({
+      version: 1,
+      agents: [
+        { agent_id: 'orchestrator', role: 'orchestrator', status: 'active' },
+        { agent_id: 'implementation-001', role: 'implementation', status: 'standby' }
+      ]
+    }), 'utf8');
+    await writeFile(path.join(stateRoot, 'tasks.json'), JSON.stringify({ version: 1, tasks: [] }), 'utf8');
+    await writeFile(path.join(stateRoot, 'sessions.json'), JSON.stringify({ version: 1, sessions: [] }), 'utf8');
+
+    await expect(readRepositorySnapshot(root)).rejects.toThrow('legacy_organization_requires_explicit_migration');
+    await expect(readFile(path.join(stateRoot, 'roles.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(path.join(stateRoot, 'organization.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   test('presents legacy orquesta-admin state as Luca without changing its machine identity', () => {
@@ -168,6 +197,21 @@ describe('repository reader', () => {
 
     expect(snapshot.project.provenWorkingAgentCount).toBe(0);
     expect(snapshot.agents.find((agent) => agent.id === 'worker')).toMatchObject({ status: 'stale', statusEvidence: 'reported' });
+  });
+
+  test('does not show an agent as working when its canonical Codex binding is missing', () => {
+    const source = documents();
+    source.sessions.sessions[0].binding_status = 'missing';
+    const snapshot = projectSnapshotFromDocuments({
+      rootPath: 'C:\\work\\sample',
+      now: new Date('2026-07-18T11:00:00.000Z'),
+      documents: source
+    });
+    expect(snapshot.agents.find((agent) => agent.id === 'worker')).toMatchObject({
+      status: 'stale',
+      statusEvidence: 'proven'
+    });
+    expect(snapshot.project.provenWorkingAgentCount).toBe(0);
   });
 
   test('does not infer a completed review task as an agent current task', () => {
@@ -482,6 +526,24 @@ describe('repository reader', () => {
     const tasksText = `${JSON.stringify(source.tasks, null, 2)}\n`;
     await writeFile(path.join(state, 'agents.json'), agentsText, 'utf8');
     await writeFile(path.join(state, 'tasks.json'), tasksText, 'utf8');
+    await writeFile(path.join(state, 'roles.json'), JSON.stringify({
+      schema_version: 1,
+      organization_revision: 1,
+      roles: []
+    }), 'utf8');
+    await writeFile(path.join(state, 'organization.json'), JSON.stringify({
+      schema_version: 2,
+      revision: 1,
+      agents: [
+        { agent_id: 'orchestrator', role_id: 'orchestrator', organization_scope: 'project', lifecycle_state: 'active', operational_status: 'working' },
+        { agent_id: 'worker', role_id: 'implementation', organization_scope: 'project', lifecycle_state: 'active', operational_status: 'working' },
+        { agent_id: 'idle', role_id: 'reviewer', organization_scope: 'project', lifecycle_state: 'active', operational_status: 'standby' }
+      ],
+      teams: [],
+      memberships: [],
+      relationships: [],
+      lines: []
+    }), 'utf8');
 
     const snapshot = await readRepositorySnapshot(root, { now: new Date('2026-07-18T11:00:00.000Z') });
 
@@ -532,5 +594,55 @@ describe('repository reader', () => {
     await writeFile(path.join(state, 'tasks.json'), '{"tasks":[]}', 'utf8');
 
     await expect(readRepositorySnapshot(root)).rejects.toThrow('agents.json');
+  });
+
+  test('projects a bounded read-only project structure summary', () => {
+    const source = documents();
+    source.tasks.tasks[0] = {
+      ...source.tasks.tasks[0],
+      task_id: 'T-STRUCTURE',
+      title: 'Inspect structure',
+      owner_agent_id: 'worker',
+      state: 'in_progress',
+      required_reading: ['docs/design.md', '.orquesta/project/layout.json']
+    } as never;
+    const snapshot = projectSnapshotFromDocuments({
+      rootPath: 'C:\\work\\sample',
+      documents: {
+        ...source,
+        structureInventory: {
+          generated_at: '2026-08-01T10:00:00.000Z',
+          stats: { indexed_files: 4 },
+          files: [
+            { source_ref: '.orquesta/project/layout.json', component_id: 'runtime-state', lifecycle: 'current', authority: 'canonical', read_policy: 'task_candidate' },
+            { source_ref: 'docs/design.md', component_id: 'docs', lifecycle: 'current', authority: 'supporting', read_policy: 'task_candidate' },
+            { source_ref: 'archive/old.md', component_id: 'docs', lifecycle: 'archived', authority: 'supporting', read_policy: 'explicit_only' },
+            { source_ref: 'tmp/broken.json', component_id: 'runtime-state', lifecycle: 'quarantined', authority: 'supporting', read_policy: 'never' }
+          ]
+        },
+        structureAudit: {
+          blocked: false,
+          summary: { error: 0, warning: 1, suggestion: 0 },
+          issues: [{ severity: 'warning', code: 'stale_reference', message: 'A stale reference remains.', source_refs: ['docs/design.md'] }]
+        },
+        initialContextView: { view_id: 'PSCV-0123456789abcdef', sources: { candidate_count: 2, excluded_count: 2 }, warnings: [] },
+        migrationPlan: { plan_id: 'PSMP-0123456789abcdef', status: 'review_required', operations: [{ action: 'quarantine', destructive: false }], rollback: { steps: [{}] } },
+        migrationResult: { result_id: 'PSMR-0123456789abcdef', plan_id: 'PSMP-0123456789abcdef', status: 'applied', approval: { decision: 'accepted' }, operations: [{ action: 'quarantine', status: 'applied' }], verification: { runtime_ephemeral_warning: false, remaining_audit_summary: { error: 0, warning: 0 } }, rollback: { reverse_operations: [{}] }, applied_at: '2026-08-01T10:10:00.000Z' }
+      } as never
+    });
+
+    expect(snapshot.projectStructure).toMatchObject({
+      available: true,
+      status: 'attention',
+      indexedFileCount: 4,
+      canonicalSourceCount: 1,
+      lifecycleCounts: { current: 2, archived: 1, quarantined: 1 },
+      issueCounts: { error: 0, warning: 1, suggestion: 0 },
+      contextOverview: { viewId: 'PSCV-0123456789abcdef', candidateSourceCount: 2, excludedSourceCount: 2 },
+      migration: { status: 'applied', operationCount: 1, destructiveOperationCount: 0, approvalDecision: 'accepted', verificationStatus: 'passed', rollbackStepCount: 1 }
+    });
+    expect(snapshot.projectStructure?.canonicalSources.map((item) => item.sourceRef)).toEqual(['.orquesta/project/layout.json']);
+    expect(snapshot.projectStructure?.retiredSources.map((item) => item.sourceRef)).toEqual(['archive/old.md', 'tmp/broken.json']);
+    expect(snapshot.projectStructure?.specialistContexts[0]).toMatchObject({ taskId: 'T-STRUCTURE', active: true, requiredReading: ['docs/design.md', '.orquesta/project/layout.json'] });
   });
 });

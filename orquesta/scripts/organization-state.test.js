@@ -12,6 +12,7 @@ const {
   migrateLegacyOrganization,
   repairLegacyOrganizationMigration,
   readOrganizationBundle,
+  resolveLegacyOrganizationMigration,
 } = require("./organization-state");
 
 const NOW = "2026-07-20T13:50:00.000Z";
@@ -111,6 +112,111 @@ test("legacy migration is idempotent and canonicalizes one role definition per r
   assert.deepEqual(second, first);
   assert.equal(new Set(first.rolesState.roles.map((role) => role.role_id)).size, first.rolesState.roles.length);
   assert.equal(first.agentsState.agents.filter((agent) => agent.agent_id === "user-support").length, 1);
+});
+
+test("an explicit mapping replaces the migration placeholder and completes the V4 organization migration", () => {
+  const migrated = migrateLegacyOrganization({
+    projectId: "fixture-project",
+    agentsState: legacyAgents(),
+    sessionsState: emptySessions(),
+    tasksState: emptyTasks(),
+    now: NOW,
+  });
+
+  const resolved = resolveLegacyOrganizationMigration({
+    ...migrated,
+    lines: [
+      {
+        line_id: "product-line",
+        display_name: "商品開発",
+        goal: "既存の商品ラインを継続する。",
+        deliverable_ids: ["product-delivery"],
+        completion_root_ids: ["product-completion"],
+        scope: ["product"],
+        owner_agent_id: "orchestrator",
+        dedicated_lead_agent_id: null,
+        status: "active",
+        approval_source: "setup_confirmation",
+      },
+      {
+        line_id: "receiving-line",
+        display_name: "受注OS",
+        goal: "既存の受注ラインを継続する。",
+        deliverable_ids: ["receiving-delivery"],
+        completion_root_ids: ["receiving-completion"],
+        scope: ["receiving"],
+        owner_agent_id: "orchestrator",
+        dedicated_lead_agent_id: null,
+        status: "active",
+        approval_source: "setup_confirmation",
+      },
+    ],
+    teams: [
+      {
+        team_id: "product-bootstrap-qa",
+        line_id: "product-line",
+        display_name: "商品QA",
+        purpose: "既存の商品QAを継続する。",
+        lifecycle_state: "active",
+      },
+      {
+        team_id: "receiving-implementation",
+        line_id: "receiving-line",
+        display_name: "受注OS実装",
+        purpose: "既存の受注OS実装を継続する。",
+        lifecycle_state: "active",
+      },
+    ],
+    assignments: [
+      {
+        agent_id: "bootstrap-qa-001",
+        team_id: "product-bootstrap-qa",
+        position: "member",
+        ordinal: 1,
+      },
+      {
+        agent_id: "implementation-001",
+        team_id: "receiving-implementation",
+        position: "member",
+        ordinal: 1,
+      },
+    ],
+    now: "2026-07-21T15:00:00.000Z",
+  });
+
+  assert.equal(resolved.agentsState.organization_migration.status, "complete");
+  assert.deepEqual(resolved.agentsState.organization_migration.unassigned_production_agent_ids, []);
+  assert.equal(resolved.agentsState.agents.find((agent) => agent.agent_id === "bootstrap-qa-001").migration_review_required, false);
+  assert.equal(resolved.agentsState.agents.find((agent) => agent.agent_id === "implementation-001").migration_review_required, false);
+  assert.equal(resolved.organizationState.lines.some((line) => line.line_id === "migration-existing-project"), false);
+  assert.equal(resolved.organizationState.teams.some((team) => team.line_id === "migration-existing-project"), false);
+  assert.equal(resolved.organizationState.memberships.some((membership) => membership.membership_id.includes("migration-existing-project")), false);
+  assert.equal(resolved.organizationState.memberships.find((membership) => membership.agent_id === "bootstrap-qa-001").team_id, "product-bootstrap-qa");
+  assert.equal(resolved.organizationState.memberships.find((membership) => membership.agent_id === "implementation-001").team_id, "receiving-implementation");
+  assert.equal(resolved.organizationState.revision, migrated.organizationState.revision + 1);
+  assert.doesNotThrow(() => assertContract("organization-state", resolved.organizationState));
+
+  const repeated = resolveLegacyOrganizationMigration({
+    ...resolved,
+    lines: resolved.organizationState.lines,
+    teams: resolved.organizationState.teams,
+    assignments: [
+      {
+        agent_id: "bootstrap-qa-001",
+        team_id: "product-bootstrap-qa",
+        position: "member",
+        ordinal: 1,
+      },
+      {
+        agent_id: "implementation-001",
+        team_id: "receiving-implementation",
+        position: "member",
+        ordinal: 1,
+      },
+    ],
+    now: "2026-07-21T15:05:00.000Z",
+  });
+  assert.deepEqual(repeated, resolved);
 });
 
 test("a new repository receives exactly the three unconditional foundation agents", () => {

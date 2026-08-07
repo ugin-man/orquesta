@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "matrix_id": "matrix-YYYYMMDD-HHMMSS",
+  "conditions": [
+    "plain",
+    "skills",
+    "orquesta"
+  ],
+  "task_id": "organization-json-generator",
+  "available_task_ids": [
+    "organization-json-generator",
+    "parallel-integration",
+    "conflicting-requirements-triage"
+  ],
+  "execution": {
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "sandbox": "workspace-write",
+    "approval_policy": "never",
+    "agent_timeout_sec": 900,
+    "verifier_timeout_sec": 60
+  },
+  "notes": [
+    "The executable contract is manifest.json; this file is a human-readable example.",
+    "Formal runs use --matrix-id and may use --task, --mode, --storage-root, --preflight, and --output.",
+    "Omit --mode for the full three-condition matrix; use --mode orquesta for a focused out-of-sample run."
+  ]
+}

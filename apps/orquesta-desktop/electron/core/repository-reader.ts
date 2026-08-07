@@ -15,6 +15,10 @@ import { emptyV4OperationsSnapshot, INSPECTION_TEMPLATE_DEFINITIONS, type
   InspectionTemplateUiModel,
   OrganizationUiSnapshot,
   OrquestaUiSnapshot,
+  ProjectStructureIssueUi,
+  ProjectStructureLifecycle,
+  ProjectStructureSourceUi,
+  ProjectStructureUiSnapshot,
   ProjectPhaseUiModel,
   RuntimeUiEvent,
   SetupActivityUiModel,
@@ -25,6 +29,7 @@ import { emptyV4OperationsSnapshot, INSPECTION_TEMPLATE_DEFINITIONS, type
 } from '../../src/contracts/orquesta-ui';
 import { parseInspectionState } from './inspection-run-store';
 import { LUCA_AGENT_ID, LUCA_DISPLAY_NAME, LUCA_ROLE_LABEL, LUCA_ROLE_SUMMARY } from '../../src/contracts/luca';
+import { assertExplicitOrganizationState } from './legacy-organization-migration';
 
 type JsonObject = Record<string, unknown>;
 
@@ -45,6 +50,11 @@ export interface RepositoryDocuments {
   incidentCandidates?: unknown;
   incidentClusters?: unknown;
   inspectionRuns?: unknown;
+  structureInventory?: unknown;
+  structureAudit?: unknown;
+  initialContextView?: unknown;
+  migrationPlan?: unknown;
+  migrationResult?: unknown;
   events?: unknown[];
 }
 
@@ -68,6 +78,17 @@ const FALLBACK_CURRENT_TASK_STATES = new Set([
   'working',
   'blocked',
   'approval_wait'
+]);
+const PROJECT_STRUCTURE_ITEM_LIMIT = 64;
+const PROJECT_STRUCTURE_CONTEXT_LIMIT = 32;
+const PROJECT_STRUCTURE_READING_LIMIT = 64;
+const PROJECT_STRUCTURE_TERMINAL_TASK_STATES = new Set([
+  'accepted',
+  'retired',
+  'superseded',
+  'cancelled',
+  'completed',
+  'failed'
 ]);
 
 function object(value: unknown): JsonObject | null {
@@ -98,6 +119,133 @@ function integer(value: unknown, fallback = 0): number {
 function stringList(value: unknown): string[] {
   const single = string(value);
   return single ? [single] : stringArray(value);
+}
+
+function structureLifecycle(value: unknown): ProjectStructureLifecycle {
+  const lifecycle = string(value);
+  return lifecycle && ['current', 'superseded', 'archived', 'quarantined', 'delete_candidate'].includes(lifecycle)
+    ? lifecycle as ProjectStructureLifecycle
+    : 'unknown';
+}
+
+function structureSource(row: JsonObject): ProjectStructureSourceUi | null {
+  const sourceRef = string(row.source_ref);
+  if (!sourceRef) return null;
+  return {
+    sourceRef,
+    componentId: string(row.component_id),
+    lifecycle: structureLifecycle(row.lifecycle),
+    authority: string(row.authority) ?? 'unknown',
+    readPolicy: string(row.read_policy) ?? 'unknown'
+  };
+}
+
+function projectStructure(documents: RepositoryDocuments): ProjectStructureUiSnapshot {
+  const inventory = object(documents.structureInventory);
+  const inventoryFiles = rows(documents.structureInventory, 'files');
+  const audit = object(documents.structureAudit);
+  const auditSummary = object(audit?.summary);
+  const rawIssues = rows(documents.structureAudit, 'issues');
+  const issues = rawIssues.slice(0, PROJECT_STRUCTURE_ITEM_LIMIT).map((issue): ProjectStructureIssueUi => {
+    const rawSeverity = string(issue.severity);
+    const severity = rawSeverity && ['error', 'warning', 'suggestion'].includes(rawSeverity)
+      ? rawSeverity as ProjectStructureIssueUi['severity']
+      : 'unknown';
+    return {
+      severity,
+      code: string(issue.code) ?? 'unknown_issue',
+      message: string(issue.message) ?? 'Structure issue details are unavailable.',
+      sourceRefs: stringArray(issue.source_refs).slice(0, PROJECT_STRUCTURE_ITEM_LIMIT)
+    };
+  });
+  const lifecycleCounts = inventoryFiles.reduce<ProjectStructureUiSnapshot['lifecycleCounts']>((counts, file) => {
+    const lifecycle = structureLifecycle(file.lifecycle);
+    if (lifecycle === 'current') counts.current += 1;
+    else if (lifecycle === 'superseded') counts.superseded += 1;
+    else if (lifecycle === 'archived') counts.archived += 1;
+    else if (lifecycle === 'quarantined') counts.quarantined += 1;
+    else if (lifecycle === 'delete_candidate') counts.deleteCandidate += 1;
+    return counts;
+  }, { current: 0, superseded: 0, archived: 0, quarantined: 0, deleteCandidate: 0 });
+  const canonical = inventoryFiles.filter((file) => structureLifecycle(file.lifecycle) === 'current' && string(file.authority) === 'canonical');
+  const retired = inventoryFiles.filter((file) => ['superseded', 'archived', 'quarantined', 'delete_candidate'].includes(structureLifecycle(file.lifecycle)));
+  const issueCounts = {
+    error: integer(auditSummary?.error),
+    warning: integer(auditSummary?.warning),
+    suggestion: integer(auditSummary?.suggestion)
+  };
+  const contexts = rows(documents.tasks, 'tasks')
+    .flatMap((task) => {
+      const requiredReading = stringArray(task.required_reading).slice(0, PROJECT_STRUCTURE_READING_LIMIT);
+      const taskId = string(task.task_id);
+      if (!taskId || !requiredReading.length) return [];
+      const taskStatus = string(task.state) ?? string(task.status) ?? 'unknown';
+      return [{
+        taskId,
+        taskTitle: string(task.title) ?? taskId,
+        ownerAgentId: string(task.owner_agent_id),
+        taskState: taskStatus,
+        active: !PROJECT_STRUCTURE_TERMINAL_TASK_STATES.has(taskStatus),
+        requiredReading,
+        updatedAt: dateValue(task.updated_at)
+      }];
+    })
+    .sort((left, right) => Number(right.active) - Number(left.active) || right.updatedAt - left.updatedAt)
+    .slice(0, PROJECT_STRUCTURE_CONTEXT_LIMIT)
+    .map(({ updatedAt: _updatedAt, ...context }) => context);
+  const contextView = object(documents.initialContextView);
+  const contextSources = object(contextView?.sources);
+  const plan = object(documents.migrationPlan);
+  const result = object(documents.migrationResult);
+  const planOperations = rows(documents.migrationPlan, 'operations');
+  const resultOperations = rows(documents.migrationResult, 'operations');
+  const verification = object(result?.verification);
+  const resultRollback = object(result?.rollback);
+  const rollbackOperations = rows(resultRollback, 'reverse_operations');
+  const applied = string(result?.status) === 'applied';
+  const verificationWarning = verification?.runtime_ephemeral_warning === true
+    || integer(object(verification?.remaining_audit_summary)?.error) > 0
+    || integer(object(verification?.remaining_audit_summary)?.warning) > 0;
+  const migration = plan || result ? {
+    planId: string(result?.plan_id) ?? string(plan?.plan_id),
+    resultId: string(result?.result_id),
+    status: string(result?.status) ?? string(plan?.status) ?? 'unknown',
+    operationCount: resultOperations.length || planOperations.length,
+    destructiveOperationCount: (resultOperations.length ? resultOperations : planOperations).filter((operation) => operation.destructive === true || string(operation.action) === 'delete').length,
+    approvalDecision: string(object(result?.approval)?.decision) ?? (object(plan?.approval)?.applied === true ? 'accepted' : null),
+    appliedAt: string(result?.applied_at),
+    verificationStatus: applied ? (verificationWarning ? 'warning' as const : 'passed' as const) : 'not_run' as const,
+    rollbackStepCount: rollbackOperations.length || rows(object(plan?.rollback), 'steps').length
+  } : null;
+  const available = Boolean(inventory);
+  const status = !available
+    ? 'unavailable' as const
+    : audit?.blocked === true || issueCounts.error > 0
+      ? 'blocked' as const
+      : issueCounts.warning > 0
+        ? 'attention' as const
+        : 'healthy' as const;
+  return {
+    available,
+    status,
+    generatedAt: string(inventory?.generated_at) ?? string(audit?.generated_at),
+    indexedFileCount: integer(object(inventory?.stats)?.indexed_files, inventoryFiles.length),
+    canonicalSourceCount: canonical.length,
+    lifecycleCounts,
+    issueCounts,
+    canonicalSources: canonical.slice(0, PROJECT_STRUCTURE_ITEM_LIMIT).flatMap((file) => structureSource(file) ?? []),
+    retiredSources: retired.slice(0, PROJECT_STRUCTURE_ITEM_LIMIT).flatMap((file) => structureSource(file) ?? []),
+    issues,
+    specialistContexts: contexts,
+    contextOverview: {
+      viewId: string(contextView?.view_id),
+      candidateSourceCount: integer(contextSources?.candidate_count),
+      excludedSourceCount: integer(contextSources?.excluded_count),
+      warnings: stringArray(contextView?.warnings).slice(0, PROJECT_STRUCTURE_ITEM_LIMIT)
+    },
+    migration,
+    limitation: available ? null : 'Project structure inventory is not available for this repository.'
+  };
 }
 
 function groupRows(items: JsonObject[], keyOf: (item: JsonObject) => string): Map<string, JsonObject[]> {
@@ -551,8 +699,12 @@ function projectAgents(
       ?? string(raw.organization_parent_agent_id)
       ?? (id === 'orchestrator' ? 'user' : null);
     const session = sessionByAgent.get(id);
+    const bindingStatus = string(session?.binding_status);
+    const liveBinding = bindingStatus === 'bound';
     const heartbeat = newestTimestamp([session?.last_seen, session?.updated_at, raw.last_heartbeat]);
-    const fresh = isFresh(heartbeat, now) && (!session || ['active', 'working', 'ready'].includes(string(session.status) ?? ''));
+    const fresh = liveBinding
+      && isFresh(heartbeat, now)
+      && ['active', 'working', 'ready'].includes(string(session?.status) ?? '');
     const rawStatus = string(organizationAgent?.operational_status) ?? string(raw.operational_status) ?? string(raw.status) ?? 'unknown';
     let status: AgentUiStatus;
     let statusEvidence: EvidenceLevel;
@@ -563,6 +715,8 @@ function projectAgents(
       status = 'report_ready'; statusEvidence = 'proven';
     } else if (rawStatus === 'approval_wait' || currentTask?.state === 'approval_wait') {
       status = 'approval_wait'; statusEvidence = 'reported';
+    } else if (!liveBinding) {
+      status = 'stale'; statusEvidence = bindingStatus ? 'proven' : 'unknown';
     } else if (currentTask?.turnStarted && fresh) {
       status = 'working'; statusEvidence = 'proven';
     } else if (currentTask?.turnStarted && !fresh) {
@@ -1015,6 +1169,7 @@ export function projectSnapshotFromDocuments({ rootPath, documents, now = new Da
     v4Operations: emptyV4OperationsSnapshot(),
     organization: organization.snapshot,
     setup: projectSetup(documents, rootPath, now),
+    projectStructure: projectStructure(documents),
     inspectionTemplates: inspections.templates,
     inspectionRuns: inspections.runs
   };
@@ -1079,9 +1234,13 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
   const setupStatePath = await confinedFile(root, path.join('.orquesta', 'setup', 'setup_state.json'));
   const provisioningBatchPath = await confinedFile(root, path.join('.orquesta', 'setup', 'provisioning_batch.json'));
   const inspectionRunsPath = await confinedFile(root, path.join('.orquesta', 'state', 'inspection-runs.json'));
+  const structureInventoryPath = await confinedFile(root, path.join('.orquesta', 'project', 'derived', 'structure-inventory.json'));
+  const structureAuditPath = await confinedFile(root, path.join('.orquesta', 'project', 'derived', 'structure-audit.json'));
+  const initialContextViewPath = await confinedFile(root, path.join('.orquesta', 'context', 'initial-context-view.json'));
+  const migrationPlanPath = await confinedFile(root, path.join('.orquesta', 'project', 'migration-plan.json'));
   const setupState = await readBoundedJson(setupStatePath, false);
   const partialSetup = setupAllowsPartialRepository(setupState);
-  const [agents, tasks, roles, organization, organizationDecisions, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, provisioningBatch, inspectionRuns, events] = await Promise.all([
+  const [agents, tasks, roles, organization, organizationDecisions, sessions, questions, userTasks, userActions, dashboardActions, incidents, incidentCandidates, incidentClusters, provisioningBatch, inspectionRuns, structureInventory, structureAudit, initialContextView, migrationPlan, events] = await Promise.all([
     readBoundedJson(agentsPath, !partialSetup),
     readBoundedJson(tasksPath, !partialSetup),
     readBoundedJson(rolesPath, false),
@@ -1097,8 +1256,17 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
     readBoundedJson(incidentClustersPath, false),
     readBoundedJson(provisioningBatchPath, false),
     readBoundedJson(inspectionRunsPath, false),
+    readBoundedJson(structureInventoryPath, false),
+    readBoundedJson(structureAuditPath, false),
+    readBoundedJson(initialContextViewPath, false),
+    readBoundedJson(migrationPlanPath, false),
     readEvents(eventsPath)
   ]);
+  assertExplicitOrganizationState({ agentsState: agents, rolesState: roles, organizationState: organization });
+  const migrationPlanId = string(object(migrationPlan)?.plan_id);
+  const migrationResult = migrationPlanId
+    ? await readBoundedJson(await confinedFile(root, path.join('.orquesta', 'project', 'migrations', 'applied', migrationPlanId, 'result.json')), false)
+    : undefined;
   return projectSnapshotFromDocuments({
     rootPath: root,
     now: options.now,
@@ -1106,7 +1274,8 @@ export async function readRepositorySnapshot(rootPath: string, options: { now?: 
       agents: agents ?? (partialSetup ? { agents: [] } : undefined),
       tasks: tasks ?? (partialSetup ? { tasks: [] } : undefined),
       roles, organization, organizationDecisions, sessions, questions, userTasks, userActions, dashboardActions,
-      incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, inspectionRuns, events
+      incidents, incidentCandidates, incidentClusters, setupState, provisioningBatch, inspectionRuns,
+      structureInventory, structureAudit, initialContextView, migrationPlan, migrationResult, events
     }
   });
 }

@@ -2,12 +2,20 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import * as canonicalAdapterModule from '@orquesta/codex-adapter';
 import type { ConversationMessage, ConversationPage, RuntimeInfoUi } from '../../src/contracts/bridge';
+import type { AgentSessionGeneration } from './project-thread-reconciler';
 import type { LucaAnswerPayload } from '../../src/contracts/luca';
 import type { InspectionKind } from '../../src/contracts/orquesta-ui';
 import type { SetupAccountState, SetupLoginStartResult } from '../../src/contracts/setup';
-import { LUCA_DEVELOPER_INSTRUCTIONS, LUCA_EFFORT, LUCA_MODEL, LUCA_TARGET_AGENT_ID } from '../shared/luca-runtime-profile';
+import { LUCA_TARGET_AGENT_ID } from '../shared/luca-runtime-profile';
+import { MessageLedger, type MessageDeliveryState, type MessageLedgerWriter } from './message-ledger';
 import type { RuntimeApprovalRequest, RuntimeModelEvidence, RuntimeNotification as DesktopRuntimeNotification } from './protocol';
 import type { InspectionRuntimeBoundary } from './inspection-run-store';
+import type { ProjectCodexThread } from './project-thread-reconciler';
+import {
+  ConversationProjectionStore,
+  type ConversationProjectionReader,
+  type ConversationProjectionRecord
+} from './conversation-projection-store';
 import { resolveDesktopSdkPackageRoot } from './runtime-location';
 import { verifyDesktopRuntimeIntegrity } from './runtime-integrity';
 
@@ -16,9 +24,12 @@ type UnknownRecord = Record<string, unknown>;
 export interface CanonicalCodexAdapter {
   createThread(input: UnknownRecord): Promise<UnknownRecord>;
   resumeThread(input: UnknownRecord): Promise<UnknownRecord>;
+  setThreadName(input: UnknownRecord): Promise<UnknownRecord>;
+  listThreads?(input: UnknownRecord): Promise<UnknownRecord>;
   startTurn(input: UnknownRecord): Promise<UnknownRecord>;
   interruptTurn(input: UnknownRecord): Promise<UnknownRecord>;
   readThread(input: UnknownRecord): Promise<UnknownRecord>;
+  listThreadTurns?(input: UnknownRecord): Promise<UnknownRecord>;
   readAccount(input: UnknownRecord): Promise<UnknownRecord>;
   startLogin(input: UnknownRecord): Promise<UnknownRecord>;
   runtimeInfo(input: UnknownRecord): Promise<UnknownRecord>;
@@ -35,6 +46,10 @@ export interface DesktopCodexServiceOptions {
   resourcesPath?: string;
   verifyIntegrity?: typeof verifyDesktopRuntimeIntegrity;
   now?: () => Date;
+  messageLedger?: MessageLedgerWriter | null;
+  conversationProjection?: ConversationProjectionReader | null;
+  conversationProjectionRoot?: string;
+  codexHome?: string;
 }
 
 export interface DesktopRuntimeSendInput {
@@ -43,10 +58,13 @@ export interface DesktopRuntimeSendInput {
   rootPath: string;
   threadId: string | null;
   targetAgentId: string;
+  threadTitle?: string | null;
   text: string;
   localImagePaths: string[];
   recommendedModel: string | null;
   requestedModel: string | null;
+  effort?: 'low' | 'medium' | 'high' | null;
+  onThreadReady?: (threadId: string) => Promise<void> | void;
 }
 
 export interface DesktopLucaSendInput {
@@ -88,6 +106,36 @@ function parseRouteText(text: string): { targetAgentId: string; text: string } {
   return match ? { targetAgentId: match[1], text: match[2] } : { targetAgentId: 'orchestrator', text };
 }
 
+interface PendingDelivery {
+  rootPath: string;
+  messageId: string;
+  correlationId: string;
+  projectId: string;
+  targetAgentId: string;
+  threadId: string | null;
+  turnId: string | null;
+}
+
+function encodeLogicalConversationCursor(generationIndex: number, localCursor: string | null): string {
+  return `logical:${Buffer.from(JSON.stringify({ version: 1, generationIndex, localCursor }), 'utf8').toString('base64url')}`;
+}
+
+function decodeLogicalConversationCursor(value: string): { generationIndex: number; localCursor: string | null } {
+  if (!value.startsWith('logical:')) throw new Error('Conversation cursor is invalid');
+  try {
+    const parsed = record(JSON.parse(Buffer.from(value.slice('logical:'.length), 'base64url').toString('utf8')));
+    const generationIndex = parsed?.generationIndex;
+    const localCursor = parsed?.localCursor;
+    if (parsed?.version !== 1 || !Number.isSafeInteger(generationIndex) || Number(generationIndex) < 0
+      || (localCursor !== null && typeof localCursor !== 'string')) {
+      throw new Error('invalid logical cursor');
+    }
+    return { generationIndex: Number(generationIndex), localCursor: localCursor as string | null };
+  } catch {
+    throw new Error('Conversation cursor is invalid');
+  }
+}
+
 function isoFromSeconds(value: unknown, fallback: Date): string {
   return typeof value === 'number' && Number.isFinite(value)
     ? new Date(value * 1_000).toISOString()
@@ -125,12 +173,16 @@ function requireSuccessfulResult(result: UnknownRecord, operation: string): Unkn
   throw new Error(nonEmptyString(error?.message) ?? `${operation} failed`);
 }
 
-function projectConversation(thread: UnknownRecord, fallback: Date): ConversationMessage[] {
+export function projectConversation(
+  thread: UnknownRecord,
+  fallback: Date,
+  defaultTargetAgentId = 'orchestrator'
+): ConversationMessage[] {
   const turns = Array.isArray(thread.turns) ? thread.turns.flatMap((turn) => record(turn) ?? []) : [];
   const messages: ConversationMessage[] = [];
   for (const turn of turns) {
     const items = Array.isArray(turn.items) ? turn.items.flatMap((item) => record(item) ?? []) : [];
-    let targetAgentId = 'orchestrator';
+    let targetAgentId = defaultTargetAgentId;
     for (const item of items) {
       if (item.type === 'userMessage') {
         const content = Array.isArray(item.content) ? item.content.flatMap((entry) => record(entry) ?? []) : [];
@@ -141,28 +193,43 @@ function projectConversation(thread: UnknownRecord, fallback: Date): Conversatio
           .trim();
         if (!rawText) continue;
         const routed = parseRouteText(rawText);
-        targetAgentId = routed.targetAgentId;
+        targetAgentId = routed.targetAgentId === 'orchestrator' && defaultTargetAgentId !== 'orchestrator'
+          ? defaultTargetAgentId
+          : routed.targetAgentId;
+        let visibleText = routed.text;
+        if (targetAgentId === LUCA_TARGET_AGENT_ID) {
+          try {
+            const envelope = record(JSON.parse(routed.text));
+            const request = record(envelope?.request);
+            visibleText = nonEmptyString(request?.displayQuestion) ?? routed.text;
+          } catch {
+            visibleText = routed.text;
+          }
+        }
         messages.push({
           id: nonEmptyString(item.id) ?? `user-${messages.length}`,
           role: 'user',
           targetAgentId,
           authorLabel: 'You',
-          text: routed.text,
+          text: visibleText,
           createdAt: isoFromSeconds(turn.startedAt, fallback),
           evidenceLabel: 'Codex thread history'
         });
       } else if (item.type === 'agentMessage') {
         const text = nonEmptyString(item.text);
         if (!text) continue;
-        messages.push({
+        const lucaAnswer = targetAgentId === LUCA_TARGET_AGENT_ID ? parseLucaAnswer(text) : null;
+        messages.push(Object.assign({
           id: nonEmptyString(item.id) ?? `agent-${messages.length}`,
           role: 'agent',
           targetAgentId,
-          authorLabel: 'Coordinator',
-          text,
+          authorLabel: targetAgentId === LUCA_TARGET_AGENT_ID ? 'Luca' : targetAgentId,
+          text: lucaAnswer?.answer ?? text,
           createdAt: isoFromSeconds(turn.completedAt ?? turn.startedAt, fallback),
-          evidenceLabel: 'Codex thread history'
-        });
+          evidenceLabel: lucaAnswer ? 'Luca structured answer' : 'Codex thread history'
+        }, targetAgentId === LUCA_TARGET_AGENT_ID
+          ? { lucaAnswer, structured: Boolean(lucaAnswer) }
+          : {}));
       } else if (item.type === 'systemMessage') {
         const content = Array.isArray(item.content) ? item.content.flatMap((entry) => record(entry) ?? []) : [];
         const text = nonEmptyString(item.text) ?? content
@@ -206,45 +273,39 @@ function parseLucaAnswer(text: string): LucaAnswerPayload | null {
   }
 }
 
-export function projectLucaConversation(thread: UnknownRecord, fallback: Date): ConversationMessage[] {
-  const turns = Array.isArray(thread.turns) ? thread.turns.flatMap((turn) => record(turn) ?? []) : [];
-  const messages: ConversationMessage[] = [];
-  for (const turn of turns) {
-    const items = Array.isArray(turn.items) ? turn.items.flatMap((item) => record(item) ?? []) : [];
-    for (const item of items) {
-      if (item.type === 'userMessage') {
-        const content = Array.isArray(item.content) ? item.content.flatMap((entry) => record(entry) ?? []) : [];
-        const rawText = content.filter((entry) => entry.type === 'text').map((entry) => nonEmptyString(entry.text) ?? '').join('\n').trim();
-        if (!rawText) continue;
-        let displayQuestion: string | null = null;
-        try {
-          const envelope = record(JSON.parse(rawText));
-          const request = record(envelope?.request);
-          displayQuestion = nonEmptyString(request?.displayQuestion);
-        } catch {
-          displayQuestion = null;
-        }
-        if (!displayQuestion) continue;
-        messages.push({
-          id: nonEmptyString(item.id) ?? `luca-user-${messages.length}`,
-          role: 'user', targetAgentId: LUCA_TARGET_AGENT_ID, authorLabel: 'You', text: displayQuestion,
-          createdAt: isoFromSeconds(turn.startedAt, fallback), evidenceLabel: 'Codex Luca thread history'
-        });
-      } else if (item.type === 'agentMessage') {
-        const rawText = nonEmptyString(item.text);
-        if (!rawText) continue;
-        const payload = parseLucaAnswer(rawText);
-        messages.push(Object.assign({
-          id: nonEmptyString(item.id) ?? `luca-agent-${messages.length}`,
-          role: 'agent' as const, targetAgentId: LUCA_TARGET_AGENT_ID, authorLabel: 'Luca',
-          text: payload?.answer ?? rawText,
-          createdAt: isoFromSeconds(turn.completedAt ?? turn.startedAt, fallback),
-          evidenceLabel: payload ? 'Luca structured answer' : 'Luca raw answer'
-        }, { lucaAnswer: payload, structured: Boolean(payload) }));
-      }
+function projectStoredConversationMessage(
+  item: ConversationProjectionRecord,
+  defaultTargetAgentId: string
+): ConversationMessage {
+  const targetAgentId = item.targetAgentId ?? defaultTargetAgentId;
+  let visibleText = item.text;
+  if (item.role === 'user' && targetAgentId === LUCA_TARGET_AGENT_ID) {
+    try {
+      const envelope = record(JSON.parse(item.text));
+      const request = record(envelope?.request);
+      visibleText = nonEmptyString(request?.displayQuestion) ?? item.text;
+    } catch {
+      visibleText = item.text;
     }
   }
-  return messages;
+  const lucaAnswer = item.role === 'agent' && targetAgentId === LUCA_TARGET_AGENT_ID
+    ? parseLucaAnswer(item.text)
+    : null;
+  return Object.assign({
+    id: item.id,
+    role: item.role,
+    targetAgentId,
+    authorLabel: item.role === 'user' ? 'You' : targetAgentId === LUCA_TARGET_AGENT_ID ? 'Luca' : targetAgentId,
+    text: lucaAnswer?.answer ?? visibleText,
+    createdAt: item.createdAt,
+    evidenceLabel: lucaAnswer ? 'Luca structured answer' : 'Orquesta conversation projection'
+  }, targetAgentId === LUCA_TARGET_AGENT_ID && item.role === 'agent'
+    ? { lucaAnswer, structured: Boolean(lucaAnswer) }
+    : {});
+}
+
+export function projectLucaConversation(thread: UnknownRecord, fallback: Date): ConversationMessage[] {
+  return projectConversation(thread, fallback, LUCA_TARGET_AGENT_ID);
 }
 
 const defaultFactory = (input: { sdkPackageRoot: string }) => {
@@ -262,10 +323,15 @@ export class DesktopCodexService {
   private readonly listeners = new Set<(notification: DesktopRuntimeNotification) => void>();
   private readonly approvalListeners = new Set<(approval: RuntimeApprovalRequest) => void>();
   private readonly evidenceByThread = new Map<string, RuntimeModelEvidence>();
+  private readonly loadedThreadSignatures = new Map<string, string>();
   private readonly projectByThread = new Map<string, string>();
   private readonly targetByThread = new Map<string, string>();
   private readonly pendingApprovals = new Map<string, RuntimeApprovalRequest>();
   private readonly seenAgentMessages = new Set<string>();
+  private readonly turnStartedAtByTurn = new Map<string, number>();
+  private readonly messageLedger: MessageLedgerWriter | null;
+  private readonly conversationProjection: ConversationProjectionReader | null;
+  private readonly deliveryByCorrelation = new Map<string, PendingDelivery>();
   private eventQueue: Promise<void> = Promise.resolve();
   private shutdownPromise: Promise<void> | null = null;
   private runtimeStarted = false;
@@ -279,6 +345,18 @@ export class DesktopCodexService {
       ...options
     };
     this.providedAdapter = options.adapter ?? null;
+    this.messageLedger = options.messageLedger === undefined
+      ? (this.providedAdapter ? null : new MessageLedger({ now: this.options.now }))
+      : options.messageLedger;
+    this.conversationProjection = options.conversationProjection === undefined
+      ? options.conversationProjectionRoot
+        ? new ConversationProjectionStore({
+            storageRoot: options.conversationProjectionRoot,
+            codexHome: options.codexHome,
+            now: this.options.now
+          })
+        : null
+      : options.conversationProjection;
   }
 
   subscribe(listener: (notification: DesktopRuntimeNotification) => void): () => void {
@@ -289,6 +367,78 @@ export class DesktopCodexService {
   subscribeApprovals(listener: (approval: RuntimeApprovalRequest) => void): () => void {
     this.approvalListeners.add(listener);
     return () => this.approvalListeners.delete(listener);
+  }
+
+  async listProjectThreads(rootPath: string): Promise<ProjectCodexThread[]> {
+    const adapter = await this.adapter();
+    if (!adapter.listThreads) throw new Error('Codex adapter does not support persisted thread listing');
+    const all: ProjectCodexThread[] = [];
+    for (const archived of [false, true]) {
+      let cursor: string | null = null;
+      do {
+        const params: UnknownRecord = {
+          cwd: rootPath,
+          archived,
+          limit: 100,
+          sortKey: 'updated_at',
+          sortDirection: 'desc',
+          useStateDbOnly: true
+        };
+        if (cursor) params.cursor = cursor;
+        const result = requireSuccessfulResult(await adapter.listThreads({
+          correlationId: randomUUID(),
+          params
+        }), 'listThreads');
+        const threads = Array.isArray(result.threads) ? result.threads : [];
+        for (const value of threads) {
+          const thread = record(value);
+          const id = nonEmptyString(thread?.id);
+          const cwd = nonEmptyString(thread?.cwd);
+          if (!id || !cwd) continue;
+          const statusRecord = record(thread?.status);
+          const status = nonEmptyString(statusRecord?.type) ?? nonEmptyString(thread?.status) ?? 'notLoaded';
+          all.push({
+            id,
+            cwd,
+            name: nullableString(thread?.name),
+            archived,
+            status,
+            updatedAt: typeof thread?.updatedAt === 'number' || typeof thread?.updatedAt === 'string'
+              ? thread.updatedAt
+              : null
+          });
+        }
+        cursor = nullableString(result.next_cursor);
+      } while (cursor);
+    }
+    return all;
+  }
+
+  async setThreadName(input: { correlationId: string; threadId: string; name: string }): Promise<void> {
+    const name = nonEmptyString(input.name);
+    if (!name) throw new Error('Thread name must not be empty');
+    const adapter = await this.adapter();
+    const result = await adapter.setThreadName({
+      correlationId: input.correlationId,
+      threadId: input.threadId,
+      name
+    });
+    const response = record(result);
+    if (response?.ok === false && response.status === 'unsupported') return;
+    requireSuccessfulResult(result, 'setThreadName');
+  }
+
+  async readTurnStatus(threadId: string, turnId: string): Promise<string | null> {
+    const adapter = await this.adapter();
+    const result = requireSuccessfulResult(await adapter.readThread({
+      correlationId: randomUUID(),
+      threadId,
+      includeTurns: true
+    }), 'readThread');
+    const thread = record(result.thread);
+    const turns = Array.isArray(thread?.turns) ? thread.turns.flatMap((turn) => record(turn) ?? []) : [];
+    const turn = turns.find((candidate) => nonEmptyString(candidate.id) === turnId);
+    return nonEmptyString(turn?.status) ?? nonEmptyString(record(turn?.status)?.type);
   }
 
   async readAccount(): Promise<SetupAccountState> {
@@ -385,42 +535,107 @@ export class DesktopCodexService {
     turnId: string;
     modelEvidence: RuntimeModelEvidence;
   }> {
+    const delivery: PendingDelivery = {
+      rootPath: input.rootPath,
+      messageId: input.correlationId,
+      correlationId: input.correlationId,
+      projectId: input.projectId,
+      targetAgentId: input.targetAgentId,
+      threadId: input.threadId,
+      turnId: null
+    };
+    this.deliveryByCorrelation.set(input.correlationId, delivery);
+    await this.recordDelivery(delivery, 'queued');
+    try {
+      const result = await this.dispatchMessage(input);
+      delivery.threadId = result.threadId;
+      delivery.turnId = result.turnId;
+      await this.recordDelivery(delivery, 'dispatch_accepted');
+      return result;
+    } catch (error) {
+      await this.recordDelivery(delivery, 'failed', error instanceof Error ? error.name : 'dispatch_failed');
+      this.deliveryByCorrelation.delete(input.correlationId);
+      throw error;
+    }
+  }
+
+  private async dispatchMessage(input: DesktopRuntimeSendInput): Promise<{
+    threadId: string;
+    turnId: string;
+    modelEvidence: RuntimeModelEvidence;
+  }> {
     const adapter = await this.adapter();
     const params: UnknownRecord = { cwd: input.rootPath };
     if (input.requestedModel) params.model = input.requestedModel;
-    const threadResult = requireSuccessfulResult(
-      await (input.threadId
-        ? adapter.resumeThread({
-            correlationId: `${input.correlationId}:thread`,
-            threadId: input.threadId,
-            recommendedModel: input.recommendedModel,
-            requestedModel: input.requestedModel,
-            params
-          })
-        : adapter.createThread({
-            correlationId: `${input.correlationId}:thread`,
-            recommendedModel: input.recommendedModel,
-            requestedModel: input.requestedModel,
-            params
-          })),
-      input.threadId ? 'resumeThread' : 'createThread'
-    );
-    const threadId = nonEmptyString(threadResult.thread_id);
+    const loadSignature = JSON.stringify([
+      input.rootPath.replaceAll('\\', '/').toLowerCase(),
+      input.recommendedModel,
+      input.requestedModel
+    ]);
+    const canReuseLoadedThread = Boolean(input.threadId)
+      && this.loadedThreadSignatures.get(input.threadId!) === loadSignature;
+    const threadResult = canReuseLoadedThread
+      ? null
+      : requireSuccessfulResult(
+          await (input.threadId
+            ? adapter.resumeThread({
+                correlationId: `${input.correlationId}:thread`,
+                threadId: input.threadId,
+                recommendedModel: input.recommendedModel,
+                requestedModel: input.requestedModel,
+                params: { ...params, excludeTurns: true }
+              })
+            : adapter.createThread({
+                correlationId: `${input.correlationId}:thread`,
+                recommendedModel: input.recommendedModel,
+                requestedModel: input.requestedModel,
+                params
+              })),
+          input.threadId ? 'resumeThread' : 'createThread'
+        );
+    const threadId = canReuseLoadedThread ? input.threadId! : nonEmptyString(threadResult?.thread_id);
     if (!threadId) throw new Error('Codex App Server did not return a thread id');
-    const evidence = modelEvidenceFromThreadResult(threadResult, input.recommendedModel, input.requestedModel);
+    this.loadedThreadSignatures.set(threadId, loadSignature);
+    const threadTitle = nonEmptyString(input.threadTitle);
+    if (threadTitle) {
+      const nameResult = await adapter.setThreadName({
+        correlationId: `${input.correlationId}:name`,
+        threadId,
+        name: threadTitle
+      });
+      const failedName = record(nameResult);
+      if (failedName?.ok !== false || failedName.status !== 'unsupported') {
+        requireSuccessfulResult(nameResult, 'setThreadName');
+      }
+    }
+    await input.onThreadReady?.(threadId);
+    const evidence = threadResult
+      ? modelEvidenceFromThreadResult(threadResult, input.recommendedModel, input.requestedModel)
+      : structuredClone(this.evidenceByThread.get(threadId) ?? unknownModelEvidence());
     this.evidenceByThread.set(threadId, evidence);
     this.projectByThread.set(threadId, input.projectId);
     this.targetByThread.set(threadId, input.targetAgentId);
-    const turnResult = requireSuccessfulResult(await adapter.startTurn({
-      correlationId: input.correlationId,
-      threadId,
-      input: [
-        { type: 'text', text: routeText(input.targetAgentId, input.text), text_elements: [] },
-        ...input.localImagePaths.map((filePath) => ({ type: 'localImage', path: filePath }))
-      ]
-    }), 'startTurn');
+    const turnStartedAt = this.options.now().getTime();
+    let turnResult: UnknownRecord;
+    try {
+      turnResult = requireSuccessfulResult(await adapter.startTurn({
+        correlationId: input.correlationId,
+        threadId,
+        input: [
+          { type: 'text', text: routeText(input.targetAgentId, input.text), text_elements: [] },
+          ...input.localImagePaths.map((filePath) => ({ type: 'localImage', path: filePath }))
+        ],
+        ...(input.effort ? { params: { effort: input.effort } } : {})
+      }), 'startTurn');
+    } catch (error) {
+      // If App Server discarded its in-memory task state, the next explicit retry
+      // must resume from durable storage instead of trusting the local cache.
+      this.loadedThreadSignatures.delete(threadId);
+      throw error;
+    }
     const turnId = nonEmptyString(turnResult.turn_id);
     if (!turnId) throw new Error('Codex App Server did not accept the turn');
+    this.turnStartedAtByTurn.set(`${threadId}:${turnId}`, turnStartedAt);
     this.runtimeStarted = true;
     return { threadId, turnId, modelEvidence: structuredClone(evidence) };
   }
@@ -430,44 +645,18 @@ export class DesktopCodexService {
     turnId: string;
     modelEvidence: RuntimeModelEvidence;
   }> {
-    if (this.shutdownRequested) throw new Error('Codex runtime is shutting down');
-    const adapter = await this.adapter();
-    const params = {
-      cwd: input.rootPath,
-      model: LUCA_MODEL,
-      sandbox: 'read-only',
-      approvalPolicy: 'never',
-      developerInstructions: LUCA_DEVELOPER_INSTRUCTIONS
-    };
-    const threadResult = requireSuccessfulResult(await (input.threadId
-      ? adapter.resumeThread({
-          correlationId: `${input.correlationId}:thread`, threadId: input.threadId,
-          recommendedModel: 'Luna', requestedModel: LUCA_MODEL, params
-        })
-      : adapter.createThread({
-          correlationId: `${input.correlationId}:thread`,
-          recommendedModel: 'Luna', requestedModel: LUCA_MODEL, params
-        })), input.threadId ? 'resumeThread' : 'createThread');
-    const threadId = nonEmptyString(threadResult.thread_id);
-    if (!threadId) throw new Error('Codex App Server did not return a Luca thread id');
-    const profile = record(threadResult.runtime_profile);
-    if (profile?.sandbox !== 'read-only' || profile.approval_policy !== 'never') {
-      throw new Error('read_only_boundary_violation: Codex App Server did not apply the requested Luca profile');
-    }
-    const evidence = modelEvidenceFromThreadResult(threadResult, 'Luna', LUCA_MODEL);
-    this.evidenceByThread.set(threadId, evidence);
-    this.projectByThread.set(threadId, input.projectId);
-    this.targetByThread.set(threadId, LUCA_TARGET_AGENT_ID);
-    const turnResult = requireSuccessfulResult(await adapter.startTurn({
+    return this.sendMessage({
       correlationId: input.correlationId,
-      threadId,
-      input: [{ type: 'text', text: input.prompt, text_elements: [] }],
-      params: { effort: LUCA_EFFORT }
-    }), 'startTurn');
-    const turnId = nonEmptyString(turnResult.turn_id);
-    if (!turnId) throw new Error('Codex App Server did not accept the Luca turn');
-    this.runtimeStarted = true;
-    return { threadId, turnId, modelEvidence: structuredClone(evidence) };
+      projectId: input.projectId,
+      rootPath: input.rootPath,
+      threadId: input.threadId,
+      targetAgentId: LUCA_TARGET_AGENT_ID,
+      text: input.prompt,
+      localImagePaths: [],
+      recommendedModel: null,
+      requestedModel: null,
+      effort: null
+    });
   }
 
   async startInspection(input: DesktopInspectionStartInput): Promise<{
@@ -523,12 +712,22 @@ export class DesktopCodexService {
     completed: boolean;
   }> {
     const adapter = await this.adapter();
-    const result = requireSuccessfulResult(await adapter.readThread({
-      correlationId: input.correlationId,
-      threadId: input.threadId,
-      includeTurns: true
-    }), 'readThread');
-    const thread = record(result.thread);
+    const result = adapter.listThreadTurns
+      ? requireSuccessfulResult(await adapter.listThreadTurns({
+          correlationId: input.correlationId,
+          threadId: input.threadId,
+          cursor: null,
+          limit: 1,
+          sortDirection: 'desc',
+          itemsView: 'summary'
+        }), 'listThreadTurns')
+      : requireSuccessfulResult(await adapter.readThread({
+          correlationId: input.correlationId,
+          threadId: input.threadId,
+          includeTurns: true
+        }), 'readThread');
+    const pagedTurns = Array.isArray(result.turns) ? result.turns.flatMap((value) => record(value) ?? []) : null;
+    const thread = pagedTurns ? { turns: [...pagedTurns].reverse() } : record(result.thread);
     if (!thread) throw new Error('Codex App Server returned invalid inspection thread history');
     const turns = Array.isArray(thread.turns) ? thread.turns.flatMap((value) => record(value) ?? []) : [];
     const latestTurn = turns.at(-1) ?? null;
@@ -549,7 +748,50 @@ export class DesktopCodexService {
     if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 200) {
       throw new Error('Conversation limit must be an integer from 1 to 200');
     }
+    if (this.conversationProjection) {
+      try {
+        const projected = await this.conversationProjection.listPage({
+          threadId: input.threadId,
+          targetAgentId: input.targetAgentId,
+          cursor: input.cursor ?? null,
+          limit: input.limit
+        });
+        if (projected) {
+          const messages = projected.items
+            .map((item) => projectStoredConversationMessage(item, input.targetAgentId))
+            .filter((message) => message.targetAgentId === input.targetAgentId);
+          for (const message of messages) {
+            if (message.role === 'agent') this.seenAgentMessages.add(`${input.threadId}:${message.id}`);
+          }
+          return { items: messages, nextCursor: projected.nextCursor };
+        }
+      } catch (error) {
+        if (input.cursor?.startsWith('projection:')) throw error;
+        // A missing, stale, or unreadable local projection falls back to Codex history.
+      }
+    }
     const adapter = await this.adapter();
+    if (adapter.listThreadTurns) {
+      const result = requireSuccessfulResult(await adapter.listThreadTurns({
+        correlationId: input.correlationId,
+        threadId: input.threadId,
+        cursor: input.cursor ?? null,
+        limit: Math.min(input.limit, 50),
+        sortDirection: 'desc',
+        itemsView: 'summary'
+      }), 'listThreadTurns');
+      const newestFirst = Array.isArray(result.turns) ? result.turns.flatMap((value) => record(value) ?? []) : [];
+      const messages = projectConversation(
+        { turns: [...newestFirst].reverse() },
+        this.options.now(),
+        input.targetAgentId
+      ).filter((message) => message.targetAgentId === input.targetAgentId);
+      for (const message of messages) {
+        if (message.role === 'agent') this.seenAgentMessages.add(`${input.threadId}:${message.id}`);
+      }
+      this.runtimeStarted = true;
+      return { items: messages, nextCursor: nullableString(result.next_cursor) };
+    }
     const result = requireSuccessfulResult(await adapter.readThread({
       correlationId: input.correlationId,
       threadId: input.threadId,
@@ -558,9 +800,7 @@ export class DesktopCodexService {
     const thread = record(result.thread);
     if (!thread) throw new Error('Codex App Server returned invalid thread history');
     this.runtimeStarted = true;
-    const messages = (input.targetAgentId === LUCA_TARGET_AGENT_ID
-      ? projectLucaConversation(thread, this.options.now())
-      : projectConversation(thread, this.options.now()))
+    const messages = projectConversation(thread, this.options.now(), input.targetAgentId)
       .filter((message) => message.targetAgentId === input.targetAgentId);
     for (const message of messages) {
       if (message.role === 'agent') this.seenAgentMessages.add(`${input.threadId}:${message.id}`);
@@ -574,6 +814,76 @@ export class DesktopCodexService {
     }
     const start = Math.max(0, end - input.limit);
     return { items: messages.slice(start, end), nextCursor: start > 0 ? `before:${start}` : null };
+  }
+
+  async listLogicalConversation(input: {
+    correlationId: string;
+    targetAgentId: string;
+    generations: AgentSessionGeneration[];
+    cursor?: string | null;
+    limit: number;
+  }): Promise<ConversationPage> {
+    if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 200) {
+      throw new Error('Conversation limit must be an integer from 1 to 200');
+    }
+    const generations = [...input.generations]
+      .filter((generation) => generation.threadId)
+      .sort((left, right) => left.generation - right.generation || left.threadId.localeCompare(right.threadId));
+    if (!generations.length) return { items: [], nextCursor: null };
+
+    let generationIndex = generations.length - 1;
+    let localCursor: string | null = null;
+    if (input.cursor) {
+      const decoded = decodeLogicalConversationCursor(input.cursor);
+      generationIndex = decoded.generationIndex;
+      if (!Number.isSafeInteger(generationIndex) || generationIndex < 0 || generationIndex >= generations.length) {
+        throw new Error('Conversation cursor is invalid');
+      }
+      localCursor = decoded.localCursor;
+    }
+
+    // A logical page never crosses a session-generation boundary. A short current
+    // generation must not cause the same request to open a potentially huge archived
+    // predecessor; the user explicitly pages across that boundary instead.
+    const generation = generations[generationIndex];
+    const page = await this.listConversation({
+      correlationId: `${input.correlationId}:generation:${generation.generation}`,
+      threadId: generation.threadId,
+      targetAgentId: input.targetAgentId,
+      cursor: localCursor,
+      limit: input.limit
+    });
+    const projected = page.items.map((message) => ({
+      ...message,
+      id: `${generation.threadId}:${message.id}`,
+      kind: 'message' as const,
+      threadId: generation.threadId,
+      sessionGeneration: generation.generation
+    }));
+    const boundary = generationIndex < generations.length - 1 && localCursor === null
+      ? [{
+          id: `session-boundary:${generation.threadId}:${generations[generationIndex + 1].threadId}`,
+          kind: 'session_boundary' as const,
+          role: 'system' as const,
+          targetAgentId: input.targetAgentId,
+          authorLabel: 'Orquesta',
+          text: 'Execution session continued in a fresh context.',
+          createdAt: generations[generationIndex + 1].createdAt ?? generations[generationIndex + 1].updatedAt ?? new Date(0).toISOString(),
+          evidenceLabel: null,
+          threadId: generations[generationIndex + 1].threadId,
+          sessionGeneration: generations[generationIndex + 1].generation,
+          sessionBoundary: {
+            fromGeneration: generation.generation,
+            toGeneration: generations[generationIndex + 1].generation
+          }
+        }]
+      : [];
+    const nextCursor = page.nextCursor
+      ? encodeLogicalConversationCursor(generationIndex, page.nextCursor)
+      : generationIndex > 0
+        ? encodeLogicalConversationCursor(generationIndex - 1, null)
+        : null;
+    return { items: [...projected, ...boundary], nextCursor };
   }
 
   async getRuntimeInfo({ probe }: { probe: boolean }): Promise<RuntimeInfoUi> {
@@ -639,11 +949,40 @@ export class DesktopCodexService {
     return structuredClone(this.evidenceByThread.get(threadId) ?? unknownModelEvidence());
   }
 
+  private async recordDelivery(
+    delivery: PendingDelivery,
+    state: MessageDeliveryState,
+    errorCode: string | null = null
+  ): Promise<void> {
+    await this.messageLedger?.record({ ...delivery, state, errorCode });
+  }
+
   private async handleAdapterEvent(event: UnknownRecord): Promise<void> {
     const type = nonEmptyString(event.type);
     const threadId = nonEmptyString(event.thread_id);
     if (!type || !threadId) return;
     const turnId = nullableString(event.turn_id);
+    const correlationId = nonEmptyString(event.correlation_id);
+    const delivery = correlationId ? this.deliveryByCorrelation.get(correlationId) : null;
+    if (delivery) {
+      delivery.threadId = threadId;
+      delivery.turnId = turnId ?? delivery.turnId;
+      if (type === 'dispatch_accepted') {
+        await this.recordDelivery(delivery, 'dispatch_accepted');
+        return;
+      }
+      if (type === 'turn_started') await this.recordDelivery(delivery, 'turn_started');
+      if (type === 'runtime_error' && event.will_retry !== true) {
+        await this.recordDelivery(delivery, 'failed', 'runtime_error');
+        this.deliveryByCorrelation.delete(correlationId);
+      }
+      if (type === 'turn_completed') {
+        const status = nullableString(event.status);
+        const succeeded = !status || status === 'completed';
+        await this.recordDelivery(delivery, succeeded ? 'completed' : 'failed', succeeded ? null : `turn_${status}`);
+        this.deliveryByCorrelation.delete(correlationId);
+      }
+    }
     const targetAgentId = this.targetByThread.get(threadId) ?? null;
     if (type === 'approval_requested') {
       const projectId = this.projectByThread.get(threadId);
@@ -676,16 +1015,19 @@ export class DesktopCodexService {
       evidence.actualModel = model;
       evidence.actualModelEvidence = 'proven';
       this.evidenceByThread.set(threadId, evidence);
-      this.emit({ kind: 'model_observed', threadId, turnId, text: null, targetAgentId, modelEvidence: evidence });
+      this.emit({ kind: 'model_observed', correlationId, threadId, turnId, text: null, targetAgentId, modelEvidence: evidence });
       return;
     }
     if (type === 'turn_started') {
-      this.emit({ kind: 'turn_started', threadId, turnId, text: null, targetAgentId, modelEvidence: this.evidence(threadId) });
+      if (turnId) this.turnStartedAtByTurn.set(`${threadId}:${turnId}`, this.options.now().getTime());
+      this.emit({ kind: 'turn_started', correlationId, threadId, turnId, text: null, targetAgentId, modelEvidence: this.evidence(threadId) });
       return;
     }
     if (type === 'runtime_error') {
+      if (event.will_retry === true) return;
+      if (turnId) this.turnStartedAtByTurn.delete(`${threadId}:${turnId}`);
       this.emit({
-        kind: 'turn_failed', threadId, turnId,
+        kind: 'turn_failed', correlationId, threadId, turnId,
         text: nonEmptyString(event.message) ?? 'Codex turn failed.',
         targetAgentId,
         modelEvidence: this.evidence(threadId)
@@ -694,24 +1036,55 @@ export class DesktopCodexService {
     }
     if (type !== 'turn_completed') return;
 
-    const adapter = await this.adapter();
     try {
-      const result = requireSuccessfulResult(await adapter.readThread({
-        correlationId: `${nonEmptyString(event.correlation_id) ?? 'desktop-completed'}:history`,
-        threadId,
-        includeTurns: true
-      }), 'readThread');
-      const history = record(result.thread);
-      const newestAgentMessage = history
-        ? (targetAgentId === LUCA_TARGET_AGENT_ID ? projectLucaConversation(history, this.options.now()) : projectConversation(history, this.options.now()))
-            .filter((message) => message.role === 'agent').at(-1)
-        : null;
+      let newestAgentMessage: ConversationMessage | null = null;
+      if (this.conversationProjection) {
+        const projected = await this.conversationProjection.listPage({
+          threadId,
+          targetAgentId,
+          cursor: null,
+          limit: 4
+        });
+        newestAgentMessage = projected?.items
+          .map((item) => projectStoredConversationMessage(item, targetAgentId))
+          .filter((message) => message.role === 'agent').at(-1) ?? null;
+        const startedAt = turnId ? this.turnStartedAtByTurn.get(`${threadId}:${turnId}`) : null;
+        if (newestAgentMessage && startedAt
+          && Date.parse(newestAgentMessage.createdAt) + 5_000 < startedAt) {
+          newestAgentMessage = null;
+        }
+      }
+      if (!newestAgentMessage || this.seenAgentMessages.has(`${threadId}:${newestAgentMessage.id}`)) {
+        const adapter = await this.adapter();
+        const historyCorrelationId = `${nonEmptyString(event.correlation_id) ?? 'desktop-completed'}:history`;
+        const result = adapter.listThreadTurns
+          ? requireSuccessfulResult(await adapter.listThreadTurns({
+              correlationId: historyCorrelationId,
+              threadId,
+              cursor: null,
+              limit: 1,
+              sortDirection: 'desc',
+              itemsView: 'summary'
+            }), 'listThreadTurns')
+          : requireSuccessfulResult(await adapter.readThread({
+              correlationId: historyCorrelationId,
+              threadId,
+              includeTurns: true
+            }), 'readThread');
+        const pagedTurns = Array.isArray(result.turns) ? result.turns.flatMap((value) => record(value) ?? []) : null;
+        const history = pagedTurns ? { turns: [...pagedTurns].reverse() } : record(result.thread);
+        newestAgentMessage = history
+          ? projectConversation(history, this.options.now(), targetAgentId)
+              .filter((message) => message.role === 'agent').at(-1) ?? null
+          : null;
+      }
       if (newestAgentMessage) {
         const key = `${threadId}:${newestAgentMessage.id}`;
         if (!this.seenAgentMessages.has(key)) {
           this.seenAgentMessages.add(key);
           this.emit({
             kind: 'agent_message',
+            correlationId,
             threadId,
             turnId,
             text: newestAgentMessage.text,
@@ -723,7 +1096,17 @@ export class DesktopCodexService {
     } catch {
       // Completion remains truthful even when the follow-up history read is unavailable.
     }
-    this.emit({ kind: 'turn_completed', threadId, turnId, text: null, targetAgentId, modelEvidence: this.evidence(threadId) });
+    const completionStatus = nullableString(event.status);
+    if (turnId) this.turnStartedAtByTurn.delete(`${threadId}:${turnId}`);
+    this.emit({
+      kind: completionStatus && completionStatus !== 'completed' ? 'turn_failed' : 'turn_completed',
+      correlationId,
+      threadId,
+      turnId,
+      text: completionStatus && completionStatus !== 'completed' ? `Codex turn ${completionStatus}.` : null,
+      targetAgentId,
+      modelEvidence: this.evidence(threadId)
+    });
   }
 
   shutdown(): Promise<void> {

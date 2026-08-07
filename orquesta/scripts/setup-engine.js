@@ -1,9 +1,10 @@
 "use strict";
 
 const crypto = require("node:crypto");
-const { access, mkdir, readFile, realpath, rename, rm, stat, writeFile } = require("node:fs/promises");
+const { access, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { createFoundationStateBundle } = require("./adaptive-setup-state");
+const { buildCurrentOrchestra } = require("./current-orchestra");
 const { PHASES, createSetupState } = require("./setup-state");
 
 const FOUNDATION_AGENTS = Object.freeze([
@@ -53,6 +54,88 @@ function buildOptionalSetupQuestions(intake, now) {
   }));
 }
 
+function buildSetupOptions({
+  rootPath,
+  now,
+  status = "in_progress",
+  sessionsState = { sessions: [] },
+  existing = {},
+}) {
+  const current = existing && typeof existing === "object" ? clone(existing) : {};
+  const ready = status === "ready";
+  const sessions = new Map((sessionsState.sessions || []).map((session) => [session.agent_id, session]));
+  const projectRoot = path.resolve(rootPath);
+  return {
+    ...current,
+    version: 1,
+    setup_status: ready ? "ready" : "in_progress",
+    bootstrap_status: ready ? "ready" : "in_progress",
+    updated_at: now,
+    foundation_id_policy: "unnumbered_for_new_projects",
+    orchestrator_agent_id: "orchestrator",
+    orchestrator_thread_id: sessions.get("orchestrator")?.thread_id || null,
+    orchestrator_display_title: "★ Orquesta 統括者",
+    orchestrator_title_policy: "rename_calling_thread_to_starred_Orquesta_orchestrator",
+    orchestrator_pin_policy: "pin_calling_thread",
+    foundation_agent_ids: ["user-support", "orquesta-admin"],
+    foundation_sessions_required: true,
+    foundation_session_status: ready ? "ready" : "pending",
+    foundation_blockers: ready ? [] : clone(current.foundation_blockers || []),
+    admin_agent_id: "orquesta-admin",
+    admin_thread_id: sessions.get("orquesta-admin")?.thread_id || null,
+    desktop_executable: current.desktop_executable || null,
+    desktop_project_root: projectRoot,
+    dashboard_url: current.dashboard_url || null,
+    dashboard_verified_at: current.dashboard_verified_at || null,
+    dashboard_open_policy: current.dashboard_open_policy || "explicit_diagnostic_only",
+    dashboard_open_attempted: Boolean(current.dashboard_open_attempted),
+    dashboard_opened_at: current.dashboard_opened_at || null,
+    dashboard_open_error: current.dashboard_open_error || null,
+    enabled_packs: Array.isArray(current.enabled_packs) ? current.enabled_packs : ["minimal_core"],
+    available_packs: Array.isArray(current.available_packs) ? current.available_packs : [],
+    local_paths: {
+      ...(current.local_paths || {}),
+      project_root: projectRoot,
+      state_dir: path.join(projectRoot, ".orquesta", "state"),
+      orquesta_dir: path.join(projectRoot, ".orquesta"),
+    },
+    notes: Array.isArray(current.notes) ? current.notes : [],
+  };
+}
+
+function buildSetupWizard({ now, status = "in_progress", existing = {} }) {
+  const current = existing && typeof existing === "object" ? clone(existing) : {};
+  const ready = status === "ready";
+  return {
+    ...current,
+    version: 1,
+    status: ready ? "ready_for_operation" : "in_progress",
+    current_step: ready ? "operation_ready" : "auto_finalize",
+    updated_at: now,
+    steps: [
+      { step_id: "welcome", title: "ようこそOrquestaへ", summary: "Orquestaの目的と進め方を確認する。", status: "done" },
+      { step_id: "project_intake", title: "プロジェクト説明", summary: "目的、成果物、制約、既存資産を共有する。", status: "done" },
+      { step_id: "question_gate", title: "補完質問", summary: "重大な不明点だけを確認する。", status: "done" },
+      { step_id: "auto_finalize", title: "初期セットアップ自動完了", summary: "基礎3役、完成条件、初期専門家を確定する。", status: ready ? "done" : "active" },
+      { step_id: "operation_ready", title: "運用開始", summary: "必要に応じて体制や進め方を後から調整する。", status: ready ? "active" : "queued" },
+    ],
+    gates: {
+      ...(current.gates || {}),
+      project_intake_required: true,
+      required_questions_must_be_answered: false,
+      completion_map_requires_user_approval: false,
+      completion_map_approved: ready,
+      setup_autopilot_enabled: true,
+      setup_autopilot_finalized: ready,
+      specialist_plan_reviewed: ready,
+      specialist_plan_approved: ready,
+      approved_specialist_candidate_ids: Array.isArray(current.gates?.approved_specialist_candidate_ids)
+        ? current.gates.approved_specialist_candidate_ids
+        : [],
+    },
+  };
+}
+
 async function exists(filePath) {
   try { await access(filePath); return true; } catch { return false; }
 }
@@ -95,6 +178,16 @@ async function canonicalRoot(rootPath) {
   return resolved;
 }
 
+async function containsOnlyEmptyDirectories(rootPath) {
+  const entries = await readdir(rootPath, { withFileTypes: true });
+  const results = await Promise.all(entries.map((entry) => (
+    entry.isDirectory()
+      ? containsOnlyEmptyDirectories(path.join(rootPath, entry.name))
+      : false
+  )));
+  return results.every(Boolean);
+}
+
 function createSetupEngine(options = {}) {
   const now = options.now || (() => new Date().toISOString());
   const randomUUID = options.randomUUID || crypto.randomUUID;
@@ -114,7 +207,12 @@ function createSetupEngine(options = {}) {
         }
         throw new Error("An Orquesta setup already exists in this project");
       }
-      if (await exists(targetRoot)) throw new Error("The project already contains Orquesta state but no resumable setup");
+      if (await exists(targetRoot)) {
+        if (!(await containsOnlyEmptyDirectories(targetRoot))) {
+          throw new Error("The project already contains Orquesta state but no resumable setup");
+        }
+        await rm(targetRoot, { recursive: true, force: true });
+      }
 
       const timestamp = now();
       const setupId = `SETUP-${randomUUID()}`;
@@ -123,6 +221,16 @@ function createSetupEngine(options = {}) {
       const state = createSetupState({ setupId, projectId, draft: input.draft, now: timestamp });
       const foundation = emptyFoundationStateBundle({ projectId, now: timestamp });
       const intake = buildProjectIntake(input.draft, timestamp);
+      const optionsState = buildSetupOptions({ rootPath, now: timestamp });
+      const wizardState = buildSetupWizard({ now: timestamp });
+      const directivesState = { version: 1, directives: [], updated_at: timestamp };
+      const currentOrchestra = buildCurrentOrchestra({
+        setupState: state,
+        now: timestamp,
+        agentsState: foundation.agentsState,
+        tasksState: foundation.tasksState,
+        directivesState,
+      });
       const answers = new Map(input.draft.answers.map((answer) => [answer.questionId, answer.answer]));
       const questions = input.draft.questions.map((question) => ({
         question_id: question.questionId,
@@ -140,14 +248,18 @@ function createSetupEngine(options = {}) {
         await Promise.all([
           writeJson(stagingRoot, "setup/setup_state.json", state),
           writeJson(stagingRoot, "setup/project_intake.json", intake),
+          writeJson(stagingRoot, "setup/options.json", optionsState),
+          writeJson(stagingRoot, "setup/wizard.json", wizardState),
           writeJson(stagingRoot, "state/agents.json", foundation.agentsState),
           writeJson(stagingRoot, "state/tasks.json", foundation.tasksState),
           writeJson(stagingRoot, "state/roles.json", foundation.rolesState),
           writeJson(stagingRoot, "state/organization.json", foundation.organizationState),
           writeJson(stagingRoot, "state/sessions.json", foundation.sessionsState),
+          writeJson(stagingRoot, "state/directives.json", directivesState),
           writeJson(stagingRoot, "vision/questions.json", { version: 1, questions, curation_policy: { curator_agent_id: "user-support" } }),
           writeJson(stagingRoot, "user_tasks/queue.json", { version: 1, tasks: [], updated_at: timestamp }),
           writeJson(stagingRoot, "failures/incidents.json", { version: 1, incidents: [], updated_at: timestamp }),
+          writeFile(path.join(stagingRoot, "CURRENT_ORCHESTRA.md"), currentOrchestra, "utf8"),
         ]);
         await writeFile(path.join(stagingRoot, "state", "events.jsonl"), `${JSON.stringify({ timestamp, type: "initial_setup_started", actor: "user", setup_id: setupId, summary: "User approved the initial Orquesta setup." })}\n`, "utf8");
         await beforeCommit({ stagingRoot, targetRoot, setupState: clone(state) });
@@ -164,7 +276,10 @@ function createSetupEngine(options = {}) {
 module.exports = {
   FOUNDATION_AGENTS,
   PHASES,
+  buildCurrentOrchestra,
   buildOptionalSetupQuestions,
   buildProjectIntake,
+  buildSetupOptions,
+  buildSetupWizard,
   createSetupEngine,
 };

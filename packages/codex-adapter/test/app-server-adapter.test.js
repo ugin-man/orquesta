@@ -2,7 +2,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { once } = require("node:events");
 
-const { createAppServerAdapter } = require("../src/app-server-adapter");
+const {
+  APP_SERVER_MAX_LINE_BYTES,
+  createAppServerAdapter
+} = require("../src/app-server-adapter");
+const { createJsonlTransport } = require("../src/jsonl-transport");
 const { FakeAppServerProcess } = require("./fixtures/fake-app-server");
 
 function makeThread(id) {
@@ -77,10 +81,31 @@ function attachSuccessfulServer(process) {
           thread: makeThread(message.params.threadId)
         }
       });
+    } else if (message.method === "thread/name/set") {
+      process.send({ id: message.id, result: {} });
+    } else if (message.method === "thread/archive") {
+      process.send({ id: message.id, result: {} });
+    } else if (message.method === "thread/list") {
+      process.send({
+        id: message.id,
+        result: {
+          data: [makeThread("thread-listed")],
+          nextCursor: null
+        }
+      });
     } else if (message.method === "thread/read") {
       process.send({
         id: message.id,
         result: { thread: makeThread(message.params.threadId) }
+      });
+    } else if (message.method === "thread/turns/list") {
+      process.send({
+        id: message.id,
+        result: {
+          data: [makeTurn("turn-paged", "completed")],
+          nextCursor: "older-cursor",
+          backwardsCursor: null
+        }
       });
     } else if (message.method === "turn/start") {
       process.send({ id: message.id, result: { turn: makeTurn("turn-1") } });
@@ -115,6 +140,26 @@ function createHarness() {
   });
   return { adapter, process, spawnCalls };
 }
+
+test("allows bounded large thread resume responses needed by long-lived projects", async () => {
+  const process = new FakeAppServerProcess();
+  attachSuccessfulServer(process);
+  let configuredMaxLineBytes = null;
+  const adapter = createAppServerAdapter({
+    resolveRuntime: () => bundledRuntime(),
+    spawnProcess: () => process,
+    transportFactory: (options) => {
+      configuredMaxLineBytes = options.maxLineBytes;
+      return createJsonlTransport(options);
+    }
+  });
+
+  const result = await adapter.runtimeInfo({ correlationId: "corr-large-line", probe: true });
+
+  assert.equal(result.ok, true);
+  assert.equal(configuredMaxLineBytes, APP_SERVER_MAX_LINE_BYTES);
+  assert.equal(APP_SERVER_MAX_LINE_BYTES, 64 * 1024 * 1024);
+});
 
 test("spawns App Server without a shell and initializes exactly once before thread requests", async () => {
   const { adapter, process, spawnCalls } = createHarness();
@@ -235,7 +280,7 @@ test("returns the applied inspection runtime profile from thread start", async (
           cwd: "C:\\repo",
           model: "requested-model",
           modelProvider: "openai",
-          sandbox: "read-only",
+          sandbox: { type: "readOnly", networkAccess: false },
           thread: makeThread("thread-inspection")
         }
       });
@@ -277,6 +322,92 @@ test("reads canonical thread history with turns included by default", async () =
   assert.equal(result.thread.id, "thread-history");
   const message = process.clientMessages.find((entry) => entry.method === "thread/read");
   assert.deepEqual(message.params, { threadId: "thread-history", includeTurns: true });
+});
+
+test("pages persisted turns with the experimental App Server API", async () => {
+  const { adapter, process } = createHarness();
+  const result = await adapter.listThreadTurns({
+    correlationId: "corr-turn-page",
+    threadId: "thread-history",
+    cursor: "current-cursor",
+    limit: 12
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, "listThreadTurns");
+  assert.equal(result.thread_id, "thread-history");
+  assert.equal(result.turns[0].id, "turn-paged");
+  assert.equal(result.next_cursor, "older-cursor");
+  const initialize = process.clientMessages.find((entry) => entry.method === "initialize");
+  assert.deepEqual(initialize.params.capabilities, { experimentalApi: true });
+  const message = process.clientMessages.find((entry) => entry.method === "thread/turns/list");
+  assert.deepEqual(message.params, {
+    threadId: "thread-history",
+    cursor: "current-cursor",
+    limit: 12,
+    sortDirection: "desc",
+    itemsView: "summary"
+  });
+});
+
+test("sets a persisted Codex thread user-facing name", async () => {
+  const { adapter, process } = createHarness();
+
+  const result = await adapter.setThreadName({
+    correlationId: "corr-name",
+    threadId: "thread-history",
+    name: "Orquesta 実装係 2"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, "setThreadName");
+  assert.equal(result.thread_id, "thread-history");
+  const message = process.clientMessages.find((entry) => entry.method === "thread/name/set");
+  assert.deepEqual(message.params, {
+    threadId: "thread-history",
+    name: "Orquesta 実装係 2"
+  });
+});
+
+test("archives a persisted disposable Codex thread", async () => {
+  const { adapter, process } = createHarness();
+
+  const result = await adapter.archiveThread({
+    correlationId: "corr-archive",
+    threadId: "thread-disposable"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, "archiveThread");
+  assert.equal(result.thread_id, "thread-disposable");
+  const message = process.clientMessages.find((entry) => entry.method === "thread/archive");
+  assert.deepEqual(message.params, { threadId: "thread-disposable" });
+});
+
+test("lists persisted Codex threads with an exact cwd filter", async () => {
+  const { adapter, process } = createHarness();
+  const result = await adapter.listThreads({
+    correlationId: "corr-list",
+    params: {
+      cwd: "C:\\repo",
+      archived: false,
+      limit: 100,
+      sortKey: "updated_at",
+      sortDirection: "desc"
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.operation, "listThreads");
+  assert.equal(result.threads[0].id, "thread-listed");
+  const message = process.clientMessages.find((entry) => entry.method === "thread/list");
+  assert.deepEqual(message.params, {
+    cwd: "C:\\repo",
+    archived: false,
+    limit: 100,
+    sortKey: "updated_at",
+    sortDirection: "desc"
+  });
 });
 
 test("reports non-secret pinned runtime metadata without probing unless explicitly requested", async () => {

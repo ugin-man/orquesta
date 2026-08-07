@@ -10,8 +10,8 @@
 
 ## Global Constraints
 
-- Use `C:\Users\kouki\OneDrive\ドキュメント\Orquesta\.worktrees\orquesta-v4-phase1` on `codex/orquesta-v4-phase1`.
-- Treat `C:\Users\kouki\OneDrive\ドキュメント\Orquesta\.orquesta` as canonical Orquesta state. Product worktree state is not routing or acceptance evidence.
+- Use `C:\Users\example\OneDrive\ドキュメント\Orquesta\.worktrees\orquesta-v4-phase1` on `codex/orquesta-v4-phase1`.
+- Treat `C:\Users\example\OneDrive\ドキュメント\Orquesta\.orquesta` as canonical Orquesta state. Product worktree state is not routing or acceptance evidence.
 - Preserve all accepted Phase 1 and Phase 1.5 contracts, the 18-batch/42-event fixture histories, V3 behavior, and the current `npm run check` meaning.
 - Keep Phase 2 to 2A Acquisition and 2B Codex-native execution. Do not add Electron, PWA, Tauri, installer, OS build, application UI, daily-use UX, dashboard redesign, or Phase 3 learning.
 - Do not build a second filesystem sandbox, network firewall, credential vault, command-risk parser, identity layer, or runtime approval engine. Query and execution effects are authorized semantically; Codex enforces runtime safety.

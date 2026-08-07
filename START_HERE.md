@@ -2,7 +2,9 @@
 
 Orquesta V4 is a Windows desktop application and Codex skill for people who want to run Codex as a long-lived specialist team, not as one disposable coding agent.
 
-The current hackathon build is `Orquesta V4 Desktop, 0.1.0 preview`. Expect rough edges: it is Windows x64 only and the installer is not code-signed. The project is public so people can try it, break it, and help shape the workflow.
+The current public release candidate is `Orquesta V4 Desktop, 0.4.0-preview.1`. Expect rough edges: it is Windows x64 only and published installers are not code-signed.
+
+V5 development is not part of this candidate. The Build Week document is a historical record for part of V4, not the current install guide.
 
 ## Who This Is For
 
@@ -27,15 +29,19 @@ Production specialists, such as implementation, dashboard UX, visual art, worldb
 
 ## Install the Desktop Preview
 
-Download [the Windows x64 installer](https://github.com/ugin-man/orquesta/releases/download/v0.1.0-v4-preview/OrquestaSetup.exe). Windows may show an unknown-publisher warning because this preview is not code-signed.
+Reviewed installers are published on [GitHub Releases](https://github.com/ugin-man/orquesta/releases/latest). If no `0.4.0-preview.1` installer is listed yet, use the source instructions below. Windows may show an unknown-publisher warning because preview builds are not code-signed.
 
 To run the Desktop from source:
 
 ```powershell
+git clone https://github.com/ugin-man/orquesta.git
+cd orquesta
 npm install
 npm install --prefix apps/orquesta-desktop
 npm run start:desktop --prefix apps/orquesta-desktop
 ```
+
+Source use requires Windows x64, Node.js 22.12.0 or newer, and an installed, signed-in Codex Desktop environment.
 
 ## Install the Skill Only
 
@@ -50,7 +56,8 @@ If you are installing manually on Windows:
 ```powershell
 $skillRoot = "$env:USERPROFILE\.codex\skills\orquesta"
 New-Item -ItemType Directory -Force -Path $skillRoot
-Copy-Item -Recurse -Force .\orquesta\* $skillRoot
+node .\scripts\sync-orquesta-skill.js --target $skillRoot
+node .\scripts\sync-orquesta-skill.js --check --target $skillRoot
 ```
 
 Restart Codex after installing a new skill.
@@ -76,12 +83,14 @@ On a healthy first run, Orquesta should:
 1. Treat the current chat as the orchestrator.
 2. Create the foundation roles.
 3. Initialize `.orquesta/` state files.
-4. Open the Desktop command room, or explain the legacy local dashboard when running the skill alone.
+4. Open Orquesta Desktop with the selected project root.
 5. Verify that the selected project state is loaded, not just that a window or HTTP server opened.
 6. Ask for project intake before generating setup questions.
 7. Use your answers to prepare an initial completion map and specialist plan.
 
-## Legacy Browser Dashboard
+## Diagnostic Browser Dashboard
+
+Orquesta Desktop is the normal operating surface. Use this browser dashboard only when you explicitly need local state diagnostics. Normal setup and resume must not open it automatically.
 
 From the repository root:
 
@@ -94,18 +103,20 @@ Open the URL printed by the command. The default is `http://127.0.0.1:4177/`, bu
 ## Current Beta Caveats
 
 - Orquesta is not fully autonomous. It is designed to work with the user.
-- The Desktop and legacy dashboard are local and file-backed.
+- Orquesta Desktop and the diagnostic dashboard are local and file-backed.
 - Some Codex thread-management actions still depend on what tools are available in the current Codex environment.
 - GitHub-install bootstrap has passed once, but more clean-project tests are needed.
 - Real multi-agent operation should be judged by handoffs, specialist reports, and orchestrator acceptance, not by the dashboard alone.
 
 ## Looking For Testers
 
+For a bounded public test, use the [Moltbook AI preview test](docs/testing/moltbook-ai-preview-test.md). It includes a reading-only route and a disposable Windows execution fixture.
+
 The most useful feedback right now is:
 
 - Did install work?
 - Did first setup make sense?
-- Did the dashboard show the real team?
+- Did Orquesta Desktop show the real team?
 - Did you understand what to do next?
 - Did any specialist work actually get delegated and reported back?
 - Where did the workflow feel confusing or too heavy?

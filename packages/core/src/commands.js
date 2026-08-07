@@ -7,7 +7,9 @@ const { compileCapabilities } = require("@orquesta/capability-compiler");
 const { resolveNeed } = require("@orquesta/capability-resolver");
 const { createPhaseReview, decidePhaseReview, redactAttestation, resolutionApprovalTarget } = require("./phase-review");
 const { createProjectors, initialProjection } = require("./projectors");
-const { createExecutionPlan, escalateExecutionPlan } = require("./execution-policy");
+const { escalateExecutionPlan } = require("./execution-policy");
+const { createProfiledExecutionPlan } = require("./profiled-execution-plan");
+const { executeReuseDiscovery, integrateReuseDiscovery } = require("./reuse-discovery");
 const { createInstallApprovalTarget } = require("./install-approval");
 const { correlateEvidence, normalizeEvidence } = require("../../evidence-fabric/src");
 
@@ -15,6 +17,7 @@ const COMMAND_NAMES = Object.freeze([
   "task-intent.create", "capability.compile", "execution-plan.create", "execution-plan.escalate", "inventory.refresh-local", "resolution.propose",
   "resolution.approve", "context-pack.preview", "candidate.install.request", "candidate.install.authorize",
   "acquisition.snapshot.record", "candidate.audit.record", "candidate.audition.record",
+  "reuse-discovery.complete",
   "phase-review.request", "phase-review.decide",
   "runtime.dispatch.record", "runtime.event.record", "artifact.record", "report.record", "acceptance.record",
 ]);
@@ -73,7 +76,7 @@ function snapshotCommand(command) {
 }
 
 function safeProviderFingerprint(provider) {
-  return canonicalHash({
+  const fingerprint = {
     provider_id: provider.provider_id || null,
     provider_type: provider.provider_type || null,
     source_uri: provider.source_uri || null,
@@ -85,7 +88,10 @@ function safeProviderFingerprint(provider) {
     last_verified_at: provider.last_verified_at || null,
     provider_hash: provider.provider_hash || null,
     evidence_refs: Array.isArray(provider.evidence_refs) ? [...provider.evidence_refs].sort(compareText) : [],
-  });
+  };
+  if (provider.source_ref) fingerprint.source_ref = provider.source_ref;
+  if (provider.source_hash) fingerprint.source_hash = provider.source_hash;
+  return canonicalHash(fingerprint);
 }
 
 function proposalBinding(state, proposal) {
@@ -98,13 +104,16 @@ function proposalBinding(state, proposal) {
     }))
     .sort((left, right) => compareText(left.evaluation_id, right.evaluation_id));
   const selected = candidates.find((candidate) => candidate && candidate.candidate_id === proposal.resolution.selected_provider_id) || null;
-  const provider = selected && state.providers.find((item) => item.provider_id === selected.candidate_id);
+  const localProvider = selected && state.providers.find((item) => item.provider_id === selected.candidate_id);
+  const liveProvider = selected && (state.live_providers || []).find((item) => item.provider_id === selected.candidate_id);
+  const provider = localProvider || liveProvider;
   return {
     inventory_id: state.inventory && typeof state.inventory.inventory_id === "string" ? state.inventory.inventory_id : null,
     candidate_evaluations: candidateEvaluations,
     selected_evaluation_id: selected && selected.evaluation ? selected.evaluation.evaluation_id : null,
     selected_evaluation_hash: selected && selected.evaluation ? canonicalHash(selected.evaluation) : null,
     selected_provider_id: proposal.resolution.selected_provider_id,
+    selected_provider_origin: localProvider ? "local_inventory" : liveProvider ? "live_acquisition" : proposal.resolution.mode === "build" ? "synthetic_build" : null,
     selected_provider_fingerprint: provider ? safeProviderFingerprint(provider) : null,
   };
 }
@@ -130,6 +139,21 @@ function assertCurrentProposalEvidence(state, resolution) {
     staleResolution({ resolution_id: resolution.resolution_id, reason: "candidate_evaluation_changed" });
   }
   if (resolution.mode === "build") return;
+  if (binding.selected_provider_origin === "live_acquisition") {
+    const provider = (state.live_providers || []).find((item) => item.provider_id === resolution.selected_provider_id);
+    const sourceCurrent = provider && state.acquisition_snapshots.some((snapshot) => (
+      snapshot.query && snapshot.query.need_id === resolution.need_id
+      && snapshot.source_results.some((result) => result.candidates.some((candidate) => (
+        candidate.candidate_id === provider.provider_id
+        && candidate.source_ref === provider.source_ref
+        && candidate.source_hash === provider.source_hash
+      )))
+    ));
+    if (!provider || !sourceCurrent || safeProviderFingerprint(provider) !== binding.selected_provider_fingerprint) {
+      staleResolution({ resolution_id: resolution.resolution_id, reason: "live_candidate_changed" });
+    }
+    return;
+  }
   const provider = state.providers.find((item) => item.provider_id === resolution.selected_provider_id);
   if (!state.inventory || state.inventory.inventory_id !== binding.inventory_id || !provider
     || safeProviderFingerprint(provider) !== binding.selected_provider_fingerprint) {
@@ -260,9 +284,11 @@ function assertInstallResolution(state, target) {
 }
 
 function assertInstallProvider(state, resolution, target) {
-  const provider = state.providers.find((item) => item.provider_id === resolution.selected_provider_id);
+  const provider = state.providers.find((item) => item.provider_id === resolution.selected_provider_id)
+    || (state.live_providers || []).find((item) => item.provider_id === resolution.selected_provider_id);
+  const sourceHash = provider && (provider.provider_hash || provider.source_hash);
   if (!provider || target.candidate_id !== resolution.selected_provider_id
-    || target.candidate_version !== provider.version || target.source_hash !== provider.provider_hash) {
+    || target.candidate_version !== provider.version || target.source_hash !== sourceHash) {
     throw coreError("CORE_INSTALL_CANDIDATE_STALE", "Install target candidate evidence does not match the selected provider.");
   }
   return provider;
@@ -338,7 +364,18 @@ function acquisitionSnapshot(payload) {
   };
 }
 
-function createCommandBoundary({ eventStore, rules, collectInventory, verifyUserApproval, compileContextPack, referenceTime } = {}) {
+function createCommandBoundary({
+  eventStore,
+  rules,
+  collectInventory,
+  verifyUserApproval,
+  compileContextPack,
+  referenceTime,
+  reuseDiscoveryConnectors = [],
+  reuseDiscoveryCache = null,
+  reuseDiscoveryClock,
+  assessReuseCandidate,
+} = {}) {
   if (!eventStore || typeof eventStore.commit !== "function" || typeof eventStore.replay !== "function") {
     throw new TypeError("An EventStore is required.");
   }
@@ -447,7 +484,11 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
       return commit(command, identity, { type: "task.intent.created", payload: { task_intent, responsibility: "orchestrator" }, evidence_refs: [task_intent.raw_request_ref] }, undefined, replayed);
     }
     if (command.name === "capability.compile") {
-      const graph = compileCapabilities({ taskIntent: clone(currentIntent(state)), rules });
+      const graph = compileCapabilities({
+        taskIntent: clone(currentIntent(state)),
+        rules,
+        declaredNeeds: command.payload.declared_needs === undefined ? undefined : clone(command.payload.declared_needs),
+      });
       return commit(command, identity, [
         ...graph.needs.map((need) => ({ type: "capability.need.declared", payload: { need, responsibility: "orchestrator" }, evidence_refs: [] })),
         { type: "capability.graph.compiled", payload: { graph, responsibility: "orchestrator" }, evidence_refs: [] },
@@ -455,17 +496,35 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
     }
     if (command.name === "execution-plan.create") {
       const taskIntent = currentIntent(state);
-      currentGraph(state);
+      const graph = currentGraph(state);
       if (state.current_execution_plan_id) {
         throw coreError("CORE_EXECUTION_PLAN_EXISTS", "An Execution Plan already exists; use escalation for a lane change.", {
           execution_plan_id: state.current_execution_plan_id
         });
       }
-      const execution_plan = createExecutionPlan({ taskIntent: clone(taskIntent), riskProfile: clone(command.payload.risk_profile) });
+      const capabilityNeeds = Array.isArray(command.payload.capability_needs) && command.payload.capability_needs.length > 0
+        ? clone(command.payload.capability_needs)
+        : clone(graph.needs);
+      const localInventory = state.inventory
+        ? { providers: clone(state.providers), conflicts: clone(state.inventory.conflicts || []) }
+        : null;
+      const { task_profile, execution_plan } = createProfiledExecutionPlan({
+        taskIntent: clone(taskIntent),
+        workItem: clone(command.payload.work_item) || {},
+        projectUnderstanding: clone(command.payload.project_understanding) || {},
+        capabilityNeeds,
+        localInventory,
+        failureHistory: clone(command.payload.failure_history) || [],
+        legacyRiskProfile: clone(command.payload.risk_profile),
+      });
       return commit(command, identity, {
         type: "execution.plan.created",
-        payload: { execution_plan, responsibility: "orchestrator" },
-        evidence_refs: [`task_intent:${taskIntent.task_intent_id}`, `capability_graph:${state.current_capability_graph_id}`]
+        payload: { execution_plan, task_profile, responsibility: "orchestrator" },
+        evidence_refs: [...new Set([
+          `task_intent:${taskIntent.task_intent_id}`,
+          `capability_graph:${state.current_capability_graph_id}`,
+          ...task_profile.evidence_refs,
+        ])].sort(compareText)
       }, undefined, replayed);
     }
     if (command.name === "execution-plan.escalate") {
@@ -632,6 +691,78 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
         evidence_refs: [...new Set(refs)].sort(compareText),
       }, undefined, replayed);
     }
+    if (command.name === "reuse-discovery.complete") {
+      const currentPlan = state.execution_plans.find((plan) => plan.execution_plan_id === state.current_execution_plan_id);
+      const currentProfile = state.task_profiles.find((profile) => profile.task_intent_id === state.current_task_profile_id);
+      if (!currentPlan || !currentProfile) throw coreError("CORE_EXECUTION_PLAN_REQUIRED", "Reuse discovery completion requires a current Execution Plan and Task Profile.");
+      const discovery = clone(command.payload.discovery);
+      const integrated = integrateReuseDiscovery({ executionPlan: clone(currentPlan), taskProfile: clone(currentProfile), discovery });
+      const liveProviders = discovery.need_results.flatMap((result) => (result.candidates || []).filter((candidate) => candidate.source_type && candidate.source_type.startsWith("live:")));
+      for (const result of discovery.need_results) {
+        for (const provider of (result.candidates || []).filter((candidate) => candidate.source_type && candidate.source_type.startsWith("live:"))) {
+          const sourceBound = result.acquisition && result.acquisition.source_results.some((source) => source.candidates.some((candidate) => (
+            candidate.candidate_id === provider.provider_id
+            && candidate.source_ref === provider.source_ref
+            && candidate.source_hash === provider.source_hash
+            && (candidate.version || candidate.revision || "unversioned") === provider.version
+          )));
+          if (!sourceBound || !Array.isArray(provider.evidence_refs) || !provider.evidence_refs.includes(`${provider.source_ref}#${provider.source_hash}`)) {
+            throw coreError("CORE_LIVE_CANDIDATE_UNBOUND", "Live candidate must bind an exact persisted acquisition source and hash.", { provider_id: provider.provider_id });
+          }
+        }
+      }
+      const virtualState = {
+        ...state,
+        live_providers: [...(state.live_providers || []).filter((stored) => !liveProviders.some((candidate) => candidate.provider_id === stored.provider_id)), ...liveProviders],
+      };
+      const events = [];
+      for (const result of discovery.need_results) {
+        if (result.acquisition && result.acquisition.query) {
+          const snapshot = acquisitionSnapshot(result.acquisition);
+          events.push({
+            type: "acquisition.snapshot.recorded",
+            payload: { acquisition_snapshot: snapshot, responsibility: "scout" },
+            evidence_refs: snapshot.source_results.flatMap((source) => source.source_evidence.map((evidence) => `${evidence.source_ref}#${evidence.source_hash}`)),
+          });
+        }
+        for (const provider of (result.candidates || []).filter((candidate) => candidate.source_type && candidate.source_type.startsWith("live:"))) {
+          events.push({ type: "capability.live-provider.discovered", payload: { provider, responsibility: "scout" }, evidence_refs: provider.evidence_refs || [] });
+        }
+        for (const audit of result.audit_facts || []) {
+          const evaluation = clone(assertContract("candidate-evaluation", audit.evaluation));
+          events.push({ type: "candidate.audit.recorded", payload: { evaluation, responsibility: "source_bound_audit", responsibility_boundary: { ...RESPONSIBILITY } }, evidence_refs: [] });
+        }
+        if (result.proposal) {
+          const proposal = result.proposal;
+          clone(assertContract("resolution", proposal.resolution));
+          const binding = proposalBinding(virtualState, proposal);
+          events.push(...[...proposal.ranked_candidates, ...proposal.rejected_candidates].map((candidate) => ({
+            type: "candidate.evaluated",
+            payload: { evaluation: clone(assertContract("candidate-evaluation", candidate.evaluation)), responsibility: "static_audit", responsibility_boundary: { ...RESPONSIBILITY } },
+            evidence_refs: (virtualState.live_providers || []).find((provider) => provider.provider_id === candidate.candidate_id)?.evidence_refs
+              || state.providers.find((provider) => provider.provider_id === candidate.candidate_id)?.evidence_refs || [],
+          })));
+          events.push({
+            type: "resolution.proposed",
+            payload: {
+              resolution: proposal.resolution,
+              rejection_reasons: proposal.rejected_candidates.map((candidate) => ({ candidate_id: candidate.candidate_id, why_not_selected: candidate.why_not_selected })),
+              responsibility: "orchestrator",
+              responsibility_boundary: { ...RESPONSIBILITY },
+              proposal_binding: binding,
+              scout_skip_reason: result.live_candidate_ids && result.live_candidate_ids.length ? null : result.local_candidate_ids && result.local_candidate_ids.length ? "local_inventory_satisfied_need" : null,
+            },
+            evidence_refs: proposal.resolution.evidence_refs,
+          });
+        }
+      }
+      events.push({
+        type: "execution.plan.created",
+        payload: { ...integrated, responsibility: "orchestrator" },
+        evidence_refs: integrated.task_profile.evidence_refs,
+      });
+      return commit(command, identity, events, undefined, replayed);
+    }
     if (command.name === "candidate.audit.record") {
       const evaluation = clone(assertContract("candidate-evaluation", command.payload));
       return commit(command, identity, {
@@ -698,7 +829,31 @@ function createCommandBoundary({ eventStore, rules, collectInventory, verifyUser
     }[decided.status];
     return commit(command, identity, { type: eventType, payload: { review: decided, responsibility: decided.status === "approved" || decided.status === "changes_requested" ? "user" : "orchestrator" }, evidence_refs: [decided.review_packet_ref, decided.build_ref] }, verified ? verified.actor : undefined, replayed);
   }
-  return { execute, replay, projectors: reducers, reference_time: referenceTime || null };
+  async function runReuseDiscovery({ command_id } = {}) {
+    if (typeof command_id !== "string" || !command_id) throw coreError("CORE_COMMAND_INVALID", "Reuse discovery run requires a command_id.");
+    const state = replay();
+    const existing = state.timeline.find((entry) => entry.batch_id === command_id);
+    if (existing) {
+      const profile = state.task_profiles.find((item) => item.task_intent_id === state.current_task_profile_id);
+      return { status: "idempotent", sequence: existing.sequence, discovery: clone(profile && profile.reuse_discovery) };
+    }
+    const graph = currentGraph(state);
+    const currentPlan = state.execution_plans.find((plan) => plan.execution_plan_id === state.current_execution_plan_id);
+    const currentProfile = state.task_profiles.find((profile) => profile.task_intent_id === state.current_task_profile_id);
+    if (!currentPlan || !currentProfile) throw coreError("CORE_EXECUTION_PLAN_REQUIRED", "Reuse discovery run requires a current Execution Plan and Task Profile.");
+    const localInventory = state.inventory ? { providers: clone(state.providers), conflicts: clone(state.inventory.conflicts || []) } : null;
+    const discovery = await executeReuseDiscovery({
+      capabilityNeeds: clone(graph.needs),
+      localInventory,
+      connectors: reuseDiscoveryConnectors,
+      cache: reuseDiscoveryCache,
+      clock: reuseDiscoveryClock || (() => referenceTime || new Date().toISOString()),
+      assessCandidate: assessReuseCandidate,
+    });
+    const committed = execute({ command_id, name: "reuse-discovery.complete", payload: { discovery } });
+    return { ...committed, discovery };
+  }
+  return { execute, replay, runReuseDiscovery, projectors: reducers, reference_time: referenceTime || null };
 }
 
 module.exports = { COMMAND_NAMES, createCommandBoundary, coreError };

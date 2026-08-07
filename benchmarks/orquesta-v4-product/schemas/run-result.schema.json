@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ugin-man/orquesta/benchmarks/orquesta-v4-product/run-result.schema.json",
+  "title": "Orquesta V4-fast three-condition benchmark run result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "matrix_id",
+    "benchmark_id",
+    "task_id",
+    "mode",
+    "status",
+    "runtime",
+    "started_at",
+    "ended_at",
+    "wall_time_ms",
+    "verifier",
+    "token_usage",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "benchmark_id": {
+      "const": "orquesta-v4-product"
+    },
+    "task_id": {
+      "const": "organization-json-generator"
+    },
+    "mode": {
+      "enum": [
+        "plain",
+        "skills",
+        "orquesta"
+      ]
+    },
+    "status": {
+      "enum": [
+        "prepared",
+        "running",
+        "finalized",
+        "timeout",
+        "invalid",
+        "infrastructure_error"
+      ]
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "model",
+        "reasoning_effort",
+        "sandbox",
+        "approval_policy",
+        "agent_timeout_sec",
+        "verifier_timeout_sec"
+      ]
+    },
+    "wall_time_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "token_usage": {
+      "type": "object",
+      "required": [
+        "coverage",
+        "totals",
+        "by_thread"
+      ],
+      "properties": {
+        "coverage": {
+          "enum": [
+            "unknown",
+            "partial",
+            "complete"
+          ]
+        },
+        "by_thread": {
+          "type": "array"
+        },
+        "totals": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "uncached_input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cached_input_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

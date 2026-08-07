@@ -7,7 +7,7 @@ const VALID_READING_STATUSES = new Set(["done", "partial", "blocked"]);
 const VALID_COMMAND_STATUSES = new Set(["passed", "failed", "blocked", "not_run", "failed_expected"]);
 const VALID_EVIDENCE_STATUSES = new Set(["passed", "failed", "blocked", "not_required"]);
 const VALID_CHANGE_KINDS = new Set(["created", "modified", "deleted", "report_only", "state_only"]);
-const VALID_QUESTION_STATUSES = new Set(["submitted", "none"]);
+const VALID_QUESTION_STATUSES = new Set(["submitted", "none", "omitted"]);
 const WEAKENING_IMPACTS = new Set(["weakens_evidence", "weakens_output"]);
 
 function issue(code, message, field = null) {
@@ -208,7 +208,7 @@ function validateCompletionEnvelope(envelope, task = {}, options = {}) {
   }
 
   if (!VALID_QUESTION_STATUSES.has(envelope.question_candidates_status)) {
-    errors.push(issue("invalid_question_candidates_status", "question_candidates_status must be submitted or none.", "question_candidates_status"));
+    errors.push(issue("invalid_question_candidates_status", "question_candidates_status must be submitted, none, or omitted.", "question_candidates_status"));
   }
   if (!validTimestamp(envelope.created_at)) {
     errors.push(issue("invalid_timestamp", "completion_envelope.created_at must be a valid timestamp.", "created_at"));

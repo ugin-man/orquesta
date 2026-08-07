@@ -1,7 +1,8 @@
 "use strict";
 
-const { appendFile, mkdir, readFile, realpath, rename, rm, writeFile } = require("node:fs/promises");
+const { readFile, realpath } = require("node:fs/promises");
 const path = require("node:path");
+const { appendJsonlAtomic, writeJsonAtomic } = require("./json-state");
 const {
   PHASES,
   activatePhase,
@@ -31,21 +32,12 @@ async function readState(rootPath) {
 
 async function writeStateAtomic(rootPath, state) {
   const filePath = path.join(rootPath, ".orquesta", "setup", "setup_state.json");
-  await mkdir(path.dirname(filePath), { recursive: true });
-  const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-  try {
-    await rename(temporary, filePath);
-  } catch (error) {
-    await rm(temporary, { force: true }).catch(() => undefined);
-    throw error;
-  }
+  writeJsonAtomic(filePath, state);
 }
 
 async function appendSetupEvent(rootPath, event) {
   const filePath = path.join(rootPath, ".orquesta", "state", "events.jsonl");
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await appendFile(filePath, `${JSON.stringify(event)}\n`, "utf8");
+  appendJsonlAtomic(filePath, event);
 }
 
 function activeActivity(phase, now) {

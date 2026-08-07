@@ -1,0 +1,16 @@
+{
+  "$id": "codex-dispatch",
+  "type": "object",
+  "required": ["adapter_kind", "request_status", "thread_id", "turn_id", "requested_model", "applied_model", "evidence_refs", "turn_started_evidence_ref"],
+  "properties": {
+    "adapter_kind": { "enum": ["app_server", "sdk", "repository_only"] },
+    "request_status": { "enum": ["requested", "dispatch_accepted", "turn_started", "unsupported", "failed"] },
+    "thread_id": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": ".+" }] },
+    "turn_id": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": ".+" }] },
+    "requested_model": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": ".+" }] },
+    "applied_model": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": ".+" }] },
+    "evidence_refs": { "type": "array", "items": { "type": "string", "pattern": ".+" } },
+    "turn_started_evidence_ref": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": ".+" }] }
+  },
+  "additionalProperties": false
+}

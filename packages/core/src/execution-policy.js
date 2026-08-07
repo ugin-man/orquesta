@@ -18,6 +18,7 @@ const METRIC_TO_BUDGET = Object.freeze({
   reports: "max_reports",
   auxiliary_tasks: "max_auxiliary_tasks"
 });
+const CORRECTION_THRESHOLD_REPLAN_REASON = "correction_threshold_replanned";
 const ESCALATION_LANES = Object.freeze({
   fast: Object.freeze({
     test_failure: "standard",
@@ -137,11 +138,40 @@ function laneEscalationTriggers(lane) {
   return Object.keys(ESCALATION_LANES[lane] || {}).sort(compareText);
 }
 
-function buildExecutionPlan({ taskIntentId, riskProfile, lane, reasonCodes, revision, supersedesExecutionPlanId, escalationTriggers }) {
-  const { routing, review_policy } = laneFields(lane);
+function deriveExecutionAxes(riskProfile, executionEvidence = {}) {
+  const evidence = executionEvidence && typeof executionEvidence === "object" ? executionEvidence : {};
+  const parallel = Array.isArray(evidence.independent_deliverables) && evidence.independent_deliverables.length >= 2
+    && evidence.dependencies_explicit === true
+    && evidence.write_overlap === false
+    && evidence.verification_independence === true
+    && evidence.parallel_gain === true;
+  const execution_mode = evidence.durable_context_required === true
+    ? "durable_specialist"
+    : parallel ? "bounded_parallel" : "solo_direct";
+  const strict = riskProfile.reversibility === "irreversible"
+    || riskProfile.user_review === "strict"
+    || riskProfile.effects.some((effect) => CRITICAL_EFFECTS.has(effect))
+    || riskProfile.verification === "human_only";
+  const normal = strict || riskProfile.scope === "multiple_boundaries"
+    || riskProfile.verification === "mixed" || riskProfile.uncertainty !== "low"
+    || riskProfile.repeated_failures > 0 || riskProfile.effects.some((effect) => STANDARD_EFFECTS.has(effect));
+  return { execution_mode, review_intensity: strict ? "strict" : normal ? "normal" : "light" };
+}
+
+function buildExecutionPlan({ taskIntentId, riskProfile, lane, reasonCodes, revision, supersedesExecutionPlanId, escalationTriggers, executionEvidence }) {
+  const axes = executionEvidence === undefined ? null : deriveExecutionAxes(riskProfile, executionEvidence);
+  const reviewPolicyForAxes = axes?.review_intensity === "light" ? "none"
+    : axes?.review_intensity === "normal" ? "independent_once"
+      : axes?.review_intensity === "strict" ? "independent_twice" : null;
+  const laneFieldsForPlan = axes
+    ? axes.execution_mode === "solo_direct"
+      ? { routing: { routing_class: "inline_verified", handoff_required: false, specialist_report_required: false }, review_policy: reviewPolicyForAxes }
+      : { routing: { routing_class: "specialist_required", handoff_required: true, specialist_report_required: true }, review_policy: reviewPolicyForAxes }
+    : laneFields(lane);
+  const { routing, review_policy } = laneFieldsForPlan;
   const content = {
     task_intent_id: taskIntentId,
-    policy_version: 1,
+    policy_version: executionEvidence === undefined ? 1 : 2,
     lane,
     risk_profile: riskProfile,
     reason_codes: [...new Set(reasonCodes)].sort(compareText),
@@ -152,6 +182,7 @@ function buildExecutionPlan({ taskIntentId, riskProfile, lane, reasonCodes, revi
     revision,
     supersedes_execution_plan_id: supersedesExecutionPlanId
   };
+  if (axes) Object.assign(content, axes);
   const plan = {
     execution_plan_id: `EP-${canonicalHash(content).slice(0, 12)}`,
     ...content
@@ -159,11 +190,10 @@ function buildExecutionPlan({ taskIntentId, riskProfile, lane, reasonCodes, revi
   return deepFreeze(assertContract("execution-plan", detached(plan)));
 }
 
-function createExecutionPlan({ taskIntent, riskProfile, revision = 1, supersedesExecutionPlanId = null } = {}) {
+function createExecutionPlan({ taskIntent, riskProfile, executionEvidence, revision = 1, supersedesExecutionPlanId = null } = {}) {
   const validTaskIntent = detached(assertContract("task-intent", taskIntent));
-  if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
-  if (supersedesExecutionPlanId !== null && !/^EP-[a-f0-9]{12}$/.test(supersedesExecutionPlanId)) {
-    throw new TypeError("supersedesExecutionPlanId is invalid");
+  if (revision !== 1 || supersedesExecutionPlanId !== null) {
+    throw new TypeError("createExecutionPlan creates only an initial plan; use reviseExecutionPlan or escalateExecutionPlan for later revisions");
   }
   const { profile, missing } = normalizeRiskProfile(riskProfile);
   const { lane, reasonCodes } = classify(profile, missing);
@@ -174,7 +204,8 @@ function createExecutionPlan({ taskIntent, riskProfile, revision = 1, supersedes
     reasonCodes,
     revision,
     supersedesExecutionPlanId,
-    escalationTriggers: laneEscalationTriggers(lane)
+    escalationTriggers: laneEscalationTriggers(lane),
+    executionEvidence
   });
 }
 
@@ -191,6 +222,19 @@ function assessExecutionBudget(executionPlan, counts) {
     if (counts[metric] > plan.budget[budgetField]) exceeded.push(budgetField);
   }
   if (exceeded.length === 0) return { status: "within_budget", exceeded: [] };
+  if (plan.policy_version === 2) {
+    const otherExceeded = exceeded.filter((field) => field !== "max_correction_batches");
+    if (otherExceeded.length > 0) {
+      return { status: "replan_required", exceeded };
+    }
+    const replanned = plan.revision > 1
+      && typeof plan.supersedes_execution_plan_id === "string"
+      && plan.reason_codes.includes(CORRECTION_THRESHOLD_REPLAN_REASON);
+    return {
+      status: replanned ? "continuation_allowed" : "replan_required",
+      exceeded
+    };
+  }
   return {
     status: plan.lane === "critical" ? "user_decision_required" : "escalation_required",
     exceeded
@@ -204,6 +248,13 @@ function escalateExecutionPlan({ executionPlan, trigger } = {}) {
   }
   const targetLane = ESCALATION_LANES[current.lane]?.[trigger];
   if (!targetLane) throw new TypeError("Execution escalation trigger is invalid for the current lane");
+  const executionEvidence = current.policy_version === 2
+    ? current.execution_mode === "durable_specialist"
+      ? { durable_context_required: true }
+      : current.execution_mode === "bounded_parallel"
+        ? { independent_deliverables: ["independent-1", "independent-2"], dependencies_explicit: true, write_overlap: false, verification_independence: true, parallel_gain: true }
+        : {}
+    : undefined;
   return buildExecutionPlan({
     taskIntentId: current.task_intent_id,
     riskProfile: current.risk_profile,
@@ -211,14 +262,50 @@ function escalateExecutionPlan({ executionPlan, trigger } = {}) {
     reasonCodes: [...current.reason_codes, `escalation:${trigger}`],
     revision: current.revision + 1,
     supersedesExecutionPlanId: current.execution_plan_id,
-    escalationTriggers: laneEscalationTriggers(targetLane)
+    escalationTriggers: laneEscalationTriggers(targetLane),
+    executionEvidence
+  });
+}
+
+function executionEvidenceForPlan(plan) {
+  if (plan.policy_version !== 2) return undefined;
+  if (plan.execution_mode === "durable_specialist") return { durable_context_required: true };
+  if (plan.execution_mode === "bounded_parallel") {
+    return {
+      independent_deliverables: ["independent-1", "independent-2"],
+      dependencies_explicit: true,
+      write_overlap: false,
+      verification_independence: true,
+      parallel_gain: true,
+    };
+  }
+  return {};
+}
+
+function reviseExecutionPlan({ executionPlan, reasonCodes = [] } = {}) {
+  const current = detached(assertContract("execution-plan", executionPlan));
+  if (!Array.isArray(reasonCodes) || reasonCodes.some((reason) => typeof reason !== "string" || !reason.trim())) {
+    throw new TypeError("reasonCodes must contain nonempty strings");
+  }
+  return buildExecutionPlan({
+    taskIntentId: current.task_intent_id,
+    riskProfile: current.risk_profile,
+    lane: current.lane,
+    reasonCodes: [...current.reason_codes, ...reasonCodes],
+    revision: current.revision + 1,
+    supersedesExecutionPlanId: current.execution_plan_id,
+    escalationTriggers: current.escalation_triggers,
+    executionEvidence: executionEvidenceForPlan(current),
   });
 }
 
 module.exports = {
+  CORRECTION_THRESHOLD_REPLAN_REASON,
   EXECUTION_LANES,
   EXECUTION_BUDGETS,
   assessExecutionBudget,
   createExecutionPlan,
-  escalateExecutionPlan
+  deriveExecutionAxes,
+  escalateExecutionPlan,
+  reviseExecutionPlan,
 };

@@ -8,5 +8,6 @@
   },
   "dependencies": {
     "@orquesta/contracts": "*"
-  }
+  },
+  "license": "MIT"
 }

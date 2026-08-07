@@ -1,5 +1,7 @@
 # OpenAI Build Week Submission Notes
 
+> Historical archive: this document describes the July 2026 Build Week submission boundary. It is preserved as dated evidence and does not define the current release status. For the current candidate, see [the V4 release notes](docs/release-notes/v0.4.0-preview.1.md).
+
 ## What existed before the submission period
 
 Orquesta already existed as a Codex skill and browser-based local dashboard. It had persistent specialist roles, file-backed `.orquesta` state, delegation evidence, user questions, failure intake, and early V4 capability-resolution work.
@@ -42,7 +44,7 @@ Inside the product, Orquesta starts the packaged Codex App Server only when work
 
 ### Recommended path
 
-1. Download [the Windows x64 installer](https://github.com/ugin-man/orquesta/releases/download/v0.1.0-v4-preview/OrquestaSetup.exe).
+1. Open [GitHub Releases](https://github.com/ugin-man/orquesta/releases/latest) and choose the reviewed Windows x64 preview available there.
 2. Install and open Orquesta.
 3. Choose an existing local project or create a new project folder.
 4. Complete the one-screen intake.

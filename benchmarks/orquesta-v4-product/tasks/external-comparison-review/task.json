@@ -1,0 +1,4 @@
+{
+  "schema_version": 1,
+  "instruction": "Compare product/current.md with evidence/competitor-a.md and evidence/competitor-b.md. Create reports/external-comparison.json with strengths, gaps, recommendations, and citations arrays. Use only the supplied evidence. Every gap and recommendation must cite a source path."
+}

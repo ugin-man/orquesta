@@ -148,6 +148,24 @@ lines.on('line', (line) => {
     });
     return;
   }
+  if (message.method === 'thread/list') {
+    const archived = Boolean(message.params?.archived);
+    send({
+      id: message.id,
+      result: {
+        data: archived ? [] : [{
+          id: 'thread-e2e',
+          cwd: message.params?.cwd ?? null,
+          name: 'Coordinator',
+          archived: false,
+          status: { type: 'idle' },
+          updatedAt: Date.now() / 1_000
+        }],
+        nextCursor: null
+      }
+    });
+    return;
+  }
   if (message.method === 'turn/start') {
     const threadId = message.params?.threadId ?? 'thread-e2e';
     const userText = message.params?.input?.find((item) => item.type === 'text')?.text ?? '';

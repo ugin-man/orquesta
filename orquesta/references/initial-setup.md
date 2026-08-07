@@ -18,7 +18,15 @@ Foundation agents are unique system seats, not numbered production specialists. 
 
 Do not put Japanese text, star marks, emoji, or decorative symbols in agent IDs, JSON keys, file names, or state references. Use ASCII IDs for anything machines read.
 
-Human-visible thread titles may use Japanese and a star mark. The orchestrator thread should be titled `★ Orquesta 統括`.
+Human-visible thread titles may use Japanese and a star mark. Use these canonical titles:
+
+- `orchestrator`: `★ Orquesta 統括者`
+- `orquesta-admin`: `Orquesta 管理係 Luca`
+- `user-support`: `Orquesta 利用者支援係`
+- first production specialist: `Orquesta <日本語の役割名>`
+- second and later seats in the same role: `Orquesta <日本語の役割名> 2`, `Orquesta <日本語の役割名> 3`
+
+Do not expose provisioning XML, warning IDs, or machine IDs such as `implementation-001` as Codex task titles.
 
 Existing `user-liaison`, `vision-curator`, and `error-concierge` records are preserved as `superseded` history and point to `user-support`. New projects never generate those three legacy seats.
 
@@ -26,7 +34,7 @@ Existing `user-liaison`, `vision-curator`, and `error-concierge` records are pre
 
 The calling chat becomes the orchestrator foundation agent.
 
-Rename the calling Codex thread to `★ Orquesta 統括` and pin it when thread tools are available. If the title or pin cannot be changed, still record the calling thread as the orchestrator in state and report the skipped UI action.
+Rename the calling Codex thread to `★ Orquesta 統括者` and pin it when thread tools are available. If the title or pin cannot be changed, still record the calling thread as the orchestrator in state and report the skipped UI action.
 
 The orchestrator owns:
 
@@ -49,7 +57,7 @@ The orchestrator must not:
 Create or reuse these sessions immediately after the calling chat is recorded as the orchestrator:
 
 - `user-support`: event-driven question curator, answer interpreter, failure triage, repair-card author, and user-side task coordinator.
-- `orquesta-admin`: Orquesta setup, dashboard handoff, option packs, and configuration.
+- `orquesta-admin`: Orquesta setup, Desktop handoff, diagnostic dashboard, option packs, and configuration.
 
 These are foundation sessions, not production feature teams. They should usually return to `standby` after their readiness or setup report.
 
@@ -67,7 +75,8 @@ Foundation bootstrap must be idempotent:
 `orquesta-admin` owns:
 
 - first-run orientation
-- dashboard startup and dashboard URL handoff
+- Orquesta Desktop launch for the selected project root
+- diagnostic dashboard startup and URL reporting when intentionally requested
 - Orquesta configuration and tuning requests
 - optional feature-pack proposals
 - initial specialist roster recommendations
@@ -88,26 +97,28 @@ When `.orquesta/CURRENT_ORCHESTRA.md` is missing:
 
 1. Create the `.orquesta` state skeleton.
 2. Record the calling chat as `orchestrator`.
-3. Rename the calling thread to `★ Orquesta 統括` when possible.
+3. Rename the calling thread to `★ Orquesta 統括者` when possible.
 4. Pin the calling thread when possible.
 5. Add exactly `orchestrator`, `user-support`, and `orquesta-admin` to the foundation in `agents.json`.
 6. Create or reuse the three foundation Codex sessions.
-7. Start the dashboard server if possible.
-8. Verify the dashboard with `/api/state`, not only HTTP 200.
-9. Open the verified dashboard URL in the user's external browser when possible.
-10. Give the verified dashboard URL in chat even if browser opening succeeds.
-11. Ask for the project folder, project name, and project description. Prefill what can be inferred from the selected repository.
-12. Store the intake in `.orquesta/setup/project_intake.json` and build a bounded Project Understanding Packet.
-13. Ask zero to three optional clarification questions only when the evidence is insufficient. Skipping them must not block setup.
-14. Create the six-phase `.orquesta/setup/setup_state.json`, initial Completion Map, and first executable work.
-15. Run the normal organization preflight against that work. Create no fixed roster and no minimum number of specialists.
-16. Create the initial roles, lines, teams, memberships, agents, and task ownership in one organization revision.
-17. Prepare a provisioning batch capped at three concurrent requests. Each specialist must own at least one executable task.
-18. Use the existing Codex App Server path to create each accepted specialist thread and send its bounded handoff.
-19. Mark a specialist operational only after thread and turn evidence exists. Keep failures on the same agent ID as `provisioning_failed` for retry.
-20. Report why each initial role and line exists and move to the Home screen after one integrated setup check.
+7. Launch Orquesta Desktop with `node "<orquesta-skill-root>\scripts\desktop-launch.js" --project-root "<project-root>"`, where `<orquesta-skill-root>` is the absolute directory containing the active `SKILL.md`; this passes `--orquesta-project <project-root>` to the Desktop executable.
+8. Verify that the Desktop process accepted the selected project root. If the Desktop executable cannot be found or launched, stop with an installation blocker instead of opening a browser.
+9. Start and verify the web dashboard only when a diagnostic browser surface is intentionally needed. Verify it with `/api/state`, not only HTTP 200.
+10. Report the verified dashboard URL in chat when the diagnostic server is running. Do not auto-open it through the operating system's default browser.
+11. Ask for the project folder, project name, and project description. Prefill what can be inferred from the selected repository. Ask zero to three optional clarification questions only when evidence is insufficient; skipping them must not block setup.
+12. Atomically create the six-phase `.orquesta/setup/setup_state.json`, store the intake in `.orquesta/setup/project_intake.json`, and build a bounded Project Understanding Packet.
+13. During project understanding, infer an initial project archetype from manifests, directories, and file kinds. The project description is supporting evidence, not the only classifier.
+14. Save `.orquesta/project/layout.json`, `lifecycle.json`, and `structure-setup.json`, including the structure template version and setup answers. Generate `.orquesta/context/initial-context-view.json` before production routing.
+15. For a new project, create only one entry document and the one primary directory needed by the inferred first component. For an existing project, use shadow mode: do not move, rename, or rewrite project files.
+16. Create the initial Completion Map and first executable work.
+17. Run the normal organization preflight against that work. Create no fixed roster and no minimum number of specialists.
+18. Create the initial roles, lines, teams, memberships, agents, and task ownership in one organization revision.
+19. Prepare a provisioning batch capped at three concurrent requests. Each specialist must own at least one executable task.
+20. Follow the runtime binding for each accepted specialist. In `codex_hosted`, create the task with the callable Codex thread tool in the selected project, record its thread ID, then let Desktop send the bounded handoff. In `standalone`, Desktop may create the thread through its owned App Server. If the required Codex thread tool is unavailable in `codex_hosted`, stop with a visible provisioning blocker instead of falling back.
+21. Mark a specialist operational only after thread and turn evidence exists. Keep failures on the same agent ID as `provisioning_failed` for retry.
+22. Report why each initial role and line exists and move to the Home screen after one integrated setup check.
 
-If the dashboard server cannot start, record a failure incident and let the trigger audit wake `user-support` when user knowledge or action is actually needed.
+If the diagnostic dashboard server cannot start, record a failure incident only when that diagnostic surface was required. A dashboard failure does not replace or invalidate a working Desktop session.
 
 If setup is interrupted, resume from `.orquesta/setup/options.json` instead of starting over.
 
@@ -127,23 +138,30 @@ The dashboard server should choose the port before startup instead of repeatedly
 
 If the default port is occupied by another process, record the selected fallback in `.orquesta/setup/options.json`, `.orquesta/CURRENT_ORCHESTRA.md`, and the final user report with the actual verified dashboard URL. Treat expected port occupation as dashboard routing state; only create a failure incident when startup still blocks or needs user-side action.
 
-## Dashboard Browser Handoff
+## Desktop Handoff And Browser Isolation
 
-After the dashboard URL is verified, try to open it in the user's normal external browser so the user notices the dashboard exists.
+Orquesta Desktop is the primary surface. Resolve the absolute directory containing the active `SKILL.md` and use it as `<orquesta-skill-root>`:
 
-Use the safest platform command available:
+```powershell
+node "<orquesta-skill-root>\scripts\desktop-launch.js" --project-root "<project-root>"
+```
 
-- Windows PowerShell: `Start-Process <verified-dashboard-url>`
-- macOS: `open <verified-dashboard-url>`
-- Linux: `xdg-open <verified-dashboard-url>`
+Do not prepend another `orquesta` directory when `<orquesta-skill-root>` already ends in `orquesta`. The launcher must resolve the Orquesta Desktop executable and pass `--orquesta-project <project-root>`. Never replace this with `Start-Process <url>` or another default-browser command.
 
-Rules:
+The web dashboard is a diagnostic fallback, not the Orquesta Desktop application. When the user explicitly asks to open that diagnostic surface:
 
-- Open only the verified URL for the current project.
-- Do not open a URL before `/api/state` proves the dashboard belongs to this project.
-- Record whether browser opening was attempted and whether it appeared to succeed in `.orquesta/setup/options.json`.
-- If opening fails, do not treat setup as failed. Report the URL clearly and let the user open it manually.
-- Do not repeatedly open browser tabs on every setup resume. Only auto-open during first successful dashboard verification, or when the user explicitly asks.
+- verify the dashboard URL belongs to the current project through `/api/state`
+- use the available browser-control skill and let that skill choose or reuse its supported browser and tab binding
+- first apply the current TaskIntent, project policy, `forbidden_actions`, live stop state, and manual-only constraints; pass browser-family and tab-count/reuse limits to the skill, and let the more restrictive authority win
+- preserve the skill's ownership checks; do not claim or change an unrelated generic tab
+- do not hardcode a browser executable or hand the URL to the operating system's default browser
+- stop when the browser-control skill cannot establish an unambiguous binding
+
+Do not auto-open browser tabs during setup or resume.
+
+## Setup Evidence And User Confirmation
+
+Desktop process evidence, the selected `--orquesta-project` root, setup state, foundation thread IDs, and rendered Desktop state are the deterministic setup checks. A user's visual confirmation may be retained as optional UAT evidence, but it is not a generic setup blocker. Do not invent a missing "final-use confirmation" requirement when the acceptance contract does not explicitly call for user UAT.
 
 ## Non-English State Safety
 
@@ -154,7 +172,8 @@ When setup or a specialist writes user-visible non-ASCII text into `.orquesta` s
 - Do not write Japanese or other non-ASCII JSON through shell snippets unless the command path has been proven UTF-8 safe.
 - Prefer `apply_patch`, a UTF-8-aware script file, or Unicode-escaped JavaScript literals for generated state.
 - After writing state, run `npm run check:encoding` from the Orquesta repository root when available.
-- Treat repeated literal question marks such as `???` in `.orquesta` JSON as a setup failure, not cosmetic text.
+- Treat repeated literal question marks in user-visible state, Unicode replacement characters, and strong mojibake signatures as setup failures.
+- Damage examples quoted as inline code in Markdown or hash-protected handoff conversation provenance are allowed. Never rewrite a handoff manifest merely to satisfy the validator.
 - If the dashboard displays garbled questions or names, inspect the source JSON first. Do not start by changing the dashboard renderer.
 
 The dashboard server also reports encoding warnings in `/api/state` under `health.encodingWarnings`.
@@ -166,10 +185,13 @@ Keep the first message short. Use this shape:
 ```md
 Orquesta is ready to set up this project.
 
-This chat is now the production orchestrator: `★ Orquesta 統括`.
+This chat is now the production orchestrator: `★ Orquesta 統括者`.
 
-Dashboard:
-http://127.0.0.1:4177/
+Desktop:
+Orquesta Desktop opened for the selected project.
+
+Diagnostic dashboard:
+http://127.0.0.1:4177/ (only when running)
 
 I can help with:
 - creating long-lived specialist Codex sessions
@@ -212,7 +234,7 @@ The organization preflight may autonomously reuse an agent, split work, add a me
 The user may talk to either:
 
 - Talk to `orquesta-admin` to tune Orquesta itself.
-- Talk to `★ Orquesta 統括` to plan and route production work.
+- Talk to `★ Orquesta 統括者` to plan and route production work.
 
 ## Setup State
 
@@ -225,12 +247,15 @@ The user may talk to either:
 - foundation agent IDs
 - foundation readiness or blockers
 - legacy pack metadata when present
-- dashboard URL
+- Desktop executable and selected project root
+- diagnostic dashboard URL when running
 - admin session ID
 - setup status
 - setup notes
 
 `.orquesta/setup/setup_state.json` should track the real six phases: environment, project understanding, foundation, planning, specialists, and operation. `.orquesta/setup/wizard.json` remains a compatibility projection for older clients and should not be treated as the canonical setup engine.
+
+The operation phase also installs a project-local `PostCompact` hook at `.orquesta/runtime/session-rotation-hook.cjs` and merges its command into `.codex/hooks.json` without removing existing hooks. Codex requires a trust review for project hooks. Report that one-time review honestly; do not bypass it. The hook only counts compactions and persists session-health state. Ownership cutover still requires a verified successor receipt.
 
 - setup status
 - current setup step
@@ -247,5 +272,21 @@ The user may talk to either:
 - submission status
 - source
 - update time
+
+`.orquesta/project/structure-setup.json` should track:
+
+- project structure template version
+- inferred archetype and its evidence scores
+- setup answers used to initialize the structure
+- whether setup used `new_minimal` or `existing_shadow`
+- generated or preserved manifest status
+- exact created directories and files
+- an always-empty `moved_paths` list during initial setup
+
+The initial Context View is a compact projection, not a copied specialist knowledge tree. Add later components by extending the Layout Manifest; do not rebuild or replace the existing project structure.
+
+Initial setup never performs a physical migration of an existing project. When cleanup becomes useful, generate `.orquesta/project/migration-plan.json` as a dry-run. The plan binds every move to the current workspace fingerprint and source hash, lists path-reference rewrites, and includes reverse moves for rollback. Identical content is only a review hint; it is not enough to retire either file. Reject project escapes, symlink candidates, target collisions, and plans without complete rollback evidence.
+
+Apply no move, rewrite, manifest update, quarantine, or deletion until the user approves the entire Migration Plan. A deletion requires a separate destructive confirmation. This planning and approval boundary must work without Orquesta Desktop running.
 
 The source of truth stays file-backed. The first-run chat is not enough.

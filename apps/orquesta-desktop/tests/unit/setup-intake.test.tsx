@@ -18,6 +18,21 @@ const draft: SetupDraft = {
 };
 
 describe('SetupIntake', () => {
+  test('shows project input before the account probe finishes', async () => {
+    let resolveAccount!: (value: { status: 'authenticated'; accountType: 'chatgpt'; requiresOpenaiAuth: true }) => void;
+    const bridge = new MockOrquestaBridge('active-project');
+    vi.spyOn(bridge, 'readSetupDraft').mockResolvedValue(draft);
+    vi.spyOn(bridge, 'readSetupAccount').mockImplementation(() => new Promise((resolve) => { resolveAccount = resolve; }));
+
+    render(<SetupIntake bridge={bridge} locale="ja" />);
+
+    expect(await screen.findByRole('heading', { name: 'Orquestaを始める' })).toBeVisible();
+    expect(screen.getByText('接続を確認中')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'セットアップを開始' })).toBeDisabled();
+    resolveAccount({ status: 'authenticated', accountType: 'chatgpt', requiresOpenaiAuth: true });
+    expect(await screen.findByText('ChatGPTで接続済み')).toBeVisible();
+  });
+
   test('keeps project source, intake, account, and approval on one screen', async () => {
     const bridge = new MockOrquestaBridge('active-project');
     vi.spyOn(bridge, 'readSetupDraft').mockResolvedValue(draft);

@@ -1,0 +1,4 @@
+{"timestamp":"2026-07-22T00:01:10.000Z","type":"session_meta","payload":{"id":"thread-other","cwd":"C:\\other\\project"}}
+this malformed line is outside the benchmark workspace
+{"timestamp":"2026-07-22T00:01:11.000Z","type":"turn_context","payload":{"model":"gpt-5.6-sol","effort":"high"}}
+{"timestamp":"2026-07-22T00:01:12.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":9999,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":9999,"reasoning_output_tokens":0,"total_tokens":19998},"last_token_usage":{"input_tokens":9999,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":9999,"reasoning_output_tokens":0,"total_tokens":19998}}}}

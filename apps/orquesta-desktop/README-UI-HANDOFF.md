@@ -140,8 +140,8 @@ apps/orquesta-desktop/
 
 ## Visual assetsと確認画像
 
-- 承認済みreference: `public/reference/orquesta-desktop-home-approved.png`
-- 紙grain: `public/reference/paper-grain.png`
+- 承認済みreferenceは設計時のローカル比較資料で、配布物には含めない
+- 紙grainは外部画像を配らず、CSSのprocedural textureで再現する
 - 1440×900標準fixture: `artifacts/screenshots/renderer-active-1440x900.png`
 - 1366×768標準fixture: `artifacts/screenshots/renderer-active-1366x768.png`
 - 承認画像との比較: `artifacts/screenshots/approved-vs-renderer-1440x900.png`
@@ -150,7 +150,7 @@ apps/orquesta-desktop/
 - 長い日本語: `artifacts/screenshots/renderer-japanese-1440x900.png`
 - visual regression baseline: `tests/visual/__screenshots__/`
 
-承認済みreferenceは実行時の背景や装飾には使わず、比較資料として保持しています。承認画像は1487×1058、必須確認viewportは1440×900と1366×768なので、完全なpixel matchではなく、構図、情報階層、余白、配色、浮遊窓の位置関係を基準に合わせています。
+承認済みreferenceは実行時の背景や装飾には使いません。公開リポジトリにも含めず、設計時のローカル比較資料としてだけ扱います。承認画像は1487×1058、必須確認viewportは1440×900と1366×768なので、完全なpixel matchではなく、構図、情報階層、余白、配色、浮遊窓の位置関係を基準に合わせています。
 
 ## 最終検証
 

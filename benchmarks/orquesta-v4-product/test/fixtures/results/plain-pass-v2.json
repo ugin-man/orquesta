@@ -1,0 +1,23 @@
+{
+  "schema_version": 2,
+  "run_id": "run-plain",
+  "matrix_id": "matrix-1",
+  "task_id": "organization-json-generator",
+  "mode": "plain",
+  "status": "finalized",
+  "wall_time_ms": 100000,
+  "verifier": { "status": "passed", "passed": true, "duration_ms": 20 },
+  "token_usage": {
+    "coverage": "complete",
+    "totals": {
+      "input_tokens": 900,
+      "uncached_input_tokens": 400,
+      "cached_input_tokens": 500,
+      "output_tokens": 100,
+      "reasoning_output_tokens": 40,
+      "total_tokens": 1000
+    },
+    "by_thread": [{ "thread_id": "plain-1" }]
+  },
+  "diagnostics": { "participating_threads": 1, "agent_turns": 2, "handoffs": 0, "independent_reviews": 0, "correction_batches": 0, "user_interventions": 0 }
+}

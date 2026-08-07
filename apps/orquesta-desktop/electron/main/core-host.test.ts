@@ -142,6 +142,26 @@ describe('CoreHost', () => {
     await expect(login).resolves.toMatchObject({ type: 'chatgpt', loginId: 'login-1' });
   });
 
+  test('releases a transient Core after a no-project setup account read', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+
+    const account = host.readSetupAccount({ releaseAfterRead: true });
+    const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    child.emit('message', {
+      type: 'setup.account.result', correlationId: request.correlationId,
+      account: { status: 'authenticated', accountType: 'chatgpt', requiresOpenaiAuth: true }
+    });
+    await Promise.resolve();
+    expect(child.postMessage).toHaveBeenLastCalledWith({ type: 'core.shutdown' });
+    child.emit('message', { type: 'core.stopped' });
+
+    await expect(account).resolves.toMatchObject({ status: 'authenticated' });
+    expect(host.status()).toBe('stopped');
+  });
+
   test('binds setup start to the matching Core result', async () => {
     const child = new FakeCoreChild();
     const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
@@ -223,6 +243,25 @@ describe('CoreHost', () => {
 
     child.emit('message', { type: 'repository.snapshot.changed', snapshot });
     expect(listener).toHaveBeenCalledWith(snapshot);
+  });
+
+  test('forwards an explicit Codex calling task with repository selection', async () => {
+    const child = new FakeCoreChild();
+    const host = new CoreHost({ coreEntryPath: 'core.cjs', fork: () => child });
+    host.start();
+    child.emit('message', { type: 'core.ready', version: 1 });
+
+    const pending = host.selectRepository('repo-1', 'C:\\repo', {
+      source: 'argv', callingThreadId: 'thread-calling-chat'
+    });
+    const request = child.postMessage.mock.calls.at(-1)?.[0] as { correlationId: string };
+    expect(request).toMatchObject({
+      type: 'repository.select', projectId: 'repo-1', rootPath: 'C:\\repo',
+      launchContext: { source: 'argv', callingThreadId: 'thread-calling-chat' }
+    });
+    const snapshot = fixtureCatalog['active-project'].snapshot;
+    child.emit('message', { type: 'repository.snapshot.result', correlationId: request.correlationId, snapshot });
+    await expect(pending).resolves.toEqual(snapshot);
   });
 
   test('binds approval responses and resolved attention history to matching Core results', async () => {

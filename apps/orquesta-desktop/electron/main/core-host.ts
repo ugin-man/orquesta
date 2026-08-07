@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { ConversationPage, InspectionReportUi, RuntimeInfoUi, StartInspectionUiInput } from '../../src/contracts/bridge';
 import type { AttentionUiItem, OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { SetupAccountState, SetupDraft, SetupLoginStartResult, SetupProgressEvent, SetupStartResult } from '../../src/contracts/setup';
-import type { CoreEvent, CoreRequest, RuntimeModelEvidence, RuntimeNotification } from '../core/protocol';
+import type { CoreEvent, CoreRequest, RuntimeLaunchContext, RuntimeModelEvidence, RuntimeNotification } from '../core/protocol';
 import { isCoreEvent } from '../core/protocol';
 
 export interface CoreChildProcess {
@@ -140,7 +140,7 @@ export class CoreHost {
     });
   }
 
-  listConversation(input: { threadId: string; targetAgentId: string; cursor?: string | null; limit: number }): Promise<ConversationPage> {
+  listConversation(input: { projectId: string; rootPath: string; targetAgentId: string; cursor?: string | null; limit: number }): Promise<ConversationPage> {
     if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.listConversation(input));
     const correlationId = randomUUID();
     return new Promise((resolve, reject) => {
@@ -166,10 +166,13 @@ export class CoreHost {
     });
   }
 
-  readSetupAccount(): Promise<SetupAccountState> {
-    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.readSetupAccount());
+  async readSetupAccount(options: { releaseAfterRead?: boolean } = {}): Promise<SetupAccountState> {
+    if (this.#status !== 'ready' || !this.#child) {
+      await this.#ensureReady();
+      return this.readSetupAccount(options);
+    }
     const correlationId = randomUUID();
-    return new Promise((resolve, reject) => {
+    const account = await new Promise<SetupAccountState>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.#pendingSetupAccounts.delete(correlationId);
         reject(new Error('Codex account state request timed out'));
@@ -177,6 +180,8 @@ export class CoreHost {
       this.#pendingSetupAccounts.set(correlationId, { resolve, reject, timeout });
       this.#child?.postMessage({ type: 'setup.account.read', correlationId });
     });
+    if (options.releaseAfterRead) await this.stop();
+    return account;
   }
 
   startSetupLogin(): Promise<SetupLoginStartResult> {
@@ -192,7 +197,14 @@ export class CoreHost {
     });
   }
 
-  startSetup(input: { rootPath: string; draft: SetupDraft }): Promise<SetupStartResult> {
+  startSetup(input: {
+    rootPath: string;
+    draft: SetupDraft;
+    launchContext?: {
+      source: 'argv' | 'environment' | 'e2e' | 'standalone';
+      callingThreadId: string | null;
+    };
+  }): Promise<SetupStartResult> {
     if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.startSetup(input));
     const correlationId = randomUUID();
     return new Promise((resolve, reject) => {
@@ -201,15 +213,23 @@ export class CoreHost {
         reject(new Error('Orquesta setup start timed out'));
       }, this.#options.runtimeTimeoutMs);
       this.#pendingSetupStarts.set(correlationId, { resolve, reject, timeout });
-      this.#child?.postMessage({ type: 'setup.start', correlationId, rootPath: input.rootPath, draft: input.draft });
+      this.#child?.postMessage({
+        type: 'setup.start',
+        correlationId,
+        rootPath: input.rootPath,
+        draft: input.draft,
+        launchContext: input.launchContext
+      });
     });
   }
 
-  selectRepository(projectId: string, rootPath: string): Promise<OrquestaUiSnapshot> {
-    if (this.#status !== 'ready' || !this.#child) return this.#ensureReady().then(() => this.selectRepository(projectId, rootPath));
+  selectRepository(projectId: string, rootPath: string, launchContext?: RuntimeLaunchContext): Promise<OrquestaUiSnapshot> {
+    if (this.#status !== 'ready' || !this.#child) {
+      return this.#ensureReady().then(() => this.selectRepository(projectId, rootPath, launchContext));
+    }
     const correlationId = randomUUID();
     return this.#requestRepositorySnapshot(correlationId, {
-      type: 'repository.select', correlationId, projectId, rootPath
+      type: 'repository.select', correlationId, projectId, rootPath, launchContext
     });
   }
 

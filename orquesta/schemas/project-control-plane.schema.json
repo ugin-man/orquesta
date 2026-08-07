@@ -1,0 +1,63 @@
+{
+  "$id": "project-control-plane",
+  "type": "object",
+  "required": [
+    "version",
+    "project_id",
+    "revision",
+    "active_workstream",
+    "project_brief",
+    "user_intent",
+    "work_graph",
+    "organization_map",
+    "decision_ledger",
+    "risk_and_approval",
+    "background_workstreams",
+    "updated_at"
+  ],
+  "properties": {
+    "version": { "const": 2 },
+    "project_id": { "type": "string", "pattern": ".+" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "active_workstream": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["workstream_id", "task_id", "current_goal", "next_decision"],
+          "properties": {
+            "workstream_id": { "type": "string", "pattern": ".+" },
+            "task_id": { "type": "string", "pattern": ".+" },
+            "current_goal": { "type": "string", "pattern": ".+" },
+            "next_decision": { "type": "string", "pattern": ".+" }
+          },
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "project_brief": { "type": "object", "additionalProperties": true },
+    "user_intent": { "type": "object", "additionalProperties": true },
+    "work_graph": { "type": "object", "additionalProperties": true },
+    "organization_map": { "type": "object", "additionalProperties": true },
+    "decision_ledger": { "type": "array" },
+    "risk_and_approval": { "type": "object", "additionalProperties": true },
+    "background_workstreams": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["workstream_id", "state", "summary"],
+        "properties": {
+          "workstream_id": { "type": "string", "pattern": ".+" },
+          "state": { "type": "string", "pattern": ".+" },
+          "summary": { "type": "string", "pattern": ".+" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "updated_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    }
+  },
+  "additionalProperties": false
+}

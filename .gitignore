@@ -12,8 +12,20 @@ yarn-error.log*
 pnpm-debug.log*
 output/
 
+benchmarks/orquesta-v4-product/runs/**
+!benchmarks/orquesta-v4-product/runs/.gitkeep
+benchmarks/orquesta-v4-product/.cache/**
+!benchmarks/orquesta-v4-product/.cache/.gitkeep
+benchmarks/orquesta-v4-product/workspaces/**
+!benchmarks/orquesta-v4-product/workspaces/.gitkeep
+benchmarks/orquesta-v4-product/reports/**
+!benchmarks/orquesta-v4-product/reports/.gitkeep
+
 .DS_Store
 Thumbs.db
 
 *.local
 *.log
+
+# Local browser automation captures
+apps/orquesta-desktop/.playwright-cli/

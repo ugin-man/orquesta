@@ -1,6 +1,6 @@
 # 初回セットアップ画面 Design QA
 
-source visual truth path: `C:\Users\kouki\.codex\generated_images\019f6291-cd59-7183-b799-aee36005b738\exec-24795962-b029-423a-9e25-6ddfec5d8762.png`
+source visual truth path: `C:\Users\example\.codex\generated_images\019f6291-cd59-7183-b799-aee36005b738\exec-24795962-b029-423a-9e25-6ddfec5d8762.png`
 
 implementation screenshot path: `output/playwright/setup-running-review-1440x900.png`
 

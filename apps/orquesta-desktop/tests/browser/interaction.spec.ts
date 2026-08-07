@@ -127,27 +127,29 @@ test('persists a manually moved agent and Reset restores the organization layout
   await page.reload();
   const coder = page.locator('[data-agent-id="coder"]');
   await expect(coder).toBeVisible();
+  await coder.hover();
   const initial = await coder.boundingBox();
   if (!initial) throw new Error('Coder node did not expose a bounding box');
 
-  await page.mouse.move(initial.x + initial.width / 2, initial.y + initial.height / 2);
   await page.mouse.down();
   await page.mouse.move(initial.x + initial.width / 2 + 72, initial.y + initial.height / 2 - 36, { steps: 5 });
   await page.mouse.up();
-  const moved = await coder.boundingBox();
-  expect(moved?.x).toBeGreaterThan(initial.x + 45);
-  const savedOffset = await page.evaluate(() => JSON.parse(window.localStorage.getItem('orquesta.desktop.map-layout.active-project') ?? '{}').coder?.x ?? 0);
+  await expect.poll(async () => page.evaluate(() => JSON.parse(window.localStorage.getItem('orquesta.desktop.map-layout.active-project') ?? '{}').agentOffsets?.coder?.x ?? 0)).toBeGreaterThan(45);
+  const savedOffset = await page.evaluate(() => JSON.parse(window.localStorage.getItem('orquesta.desktop.map-layout.active-project') ?? '{}').agentOffsets?.coder?.x ?? 0);
   expect(savedOffset).toBeGreaterThan(45);
+  await expect.poll(async () => (await coder.boundingBox())?.x ?? Number.NEGATIVE_INFINITY).toBeGreaterThan(initial.x + 45);
 
   await page.reload();
   await expect(page.locator('[data-agent-id="coder"]')).toBeVisible();
-  const restoredOffset = await page.evaluate(() => JSON.parse(window.localStorage.getItem('orquesta.desktop.map-layout.active-project') ?? '{}').coder?.x ?? 0);
+  const restoredOffset = await page.evaluate(() => JSON.parse(window.localStorage.getItem('orquesta.desktop.map-layout.active-project') ?? '{}').agentOffsets?.coder?.x ?? 0);
   expect(restoredOffset).toBeCloseTo(savedOffset, 3);
 
   await page.getByRole('button', { name: 'Reset' }).click();
   expect(await page.evaluate(() => window.localStorage.getItem('orquesta.desktop.map-layout.active-project'))).toBeNull();
-  const reset = await page.locator('[data-agent-id="coder"]').boundingBox();
-  expect(Math.abs((reset?.x ?? 0) - initial.x)).toBeLessThan(6);
+  await expect.poll(async () => {
+    const reset = await page.locator('[data-agent-id="coder"]').boundingBox();
+    return Math.abs((reset?.x ?? 0) - initial.x);
+  }).toBeLessThan(6);
 });
 
 test('closes Project Route with Escape and reaches Conversation and Operations', async ({ page }) => {

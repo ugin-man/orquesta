@@ -1,0 +1,48 @@
+{
+  "source_repository": "https://github.com/harbor-framework/terminal-bench.git",
+  "source_commit": "91e10457b5410f16c44364da1a34cb6de8c488a5",
+  "source_task": "tasks/organization-json-generator",
+  "instruction": "Create a JSON processor that transforms CSV data into a structured JSON file following the schema defined in schema.json. Requirements: 1. Use the provided CSV files (departments.csv, employees.csv, projects.csv) as input data 2. Generate a file called 'organization.json' that follows the schema defined. 3. Set organization.name to 'Pilot Organization' and organization.founded to '2020-01-01'. 4. The output must include: Organization metadata, Department information with employees and projects, Statistical calculations",
+  "fixed_inputs": {
+    "organization_name": "Pilot Organization",
+    "organization_founded": "2020-01-01"
+  },
+  "files": [
+    {
+      "path": "departments.csv",
+      "role": "input",
+      "url": "https://raw.githubusercontent.com/harbor-framework/terminal-bench/91e10457b5410f16c44364da1a34cb6de8c488a5/tasks/organization-json-generator/departments.csv",
+      "sha256": "3510c090be52aca39c07bfe6ad26aabe4bd978a1d3d97c885c7a92b7cd499793"
+    },
+    {
+      "path": "employees.csv",
+      "role": "input",
+      "url": "https://raw.githubusercontent.com/harbor-framework/terminal-bench/91e10457b5410f16c44364da1a34cb6de8c488a5/tasks/organization-json-generator/employees.csv",
+      "sha256": "c7b25ed63b4e8713ed5009f2e8dc53e953e4f99aad895e42b37e476335990d48"
+    },
+    {
+      "path": "projects.csv",
+      "role": "input",
+      "url": "https://raw.githubusercontent.com/harbor-framework/terminal-bench/91e10457b5410f16c44364da1a34cb6de8c488a5/tasks/organization-json-generator/projects.csv",
+      "sha256": "014a754a9c4eccc5ab52973ffcb94483d2a38afea84ec851cfe1893f45689334"
+    },
+    {
+      "path": "schema.json",
+      "role": "input",
+      "url": "https://raw.githubusercontent.com/harbor-framework/terminal-bench/91e10457b5410f16c44364da1a34cb6de8c488a5/tasks/organization-json-generator/schema.json",
+      "sha256": "7fbdfb390166f75bf96982562443aecb6cce5e176dc881b35911275ec8b5bfc8"
+    },
+    {
+      "path": "task.yaml",
+      "role": "evidence",
+      "url": "https://raw.githubusercontent.com/harbor-framework/terminal-bench/91e10457b5410f16c44364da1a34cb6de8c488a5/tasks/organization-json-generator/task.yaml",
+      "sha256": "10023ad450b88bc12ce3ba3ebb769efc70d6fed5b257356183f77f3de3cacaf1"
+    },
+    {
+      "path": "tests/test_outputs.py",
+      "role": "evidence",
+      "url": "https://raw.githubusercontent.com/harbor-framework/terminal-bench/91e10457b5410f16c44364da1a34cb6de8c488a5/tasks/organization-json-generator/tests/test_outputs.py",
+      "sha256": "536413272874ddb8fe2d59b16d73c9acd00a7dd6ae12d8123ee38a239d67afd1"
+    }
+  ]
+}

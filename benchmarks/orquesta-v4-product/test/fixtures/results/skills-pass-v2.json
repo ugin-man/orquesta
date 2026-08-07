@@ -1,0 +1,23 @@
+{
+  "schema_version": 2,
+  "run_id": "run-skills",
+  "matrix_id": "matrix-1",
+  "task_id": "organization-json-generator",
+  "mode": "skills",
+  "status": "finalized",
+  "wall_time_ms": 130000,
+  "verifier": { "status": "passed", "passed": true, "duration_ms": 20 },
+  "token_usage": {
+    "coverage": "complete",
+    "totals": {
+      "input_tokens": 1350,
+      "uncached_input_tokens": 600,
+      "cached_input_tokens": 750,
+      "output_tokens": 150,
+      "reasoning_output_tokens": 60,
+      "total_tokens": 1500
+    },
+    "by_thread": [{ "thread_id": "skills-1" }]
+  },
+  "diagnostics": { "participating_threads": 1, "agent_turns": 3, "handoffs": 0, "independent_reviews": 0, "correction_batches": 0, "user_interventions": 0 }
+}

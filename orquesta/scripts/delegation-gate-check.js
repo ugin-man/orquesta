@@ -14,6 +14,8 @@ const REVIEW_STATES = new Set([
   "accepted"
 ]);
 
+const CLOSED_V2_COMPATIBILITY_STATES = new Set(["accepted", "superseded"]);
+
 const SPECIALIST_HINTS = [
   "dashboard",
   "visualizer",
@@ -59,6 +61,7 @@ const EXECUTION_PLAN_FIELDS = Object.freeze([
   "revision",
   "supersedes_execution_plan_id"
 ]);
+const EXECUTION_AXES_FIELDS = Object.freeze(["execution_mode", "review_intensity"]);
 
 const EXECUTION_PLAN_EFFECTS = new Set([
   "local_read",
@@ -147,10 +150,10 @@ function sortedUniqueStrings(values) {
 }
 
 function validExecutionPlan(plan) {
-  if (!hasExactFields(plan, EXECUTION_PLAN_FIELDS)
+  if (!hasExactFields(plan, plan.policy_version === 2 ? [...EXECUTION_PLAN_FIELDS, ...EXECUTION_AXES_FIELDS] : EXECUTION_PLAN_FIELDS)
     || !/^EP-[a-f0-9]{12}$/.test(plan.execution_plan_id)
     || !/^TI-[a-f0-9]{12}$/.test(plan.task_intent_id)
-    || plan.policy_version !== 1
+    || ![1, 2].includes(plan.policy_version)
     || !Object.hasOwn(PHASE15_BUDGETS, plan.lane)
     || !Number.isInteger(plan.revision) || plan.revision < 1
     || (plan.supersedes_execution_plan_id !== null && !/^EP-[a-f0-9]{12}$/.test(plan.supersedes_execution_plan_id))
@@ -172,12 +175,17 @@ function validExecutionPlan(plan) {
 
   const routing = plan.routing;
   const budget = plan.budget;
-  const expectedRouting = plan.lane === "fast"
+  const expectedRouting = (plan.policy_version === 2 && plan.execution_mode === "solo_direct") || plan.lane === "fast"
     ? { routing_class: "inline_verified", handoff_required: false, specialist_report_required: false }
     : { routing_class: "specialist_required", handoff_required: true, specialist_report_required: true };
-  const expectedReview = plan.lane === "fast" ? "none"
-    : plan.lane === "standard" ? "independent_once" : "independent_twice";
-  return hasExactFields(routing, ["routing_class", "handoff_required", "specialist_report_required"])
+  const expectedReview = plan.policy_version === 2
+    ? plan.review_intensity === "light" ? "none"
+      : plan.review_intensity === "normal" ? "independent_once" : "independent_twice"
+    : plan.lane === "fast" ? "none"
+      : plan.lane === "standard" ? "independent_once" : "independent_twice";
+  return (plan.policy_version !== 2 || (["solo_direct", "bounded_parallel", "durable_specialist"].includes(plan.execution_mode)
+    && ["light", "normal", "strict"].includes(plan.review_intensity)))
+    && hasExactFields(routing, ["routing_class", "handoff_required", "specialist_report_required"])
     && ["inline_verified", "specialist_required"].includes(routing.routing_class)
     && typeof routing.handoff_required === "boolean"
     && typeof routing.specialist_report_required === "boolean"
@@ -232,6 +240,19 @@ function checkTask(task, options = {}) {
 
     if (task.state === "accepted" && task.specialist_report_required !== false && !hasReportArtifact(task)) {
       errors.push(`${id}: specialist_required task is accepted but has no specialist report path or report artifact`);
+    }
+
+    if (task.state === "accepted" && task.specialist_report_required === false) {
+      const completionEvidence = task.completion_evidence;
+      const validEvidence = Array.isArray(completionEvidence)
+        && completionEvidence.length > 0
+        && completionEvidence.every((evidence) => evidence
+          && evidence.status === "passed"
+          && nonemptyString(evidence.kind)
+          && nonemptyString(evidence.ref));
+      if (!validEvidence) {
+        errors.push(`${id}: accepted report-free specialist task requires passed completion_evidence with durable refs`);
+      }
     }
 
     if (task.routing_gate_status === "passed" && !task.handoff_sent_at) {
@@ -334,14 +355,34 @@ function checkTaskPhase15(task, { stateRoot = null } = {}) {
   if (!planIntegrityMatches(plan)) {
     errors.push(taskError(task, "execution_plan integrity does not match its canonical identifier"));
   }
+  let v2BindingsVerified = false;
+  if (plan.policy_version === 2) {
+    const mayStillRevise = !CLOSED_V2_COMPATIBILITY_STATES.has(task.state);
+    const intentBindingPresent = nonemptyString(task.task_intent?.task_intent_id);
+    const effectsBindingPresent = Array.isArray(task.task_profile?.risk_profile?.effects);
+    const intentMatches = intentBindingPresent && task.task_intent.task_intent_id === plan.task_intent_id;
+    const effectsMatch = effectsBindingPresent && isDeepStrictEqual(task.task_profile.risk_profile.effects, plan.risk_profile.effects);
+    if (!intentBindingPresent && mayStillRevise) {
+      warnings.push(taskError(task, "legacy V2 task has no task_intent binding; add it on the next plan revision"));
+    } else if (!intentMatches) {
+      if (intentBindingPresent) errors.push(taskError(task, "V2 execution_plan must remain bound to task_intent.task_intent_id"));
+    }
+    if (!effectsBindingPresent && mayStillRevise) {
+      warnings.push(taskError(task, "legacy V2 task has no task_profile effects binding; add it on the next plan revision"));
+    } else if (!effectsMatch) {
+      if (effectsBindingPresent) errors.push(taskError(task, "V2 execution_plan effects must remain bound to task_profile.risk_profile.effects"));
+    }
+    v2BindingsVerified = intentMatches && effectsMatch;
+  }
   if (stateRoot && (!nonemptyString(task.canonical_state_root) || !sameStateRoot(task.canonical_state_root, stateRoot))) {
     errors.push(taskError(task, "canonical_state_root must match the resolved state root"));
   }
   if (!isDeepStrictEqual(plan.budget, PHASE15_BUDGETS[plan.lane])) {
     errors.push(taskError(task, "execution_plan budget must match the Phase 1.5 lane budget"));
   }
-  const fast = plan.lane === "fast";
-  if (task.routing_class !== (fast ? "inline_verified" : "specialist_required")) {
+  const direct = plan.policy_version === 2 ? plan.execution_mode === "solo_direct" : plan.lane === "fast";
+  const needsReview = plan.policy_version === 2 ? plan.review_intensity !== "light" : !direct;
+  if (task.routing_class !== (direct ? "inline_verified" : "specialist_required")) {
     errors.push(taskError(task, `${plan.lane} lane uses the wrong routing_class`));
   }
   if (task.handoff_required !== plan.routing.handoff_required) {
@@ -362,8 +403,11 @@ function checkTaskPhase15(task, { stateRoot = null } = {}) {
     correction_batches: cycles.filter((cycle) => cycle && cycle.kind === "correction").length,
     reports: cycles.filter((cycle) => cycle && ["review", "qa"].includes(cycle.kind) && Array.isArray(cycle.evidence_refs) && cycle.evidence_refs.length > 0).length
   };
-  if (fast && (counts.handoffs > 0 || counts.independent_reviews > 0 || counts.reports > 0)) {
-    errors.push(taskError(task, "fast lane cannot record handoff or review evidence"));
+  if (!needsReview && (counts.independent_reviews > 0 || counts.reports > 0)) {
+    errors.push(taskError(task, "light review intensity cannot record independent review evidence"));
+  }
+  if (direct && counts.handoffs > 0) {
+    errors.push(taskError(task, "solo_direct execution cannot record specialist handoffs"));
   }
   const metrics = task.execution_metrics;
   if (!metrics || typeof metrics !== "object") {
@@ -380,7 +424,19 @@ function checkTaskPhase15(task, { stateRoot = null } = {}) {
           errors.push(taskError(task, `execution_metrics.${metric} must match recorded cycles and handoffs`));
         }
         if (metrics[metric] > plan.budget[budgetField]) {
-          errors.push(taskError(task, `execution_metrics.${metric} exceeds ${budgetField}`));
+          const correctionReplanned = plan.policy_version === 2
+            && metric === "correction_batches"
+            && plan.revision > 1
+            && nonemptyString(plan.supersedes_execution_plan_id)
+            && plan.reason_codes.includes("correction_threshold_replanned")
+            && v2BindingsVerified;
+          if (correctionReplanned) {
+            warnings.push(taskError(task, `execution_metrics.${metric} exceeds ${budgetField}; revised V2 plan records continuation`));
+          } else if (plan.policy_version === 2 && metric === "correction_batches") {
+            errors.push(taskError(task, `execution_metrics.${metric} exceeds ${budgetField}; revise the V2 execution plan before continuing`));
+          } else {
+            errors.push(taskError(task, `execution_metrics.${metric} exceeds ${budgetField}`));
+          }
         }
       }
     }
@@ -399,7 +455,7 @@ function checkTaskPhase15(task, { stateRoot = null } = {}) {
     if (!implementation) {
       errors.push(taskError(task, "accepted Phase 1.5 task requires a completed implementation cycle with evidence"));
     }
-    if (!fast) {
+    if (needsReview) {
       const acceptedReview = cycles.find((cycle) => cycle && cycle.kind === "review" && cycle.status === "accepted"
         && cycle.findings && cycle.findings.critical === 0 && cycle.findings.important === 0
         && Array.isArray(cycle.evidence_refs) && cycle.evidence_refs.length > 0);
@@ -408,14 +464,16 @@ function checkTaskPhase15(task, { stateRoot = null } = {}) {
         if (!implementation || acceptedReview.owner_agent_id === implementation.owner_agent_id) {
           errors.push(taskError(task, "accepted task requires an independent review owner"));
         }
-        const reviewHandoff = attempts.find((attempt) => attempt && attempt.cycle_id === acceptedReview.cycle_id
-          && attempt.owner_agent_id === acceptedReview.owner_agent_id && nonemptyString(attempt.sent_at));
-        if (!reviewHandoff) errors.push(taskError(task, "accepted review requires a handoff bound to the review cycle"));
-        if (!nonemptyString(task.specialist_report_path) || !acceptedReview.evidence_refs.includes(task.specialist_report_path)) {
-          errors.push(taskError(task, "accepted review report must be bound to the review cycle"));
+        if (!direct) {
+          const reviewHandoff = attempts.find((attempt) => attempt && attempt.cycle_id === acceptedReview.cycle_id
+            && attempt.owner_agent_id === acceptedReview.owner_agent_id && nonemptyString(attempt.sent_at));
+          if (!reviewHandoff) errors.push(taskError(task, "accepted review requires a handoff bound to the review cycle"));
+          if (!nonemptyString(task.specialist_report_path) || !acceptedReview.evidence_refs.includes(task.specialist_report_path)) {
+            errors.push(taskError(task, "accepted review report must be bound to the review cycle"));
+          }
         }
       }
-      if (!nonemptyString(task.handoff_sent_at)) {
+      if (!direct && !nonemptyString(task.handoff_sent_at)) {
         errors.push(taskError(task, "accepted standard or critical task requires handoff_sent_at"));
       }
     }

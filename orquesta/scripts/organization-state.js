@@ -405,6 +405,133 @@ function repairLegacyOrganizationMigration({
   };
 }
 
+function resolveLegacyOrganizationMigration({
+  rolesState,
+  agentsState,
+  organizationState,
+  sessionsState = { version: 1, sessions: [] },
+  tasksState = { version: 1, tasks: [] },
+  lines,
+  teams,
+  assignments,
+  now,
+} = {}) {
+  if (!rolesState || !agentsState || !organizationState || !Array.isArray(lines) || !Array.isArray(teams) || !Array.isArray(assignments) || !now) {
+    throw new TypeError("rolesState, agentsState, organizationState, lines, teams, assignments, and now are required");
+  }
+  const migration = agentsState.organization_migration;
+  if (migration?.status === "complete") {
+    return {
+      rolesState: clone(rolesState),
+      agentsState: clone(agentsState),
+      organizationState: clone(organizationState),
+      sessionsState: clone(sessionsState),
+      tasksState: clone(tasksState),
+    };
+  }
+  if (!migration || migration.status !== "review_required") {
+    throw new TypeError("legacy organization migration is not awaiting explicit line mapping");
+  }
+
+  const expectedAgentIds = new Set(migration.unassigned_production_agent_ids || []);
+  const assignmentAgentIds = assignments.map((assignment) => assignment.agent_id);
+  if (new Set(assignmentAgentIds).size !== assignmentAgentIds.length) {
+    throw new TypeError("legacy organization migration assignments require unique agent_id values");
+  }
+  if (
+    assignmentAgentIds.length !== expectedAgentIds.size
+    || assignmentAgentIds.some((agentId) => !expectedAgentIds.has(agentId))
+  ) {
+    throw new TypeError("legacy organization migration assignments must map every unassigned production agent exactly once");
+  }
+
+  const lineIds = new Set();
+  for (const line of lines) {
+    if (!String(line?.line_id || "").trim() || lineIds.has(line.line_id)) {
+      throw new TypeError("legacy organization migration lines require unique line_id values");
+    }
+    lineIds.add(line.line_id);
+  }
+  const teamById = new Map();
+  for (const team of teams) {
+    if (!String(team?.team_id || "").trim() || teamById.has(team.team_id)) {
+      throw new TypeError("legacy organization migration teams require unique team_id values");
+    }
+    if (!lineIds.has(team.line_id)) {
+      throw new TypeError(`legacy organization migration team references unknown line_id: ${team.line_id}`);
+    }
+    teamById.set(team.team_id, team);
+  }
+  const registeredAgentIds = new Set((agentsState.agents || []).map((agent) => agent.agent_id));
+  for (const assignment of assignments) {
+    if (!registeredAgentIds.has(assignment.agent_id)) {
+      throw new TypeError(`legacy organization migration assignment references unknown agent_id: ${assignment.agent_id}`);
+    }
+    if (!teamById.has(assignment.team_id)) {
+      throw new TypeError(`legacy organization migration assignment references unknown team_id: ${assignment.team_id}`);
+    }
+  }
+
+  const migrationLineId = "migration-existing-project";
+  const migrationTeamIds = new Set((organizationState.teams || [])
+    .filter((team) => team.line_id === migrationLineId)
+    .map((team) => team.team_id));
+  const preservedLines = (organizationState.lines || []).filter((line) => line.line_id !== migrationLineId);
+  const preservedTeams = (organizationState.teams || []).filter((team) => team.line_id !== migrationLineId);
+  const preservedMemberships = (organizationState.memberships || []).filter((membership) => !migrationTeamIds.has(membership.team_id));
+  const mappedMemberships = assignments.map((assignment) => ({
+    membership_id: `membership-${assignment.team_id}-${assignment.agent_id}`,
+    agent_id: assignment.agent_id,
+    team_id: assignment.team_id,
+    position: assignment.position || "member",
+    ordinal: Number.isInteger(assignment.ordinal) && assignment.ordinal > 0 ? assignment.ordinal : 1,
+    active_from: now,
+    active_to: null,
+  }));
+  const revision = Number(organizationState.revision || 0) + 1;
+  const mappedLineByAgent = Object.fromEntries(assignments.map((assignment) => [
+    assignment.agent_id,
+    teamById.get(assignment.team_id).line_id,
+  ]).sort(([left], [right]) => compareText(left, right)));
+  const nextOrganizationState = normalizeOrganizationLeadership({
+    ...clone(organizationState),
+    revision,
+    lines: [...preservedLines, ...clone(lines)].sort((left, right) => compareText(left.line_id, right.line_id)),
+    teams: [...preservedTeams, ...clone(teams)].sort((left, right) => compareText(left.team_id, right.team_id)),
+    memberships: [...preservedMemberships, ...mappedMemberships].sort((left, right) => compareText(left.membership_id, right.membership_id)),
+  });
+  const nextAgents = (agentsState.agents || []).map((agent) => (
+    expectedAgentIds.has(agent.agent_id)
+      ? { ...clone(agent), migration_review_required: false, updated_at: now }
+      : clone(agent)
+  ));
+
+  return {
+    rolesState: {
+      ...clone(rolesState),
+      organization_revision: revision,
+      updated_at: now,
+    },
+    agentsState: {
+      ...clone(agentsState),
+      organization_revision: revision,
+      agents: nextAgents,
+      organization_migration: {
+        ...clone(migration),
+        status: "complete",
+        completed_at: now,
+        unassigned_production_agent_ids: [],
+        mapped_line_by_agent: mappedLineByAgent,
+        diagnostics: [],
+      },
+      updated_at: now,
+    },
+    organizationState: nextOrganizationState,
+    sessionsState: clone(sessionsState),
+    tasksState: clone(tasksState),
+  };
+}
+
 function duplicateIds(items, field) {
   const seen = new Set();
   const duplicates = new Set();
@@ -547,4 +674,5 @@ module.exports = {
   migrateLegacyOrganization,
   repairLegacyOrganizationMigration,
   readOrganizationBundle,
+  resolveLegacyOrganizationMigration,
 };

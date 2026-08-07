@@ -1,0 +1,23 @@
+{
+  "schema_version": 2,
+  "run_id": "run-orquesta",
+  "matrix_id": "matrix-1",
+  "task_id": "organization-json-generator",
+  "mode": "orquesta",
+  "status": "finalized",
+  "wall_time_ms": 80000,
+  "verifier": { "status": "passed", "passed": true, "duration_ms": 20 },
+  "token_usage": {
+    "coverage": "complete",
+    "totals": {
+      "input_tokens": 720,
+      "uncached_input_tokens": 320,
+      "cached_input_tokens": 400,
+      "output_tokens": 80,
+      "reasoning_output_tokens": 30,
+      "total_tokens": 800
+    },
+    "by_thread": [{ "thread_id": "orquesta-1" }]
+  },
+  "diagnostics": { "participating_threads": 4, "agent_turns": 5, "handoffs": 1, "independent_reviews": 1, "correction_batches": 0, "user_interventions": 0 }
+}

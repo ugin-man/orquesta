@@ -18,9 +18,9 @@ export interface CoreController {
   ping(correlationId: string): Promise<{ correlationId: string }>;
   sendMessage(input: { projectId: string; rootPath: string; threadId: string | null; targetAgentId: string; text: string; localImagePaths: string[] }): Promise<{ correlationId: string; threadId: string; turnId: string; modelEvidence: import('../core/protocol').RuntimeModelEvidence }>;
   sendLucaQuestion(input: { projectId: string; rootPath: string; threadId: string | null; prompt: string }): Promise<{ correlationId: string; threadId: string; turnId: string; modelEvidence: import('../core/protocol').RuntimeModelEvidence }>;
-  listConversation(input: { threadId: string; targetAgentId: string; cursor?: string | null; limit: number }): Promise<ConversationPage>;
+  listConversation(input: { projectId: string; rootPath: string; targetAgentId: string; cursor?: string | null; limit: number }): Promise<ConversationPage>;
   getRuntimeInfo(input: { probe: boolean }): Promise<RuntimeInfoUi>;
-  readSetupAccount(): Promise<SetupAccountState>;
+  readSetupAccount(options?: { releaseAfterRead?: boolean }): Promise<SetupAccountState>;
   startSetupLogin(): Promise<SetupLoginStartResult>;
   respondRuntimeApproval(input: { attentionId: string; decision: string }): Promise<{ correlationId: string }>;
   listAttentionHistory(): Promise<AttentionUiItem[]>;
@@ -50,10 +50,7 @@ export interface RepositoryController {
   listProjects(): Promise<ProjectSummary[]>;
   switchProject(projectId: string): Promise<UiActionResult>;
   openProject(): Promise<UiActionResult>;
-  getCurrentRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null;
-  setCoordinatorThread(projectId: string, threadId: string): Promise<void>;
-  getLucaRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null;
-  setLucaThread(projectId: string, threadId: string): Promise<void>;
+  getCurrentProjectContext(): { projectId: string; rootPath: string } | null;
   getLastLucaHomeSeenAt(projectId: string): string | null;
   markLucaHomeSeen(projectId: string, at: string): Promise<void>;
 }
@@ -106,7 +103,10 @@ function readConversationInput(input: unknown): { targetAgentId: string; cursor:
   const limit = value.limit === undefined ? 100 : value.limit;
   if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error('limit must be an integer from 1 to 200');
   const cursor = value.cursor === undefined ? null : value.cursor;
-  if (cursor !== null && (typeof cursor !== 'string' || !/^before:\d+$/u.test(cursor))) throw new Error('cursor is invalid');
+  if (cursor !== null && (typeof cursor !== 'string'
+    || (!/^before:\d+$/u.test(cursor) && !/^logical:[a-zA-Z0-9_-]{1,4096}$/u.test(cursor)))) {
+    throw new Error('cursor is invalid');
+  }
   return { targetAgentId: value.targetAgentId, cursor, limit };
 }
 
@@ -236,13 +236,12 @@ export function registerDesktopIpc(
   ipcMain.handle(DESKTOP_IPC.selectImageAttachments, async () => attachments.chooseImages());
   ipcMain.handle(DESKTOP_IPC.sendMessage, async (_event, input) => {
     const message = readMessageInput(input);
-    const context = repositories.getCurrentRuntimeContext();
+    const context = repositories.getCurrentProjectContext();
     if (!context) return { status: 'unavailable', correlationId: randomUUID(), reason: 'Open an Orquesta project before sending a message.', retryable: false } satisfies UiActionResult;
     try {
       const localImagePaths = attachments.resolveImagePaths(message.attachmentIds);
       const { attachmentIds: _attachmentIds, ...messageWithoutIds } = message;
-      const result = await coreHost.sendMessage({ ...context, ...messageWithoutIds, localImagePaths });
-      await repositories.setCoordinatorThread(context.projectId, result.threadId).catch(() => undefined);
+      const result = await coreHost.sendMessage({ ...context, threadId: null, ...messageWithoutIds, localImagePaths });
       return { status: 'accepted', correlationId: result.correlationId } satisfies UiActionResult;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -258,7 +257,7 @@ export function registerDesktopIpc(
   });
   ipcMain.handle(DESKTOP_IPC.askLuca, async (_event, input) => {
     const question = readAskLucaInput(input);
-    const runtime = repositories.getLucaRuntimeContext();
+    const runtime = repositories.getCurrentProjectContext();
     if (!runtime) {
       return { status: 'unavailable', correlationId: randomUUID(), reason: 'Open an Orquesta project before asking Luca.', retryable: false } satisfies UiActionResult;
     }
@@ -271,8 +270,7 @@ export function registerDesktopIpc(
         lastHomeSeenAt: repositories.getLastLucaHomeSeenAt(runtime.projectId)
       });
       const prompt = buildLucaRequestPrompt(question, context);
-      const accepted = await coreHost.sendLucaQuestion({ ...runtime, prompt });
-      await repositories.setLucaThread(runtime.projectId, accepted.threadId);
+      const accepted = await coreHost.sendLucaQuestion({ ...runtime, threadId: null, prompt });
       if (question.context.kind === 'home') {
         await repositories.markLucaHomeSeen(runtime.projectId, new Date().toISOString());
       }
@@ -286,14 +284,14 @@ export function registerDesktopIpc(
   });
   ipcMain.handle(DESKTOP_IPC.listConversation, async (_event, input) => {
     const query = readConversationInput(input);
-    const context = query.targetAgentId === 'orquesta-admin'
-      ? repositories.getLucaRuntimeContext()
-      : repositories.getCurrentRuntimeContext();
-    if (!context?.threadId) return { items: [], nextCursor: null } satisfies ConversationPage;
-    return coreHost.listConversation({ threadId: context.threadId, ...query });
+    const context = repositories.getCurrentProjectContext();
+    if (!context) return { items: [], nextCursor: null } satisfies ConversationPage;
+    return coreHost.listConversation({ ...context, ...query });
   });
   ipcMain.handle(DESKTOP_IPC.getRuntimeInfo, async (_event, input) => coreHost.getRuntimeInfo(readRuntimeInfoInput(input)));
-  ipcMain.handle(DESKTOP_IPC.readSetupAccount, async () => coreHost.readSetupAccount());
+  ipcMain.handle(DESKTOP_IPC.readSetupAccount, async () => coreHost.readSetupAccount({
+    releaseAfterRead: repositories.getCurrentProjectContext() === null
+  }));
   ipcMain.handle(DESKTOP_IPC.startSetupLogin, async () => {
     const login = await coreHost.startSetupLogin();
     if (login.authUrl && external) await external.openExternal(login.authUrl);
@@ -318,7 +316,7 @@ export function registerDesktopIpc(
   ipcMain.handle(DESKTOP_IPC.listAttentionHistory, async () => coreHost.listAttentionHistory());
   ipcMain.handle(DESKTOP_IPC.startInspection, async (_event, input) => {
     const inspection = readInspectionStartInput(input);
-    const context = repositories.getCurrentRuntimeContext();
+    const context = repositories.getCurrentProjectContext();
     if (!context) {
       return { status: 'unavailable', correlationId: randomUUID(), reason: 'Open an Orquesta project before starting an inspection.', retryable: false } satisfies UiActionResult;
     }
@@ -333,7 +331,7 @@ export function registerDesktopIpc(
   });
   ipcMain.handle(DESKTOP_IPC.cancelInspection, async (_event, input) => {
     const runId = readInspectionRunId(input);
-    const context = repositories.getCurrentRuntimeContext();
+    const context = repositories.getCurrentProjectContext();
     if (!context) {
       return { status: 'unavailable', correlationId: randomUUID(), reason: 'Open an Orquesta project before cancelling an inspection.', retryable: false } satisfies UiActionResult;
     }
@@ -348,13 +346,13 @@ export function registerDesktopIpc(
   });
   ipcMain.handle(DESKTOP_IPC.readInspectionReport, async (_event, input) => {
     const runId = readInspectionRunId(input);
-    const context = repositories.getCurrentRuntimeContext();
+    const context = repositories.getCurrentProjectContext();
     if (!context) throw new Error('Open an Orquesta project before reading an inspection report.');
     return coreHost.readInspectionReport({ projectId: context.projectId, rootPath: context.rootPath, runId });
   });
   ipcMain.handle(DESKTOP_IPC.openCodexDraft, async (_event, input) => {
     const draft = readCodexDraftInput(input);
-    const context = repositories.getCurrentRuntimeContext();
+    const context = repositories.getCurrentProjectContext();
     if (!context) {
       return {
         status: 'unavailable', correlationId: randomUUID(),

@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 const assert = require("assert");
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const {
   appendSubmittedQuestionCandidates,
+  ingestReportQuestionCandidates,
   inspectReportQuestionCandidatesFromText,
   validateQuestionCandidateInbox
 } = require("./report-question-candidates-check");
@@ -132,7 +133,30 @@ function submittedBlock() {
 {
   const result = inspectReportQuestionCandidatesFromText("# Report\n\nNo metadata here.\n");
   assert.strictEqual(result.status, "missing");
-  assert(result.errors.some((error) => error.includes("missing question_candidates")));
+  assert.deepStrictEqual(result.errors, []);
+}
+
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-question-candidates-soft-vocabulary-"));
+  try {
+    const reportPath = path.join(root, "report.md");
+    const report = submittedBlock()
+      .replace('"category": "workflow"', '"category": "unlisted_domain"')
+      .replace('"suggested_timing": "before_next_task"', '"suggested_timing": "after_launch"');
+    fs.writeFileSync(reportPath, report, "utf8");
+    const inspected = inspectReportQuestionCandidatesFromText(report);
+    assert.deepStrictEqual(inspected.errors, []);
+    assert(inspected.warnings.some((warning) => warning.includes("unknown category")));
+    assert(inspected.warnings.some((warning) => warning.includes("unknown suggested_timing")));
+    const ingested = ingestReportQuestionCandidates(root, reportPath, "2026-08-05T00:00:00.000Z", inspected);
+    assert.strictEqual(ingested.recorded_count, 1);
+    const inbox = JSON.parse(fs.readFileSync(path.join(root, ".orquesta", "vision", "question_candidates.json"), "utf8"));
+    assert.strictEqual(inbox.candidates[0].category, "other");
+    assert.strictEqual(inbox.candidates[0].suggested_timing, "batch_later");
+    assert.deepStrictEqual(validateQuestionCandidateInbox(inbox).errors, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 }
 
 {
@@ -149,7 +173,28 @@ function submittedBlock() {
     assert.strictEqual(second.skipped, 1);
     assert.strictEqual(inbox.candidates.length, 1);
     assert.strictEqual(inbox.candidates[0].status, "pending_curator_review");
+    assert.strictEqual(inbox.policy.curator_agent_id, "user-support");
     assert.deepStrictEqual(validateQuestionCandidateInbox(inbox).errors, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-question-candidates-legacy-policy-"));
+  try {
+    const inboxPath = path.join(root, ".orquesta", "vision", "question_candidates.json");
+    fs.mkdirSync(path.dirname(inboxPath), { recursive: true });
+    fs.writeFileSync(inboxPath, `${JSON.stringify({
+      version: 1,
+      candidates: [],
+      policy: { curator_agent_id: "vision-curator", default_batch_size: 4 }
+    }, null, 2)}\n`, "utf8");
+    const metadata = inspectReportQuestionCandidatesFromText(submittedBlock()).metadata;
+    appendSubmittedQuestionCandidates(root, metadata, "2026-06-25T00:00:00.000Z");
+    const inbox = JSON.parse(fs.readFileSync(inboxPath, "utf8"));
+    assert.strictEqual(inbox.policy.curator_agent_id, "user-support");
+    assert.strictEqual(inbox.policy.default_batch_size, 4);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -252,6 +297,23 @@ async function runConcurrentCandidateWriters(root, count) {
   const results = await Promise.all(workers.map((worker) => worker.exited));
   fs.rmSync(startPath, { force: true });
   return results;
+}
+
+{
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-question-candidate-missing-"));
+  try {
+    const checkerPath = path.resolve(__dirname, "report-question-candidates-check.js");
+    const missingInbox = path.join(root, ".orquesta", "vision", "question_candidates.json");
+    const strict = spawnSync(process.execPath, [checkerPath, "--inbox", missingInbox], { encoding: "utf8" });
+    assert.strictEqual(strict.status, 1);
+    assert.match(strict.stderr, /inbox file is missing/);
+
+    const publicClone = spawnSync(process.execPath, [checkerPath, "--inbox", missingInbox, "--allow-missing-inbox"], { encoding: "utf8" });
+    assert.strictEqual(publicClone.status, 0, publicClone.stderr);
+    assert.match(publicClone.stdout, /inbox skipped: .* \(missing\)/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 }
 
 (async () => {

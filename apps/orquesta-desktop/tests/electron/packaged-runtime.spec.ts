@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,10 +17,56 @@ async function writeProject(root: string): Promise<void> {
   await mkdir(state, { recursive: true });
   await Promise.all([
     writeFile(path.join(state, 'agents.json'), `${JSON.stringify({
+      schema_version: 2,
+      organization_revision: 1,
       updated_at: now,
-      agents: [{ agent_id: 'orchestrator', role: 'orchestrator', display_name: 'Coordinator', status: 'standby', mission: 'Validate the packaged runtime.' }]
+      agents: [{
+        agent_id: 'orchestrator',
+        role: 'orchestrator',
+        role_id: 'orchestrator',
+        role_version: 1,
+        organization_scope: 'project',
+        organization_parent_agent_id: 'user',
+        lifecycle_state: 'active',
+        operational_status: 'standby',
+        display_name: 'Coordinator',
+        status: 'standby',
+        mission: 'Validate the packaged runtime.',
+        updated_at: now
+      }]
     }, null, 2)}\n`, 'utf8'),
-    writeFile(path.join(state, 'tasks.json'), `${JSON.stringify({ updated_at: now, tasks: [] }, null, 2)}\n`, 'utf8')
+    writeFile(path.join(state, 'tasks.json'), `${JSON.stringify({ updated_at: now, tasks: [] }, null, 2)}\n`, 'utf8'),
+    writeFile(path.join(state, 'sessions.json'), `${JSON.stringify({ updated_at: now, sessions: [] }, null, 2)}\n`, 'utf8'),
+    writeFile(path.join(state, 'roles.json'), `${JSON.stringify({
+      schema_version: 1,
+      organization_revision: 1,
+      updated_at: now,
+      roles: [{
+        role_id: 'orchestrator',
+        version: 1,
+        display_names: { ja: '統括者', en: 'Orchestrator' },
+        aliases: [],
+        capability_ids: ['role:orchestrator'],
+        default_contract_template: 'orchestrator-v1',
+        lifecycle_state: 'active'
+      }]
+    }, null, 2)}\n`, 'utf8'),
+    writeFile(path.join(state, 'organization.json'), `${JSON.stringify({
+      schema_version: 2,
+      revision: 1,
+      policy: {
+        organization_changes: 'autonomous_except_new_line',
+        max_concurrent_provisioning: 3,
+        require_executable_task_per_new_agent: true,
+        require_no_file_ownership_conflict: true
+      },
+      agents: [{ agent_id: 'orchestrator', role_id: 'orchestrator', organization_scope: 'project', lifecycle_state: 'active', operational_status: 'standby' }],
+      teams: [{ team_id: 'foundation', line_id: null, display_name: 'Orquesta Foundation', purpose: 'Project-wide orchestration', lifecycle_state: 'active' }],
+      memberships: [{ membership_id: 'membership-foundation-orchestrator', agent_id: 'orchestrator', team_id: 'foundation', position: 'lead', ordinal: 1, active_from: now, active_to: null }],
+      relationships: [],
+      lines: [],
+      applied_decision_ids: []
+    }, null, 2)}\n`, 'utf8')
   ]);
 }
 
@@ -60,7 +106,7 @@ function descendants(processes: Awaited<ReturnType<typeof queryProcesses>>, root
   return processes.filter((process) => ids.has(process.processId));
 }
 
-test('uses the bundled real Codex App Server for a complete packaged turn and clean shutdown', async () => {
+test('uses the bundled real Codex App Server and fails closed without a persistent session binding', async () => {
   test.setTimeout(240_000);
   await access(packagedExecutable);
   const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'orquesta-packaged-project-'));
@@ -79,41 +125,28 @@ test('uses the bundled real Codex App Server for a complete packaged turn and cl
 
   try {
     const window = await desktop.firstWindow();
-    await expect(window.getByRole('button', { name: 'Coordinator, Idle' })).toBeVisible();
-    await window.evaluate(() => {
-      const scope = globalThis as typeof globalThis & { __orquestaPackagedRuntimeEvents?: string[] };
-      scope.__orquestaPackagedRuntimeEvents = [];
-      globalThis.orquestaDesktop.subscribeRuntime((event) => scope.__orquestaPackagedRuntimeEvents?.push(event.kind));
-    });
+    await expect(window.getByRole('button', { name: 'Coordinator, Stale evidence' })).toBeVisible();
+    const composer = window.getByRole('textbox', { name: 'Give an instruction or ask a question…' });
+    await expect(composer).toBeEnabled();
+    await composer.fill('This message must not create a hidden persistent task.');
+    const sendResult = await window.evaluate(() => globalThis.orquestaDesktop.sendMessage({
+      targetAgentId: 'orchestrator',
+      text: 'This message must not create a hidden persistent task.',
+      attachmentIds: [],
+      selectedContextIds: []
+    }));
+    expect(sendResult.status).toBe('unavailable');
+    if (sendResult.status !== 'unavailable') throw new Error('Unbound persistent dispatch was unexpectedly accepted');
+    expect(sendResult.reason).toContain('Agent orchestrator is not bound to a live Codex thread');
+    const sessions = JSON.parse(await readFile(path.join(projectRoot, '.orquesta', 'state', 'sessions.json'), 'utf8'));
+    expect(sessions.sessions).toEqual([]);
 
     const runtimeInfo = await window.evaluate(() => globalThis.orquestaDesktop.getRuntimeInfo({ probe: true }));
-    if (runtimeInfo.status !== 'ready') {
-      const diagnostic = await window.evaluate(() => globalThis.orquestaDesktop.sendMessage({
-        targetAgentId: 'orchestrator',
-        text: 'Runtime diagnostic only.',
-        attachmentIds: [],
-        selectedContextIds: []
-      }));
-      throw new Error(`Packaged runtime probe failed: ${JSON.stringify({ runtimeInfo, diagnostic })}`);
-    }
+    if (runtimeInfo.status !== 'ready') throw new Error(`Packaged runtime probe failed: ${JSON.stringify(runtimeInfo)}`);
     expect(runtimeInfo).toMatchObject({ status: 'ready', adapter: 'app_server', integrity: 'verified' });
     expect(runtimeInfo.sdkVersion).toBe('0.144.5');
     expect(runtimeInfo.codexVersion).toBe('0.144.5');
     expect(runtimeInfo.runtimeVersion).toBe('0.144.5-win32-x64');
-
-    const prompt = 'Reply with exactly ORQUESTA_RUNTIME_OK. Do not modify files or run commands.';
-    const composer = window.getByRole('textbox', { name: 'Give an instruction or ask a question…' });
-    await composer.fill(prompt);
-    await window.getByRole('button', { name: 'Send message' }).click();
-    await expect(composer).toHaveValue('');
-    await expect.poll(() => window.evaluate(() => (globalThis as typeof globalThis & { __orquestaPackagedRuntimeEvents?: string[] }).__orquestaPackagedRuntimeEvents ?? []), { timeout: 60_000 })
-      .toContain('turn_started');
-    await expect.poll(() => window.evaluate(() => (globalThis as typeof globalThis & { __orquestaPackagedRuntimeEvents?: string[] }).__orquestaPackagedRuntimeEvents ?? []), { timeout: 180_000 })
-      .toContain('turn_completed');
-
-    const history = await window.evaluate(() => globalThis.orquestaDesktop.listConversation({ targetAgentId: 'orchestrator', limit: 100 }));
-    expect(history.items.some((message) => message.role === 'user' && message.text === prompt)).toBe(true);
-    expect(history.items.some((message) => message.role === 'agent' && message.text.trim().length > 0)).toBe(true);
 
     const tree = descendants(await queryProcesses(), rootProcessId);
     const codexProcesses = tree.filter((process) => process.name.toLowerCase() === 'codex.exe');
@@ -129,9 +162,11 @@ test('uses the bundled real Codex App Server for a complete packaged turn and cl
       packagedExecutable,
       runtimeOverrideEnvironmentPresent: false,
       runtimeInfo,
-      runtimeEvents: await window.evaluate(() => (globalThis as typeof globalThis & { __orquestaPackagedRuntimeEvents?: string[] }).__orquestaPackagedRuntimeEvents ?? []),
-      prompt,
-      historyMessageCount: history.items.length,
+      persistentAgentStatus: 'stale_evidence',
+      persistentDispatchAttempted: true,
+      persistentDispatchAccepted: false,
+      persistentDispatchReason: sendResult.reason,
+      canonicalSessionCountAfterDispatch: sessions.sessions.length,
       codexProcesses,
       processTree: tree,
       temporaryUserData: true,
