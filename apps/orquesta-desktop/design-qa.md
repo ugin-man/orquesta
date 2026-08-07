@@ -2,7 +2,7 @@
 
 確認日: 2026-07-19
 
-比較対象は `public/reference/orquesta-desktop-home-approved.png` と `artifacts/screenshots/renderer-active-1440x900.png`。同じ1440×900の画像を横に並べた `artifacts/screenshots/comparison-approved-current-1440x900.png` で確認した。
+比較対象は設計時のローカル承認画像と `artifacts/screenshots/renderer-active-1440x900.png`。同じ1440×900の画像を横に並べた `artifacts/screenshots/comparison-approved-current-1440x900.png` で確認した。ローカル承認画像そのものは配布物に含めない。
 
 ## 判定
 

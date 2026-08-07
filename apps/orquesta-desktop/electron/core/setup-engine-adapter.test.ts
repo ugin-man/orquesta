@@ -13,10 +13,10 @@ const draft: SetupDraft = {
 };
 
 describe('Desktop setup controller', () => {
-  test('prepares durable state before the selected repository resumes the runner', async () => {
+  test('starts the setup runner immediately after durable state is prepared', async () => {
     let release!: () => void;
     const running = new Promise<void>((resolve) => { release = resolve; });
-    const resume = vi.fn(async () => running);
+    const run = vi.fn(async () => running);
     const engine = {
       start: vi.fn(async () => ({
         result: { setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment' as const },
@@ -25,24 +25,24 @@ describe('Desktop setup controller', () => {
     };
     const controller = createDesktopSetupController({
       engine,
-      runner: { run: vi.fn(), resume, cancel: vi.fn() },
+      runner: { run, resume: vi.fn(), cancel: vi.fn() },
       readSetupState: vi.fn(async () => ({ setup_id: 'SETUP-1', status: 'running' }))
     });
 
     await expect(controller.start({ rootPath: 'C:\\repo', draft })).resolves.toEqual({
       setupId: 'SETUP-1', rootPath: 'C:\\repo', activePhaseId: 'environment'
     });
-    expect(resume).not.toHaveBeenCalled();
-    await controller.resume({ rootPath: 'C:\\repo' });
-    expect(resume).toHaveBeenCalledWith({ rootPath: 'C:\\repo', setupId: 'SETUP-1' });
+    expect(run).toHaveBeenCalledWith({ rootPath: 'C:\\repo', setupId: 'SETUP-1' });
     release();
     await running;
   });
 
-  test('resumes one active setup and ignores terminal setup state', async () => {
+  test('resumes active and retryable blocked setup state but ignores terminal state', async () => {
     const resume = vi.fn(async () => undefined);
     const readSetupState = vi.fn()
       .mockResolvedValueOnce({ setup_id: 'SETUP-2', status: 'running' })
+      .mockResolvedValueOnce({ setup_id: 'SETUP-2', status: 'blocked', blocking_issue: { retryable: true } })
+      .mockResolvedValueOnce({ setup_id: 'SETUP-2', status: 'blocked', blocking_issue: { retryable: false } })
       .mockResolvedValueOnce({ setup_id: 'SETUP-2', status: 'completed' });
     const controller = createDesktopSetupController({
       engine: { start: vi.fn() },
@@ -52,8 +52,10 @@ describe('Desktop setup controller', () => {
 
     await controller.resume({ rootPath: 'C:\\repo' });
     await controller.resume({ rootPath: 'C:\\repo' });
+    await controller.resume({ rootPath: 'C:\\repo' });
+    await controller.resume({ rootPath: 'C:\\repo' });
 
-    expect(resume).toHaveBeenCalledOnce();
+    expect(resume).toHaveBeenCalledTimes(2);
     expect(resume).toHaveBeenCalledWith({ rootPath: 'C:\\repo', setupId: 'SETUP-2' });
   });
 });

@@ -8,5 +8,6 @@
   },
   "dependencies": {
     "@openai/codex-sdk": "0.144.5"
-  }
+  },
+  "license": "MIT"
 }

@@ -1,0 +1,92 @@
+{
+  "$id": "task-envelope",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_envelope_id",
+    "task_intent_id",
+    "parent_goal_id",
+    "workstream_id",
+    "terminal_outcome",
+    "local_deliverable",
+    "continue_policy",
+    "checkpoint_policy",
+    "escalation_conditions",
+    "notification_policy",
+    "execution",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "task_envelope_id": { "type": "string", "pattern": "^TE-[a-f0-9]{12}$" },
+    "task_intent_id": { "type": "string", "pattern": ".+" },
+    "parent_goal_id": {
+      "anyOf": [
+        { "type": "string", "pattern": ".+" },
+        { "type": "null" }
+      ]
+    },
+    "workstream_id": { "type": "string", "pattern": ".+" },
+    "terminal_outcome": { "type": "string", "pattern": ".+" },
+    "local_deliverable": { "type": "string", "pattern": ".+" },
+    "continue_policy": {
+      "enum": ["continue_until_terminal", "return_after_local", "await_user"]
+    },
+    "checkpoint_policy": {
+      "enum": ["non_blocking", "blocking_canary", "final_acceptance"]
+    },
+    "escalation_conditions": {
+      "type": "array",
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "notification_policy": {
+      "type": "object",
+      "required": ["silent_progress", "notify_on"],
+      "properties": {
+        "silent_progress": { "type": "boolean" },
+        "notify_on": {
+          "type": "array",
+          "items": {
+            "enum": ["terminal", "blocker", "user_action", "exceptional_duration"]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "execution_channel",
+        "inbox_policy",
+        "accepted_command_types",
+        "exclusive_active_command",
+        "conversation_history_policy"
+      ],
+      "properties": {
+        "execution_channel": {
+          "enum": [
+            "coordination",
+            "live_operation",
+            "product_implementation",
+            "independent_review",
+            "creative_production",
+            "research"
+          ]
+        },
+        "inbox_policy": { "enum": ["exclusive", "queued"] },
+        "accepted_command_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": ".+" }
+        },
+        "exclusive_active_command": { "type": "boolean" },
+        "conversation_history_policy": {
+          "enum": ["fresh", "filtered", "existing_delta"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "status": { "enum": ["draft", "ready", "superseded"] }
+  },
+  "additionalProperties": false
+}

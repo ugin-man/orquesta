@@ -1,0 +1,22 @@
+{
+  "$id": "candidate-evaluation",
+  "type": "object",
+  "required": ["evaluation_id", "need_id", "candidate_id", "policy_version", "axes", "uncertainty_penalty", "weighted_sum", "candidate_score", "hard_gate_results", "eligibility", "actual_model"],
+  "properties": {
+    "evaluation_id": { "type": "string", "pattern": ".+" }, "need_id": { "type": "string", "pattern": ".+" }, "candidate_id": { "type": "string", "pattern": ".+" }, "policy_version": { "type": "string", "pattern": ".+" },
+    "axes": { "type": "object", "required": ["task_fit", "integration_ease", "evidence_strength", "maintainability", "security", "license_fit", "exit_option", "cost"], "properties": {
+      "task_fit": { "type": "object", "required": ["value", "reason"], "properties": { "value": { "type": "number", "minimum": 0, "maximum": 100 }, "reason": { "type": "string", "pattern": ".+" } }, "additionalProperties": false },
+      "integration_ease": { "type": "object", "required": ["value", "reason"], "properties": { "value": { "type": "number", "minimum": 0, "maximum": 100 }, "reason": { "type": "string", "pattern": ".+" } }, "additionalProperties": false },
+      "evidence_strength": { "type": "object", "required": ["value", "reason"], "properties": { "value": { "type": "number", "minimum": 0, "maximum": 100 }, "reason": { "type": "string", "pattern": ".+" } }, "additionalProperties": false },
+      "maintainability": { "type": "object", "required": ["value", "reason"], "properties": { "value": { "type": "number", "minimum": 0, "maximum": 100 }, "reason": { "type": "string", "pattern": ".+" } }, "additionalProperties": false },
+      "security": { "type": "object", "required": ["value", "reason"], "properties": { "value": { "type": "number", "minimum": 0, "maximum": 100 }, "reason": { "type": "string", "pattern": ".+" } }, "additionalProperties": false },
+      "license_fit": { "type": "object", "required": ["value", "reason"], "properties": { "value": { "type": "number", "minimum": 0, "maximum": 100 }, "reason": { "type": "string", "pattern": ".+" } }, "additionalProperties": false },
+      "exit_option": { "type": "object", "required": ["value", "reason"], "properties": { "value": { "type": "number", "minimum": 0, "maximum": 100 }, "reason": { "type": "string", "pattern": ".+" } }, "additionalProperties": false },
+      "cost": { "type": "object", "required": ["value", "reason"], "properties": { "value": { "type": "number", "minimum": 0, "maximum": 100 }, "reason": { "type": "string", "pattern": ".+" } }, "additionalProperties": false }
+    }, "additionalProperties": false },
+    "uncertainty_penalty": { "type": "number", "minimum": 0, "maximum": 100 }, "weighted_sum": { "type": "number", "minimum": 0, "maximum": 100 }, "candidate_score": { "type": "number", "minimum": -100, "maximum": 100 },
+    "hard_gate_results": { "type": "array", "items": { "type": "object", "required": ["gate", "status", "reason"], "properties": { "gate": { "type": "string", "pattern": ".+" }, "status": { "enum": ["pass", "fail", "blocked"] }, "reason": { "type": "string", "pattern": ".+" } }, "additionalProperties": false } },
+    "eligibility": { "enum": ["eligible", "ineligible", "blocked"] }, "actual_model": { "const": null }
+  },
+  "additionalProperties": false
+}

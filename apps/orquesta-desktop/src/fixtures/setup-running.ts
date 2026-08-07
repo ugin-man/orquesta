@@ -5,7 +5,7 @@ import type { FixtureDefinition } from './types';
 const setup: SetupUiSnapshot = {
   status: 'running',
   projectTitle: 'Orquesta Desktop',
-  projectRootLabel: 'C:\\Users\\kouki\\OneDrive\\ドキュメント\\Orquesta',
+  projectRootLabel: 'C:\\Users\\example\\OneDrive\\ドキュメント\\Orquesta',
   currentPhaseId: 'foundation',
   startedAt: '2026-07-20T08:00:00.000Z',
   updatedAt: '2026-07-20T08:01:30.000Z',

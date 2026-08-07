@@ -11,7 +11,18 @@
   color: #1e1d1a;
   background: #f4f1e9;
 }
-.setup-intake__paper { position: absolute; inset: 0; z-index: -2; opacity: .24; background: url('/reference/paper-grain.png') 0 0 / 256px 256px; mix-blend-mode: multiply; pointer-events: none; }
+.setup-intake__paper {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  opacity: .24;
+  background-image:
+    repeating-radial-gradient(circle at 0 0, rgba(62, 58, 51, .11) 0 .45px, transparent .6px 3px),
+    repeating-radial-gradient(circle at 100% 100%, rgba(255, 255, 255, .42) 0 .5px, transparent .7px 4px);
+  background-size: 5px 5px, 7px 7px;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
 .setup-intake::before { content: ''; position: absolute; inset: 0; z-index: -1; background: radial-gradient(circle at 50% 28%, rgba(255,255,255,.84), transparent 47%), linear-gradient(115deg, rgba(255,255,255,.32), transparent 38% 70%, rgba(220,213,201,.18)); pointer-events: none; }
 .setup-intake__header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(70,66,59,.24); padding-bottom: 13px; color: #555149; font-size: 9px; letter-spacing: .18em; }
 .setup-intake__header span { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; }

@@ -16,7 +16,11 @@ test("pins the generated App Server v2 lifecycle subset", () => {
     "account/login/start",
     "thread/start",
     "thread/resume",
+    "thread/name/set",
+    "thread/archive",
+    "thread/list",
     "thread/read",
+    "thread/turns/list",
     "turn/start",
     "turn/steer",
     "turn/interrupt"
@@ -39,6 +43,26 @@ test("pins the generated App Server v2 lifecycle subset", () => {
     required: ["id", "method", "params"],
     params_required: ["threadId"],
     response_required: ["thread"]
+  });
+  assert.deepEqual(schema.client_requests["thread/turns/list"], {
+    required: ["id", "method", "params"],
+    params_required: ["threadId"],
+    response_required: ["data"]
+  });
+  assert.deepEqual(schema.client_requests["thread/name/set"], {
+    required: ["id", "method", "params"],
+    params_required: ["name", "threadId"],
+    response_required: []
+  });
+  assert.deepEqual(schema.client_requests["thread/archive"], {
+    required: ["id", "method", "params"],
+    params_required: ["threadId"],
+    response_required: []
+  });
+  assert.deepEqual(schema.client_requests["thread/list"], {
+    required: ["id", "method", "params"],
+    params_required: [],
+    response_required: ["data"]
   });
   assert.deepEqual(schema.client_requests["turn/steer"].params_required, [
     "expectedTurnId",

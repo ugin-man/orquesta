@@ -7,6 +7,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { createEventStore } = require("@orquesta/event-store");
 const { canonicalHash } = require("@orquesta/contracts");
+const { createLiveSourceConnector } = require("@orquesta/acquisition");
 const { createCommandBoundary, createProjectors, COMMAND_NAMES } = require("../src");
 const { createTaskIntent } = require("../src/task-intent");
 const { initialProjection } = require("../src/projectors");
@@ -193,6 +194,10 @@ function makeBoundary(options = {}) {
       verifyUserApproval,
       compileContextPack: options.compileContextPack || trustedDraftContextPack,
       referenceTime: "2026-07-16T07:30:00.000Z",
+      reuseDiscoveryConnectors: options.reuseDiscoveryConnectors || [],
+      reuseDiscoveryCache: options.reuseDiscoveryCache || null,
+      reuseDiscoveryClock: options.reuseDiscoveryClock,
+      assessReuseCandidate: options.assessReuseCandidate,
     }),
   };
 }
@@ -241,7 +246,7 @@ test("command boundary exposes only the approved Core command names", () => {
   assert.deepEqual([...COMMAND_NAMES], [
     "task-intent.create", "capability.compile", "execution-plan.create", "execution-plan.escalate", "inventory.refresh-local", "resolution.propose",
     "resolution.approve", "context-pack.preview", "candidate.install.request", "candidate.install.authorize",
-    "acquisition.snapshot.record", "candidate.audit.record", "candidate.audition.record",
+    "acquisition.snapshot.record", "candidate.audit.record", "candidate.audition.record", "reuse-discovery.complete",
     "phase-review.request", "phase-review.decide", "runtime.dispatch.record", "runtime.event.record", "artifact.record", "report.record", "acceptance.record",
   ]);
   const { boundary } = makeBoundary();
@@ -469,6 +474,9 @@ test("Execution Plan commands require lifecycle evidence, journal once, replay, 
     command_id: "execution-plan-create",
     name: "execution-plan.create",
     payload: {
+      work_item: {
+        scope_boundaries: ["docs"], effects: ["local_read"], verification_method: "deterministic"
+      },
       risk_profile: {
         reversibility: "easy", scope: "single_boundary", verification: "deterministic", uncertainty: "low",
         effects: ["workspace_write"], repeated_failures: 0, user_review: "default"
@@ -480,6 +488,8 @@ test("Execution Plan commands require lifecycle evidence, journal once, replay, 
   const first = boundary.replay();
   assert.equal(first.execution_plans.length, 1);
   assert.equal(first.current_execution_plan_id, first.execution_plans[0].execution_plan_id);
+  assert.equal(first.task_profiles.length, 1);
+  assert.ok(first.task_profiles[0].reason_codes.includes("legacy:risk_profile_safety_floor"));
   const batch = JSON.parse(fs.readFileSync(path.join(stateRoot, "events.jsonl"), "utf8").trim().split("\n").at(-1));
   assert.deepEqual(batch.events.map((event) => event.type), ["execution.plan.created"]);
 
@@ -513,6 +523,146 @@ test("Execution Plan creation is idempotent but cannot replace the current lane"
   const state = boundary.replay();
   assert.equal(state.execution_plans.length, 1);
   assert.equal(state.execution_plans[0].lane, "critical");
+});
+
+test("runReuseDiscovery persists live evidence, comparison, and the revised Execution Plan", async () => {
+  let requests = 0;
+  const connector = createLiveSourceConnector({
+    id: "official_docs",
+    trustTier: "official",
+    transport: { request() { requests += 1; return { status: 200 }; } },
+    async search({ transport }) {
+      await transport.request({ method: "GET", url: "https://example.test/search", body: null });
+      return liveSourceResult();
+    },
+  });
+  const { boundary } = makeBoundary({
+    collectInventory: () => ({ version: 1, providers: [], conflicts: [] }),
+    reuseDiscoveryConnectors: [connector],
+    reuseDiscoveryClock: () => "2026-07-16T07:30:00.000Z",
+    assessReuseCandidate: ({ baseline }) => ({ ...baseline, axes: axes(90), uncertainty_penalty: 0, estimated_total_cost: 0, unknowns: [] }),
+  });
+  boundary.execute({ command_id: "reuse-run-intent", name: "task-intent.create", payload: makeIntent() });
+  boundary.execute({
+    command_id: "reuse-run-compile",
+    name: "capability.compile",
+    payload: { declared_needs: [{
+      need_id: "NEED-live-source",
+      description: "Reusable desktop UI capability",
+      kind: "asset",
+      required_level: "required",
+      hard_constraints: [],
+      dependencies: [],
+      verification_method: "compare source evidence",
+      status: "open",
+      confidence: 90,
+      acquisition_mode: "external_if_missing",
+    }] },
+  });
+  boundary.execute({ command_id: "reuse-run-inventory", name: "inventory.refresh-local", payload: {} });
+  boundary.execute({ command_id: "reuse-run-plan", name: "execution-plan.create", payload: { work_item: { effects: ["workspace_write"] } } });
+  const before = boundary.replay().execution_plans[0];
+
+  const result = await boundary.runReuseDiscovery({ command_id: "reuse-run-complete" });
+  const state = boundary.replay();
+
+  assert.equal(result.status, "committed");
+  assert.equal(requests, 1);
+  assert.equal(state.acquisition_snapshots.length, 1);
+  assert.equal(state.live_providers[0].provider_id, "candidate-a");
+  assert.equal(state.resolutions.length, 1);
+  assert.equal(state.execution_plans.length, 2);
+  const revised = state.execution_plans.find((plan) => plan.revision === 2);
+  assert.equal(state.current_execution_plan_id, revised.execution_plan_id);
+  assert.equal(revised.supersedes_execution_plan_id, before.execution_plan_id);
+  assert.equal(state.task_profiles[0].reuse_discovery.version, 2);
+  assert.equal(state.resolutions[0].selected_provider_id, "candidate-a");
+  const retry = await boundary.runReuseDiscovery({ command_id: "reuse-run-complete" });
+  assert.equal(retry.status, "idempotent");
+  assert.equal(requests, 1);
+  const forged = copy(result.discovery);
+  forged.need_results[0].candidates[0].source_hash = "b".repeat(64);
+  assert.throws(() => boundary.execute({ command_id: "reuse-run-forged", name: "reuse-discovery.complete", payload: { discovery: forged } }), { code: "CORE_LIVE_CANDIDATE_UNBOUND" });
+  boundary.execute({
+    command_id: "reuse-run-approve",
+    name: "resolution.approve",
+    payload: { resolution_id: state.resolutions[0].resolution_id, approval_evidence: { raw_token: "never-persist" } },
+  });
+  assert.equal(boundary.replay().resolutions[0].status, "approved");
+});
+
+test("execution-plan.create profiles public structured inputs and retains profile trace in replay", () => {
+  for (const [label, work_item, expectedLane] of [
+    ["tiny", { scope_boundaries: ["docs"], effects: ["local_read"], verification_method: "deterministic" }, "fast"],
+    ["standard", { scope_boundaries: ["docs", "src"], effects: ["local_read"], verification_method: "deterministic" }, "standard"],
+    ["critical", { scope_boundaries: ["docs"], effects: ["external_write"], verification_method: "deterministic" }, "critical"],
+  ]) {
+    const { boundary } = makeBoundary();
+    boundary.execute({ command_id: `${label}-intent`, name: "task-intent.create", payload: makeIntent() });
+    boundary.execute({ command_id: `${label}-graph`, name: "capability.compile", payload: {} });
+    boundary.execute({ command_id: `${label}-plan`, name: "execution-plan.create", payload: { work_item } });
+    const state = boundary.replay();
+    assert.equal(state.execution_plans[0].lane, expectedLane);
+    assert.equal(state.task_profiles[0].task_intent_id, state.execution_plans[0].task_intent_id);
+    assert.ok(state.task_profiles[0].reason_codes.length > 0);
+    assert.ok(state.task_profiles[0].evidence_refs.length > 0);
+  }
+});
+
+test("execution-plan.create inherits semantic needs from the current graph", () => {
+  const { boundary } = makeBoundary();
+  boundary.execute({ command_id: "semantic-needs-intent", name: "task-intent.create", payload: makeIntent() });
+  boundary.execute({
+    command_id: "semantic-needs-graph",
+    name: "capability.compile",
+    payload: {
+      declared_needs: [{
+        need_id: "CN-unusual-visualizer",
+        description: "未知の専門領域を可視化する既存ツール",
+        kind: "tool",
+        required_level: "required",
+        hard_constraints: [],
+        dependencies: [],
+        verification_method: "候補を隔離環境で動作確認する",
+        status: "open",
+        confidence: 80,
+        acquisition_mode: "external_if_missing",
+      }],
+    },
+  });
+  boundary.execute({
+    command_id: "semantic-needs-plan",
+    name: "execution-plan.create",
+    payload: { work_item: { scope_boundaries: ["src"], effects: ["workspace_write"], verification_method: "deterministic" } },
+  });
+  const state = boundary.replay();
+  assert.equal(state.capability_graphs[0].compiler_version, 2);
+  assert.equal(state.task_profiles[0].reuse_discovery.status, "local_inventory_required");
+  assert.equal(state.task_profiles[0].reuse_discovery.need_routes[0].need_id, "CN-unusual-visualizer");
+  assert.ok(state.task_profiles[0].evidence_refs.includes("capability_needs:provided"));
+});
+
+test("execution-plan.create preserves a TaskIntent critical semantic floor over local_read", () => {
+  const { boundary } = makeBoundary();
+  boundary.execute({
+    command_id: "semantic-floor-intent",
+    name: "task-intent.create",
+    payload: {
+      ...makeIntent(),
+      rawRequestRef: "request:semantic-floor",
+      desiredOutcome: "Deploy an approved release to public production.",
+    },
+  });
+  boundary.execute({ command_id: "semantic-floor-graph", name: "capability.compile", payload: {} });
+  boundary.execute({
+    command_id: "semantic-floor-plan",
+    name: "execution-plan.create",
+    payload: { work_item: { scope_boundaries: ["release"], effects: ["local_read"], verification_method: "deterministic" } },
+  });
+  const state = boundary.replay();
+  assert.equal(state.execution_plans[0].lane, "critical");
+  assert.ok(state.task_profiles[0].reason_codes.includes("inferred:critical_semantic_floor:public_release"));
+  assert.ok(state.task_profiles[0].evidence_refs.includes("task_intent:critical_semantic_effect_inference"));
 });
 
 test("a command commits one EventStore batch and command identity is idempotent only for its canonical payload", () => {

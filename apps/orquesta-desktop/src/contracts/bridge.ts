@@ -17,6 +17,7 @@ export type UiActionResult =
 
 export interface ConversationMessage {
   id: string;
+  kind?: 'message' | 'session_boundary';
   role: 'user' | 'agent' | 'system';
   targetAgentId: string;
   authorLabel: string;
@@ -25,6 +26,12 @@ export interface ConversationMessage {
   evidenceLabel: string | null;
   lucaAnswer?: LucaAnswerPayload | null;
   structured?: boolean;
+  threadId?: string;
+  sessionGeneration?: number;
+  sessionBoundary?: {
+    fromGeneration: number;
+    toGeneration: number;
+  };
 }
 
 export interface ConversationQuery {
@@ -105,6 +112,7 @@ export type BridgeEvent =
       type: 'runtime_notification';
       notification: {
         kind: 'turn_started' | 'turn_completed' | 'turn_failed' | 'agent_message' | 'model_observed';
+        correlationId?: string | null;
         threadId: string;
         turnId: string | null;
         text: string | null;

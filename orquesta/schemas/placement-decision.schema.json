@@ -1,0 +1,91 @@
+{
+  "$id": "placement-decision",
+  "type": "object",
+  "required": [
+    "version",
+    "decision_id",
+    "task_id",
+    "status",
+    "target_path",
+    "component_id",
+    "lifecycle",
+    "authority",
+    "read_policy",
+    "supersedes",
+    "supersedes_candidates",
+    "warnings",
+    "hard_errors",
+    "reason",
+    "created_at"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "decision_id": { "type": "string", "pattern": "^PD-[a-f0-9]{12}$" },
+    "task_id": { "type": "string", "pattern": ".+" },
+    "status": { "enum": ["proposed", "inbox", "blocked"] },
+    "target_path": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": ".+" }
+      ]
+    },
+    "component_id": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+      ]
+    },
+    "lifecycle": { "enum": ["draft", "review", "current", "superseded", "archived", "quarantined", "delete_candidate"] },
+    "authority": { "enum": ["canonical", "supporting", "derived", "external"] },
+    "read_policy": { "enum": ["bootstrap_candidate", "task_candidate", "explicit_only", "never"] },
+    "supersedes": {
+      "type": "array",
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "supersedes_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_ref", "reason", "confidence"],
+        "properties": {
+          "source_ref": { "type": "string", "pattern": ".+" },
+          "reason": { "type": "string", "pattern": ".+" },
+          "confidence": { "enum": ["low", "medium", "high"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message", "source_refs"],
+        "properties": {
+          "code": { "type": "string", "pattern": ".+" },
+          "message": { "type": "string", "pattern": ".+" },
+          "source_refs": { "type": "array", "items": { "type": "string", "pattern": ".+" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "hard_errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message", "source_refs"],
+        "properties": {
+          "code": { "type": "string", "pattern": ".+" },
+          "message": { "type": "string", "pattern": ".+" },
+          "source_refs": { "type": "array", "items": { "type": "string", "pattern": ".+" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "reason": { "type": "string", "pattern": ".+" },
+    "created_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    }
+  },
+  "additionalProperties": false
+}

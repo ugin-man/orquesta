@@ -75,7 +75,13 @@ function availableExisting(existingAgents, roleId, lineId, usedIds) {
   ));
 }
 
-function prepareProvisioningBatch({ specialistPlan, organizationRevision, existingAgents = [], now } = {}) {
+function prepareProvisioningBatch({
+  specialistPlan,
+  organizationRevision,
+  existingAgents = [],
+  recommendedModelsByTaskId = {},
+  now,
+} = {}) {
   if (!specialistPlan || specialistPlan.schema_version !== 2 || !Number.isInteger(organizationRevision) || !now) {
     throw new TypeError("specialistPlan v2, organizationRevision, and now are required");
   }
@@ -98,6 +104,7 @@ function prepareProvisioningBatch({ specialistPlan, organizationRevision, existi
       const existing = availableExisting(existingAgents, specialist.role_id, specialist.line_id, usedIds);
       const agentId = existing ? existing.agent_id : nextAgentId(specialist.role_id, reservedIds);
       usedIds.add(agentId);
+      const recommendedModel = recommendedModelsByTaskId[specialist.task_ids[index]];
       requests.push({
         agent_id: agentId,
         role_id: specialist.role_id,
@@ -106,6 +113,9 @@ function prepareProvisioningBatch({ specialistPlan, organizationRevision, existi
         task_id: specialist.task_ids[index],
         status: existing ? "reuse_ready" : "pending",
         created_at: now,
+        ...(typeof recommendedModel === "string" && recommendedModel.trim()
+          ? { recommended_model: recommendedModel }
+          : {}),
       });
     }
   }

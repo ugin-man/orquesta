@@ -103,8 +103,8 @@ function extractQuestionCandidates(text) {
   const blocks = parseJsonBlocks(text);
   const parseErrors = blocks.filter((block) => block.error).map((block) => block.error.message);
   const parsed = blocks
-    .filter((block) => block.value && block.value.question_candidates)
-    .map((block) => block.value.question_candidates);
+    .map((block) => block.value?.question_candidates || block.value?.specialist_result?.question_candidates)
+    .filter(Boolean);
   return {
     metadata: parsed[0] || null,
     parseErrors,
@@ -112,8 +112,9 @@ function extractQuestionCandidates(text) {
   };
 }
 
-function validateCandidateItem(item, index) {
+function validateCandidateItem(item, index, { softVocabulary = false } = {}) {
   const errors = [];
+  const warnings = [];
   const prefix = `item ${index + 1}`;
   REQUIRED_ITEM_FIELDS.forEach((field) => {
     if (!hasText(item[field])) errors.push(`${prefix}: missing ${field}`);
@@ -122,15 +123,17 @@ function validateCandidateItem(item, index) {
     errors.push(`${prefix}: invalid priority ${item.priority}`);
   }
   if (hasText(item.category) && !VALID_CATEGORIES.has(item.category)) {
-    errors.push(`${prefix}: invalid category ${item.category}`);
+    const message = `${prefix}: unknown category ${item.category}; it will be recorded as other`;
+    (softVocabulary ? warnings : errors).push(message);
   }
   if (hasText(item.suggested_timing) && !VALID_TIMINGS.has(item.suggested_timing)) {
-    errors.push(`${prefix}: invalid suggested_timing ${item.suggested_timing}`);
+    const message = `${prefix}: unknown suggested_timing ${item.suggested_timing}; it will be recorded as batch_later`;
+    (softVocabulary ? warnings : errors).push(message);
   }
   if (item.observation !== undefined && item.observation !== null) {
     errors.push(...validateObservation(item.observation, prefix));
   }
-  return errors;
+  return { errors, warnings };
 }
 
 function defaultObservation() {
@@ -179,7 +182,7 @@ function validateQuestionCandidates(metadata) {
   const errors = [];
   const warnings = [];
   if (!metadata || typeof metadata !== "object") {
-    return { errors: ["missing question_candidates metadata"], warnings, status: "missing", itemCount: 0 };
+    return { errors, warnings, status: "missing", itemCount: 0 };
   }
 
   if (metadata.status === "none") {
@@ -210,7 +213,9 @@ function validateQuestionCandidates(metadata) {
   }
 
   metadata.items.forEach((item, index) => {
-    errors.push(...validateCandidateItem(item || {}, index));
+    const validation = validateCandidateItem(item || {}, index, { softVocabulary: true });
+    errors.push(...validation.errors);
+    warnings.push(...validation.warnings);
   });
 
   return { errors, warnings, status: "submitted", itemCount: metadata.items.length };
@@ -260,7 +265,8 @@ function validateQuestionCandidateInbox(inbox) {
     if (hasText(candidate?.status) && !VALID_CANDIDATE_STATUSES.has(candidate.status)) {
       errors.push(`${prefix}: invalid status ${candidate.status}`);
     }
-    errors.push(...validateCandidateItem(candidate || {}, index).map((error) => `${prefix}: ${error}`));
+    const validation = validateCandidateItem(candidate || {}, index);
+    errors.push(...validation.errors.map((error) => `${prefix}: ${error}`));
   });
   return { errors, warnings };
 }
@@ -270,7 +276,7 @@ function defaultQuestionCandidateInbox() {
     version: 1,
     candidates: [],
     policy: {
-      curator_agent_id: "vision-curator",
+      curator_agent_id: "user-support",
       wake_triggers: [
         "pending_high_priority_candidate",
         "pending_candidates_gte_5",
@@ -319,6 +325,11 @@ function appendSubmittedQuestionCandidates(rootDir, metadata, now = new Date().t
     const inbox = current && typeof current === "object" ? current : defaultQuestionCandidateInbox();
     inbox.version = inbox.version || 1;
     inbox.candidates = Array.isArray(inbox.candidates) ? inbox.candidates : [];
+    inbox.policy = {
+      ...defaultQuestionCandidateInbox().policy,
+      ...(inbox.policy && typeof inbox.policy === "object" ? inbox.policy : {}),
+      curator_agent_id: "user-support"
+    };
     const recorded = [];
     let skipped = 0;
 
@@ -334,11 +345,11 @@ function appendSubmittedQuestionCandidates(rootDir, metadata, now = new Date().t
         candidate_id: nextCandidateId(inbox.candidates, item.source_task_id),
         status: item.observation ? "observation" : "pending_curator_review",
         priority: item.priority,
-        category: item.category,
+        category: VALID_CATEGORIES.has(item.category) ? item.category : "other",
         question: item.question,
         why_now: item.why_now,
         user_impact: item.user_impact,
-        suggested_timing: item.suggested_timing,
+        suggested_timing: VALID_TIMINGS.has(item.suggested_timing) ? item.suggested_timing : "batch_later",
         source_task_id: item.source_task_id,
         source_agent_id: item.source_agent_id,
         source_report_path: item.source_report_path,
@@ -362,13 +373,46 @@ function appendSubmittedQuestionCandidates(rootDir, metadata, now = new Date().t
   return { ...outcome, lock: transaction.lock };
 }
 
+function ingestReportQuestionCandidates(
+  rootDir,
+  reportPath,
+  now = new Date().toISOString(),
+  inspected = null
+) {
+  const inspection = inspected || inspectReportQuestionCandidates(reportPath);
+  const summary = {
+    present: inspection.present,
+    status: inspection.status,
+    item_count: inspection.itemCount,
+    recorded_count: 0,
+    skipped_duplicate_count: 0,
+    errors: inspection.errors,
+    warnings: inspection.warnings,
+    candidates: []
+  };
+
+  if (inspection.errors.length || inspection.status !== "submitted") return summary;
+
+  const outcome = appendSubmittedQuestionCandidates(rootDir, inspection.metadata, now);
+  return {
+    ...summary,
+    recorded_count: outcome.recorded,
+    skipped_duplicate_count: outcome.skipped,
+    candidates: outcome.candidates,
+    lock: outcome.lock
+  };
+}
+
 function main() {
   const args = process.argv.slice(2);
   const reports = [];
   const inboxes = [];
+  let allowMissingInbox = false;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === "--inbox") {
+    if (arg === "--allow-missing-inbox") {
+      allowMissingInbox = true;
+    } else if (arg === "--inbox") {
       inboxes.push(args[index + 1]);
       index += 1;
     } else {
@@ -387,14 +431,23 @@ function main() {
   });
 
   inboxes.filter(Boolean).forEach((inboxPath) => {
-    const result = validateQuestionCandidateInbox(readJson(path.resolve(inboxPath)));
+    const resolvedInboxPath = path.resolve(inboxPath);
+    if (!fs.existsSync(resolvedInboxPath)) {
+      if (allowMissingInbox) {
+        console.log(`question-candidates inbox skipped: ${inboxPath} (missing)`);
+      } else {
+        errors.push(`${inboxPath}: inbox file is missing`);
+      }
+      return;
+    }
+    const result = validateQuestionCandidateInbox(readJson(resolvedInboxPath));
     result.warnings.forEach((warning) => console.warn(`question-candidates inbox warning: ${inboxPath}: ${warning}`));
     result.errors.forEach((error) => errors.push(`${inboxPath}: ${error}`));
     if (!result.errors.length) console.log(`question-candidates inbox ok: ${inboxPath}`);
   });
 
   if (!reports.length && !inboxes.length) {
-    console.log("usage: node orquesta/scripts/report-question-candidates-check.js <report.md> [--inbox .orquesta/vision/question_candidates.json]");
+    console.log("usage: node orquesta/scripts/report-question-candidates-check.js <report.md> [--inbox .orquesta/vision/question_candidates.json] [--allow-missing-inbox]");
   }
 
   if (errors.length) {
@@ -412,6 +465,7 @@ module.exports = {
   defaultObservation,
   appendSubmittedQuestionCandidates,
   extractQuestionCandidates,
+  ingestReportQuestionCandidates,
   inspectReportQuestionCandidates,
   inspectReportQuestionCandidatesFromText,
   validateObservation,

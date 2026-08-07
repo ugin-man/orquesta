@@ -98,7 +98,7 @@ UI制作時に仕様が衝突した場合、次の順で優先する。
 
 承認済み画像は、新しいChatGPT作業へ必ず別ファイルとして添付する。
 
-- 現在のローカル参照: `C:\Users\kouki\.codex\generated_images\019f6291-cd59-7183-b799-aee36005b738\exec-7ff9a3fa-6014-4284-b5a7-50b0217e0bb7.png`
+- 現在のローカル参照: `C:\Users\example\.codex\generated_images\019f6291-cd59-7183-b799-aee36005b738\exec-7ff9a3fa-6014-4284-b5a7-50b0217e0bb7.png`
 - ChatGPTへ添付するときの推奨名: `orquesta-desktop-home-approved.png`
 
 ローカルパスだけをChatGPTへ渡してはいけない。画像自体を添付する。

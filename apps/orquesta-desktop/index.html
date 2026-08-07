@@ -30,8 +30,10 @@
         position: absolute;
         inset: 0;
         z-index: 0;
-        background-image: url('./reference/paper-grain.png');
-        background-size: 256px 256px;
+        background-image:
+          repeating-radial-gradient(circle at 0 0, rgba(62, 58, 51, .11) 0 .45px, transparent .6px 3px),
+          repeating-radial-gradient(circle at 100% 100%, rgba(255, 255, 255, .42) 0 .5px, transparent .7px 4px);
+        background-size: 5px 5px, 7px 7px;
         opacity: .27;
         mix-blend-mode: multiply;
         pointer-events: none;

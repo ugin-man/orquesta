@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const defaultStateRoot = path.join(repoRoot, ".orquesta");
@@ -9,6 +10,8 @@ const textFileExtensions = new Set([".json", ".jsonl", ".md"]);
 const ignoredDirNames = new Set(["archive"]);
 const suspiciousQuestionMarks = /\?{3,}/;
 const replacementCharacter = /\uFFFD/;
+const japaneseMojibake = /(?:[繝繧蜿譁縺][^繝繧蜿譁縺\r\n]{0,8}){3,}/u;
+const westernMojibake = /(?:Ã[\u0080-\u00BF]|Â[\u0080-\u00BF]|â€|ðŸ)/u;
 
 function walk(dirPath, files = []) {
   if (!fs.existsSync(dirPath)) return files;
@@ -30,6 +33,14 @@ function stripBom(text) {
   return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
 }
 
+function stripInlineCode(text) {
+  return String(text).replace(/`[^`\r\n]*`/g, "");
+}
+
+function looksLikeMojibake(text) {
+  return japaneseMojibake.test(String(text)) || westernMojibake.test(String(text));
+}
+
 function flattenJsonStrings(value, trail = "$", out = []) {
   if (typeof value === "string") {
     out.push([trail, value]);
@@ -47,27 +58,70 @@ function flattenJsonStrings(value, trail = "$", out = []) {
   return out;
 }
 
+function verifiedHandoffManifest(filePath, parsed) {
+  const normalized = path.resolve(filePath).replaceAll("\\", "/");
+  if (!/\/\.orquesta\/state\/session-handoffs\/[^/]+\/generation-\d+-to-\d+\.manifest\.json$/i.test(normalized)) {
+    return false;
+  }
+  if (parsed?.kind !== "orquesta_session_handoff_manifest") return false;
+  const receiptPath = filePath.replace(/\.manifest\.json$/i, ".receipt.json");
+  if (!fs.existsSync(receiptPath)) return false;
+  try {
+    const receipt = JSON.parse(stripBom(fs.readFileSync(receiptPath, "utf8")));
+    const digest = crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+    return receipt.agent_id === parsed.agent_id
+      && receipt.observed_generation === parsed.successor_generation
+      && receipt.handoff_manifest_hash === digest;
+  } catch {
+    return false;
+  }
+}
+
+function allowQuotedDamageExample(filePath, jsonPath, parsed) {
+  return verifiedHandoffManifest(filePath, parsed)
+    && /^\$\.conversation_tail\[\d+\]\.text$/.test(jsonPath);
+}
+
+function inspectString(filePath, detail, value, warnings, { allowInlineDamageExample = false } = {}) {
+  const questionText = allowInlineDamageExample ? stripInlineCode(value) : value;
+  if (suspiciousQuestionMarks.test(questionText)) {
+    warnings.push({
+      file: filePath,
+      kind: "literal-question-mark-run",
+      detail,
+      sample: questionText.slice(0, 120)
+    });
+  }
+  if (replacementCharacter.test(value)) {
+    warnings.push({
+      file: filePath,
+      kind: "unicode-replacement-character",
+      detail,
+      sample: value.slice(0, 120)
+    });
+  }
+  if (looksLikeMojibake(value)) {
+    warnings.push({
+      file: filePath,
+      kind: "probable-mojibake",
+      detail,
+      sample: value.slice(0, 120)
+    });
+  }
+}
+
+function inspectJsonValue(filePath, parsed, warnings, pathPrefix = "$") {
+  for (const [jsonPath, value] of flattenJsonStrings(parsed, pathPrefix)) {
+    inspectString(filePath, jsonPath, value, warnings, {
+      allowInlineDamageExample: allowQuotedDamageExample(filePath, jsonPath, parsed)
+    });
+  }
+}
+
 function inspectJson(filePath, text, warnings) {
   try {
     const parsed = JSON.parse(stripBom(text));
-    for (const [jsonPath, value] of flattenJsonStrings(parsed)) {
-      if (suspiciousQuestionMarks.test(value)) {
-        warnings.push({
-          file: filePath,
-          kind: "literal-question-mark-run",
-          detail: jsonPath,
-          sample: value.slice(0, 120)
-        });
-      }
-      if (replacementCharacter.test(value)) {
-        warnings.push({
-          file: filePath,
-          kind: "unicode-replacement-character",
-          detail: jsonPath,
-          sample: value.slice(0, 120)
-        });
-      }
-    }
+    inspectJsonValue(filePath, parsed, warnings);
   } catch (error) {
     warnings.push({
       file: filePath,
@@ -78,23 +132,24 @@ function inspectJson(filePath, text, warnings) {
   }
 }
 
+function inspectJsonLines(filePath, text, warnings) {
+  stripBom(text).split(/\r?\n/).forEach((line, index) => {
+    if (!line.trim()) return;
+    try {
+      inspectJsonValue(filePath, JSON.parse(line), warnings, `$line[${index + 1}]`);
+    } catch (error) {
+      warnings.push({
+        file: filePath,
+        kind: "json-parse-error",
+        detail: `line ${index + 1}: ${error.message}`,
+        sample: line.slice(0, 120)
+      });
+    }
+  });
+}
+
 function inspectText(filePath, text, warnings) {
-  if (suspiciousQuestionMarks.test(text)) {
-    warnings.push({
-      file: filePath,
-      kind: "literal-question-mark-run",
-      detail: "text",
-      sample: text.match(suspiciousQuestionMarks)?.[0] || ""
-    });
-  }
-  if (replacementCharacter.test(text)) {
-    warnings.push({
-      file: filePath,
-      kind: "unicode-replacement-character",
-      detail: "text",
-      sample: ""
-    });
-  }
+  inspectString(filePath, "text", text, warnings, { allowInlineDamageExample: true });
 }
 
 function validateEncoding(rootPath = targetRoot) {
@@ -112,6 +167,8 @@ function validateEncoding(rootPath = targetRoot) {
     }
     if (path.extname(filePath) === ".json") {
       inspectJson(filePath, text, warnings);
+    } else if (path.extname(filePath) === ".jsonl") {
+      inspectJsonLines(filePath, text, warnings);
     } else {
       inspectText(filePath, text, warnings);
     }
@@ -138,4 +195,4 @@ if (require.main === module) {
   process.exit(1);
 }
 
-module.exports = { validateEncoding };
+module.exports = { looksLikeMojibake, stripInlineCode, validateEncoding };

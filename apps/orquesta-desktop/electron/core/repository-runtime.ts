@@ -11,17 +11,34 @@ interface CloseableWatcher {
   close(): void;
 }
 
+interface WatchOptions {
+  recursive?: boolean;
+}
+
 export interface RepositoryRuntimeOptions {
   readSnapshot?: (rootPath: string) => Promise<OrquestaUiSnapshot>;
   readV4Operations?: (rootPath: string) => Promise<V4OperationsSnapshot>;
-  watchDirectory?: (directory: string, onChange: () => void, onError: (error: Error) => void) => CloseableWatcher;
+  watchDirectory?: (
+    directory: string,
+    onChange: (changedPath?: string) => void,
+    onError: (error: Error) => void,
+    options?: WatchOptions
+  ) => CloseableWatcher;
   readProvisioningBatch?: (rootPath: string) => Promise<ProvisioningBatch | null>;
   provisionSetupSpecialists?: (input: { projectId: string; rootPath: string; batch: ProvisioningBatch }) => Promise<void>;
+  reconcileProjectThreads?: (rootPath: string) => Promise<void>;
   debounceMs?: number;
 }
 
-function defaultWatchDirectory(directory: string, onChange: () => void, onError: (error: Error) => void): FSWatcher {
-  const watcher = watch(directory, { persistent: false }, onChange);
+function defaultWatchDirectory(
+  directory: string,
+  onChange: (changedPath?: string) => void,
+  onError: (error: Error) => void,
+  options: WatchOptions = {}
+): FSWatcher {
+  const watcher = watch(directory, { persistent: false, recursive: options.recursive ?? false }, (_eventType, filename) => {
+    onChange(filename === null ? undefined : String(filename));
+  });
   watcher.on('error', onError);
   return watcher;
 }
@@ -48,9 +65,10 @@ function offlineSnapshot(snapshot: OrquestaUiSnapshot, reason: string): Orquesta
 export class RepositoryRuntime {
   readonly #readSnapshot: (rootPath: string) => Promise<OrquestaUiSnapshot>;
   readonly #readV4Operations: (rootPath: string) => Promise<V4OperationsSnapshot>;
-  readonly #watchDirectory: (directory: string, onChange: () => void, onError: (error: Error) => void) => CloseableWatcher;
+  readonly #watchDirectory: NonNullable<RepositoryRuntimeOptions['watchDirectory']>;
   readonly #readProvisioningBatch: (rootPath: string) => Promise<ProvisioningBatch | null>;
   readonly #provisionSetupSpecialists: RepositoryRuntimeOptions['provisionSetupSpecialists'];
+  readonly #reconcileProjectThreads: RepositoryRuntimeOptions['reconcileProjectThreads'];
   readonly #debounceMs: number;
   readonly #listeners = new Set<(snapshot: OrquestaUiSnapshot) => void>();
   readonly #runtimeApprovals = new Map<string, RuntimeApprovalRequest>();
@@ -63,6 +81,7 @@ export class RepositoryRuntime {
   #refreshTimer: ReturnType<typeof setTimeout> | null = null;
   #watchGeneration = 0;
   #provisioning: Promise<void> | null = null;
+  #provisionOnRefresh = false;
 
   constructor(options: RepositoryRuntimeOptions = {}) {
     this.#readSnapshot = options.readSnapshot ?? ((rootPath) => readRepositorySnapshot(rootPath));
@@ -70,6 +89,7 @@ export class RepositoryRuntime {
     this.#watchDirectory = options.watchDirectory ?? defaultWatchDirectory;
     this.#readProvisioningBatch = options.readProvisioningBatch ?? readProvisioningBatch;
     this.#provisionSetupSpecialists = options.provisionSetupSpecialists;
+    this.#reconcileProjectThreads = options.reconcileProjectThreads;
     this.#debounceMs = options.debounceMs ?? 180;
   }
 
@@ -139,10 +159,11 @@ export class RepositoryRuntime {
       .map((entry) => structuredClone(entry.item));
   }
 
-  async refresh(): Promise<OrquestaUiSnapshot> {
+  async refresh(options: { provisionSetupSpecialists?: boolean; reconcileProjectThreads?: boolean } = {}): Promise<OrquestaUiSnapshot> {
     if (!this.#rootPath || !this.#snapshot) throw new Error('No Orquesta repository is selected');
     try {
-      await this.provisionSetupSpecialists();
+      if (options.provisionSetupSpecialists) await this.provisionSetupSpecialists();
+      if (options.reconcileProjectThreads) await this.#reconcileProjectThreads?.(this.#rootPath);
       this.#snapshot = this.#withRuntimeApprovals(await this.#projectSnapshot(this.#rootPath));
       if (this.#watchers.length) this.#snapshot.project.repositoryDisplayState = 'watching';
     } catch (error) {
@@ -163,6 +184,7 @@ export class RepositoryRuntime {
     this.#projectId = null;
     this.#rootPath = null;
     this.#snapshot = null;
+    this.#provisionOnRefresh = false;
   }
 
   async provisionSetupSpecialists(): Promise<void> {
@@ -183,18 +205,17 @@ export class RepositoryRuntime {
   }
 
   #startWatching(rootPath: string, watchGeneration: number): boolean {
-    for (const directory of ['state', 'vision', 'user_tasks', 'failures', 'v4', 'setup']) {
-      try {
-        this.#watchers.push(this.#watchDirectory(
-          path.join(rootPath, '.orquesta', directory),
-          () => {
-            if (watchGeneration === this.#watchGeneration) this.#scheduleRefresh();
-          },
-          (error) => this.#handleWatchError(error, watchGeneration)
-        ));
-      } catch {
-        // Optional canonical directories can be absent in a minimum project.
-      }
+    try {
+      this.#watchers.push(this.#watchDirectory(
+        path.join(rootPath, '.orquesta'),
+        (changedPath) => {
+          if (watchGeneration === this.#watchGeneration) this.#scheduleRefresh(changedPath);
+        },
+        (error) => this.#handleWatchError(error, watchGeneration),
+        { recursive: true }
+      ));
+    } catch {
+      // A project without canonical Orquesta state remains a point-in-time snapshot.
     }
     return this.#watchers.length > 0;
   }
@@ -221,11 +242,17 @@ export class RepositoryRuntime {
     return { ...snapshot, v4Operations };
   }
 
-  #scheduleRefresh(): void {
+  #scheduleRefresh(changedPath?: string): void {
+    const normalizedPath = changedPath?.replace(/\\/gu, '/').toLowerCase();
+    if (!normalizedPath || normalizedPath === 'provisioning_batch.json' || normalizedPath.endsWith('/provisioning_batch.json')) {
+      this.#provisionOnRefresh = true;
+    }
     this.#clearRefreshTimer();
     this.#refreshTimer = setTimeout(() => {
       this.#refreshTimer = null;
-      void this.refresh();
+      const provisionSetupSpecialists = this.#provisionOnRefresh;
+      this.#provisionOnRefresh = false;
+      void this.refresh({ provisionSetupSpecialists });
     }, this.#debounceMs);
   }
 

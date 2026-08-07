@@ -9,13 +9,13 @@ Use the Vision Alignment Layer when creative work depends on taste, implicit use
 Questions may come from any specialist, but curation is event-driven. Do not keep a vision agent running as a watcher.
 
 - Specialists propose narrow questions from their own domain.
-- `vision-curator` wakes only on triggers, merges and rewrites questions, and interprets answered batches.
-- The orchestrator reviews the curator report, separates discussion seeds from adoptable direction, and asks for user review before turning creative answers into implementation direction.
+- `user-support` wakes only on triggers, merges and rewrites questions, and interprets answered batches.
+- The orchestrator owns the live conversation, can make a provisional interpretation, and reviews the support report before adopting durable cross-task direction.
 - Specialists read only the adopted documents relevant to their scope.
 
-The orchestrator must not independently turn raw answers into project direction. If an answer is ambiguous, playful, contradictory, or taste-heavy, the orchestrator routes it to `vision-curator` and waits for a curator report. This keeps the user's nuance with the question specialist instead of letting the manager become an accidental taste interpreter.
+The orchestrator does not need to stop ordinary work for every raw answer. It may translate the user's intent and recommend a better route in the current conversation. If an answer is ambiguous, playful, contradictory, taste-heavy, or likely to affect several future tasks, it records the signal for `user-support` curation before treating it as durable project direction.
 
-Specialist question candidates are also raw material, not user-facing questions. Every specialist report must include structured `question_candidates`: either 0-3 useful candidates or `status: "none"` with a valid `none_reason`. The orchestrator stores submitted candidates in `.orquesta/vision/question_candidates.json`; `vision-curator` decides which candidates become curated questions in `.orquesta/vision/questions.json`.
+Specialist question candidates are also raw material, not user-facing questions. Include structured `question_candidates` only when a useful candidate exists or the task explicitly requires a question decision. When an explicit decision is required but no useful candidate exists, use `status: "none"` with a valid `none_reason` and rationale; otherwise omission is valid. The acceptance controller stores submitted candidates in `.orquesta/vision/question_candidates.json`; `user-support` decides which candidates become curated questions in `.orquesta/vision/questions.json`.
 
 Beta V3 records each candidate as an observation before it becomes a question. `observation.value_type`, `user_emergence_value`, `decision_cluster_id`, `suggested_action`, and `reason` describe why it exists. A low-value or maintenance observation may stay in the inbox with `status: "observation"`; it must not create a user question merely because time passed.
 
@@ -25,7 +25,7 @@ Do not convert an answer directly into implementation work just because it sound
 
 ## Triggers
 
-Wake `vision-curator` when one of these is true:
+Wake `user-support` when one of these is true:
 
 - project kickoff needs initial vision capture
 - uncurated questions reach 10 or more

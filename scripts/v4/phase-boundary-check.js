@@ -10,6 +10,10 @@ const V3_CHECK_BASELINE = [
   "node --check orquesta/assets/dashboard/app.js",
   "node --check orquesta/scripts/dashboard-dom-smoke.js",
   "node --check orquesta/scripts/validate-state-encoding.js",
+  "node --check orquesta/scripts/validate-state-encoding.test.js",
+  "node --check orquesta/scripts/task-acceptance-reconciler.js",
+  "node --check orquesta/scripts/task-acceptance-reconciler.test.js",
+  "node --check orquesta/scripts/setup-phase-handlers.test.js",
   "node --check orquesta/scripts/dashboard-port-selection.js",
   "node --check orquesta/scripts/dashboard-port-selection.test.js",
   "node --check orquesta/scripts/dashboard-state-cache.js",
@@ -28,8 +32,6 @@ const V3_CHECK_BASELINE = [
   "node --check orquesta/scripts/report-question-candidates-check.test.js",
   "node --check orquesta/scripts/json-state.js",
   "node --check orquesta/scripts/json-state.test.js",
-  "node --check orquesta/scripts/beta-v3-state-init.js",
-  "node --check orquesta/scripts/beta-v3-state-init.test.js",
   "node --check orquesta/scripts/control-integration.test.js",
   "node --check orquesta/scripts/completion-envelope-check.js",
   "node --check orquesta/scripts/completion-envelope-check.test.js",
@@ -44,22 +46,24 @@ const V3_CHECK_BASELINE = [
   "npm run test:incident-intake",
   "npm run test:model-policy",
   "npm run test:delegation",
+  "npm run test:acceptance",
+  "npm run test:setup-handlers",
   "npm run test:approval",
   "npm run test:question-candidates",
   "npm run test:json-state",
-  "npm run test:beta-v3-state",
   "npm run test:control-integration",
   "npm run test:completion-envelope",
   "npm run test:capacity",
   "npm run test:control-audit",
   "npm run test:report-review",
+  "npm run test:encoding",
   "npm run check:encoding"
 ].join(" && ");
 const workspacePackages = {
   "apps/workbench": { version: "0.4.0-preview.1", dependencies: { "@orquesta/core": "*", "@orquesta/event-store": "*" } },
   "packages/contracts": { version: "0.4.0-preview.1", dependencies: {} },
   "packages/event-store": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
-  "packages/core": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*", "@orquesta/event-store": "*", "@orquesta/capability-compiler": "*", "@orquesta/scouts": "*", "@orquesta/audit": "*", "@orquesta/capability-resolver": "*", "@orquesta/context-compiler": "*", "@orquesta/evidence-fabric": "*" } },
+  "packages/core": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*", "@orquesta/event-store": "*", "@orquesta/capability-compiler": "*", "@orquesta/scouts": "*", "@orquesta/acquisition": "*", "@orquesta/audit": "*", "@orquesta/capability-resolver": "*", "@orquesta/context-compiler": "*", "@orquesta/evidence-fabric": "*" } },
   "packages/capability-compiler": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
   "packages/scouts": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
   "packages/audit": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
@@ -68,6 +72,8 @@ const workspacePackages = {
   "packages/acquisition": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
   "packages/audition": { version: "0.4.0-preview.2", dependencies: { "@orquesta/contracts": "*" } },
   "packages/codex-adapter": { version: "0.4.0-preview.1", dependencies: { "@openai/codex-sdk": "0.144.5" } },
+  "packages/execution-kernel": { version: "0.4.0-preview.1", dependencies: { "@orquesta/codex-adapter": "*" } },
+  "packages/project-structure": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
   "packages/evidence-fabric": { version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } }
 };
 const forbiddenDirectories = [
@@ -170,6 +176,10 @@ function checkBoundary() {
 
   addError(errors, pkg.private === false, "Root package must remain private: false.");
   addError(errors, hasV3Baseline(pkg.scripts), "V3 dashboard or check command changed.");
+  addError(errors, pkg.scripts?.["init:beta-v3-state"] === undefined, "Beta V3 initialization must not use an ordinary init command.");
+  addError(errors, pkg.scripts?.["test:beta-v3-state"] === undefined, "Beta V3 tests must not use an ordinary test command.");
+  addError(errors, pkg.scripts?.["legacy:init:beta-v3-state"] === "node orquesta/scripts/beta-v3-state-init.js", "Legacy Beta V3 initializer command is invalid.");
+  addError(errors, pkg.scripts?.["legacy:test:beta-v3-state"] === "node orquesta/scripts/beta-v3-state-init.test.js", "Legacy Beta V3 test command is invalid.");
   addError(errors, JSON.stringify(pkg.workspaces) === JSON.stringify(["apps/workbench", "packages/*"]), "V4 workspace surface is invalid.");
   addError(errors, pkg.scripts?.["workbench:v4"] === "node apps/workbench/server.js --feature v4", "V4 workbench command is invalid.");
   addError(errors, isSupportedNodeVersion(), `Node ${process.version} is below the required major version 20.`);

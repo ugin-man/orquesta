@@ -13,9 +13,9 @@ function compareText(left, right) {
 function initialProjection() {
   return {
     task_intents: [], current_task_intent_id: null, capability_graphs: [], current_capability_graph_id: null,
-    providers: [], inventory: null, candidate_evaluations: [], resolutions: [], artifacts: [], latest_resolution_by_need: {}, resolution_bindings: {},
+    providers: [], live_providers: [], inventory: null, candidate_evaluations: [], resolutions: [], artifacts: [], latest_resolution_by_need: {}, resolution_bindings: {},
     context_packs: [], current_context_pack_id: null, current_context_pack_sequence: null,
-    execution_plans: [], current_execution_plan_id: null, phase_reviews: [],
+    execution_plans: [], current_execution_plan_id: null, task_profiles: [], current_task_profile_id: null, phase_reviews: [],
     install_requests: [], current_install_request: null, install_authorizations: [],
     acquisition_snapshots: [], audit_evaluations: [], audition_results: [],
     evidence_by_id: {}, evidence_by_correlation: {}, runtime_by_correlation: {}, reports: [], acceptances: [], timeline: [],
@@ -136,10 +136,18 @@ function createProjectors() {
       ...state,
       execution_plans: replaceById(state.execution_plans, event.payload.execution_plan, "execution_plan_id"),
       current_execution_plan_id: event.payload.execution_plan.execution_plan_id,
+      task_profiles: event.payload.task_profile
+        ? replaceById(state.task_profiles, event.payload.task_profile, "task_intent_id")
+        : state.task_profiles,
+      current_task_profile_id: event.payload.task_profile ? event.payload.task_profile.task_intent_id : state.current_task_profile_id,
     })),
     "capability.provider.discovered": withTimeline((state, event) => ({
       ...state,
       providers: replaceById(state.providers, event.payload.provider, "provider_id"),
+    })),
+    "capability.live-provider.discovered": withTimeline((state, event) => ({
+      ...state,
+      live_providers: replaceById(state.live_providers, event.payload.provider, "provider_id"),
     })),
     "capability.inventory.refreshed": withTimeline((state, event) => ({
       ...state,

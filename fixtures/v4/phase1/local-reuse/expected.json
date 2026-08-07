@@ -22,7 +22,7 @@
       "provider_id": "repo-json-state-helper",
       "source_uri": "workspace:orquesta/scripts/json-state.js",
       "source_type": "repository",
-      "provider_hash": "ecef661132f1109a7460115b14f8838479a63a66b55df3825129b4a3540ff0cc",
+      "provider_hash": "4044a6e2e0718ad292e7d8ae7d6d51563b4fde020a8c04769f5dc6c6d1876e41",
       "evidence_refs": ["workspace:orquesta/scripts/json-state.js"]
     }
   ],

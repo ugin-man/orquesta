@@ -20,7 +20,13 @@ const coreEntryPath = useFakeRuntimeCore(process.env) && !app.isPackaged
   : path.join(__dirname, 'core.cjs');
 const coreHost = new CoreHost({
   coreEntryPath,
-  fork: (entryPath) => utilityProcess.fork(entryPath, [], { serviceName: 'Orquesta Core' })
+  fork: (entryPath) => utilityProcess.fork(entryPath, [], {
+    serviceName: 'Orquesta Core',
+    env: {
+      ...process.env,
+      ORQUESTA_DESKTOP_DATA_PATH: process.env.ORQUESTA_DESKTOP_DATA_PATH ?? app.getPath('userData')
+    }
+  })
 });
 const setupSources = new SetupSourceService();
 
@@ -29,6 +35,7 @@ let repositories: RepositoryService | null = null;
 let setupDrafts: SetupDraftStore | null = null;
 let quittingAfterServiceStop = false;
 const initialLaunchIntent = resolveSetupLaunchIntent({ argv: process.argv, env: process.env, cwd: process.cwd() });
+let pendingLaunchIntent = initialLaunchIntent;
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow(createMainWindowOptions(preloadPath));
@@ -62,7 +69,14 @@ if (!hasSingleInstanceLock) {
 } else {
   app.on('second-instance', (_event, argv, workingDirectory) => {
     const intent = resolveSetupLaunchIntent({ argv, env: process.env, cwd: workingDirectory });
-    if (intent && repositories) void repositories.selectRoot(intent.rootPath, 'detected_root');
+    if (intent) pendingLaunchIntent = intent;
+    if (intent && repositories) {
+      void repositories.selectRoot(intent.rootPath, 'detected_root', intent.callingThreadId ? {
+        source: intent.source,
+        callingThreadId: intent.callingThreadId,
+        ...(intent.legacyMigration ? { legacyMigration: true } : {})
+      } : undefined);
+    }
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
@@ -90,6 +104,11 @@ if (!hasSingleInstanceLock) {
       registryPath: path.join(app.getPath('userData'), 'repositories.json'),
       coreHost,
       initialRootPath: initialLaunchIntent?.rootPath ?? null,
+      initialLaunchContext: initialLaunchIntent?.callingThreadId ? {
+        source: initialLaunchIntent.source,
+        callingThreadId: initialLaunchIntent.callingThreadId,
+        ...(initialLaunchIntent.legacyMigration ? { legacyMigration: true } : {})
+      } : null,
       prepareSetupSource: async (source) => {
         await setupDrafts?.save({
           revision: 1,
@@ -141,9 +160,16 @@ if (!hasSingleInstanceLock) {
       },
       start: async (draft) => {
         const materialized = await setupSources.materialize(draft.source);
+        const launchContext = pendingLaunchIntent
+          && path.resolve(pendingLaunchIntent.rootPath).toLowerCase() === path.resolve(materialized.rootPath).toLowerCase()
+          ? {
+              source: pendingLaunchIntent.source,
+              callingThreadId: pendingLaunchIntent.callingThreadId
+            }
+          : { source: 'standalone' as const, callingThreadId: null };
         let started;
         try {
-          started = await coreHost.startSetup({ rootPath: materialized.rootPath, draft });
+          started = await coreHost.startSetup({ rootPath: materialized.rootPath, draft, launchContext });
         } catch (error) {
           await materialized.rollback().catch(() => undefined);
           throw error;
@@ -153,6 +179,7 @@ if (!hasSingleInstanceLock) {
           throw new Error(selected && selected.status !== 'accepted' ? selected.reason : 'Setup project could not be opened');
         }
         await setupDrafts?.clear();
+        pendingLaunchIntent = null;
         return started;
       }
     });

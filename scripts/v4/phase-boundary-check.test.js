@@ -20,7 +20,7 @@ const workspacePackages = {
   "apps/workbench": { name: "@orquesta/workbench", version: "0.4.0-preview.1", dependencies: { "@orquesta/core": "*", "@orquesta/event-store": "*" } },
   "packages/contracts": { name: "@orquesta/contracts", version: "0.4.0-preview.1", dependencies: {} },
   "packages/event-store": { name: "@orquesta/event-store", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
-  "packages/core": { name: "@orquesta/core", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*", "@orquesta/event-store": "*", "@orquesta/capability-compiler": "*", "@orquesta/scouts": "*", "@orquesta/audit": "*", "@orquesta/capability-resolver": "*", "@orquesta/context-compiler": "*", "@orquesta/evidence-fabric": "*" } },
+  "packages/core": { name: "@orquesta/core", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*", "@orquesta/event-store": "*", "@orquesta/capability-compiler": "*", "@orquesta/scouts": "*", "@orquesta/acquisition": "*", "@orquesta/audit": "*", "@orquesta/capability-resolver": "*", "@orquesta/context-compiler": "*", "@orquesta/evidence-fabric": "*" } },
   "packages/capability-compiler": { name: "@orquesta/capability-compiler", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
   "packages/scouts": { name: "@orquesta/scouts", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
   "packages/audit": { name: "@orquesta/audit", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
@@ -29,6 +29,8 @@ const workspacePackages = {
   "packages/acquisition": { name: "@orquesta/acquisition", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
   "packages/audition": { name: "@orquesta/audition", version: "0.4.0-preview.2", dependencies: { "@orquesta/contracts": "*" } },
   "packages/codex-adapter": { name: "@orquesta/codex-adapter", version: "0.4.0-preview.1", dependencies: { "@openai/codex-sdk": "0.144.5" } },
+  "packages/execution-kernel": { name: "@orquesta/execution-kernel", version: "0.4.0-preview.1", dependencies: { "@orquesta/codex-adapter": "*" } },
+  "packages/project-structure": { name: "@orquesta/project-structure", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } },
   "packages/evidence-fabric": { name: "@orquesta/evidence-fabric", version: "0.4.0-preview.1", dependencies: { "@orquesta/contracts": "*" } }
 };
 
@@ -36,6 +38,10 @@ test("V3 entry points remain unchanged", () => {
   assert.equal(pkg.private, false);
   assert.equal(pkg.scripts.dashboard, V3_DASHBOARD_BASELINE);
   assert.equal(pkg.scripts.check, V3_CHECK_BASELINE);
+  assert.equal(pkg.scripts["init:beta-v3-state"], undefined);
+  assert.equal(pkg.scripts["test:beta-v3-state"], undefined);
+  assert.equal(pkg.scripts["legacy:init:beta-v3-state"], "node orquesta/scripts/beta-v3-state-init.js");
+  assert.equal(pkg.scripts["legacy:test:beta-v3-state"], "node orquesta/scripts/beta-v3-state-init.test.js");
   assert.equal(hasV3Baseline({
     dashboard: V3_DASHBOARD_BASELINE,
     check: V3_CHECK_BASELINE.slice(0, -" && npm run check:encoding".length)

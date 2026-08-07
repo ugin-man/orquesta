@@ -48,7 +48,7 @@
 - Create: `apps/orquesta-desktop/VALIDATION.md`
 
 **Interfaces:**
-- Consumes: `C:\Users\kouki\Downloads\orquesta-desktop-renderer-handoff-fixed.zip`、SHA-256 `36F4E7823CABFCD2B5AE88AFC3DFF6A3719258F12CA0B865FD9E750BBC9AF50C`
+- Consumes: `C:\Users\example\Downloads\orquesta-desktop-renderer-handoff-fixed.zip`、SHA-256 `36F4E7823CABFCD2B5AE88AFC3DFF6A3719258F12CA0B865FD9E750BBC9AF50C`
 - Produces: `apps/orquesta-desktop`の再現可能なReact Renderer source
 
 - [ ] **Step 1: packageのhashとpath安全性を再確認する**
@@ -56,7 +56,7 @@
 Run:
 
 ```powershell
-Get-FileHash C:\Users\kouki\Downloads\orquesta-desktop-renderer-handoff-fixed.zip -Algorithm SHA256
+Get-FileHash C:\Users\example\Downloads\orquesta-desktop-renderer-handoff-fixed.zip -Algorithm SHA256
 ```
 
 Expected: `36F4E7823CABFCD2B5AE88AFC3DFF6A3719258F12CA0B865FD9E750BBC9AF50C`

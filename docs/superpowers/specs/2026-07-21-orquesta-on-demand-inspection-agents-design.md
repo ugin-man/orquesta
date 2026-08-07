@@ -345,8 +345,8 @@ Stage 1で実行境界が証明される前に、起動ボタンだけを有効�
 
 ## Visual source
 
-- LED参考: `C:\Users\kouki\AppData\Local\Temp\codex-clipboard-f476423f-6a72-4273-9176-97dc656a40fa.png`
+- LED参考: `C:\Users\example\AppData\Local\Temp\codex-clipboard-f476423f-6a72-4273-9176-97dc656a40fa.png`
 - 現行Desktop: `apps/orquesta-desktop/artifacts/screenshots/renderer-active-1440x900.png`
-- 選択方向の参考: `C:\Users\kouki\.codex\generated_images\019f6291-cd59-7183-b799-aee36005b738\exec-441c7db3-0a93-4481-a998-48d2633e2a00.png`
+- 選択方向の参考: `C:\Users\example\.codex\generated_images\019f6291-cd59-7183-b799-aee36005b738\exec-441c7db3-0a93-4481-a998-48d2633e2a00.png`
 
 選択方向の画像は、発光、色、左右配置、カードの縦横比を確認する参考にだけ使う。実装時の余白、寸法、overlay位置、Map layoutは現行Desktopを正とする。

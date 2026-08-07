@@ -12,6 +12,7 @@ export interface RuntimeModelEvidence {
 
 export interface RuntimeNotification {
   kind: 'turn_started' | 'turn_completed' | 'turn_failed' | 'agent_message' | 'model_observed';
+  correlationId?: string | null;
   threadId: string;
   turnId: string | null;
   text: string | null;
@@ -55,7 +56,8 @@ export interface RuntimeLucaSendRequest {
 export interface RuntimeConversationRequest {
   type: 'runtime.conversation';
   correlationId: string;
-  threadId: string;
+  projectId: string;
+  rootPath: string;
   targetAgentId: string;
   cursor?: string | null;
   limit: number;
@@ -77,11 +79,18 @@ export interface SetupAccountLoginStartRequest {
   correlationId: string;
 }
 
+export interface RuntimeLaunchContext {
+  source: 'argv' | 'environment' | 'e2e' | 'standalone';
+  callingThreadId: string | null;
+  legacyMigration?: boolean;
+}
+
 export interface SetupStartRequest {
   type: 'setup.start';
   correlationId: string;
   rootPath: string;
   draft: SetupDraft;
+  launchContext?: RuntimeLaunchContext;
 }
 
 export interface RepositorySelectRequest {
@@ -89,6 +98,7 @@ export interface RepositorySelectRequest {
   correlationId: string;
   projectId: string;
   rootPath: string;
+  launchContext?: RuntimeLaunchContext;
 }
 
 export interface RepositorySnapshotRequest {
@@ -111,6 +121,59 @@ export interface RuntimeApprovalRespondRequest {
 export interface RepositoryAttentionHistoryRequest {
   type: 'repository.attention-history';
   correlationId: string;
+}
+
+export interface OrganizationMigrationLine {
+  line_id: string;
+  display_name: string;
+  goal: string;
+  deliverable_ids: string[];
+  completion_root_ids: string[];
+  scope: string[];
+  owner_agent_id: string;
+  dedicated_lead_agent_id: string | null;
+  status: 'active' | 'paused' | 'retired';
+  approval_source: 'setup_confirmation' | 'user_approval';
+}
+
+export interface OrganizationMigrationTeam {
+  team_id: string;
+  line_id: string;
+  display_name: string;
+  purpose: string;
+  lifecycle_state: 'active' | 'retired';
+}
+
+export interface OrganizationMigrationAssignment {
+  agent_id: string;
+  team_id: string;
+  position: 'lead' | 'member';
+  ordinal: number;
+}
+
+export interface OrganizationMigrationReadRequest {
+  type: 'organization.migration.read';
+  correlationId: string;
+  projectId: string;
+  rootPath: string;
+}
+
+export interface OrganizationMigrationApplyRequest {
+  type: 'organization.migration.apply';
+  correlationId: string;
+  projectId: string;
+  rootPath: string;
+  expectedRevision: number;
+  lines: OrganizationMigrationLine[];
+  teams: OrganizationMigrationTeam[];
+  assignments: OrganizationMigrationAssignment[];
+}
+
+export interface OrganizationMigrationResult {
+  status: 'not_applicable' | 'current' | 'review_required' | 'complete';
+  revision: number;
+  unassignedProductionAgentIds: string[];
+  diagnostics: unknown[];
 }
 
 export interface InspectionStartRequest {
@@ -143,7 +206,8 @@ export type CoreDispatchRequest = RuntimeSendRequest | RuntimeLucaSendRequest | 
   | SetupAccountReadRequest | SetupAccountLoginStartRequest | SetupStartRequest
   | RepositorySelectRequest | RepositorySnapshotRequest | RepositoryCloseRequest
   | RuntimeApprovalRespondRequest | RepositoryAttentionHistoryRequest
-  | InspectionStartRequest | InspectionCancelRequest | InspectionReadReportRequest;
+  | InspectionStartRequest | InspectionCancelRequest | InspectionReadReportRequest
+  | OrganizationMigrationReadRequest | OrganizationMigrationApplyRequest;
 
 export type CoreRequest =
   | { type: 'core.shutdown' }
@@ -162,7 +226,9 @@ export type CoreRequest =
   | RepositoryAttentionHistoryRequest
   | InspectionStartRequest
   | InspectionCancelRequest
-  | InspectionReadReportRequest;
+  | InspectionReadReportRequest
+  | OrganizationMigrationReadRequest
+  | OrganizationMigrationApplyRequest;
 
 export type CoreEvent =
   | { type: 'core.ready'; version: 1 }
@@ -182,6 +248,7 @@ export type CoreEvent =
   | { type: 'repository.attention-history.result'; correlationId: string; items: AttentionUiItem[] }
   | { type: 'inspection.action.accepted'; correlationId: string; runId: string }
   | { type: 'inspection.report.result'; correlationId: string; runId: string; markdown: string }
+  | { type: 'organization.migration.result'; correlationId: string; result: OrganizationMigrationResult }
   | { type: 'core.stopped' };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -196,12 +263,68 @@ function isSafeId(value: unknown): value is string {
   return typeof value === 'string' && /^[a-zA-Z0-9._:-]{1,128}$/u.test(value);
 }
 
+function isRuntimeLaunchContext(value: unknown): value is RuntimeLaunchContext {
+  return isRecord(value)
+    && ['argv', 'environment', 'e2e', 'standalone'].includes(String(value.source))
+    && (value.callingThreadId === null || isSafeId(value.callingThreadId))
+    && (value.legacyMigration === undefined || typeof value.legacyMigration === 'boolean');
+}
+
 function isBoundedText(value: unknown, maximum: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= maximum;
 }
 
 function isNullableBoundedText(value: unknown, maximum: number): value is string | null {
   return value === null || (typeof value === 'string' && value.trim().length > 0 && value.length <= maximum);
+}
+
+function isBoundedStringArray(value: unknown, maximumItems: number, maximumLength: number): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.length <= maximumItems
+    && value.every((item) => isBoundedText(item, maximumLength));
+}
+
+function isMigrationLine(value: unknown): value is OrganizationMigrationLine {
+  if (!isRecord(value)) return false;
+  return isSafeId(value.line_id)
+    && isBoundedText(value.display_name, 1_024)
+    && isBoundedText(value.goal, 8_192)
+    && isBoundedStringArray(value.deliverable_ids, 128, 256)
+    && isBoundedStringArray(value.completion_root_ids, 256, 256)
+    && isBoundedStringArray(value.scope, 128, 32_768)
+    && isSafeId(value.owner_agent_id)
+    && (value.dedicated_lead_agent_id === null || isSafeId(value.dedicated_lead_agent_id))
+    && ['active', 'paused', 'retired'].includes(String(value.status))
+    && ['setup_confirmation', 'user_approval'].includes(String(value.approval_source));
+}
+
+function isMigrationTeam(value: unknown): value is OrganizationMigrationTeam {
+  if (!isRecord(value)) return false;
+  return isSafeId(value.team_id)
+    && isSafeId(value.line_id)
+    && isBoundedText(value.display_name, 1_024)
+    && isBoundedText(value.purpose, 8_192)
+    && ['active', 'retired'].includes(String(value.lifecycle_state));
+}
+
+function isMigrationAssignment(value: unknown): value is OrganizationMigrationAssignment {
+  if (!isRecord(value)) return false;
+  return isSafeId(value.agent_id)
+    && isSafeId(value.team_id)
+    && ['lead', 'member'].includes(String(value.position))
+    && Number.isInteger(value.ordinal)
+    && Number(value.ordinal) >= 1
+    && Number(value.ordinal) <= 1_024;
+}
+
+function isMigrationResult(value: unknown): value is OrganizationMigrationResult {
+  if (!isRecord(value)) return false;
+  return ['not_applicable', 'current', 'review_required', 'complete'].includes(String(value.status))
+    && Number.isInteger(value.revision) && Number(value.revision) >= 0
+    && Array.isArray(value.unassignedProductionAgentIds)
+    && value.unassignedProductionAgentIds.length <= 512
+    && value.unassignedProductionAgentIds.every(isSafeId)
+    && Array.isArray(value.diagnostics)
+    && value.diagnostics.length <= 512;
 }
 
 function isModelEvidence(value: unknown): value is RuntimeModelEvidence {
@@ -280,8 +403,10 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
       && (value.threadId === null || isSafeId(value.threadId)) && isBoundedText(value.prompt, 65_536);
   }
   if (value.type === 'runtime.conversation') {
-    return isCorrelationId(value.correlationId) && isSafeId(value.threadId) && isSafeId(value.targetAgentId)
-      && (value.cursor === undefined || value.cursor === null || (typeof value.cursor === 'string' && /^before:\d+$/u.test(value.cursor)))
+    return isCorrelationId(value.correlationId) && isSafeId(value.projectId)
+      && isBoundedText(value.rootPath, 32_768) && isSafeId(value.targetAgentId)
+      && (value.cursor === undefined || value.cursor === null || (typeof value.cursor === 'string'
+        && value.cursor.length > 0 && value.cursor.length <= 4_096 && !/[\r\n]/u.test(value.cursor)))
       && typeof value.limit === 'number' && Number.isInteger(value.limit) && value.limit >= 1 && value.limit <= 200;
   }
   if (value.type === 'runtime.info') {
@@ -291,10 +416,14 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     return isCorrelationId(value.correlationId);
   }
   if (value.type === 'setup.start') {
-    return isCorrelationId(value.correlationId) && isBoundedText(value.rootPath, 32_768) && isSetupDraft(value.draft);
+    const launchContext = value.launchContext;
+    const validLaunchContext = launchContext === undefined || isRuntimeLaunchContext(launchContext);
+    return isCorrelationId(value.correlationId) && isBoundedText(value.rootPath, 32_768)
+      && isSetupDraft(value.draft) && validLaunchContext;
   }
   if (value.type === 'repository.select') {
-    return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768);
+    return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768)
+      && (value.launchContext === undefined || isRuntimeLaunchContext(value.launchContext));
   }
   if (value.type === 'repository.get-snapshot' || value.type === 'repository.close') {
     return isCorrelationId(value.correlationId);
@@ -303,6 +432,17 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
     return isCorrelationId(value.correlationId) && isSafeId(value.attentionId) && isBoundedText(value.decision, 128);
   }
   if (value.type === 'repository.attention-history') return isCorrelationId(value.correlationId);
+  if (value.type === 'organization.migration.read') {
+    return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768);
+  }
+  if (value.type === 'organization.migration.apply') {
+    return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768)
+      && typeof value.expectedRevision === 'number' && Number.isInteger(value.expectedRevision) && value.expectedRevision >= 0
+      && Array.isArray(value.lines) && value.lines.length <= 64 && value.lines.every(isMigrationLine)
+      && Array.isArray(value.teams) && value.teams.length <= 128 && value.teams.every(isMigrationTeam)
+      && Array.isArray(value.assignments) && value.assignments.length <= 512
+      && value.assignments.every(isMigrationAssignment);
+  }
   if (value.type === 'inspection.start') {
     return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768)
       && ['external_benchmark', 'adversarial_audit'].includes(String(value.kind))
@@ -345,6 +485,7 @@ export function isCoreEvent(value: unknown): value is CoreEvent {
   if (value.type === 'runtime.notification') {
     const notification = isRecord(value.notification) ? value.notification : null;
     return Boolean(notification && ['turn_started', 'turn_completed', 'turn_failed', 'agent_message', 'model_observed'].includes(String(notification.kind))
+      && (notification.correlationId === undefined || notification.correlationId === null || isCorrelationId(notification.correlationId))
       && isSafeId(notification.threadId) && (notification.turnId === null || isSafeId(notification.turnId))
       && (notification.text === null || typeof notification.text === 'string')
       && (notification.targetAgentId === null || isSafeId(notification.targetAgentId))
@@ -365,6 +506,9 @@ export function isCoreEvent(value: unknown): value is CoreEvent {
   }
   if (value.type === 'inspection.report.result') {
     return isCorrelationId(value.correlationId) && isSafeId(value.runId) && isBoundedText(value.markdown, 1_048_576);
+  }
+  if (value.type === 'organization.migration.result') {
+    return isCorrelationId(value.correlationId) && isMigrationResult(value.result);
   }
   return value.type === 'core.stopped';
 }

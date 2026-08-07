@@ -88,6 +88,16 @@ describe('Core protocol validation', () => {
     expect(isCoreRequest({ ...valid, prompt: 'x'.repeat(65_537) })).toBe(false);
   });
 
+  test('accepts opaque bounded App Server conversation cursors without guessing their format', () => {
+    const valid = {
+      type: 'runtime.conversation', correlationId: 'history-1', projectId: 'repo-1', rootPath: 'C:\\repo',
+      targetAgentId: 'orchestrator', cursor: 'opaque/server+cursor==', limit: 50
+    };
+    expect(isCoreRequest(valid)).toBe(true);
+    expect(isCoreRequest({ ...valid, cursor: 'bad\ncursor' })).toBe(false);
+    expect(isCoreRequest({ ...valid, cursor: 'x'.repeat(4_097) })).toBe(false);
+  });
+
   test('requires separated model evidence on dispatch and runtime notifications', () => {
     const modelEvidence = {
       recommendedModel: null, requestedModel: 'requested', appliedModel: 'requested', actualModel: null,
@@ -98,7 +108,7 @@ describe('Core protocol validation', () => {
     })).toBe(true);
     expect(isCoreEvent({
       type: 'runtime.notification',
-      notification: { kind: 'turn_started', threadId: 'thread-1', turnId: 'turn-1', text: null, targetAgentId: null, modelEvidence }
+      notification: { kind: 'turn_started', correlationId: 'send-1', threadId: 'thread-1', turnId: 'turn-1', text: null, targetAgentId: null, modelEvidence }
     })).toBe(true);
     expect(isCoreEvent({
       type: 'runtime.dispatch.accepted', correlationId: 'send-1', threadId: 'thread-1', turnId: 'turn-1', actualModel: 'inferred'
@@ -107,10 +117,73 @@ describe('Core protocol validation', () => {
 
   test('accepts only bounded repository selection and lifecycle requests', () => {
     expect(isCoreRequest({ type: 'repository.select', correlationId: 'select-1', projectId: 'repo-1', rootPath: 'C:\\repo' })).toBe(true);
+    expect(isCoreRequest({
+      type: 'repository.select', correlationId: 'select-hosted', projectId: 'repo-1', rootPath: 'C:\\repo',
+      launchContext: { source: 'argv', callingThreadId: 'thread-calling-chat', legacyMigration: true }
+    })).toBe(true);
+    expect(isCoreRequest({
+      type: 'repository.select', correlationId: 'select-hosted', projectId: 'repo-1', rootPath: 'C:\\repo',
+      launchContext: { source: 'argv', callingThreadId: '../escape' }
+    })).toBe(false);
+    expect(isCoreRequest({
+      type: 'repository.select', correlationId: 'select-hosted', projectId: 'repo-1', rootPath: 'C:\\repo',
+      launchContext: { source: 'argv', callingThreadId: 'thread-calling-chat', legacyMigration: 'yes' }
+    })).toBe(false);
     expect(isCoreRequest({ type: 'repository.get-snapshot', correlationId: 'snapshot-1' })).toBe(true);
     expect(isCoreRequest({ type: 'repository.close', correlationId: 'close-1' })).toBe(true);
     expect(isCoreRequest({ type: 'repository.select', correlationId: 'select-1', projectId: '../escape', rootPath: 'C:\\repo' })).toBe(false);
     expect(isCoreRequest({ type: 'repository.select', correlationId: 'select-1', projectId: 'repo-1', rootPath: 'x'.repeat(32_769) })).toBe(false);
+  });
+
+  test('accepts explicit bounded legacy migration preview and apply messages', () => {
+    const mapping = {
+      lines: [{
+        line_id: 'primary-line', display_name: 'Primary', goal: 'Continue product work',
+        deliverable_ids: ['primary'], completion_root_ids: ['CM-1'], scope: ['.'],
+        owner_agent_id: 'orchestrator', dedicated_lead_agent_id: null, status: 'active',
+        approval_source: 'setup_confirmation'
+      }],
+      teams: [{
+        team_id: 'primary-implementation', line_id: 'primary-line', display_name: 'Implementation',
+        purpose: 'Continue implementation', lifecycle_state: 'active'
+      }],
+      assignments: [{
+        agent_id: 'implementation-001', team_id: 'primary-implementation', position: 'member', ordinal: 1
+      }]
+    };
+    expect(isCoreRequest({
+      type: 'organization.migration.read', correlationId: 'migration-read-1',
+      projectId: 'repo-1', rootPath: 'C:\\repo'
+    })).toBe(true);
+    expect(isCoreRequest({
+      type: 'organization.migration.apply', correlationId: 'migration-apply-1',
+      projectId: 'repo-1', rootPath: 'C:\\repo', expectedRevision: 1, ...mapping
+    })).toBe(true);
+    expect(isCoreRequest({
+      type: 'organization.migration.apply', correlationId: 'migration-apply-1',
+      projectId: 'repo-1', rootPath: 'C:\\repo', ...mapping
+    })).toBe(false);
+    expect(isCoreRequest({
+      type: 'organization.migration.apply', correlationId: 'migration-empty-1',
+      projectId: 'repo-1', rootPath: 'C:\\repo', expectedRevision: 1,
+      lines: [], teams: [], assignments: []
+    })).toBe(true);
+    expect(isCoreRequest({
+      type: 'organization.migration.apply', correlationId: 'migration-completed-1',
+      projectId: 'repo-1', rootPath: 'C:\\repo', expectedRevision: 1,
+      ...mapping,
+      lines: mapping.lines.map((line) => ({ ...line, status: 'completed' }))
+    })).toBe(false);
+    expect(isCoreEvent({
+      type: 'organization.migration.result',
+      correlationId: 'migration-read-1',
+      result: {
+        status: 'review_required',
+        revision: 1,
+        unassignedProductionAgentIds: ['implementation-001'],
+        diagnostics: []
+      }
+    })).toBe(true);
   });
 
   test('accepts repository snapshot result and changed events only with a projected snapshot', () => {

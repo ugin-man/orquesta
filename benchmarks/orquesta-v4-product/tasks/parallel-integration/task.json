@@ -1,0 +1,5 @@
+{
+  "instruction": "Fix the repository so its tests and output contract pass. Preserve the exported APIs and do not modify tests. Run the available tests before finishing.",
+  "agent_timeout_sec": 480,
+  "verifier_timeout_sec": 60
+}

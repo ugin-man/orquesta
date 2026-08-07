@@ -667,6 +667,73 @@ export function isSetupUiSnapshot(value: unknown): value is SetupUiSnapshot {
     && ['neutral', 'success', 'warning', 'danger'].includes(String(detail.tone)));
 }
 
+export type ProjectStructureStatus = 'healthy' | 'attention' | 'blocked' | 'unavailable';
+export type ProjectStructureLifecycle = 'current' | 'superseded' | 'archived' | 'quarantined' | 'delete_candidate' | 'unknown';
+
+export interface ProjectStructureSourceUi {
+  sourceRef: string;
+  componentId: string | null;
+  lifecycle: ProjectStructureLifecycle;
+  authority: string;
+  readPolicy: string;
+}
+
+export interface ProjectStructureIssueUi {
+  severity: 'error' | 'warning' | 'suggestion' | 'unknown';
+  code: string;
+  message: string;
+  sourceRefs: string[];
+}
+
+export interface SpecialistContextUi {
+  taskId: string;
+  taskTitle: string;
+  ownerAgentId: string | null;
+  taskState: string;
+  active: boolean;
+  requiredReading: string[];
+}
+
+export interface ProjectStructureMigrationUi {
+  planId: string | null;
+  resultId: string | null;
+  status: string;
+  operationCount: number;
+  destructiveOperationCount: number;
+  approvalDecision: string | null;
+  appliedAt: string | null;
+  verificationStatus: 'passed' | 'warning' | 'not_run';
+  rollbackStepCount: number;
+}
+
+export interface ProjectStructureUiSnapshot {
+  available: boolean;
+  status: ProjectStructureStatus;
+  generatedAt: string | null;
+  indexedFileCount: number;
+  canonicalSourceCount: number;
+  lifecycleCounts: {
+    current: number;
+    superseded: number;
+    archived: number;
+    quarantined: number;
+    deleteCandidate: number;
+  };
+  issueCounts: { error: number; warning: number; suggestion: number };
+  canonicalSources: ProjectStructureSourceUi[];
+  retiredSources: ProjectStructureSourceUi[];
+  issues: ProjectStructureIssueUi[];
+  specialistContexts: SpecialistContextUi[];
+  contextOverview: {
+    viewId: string | null;
+    candidateSourceCount: number;
+    excludedSourceCount: number;
+    warnings: string[];
+  };
+  migration: ProjectStructureMigrationUi | null;
+  limitation: string | null;
+}
+
 export interface OrquestaUiSnapshot {
   project: ProjectUiModel;
   agents: AgentUiModel[];
@@ -678,6 +745,7 @@ export interface OrquestaUiSnapshot {
   v4Operations: V4OperationsSnapshot;
   organization?: OrganizationUiSnapshot;
   setup?: SetupUiSnapshot | null;
+  projectStructure?: ProjectStructureUiSnapshot;
   inspectionTemplates: InspectionTemplateUiModel[];
   inspectionRuns: InspectionRunUiModel[];
 }

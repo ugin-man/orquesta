@@ -297,6 +297,373 @@ const specialistPlanV2 = {
   approval_source: "setup_confirmation"
 };
 
+const taskEnvelope = {
+  schema_version: 2,
+  task_envelope_id: "TE-0123456789ab",
+  task_intent_id: taskIntent.task_intent_id,
+  parent_goal_id: null,
+  workstream_id: "workstream:contracts",
+  terminal_outcome: "Validate the V2 contracts.",
+  local_deliverable: "Return deterministic contract evidence.",
+  continue_policy: "return_after_local",
+  checkpoint_policy: "non_blocking",
+  escalation_conditions: ["required_user_action"],
+  notification_policy: {
+    silent_progress: true,
+    notify_on: ["blocker", "terminal"]
+  },
+  execution: {
+    execution_channel: "product_implementation",
+    inbox_policy: "exclusive",
+    accepted_command_types: ["product_implementation.execute"],
+    exclusive_active_command: true,
+    conversation_history_policy: "filtered"
+  },
+  status: "ready"
+};
+
+const contextRequirement = {
+  version: 2,
+  requirement_id: "CR-0123456789ab",
+  task_intent_id: taskIntent.task_intent_id,
+  task_envelope_id: taskEnvelope.task_envelope_id,
+  project_scope: "local",
+  knowledge_domains: ["contracts"],
+  artifact_types: ["source_code"],
+  dependency_inputs: [],
+  decision_authority: "bounded_execution",
+  detail_level: "bounded",
+  freshness: "current",
+  evidence_needs: ["acceptance:1"],
+  must_include: [`task_intent:${taskIntent.task_intent_id}`],
+  must_exclude: ["superseded"],
+  initial_token_budget: 6000,
+  expansion_budget: 4000,
+  missing_context_policy: "request_bounded_expansion",
+  status: "ready"
+};
+
+const sourceRecord = {
+  schema_version: 2,
+  source_id: "SRC-0123456789ab",
+  source_ref: "packages/contracts/src/index.js",
+  source_hash: hash,
+  source_type: "project_file",
+  authority: "workspace",
+  freshness: "current",
+  knowledge_domains: ["contracts"],
+  artifact_types: ["source_code"],
+  supports_criteria: ["acceptance:1"],
+  token_estimate: 100,
+  content_mode: "reference",
+  summary: null,
+  status: "current"
+};
+
+const contextPackV2 = {
+  version: 2,
+  context_pack_id: "CP2-0123456789ab",
+  requirement_id: contextRequirement.requirement_id,
+  task_intent_id: taskIntent.task_intent_id,
+  task_envelope_id: taskEnvelope.task_envelope_id,
+  owner_agent_id: "implementation-001",
+  status: "shadow",
+  pack_layers: [
+    { layer: "universal_contract", source_refs: ["contract:universal-operating-v2"] },
+    { layer: "task_envelope", source_refs: [`task_envelope:${taskEnvelope.task_envelope_id}`] },
+    { layer: "capability_slice", source_refs: ["agent-capability:implementation-001"] },
+    { layer: "project_sources", source_refs: [sourceRecord.source_ref] }
+  ],
+  selected_sources: [sourceRecord.source_id],
+  coverage_matrix: [
+    { criterion_id: "acceptance:1", status: "covered", source_refs: [sourceRecord.source_ref] }
+  ],
+  budget_receipt: {
+    initial_budget: 6000,
+    selected_tokens: 100,
+    omitted_tokens: 0,
+    mandatory_overflow: 0
+  },
+  retrieval_permissions: {
+    search: true,
+    open: true,
+    expand: true,
+    explain: true,
+    max_expansion_tokens: 4000
+  },
+  staleness: {
+    state: "current",
+    stale_source_ids: []
+  },
+  omitted_context: [],
+  fallback_reason: null,
+  provenance: [
+    { source_ref: sourceRecord.source_ref, source_hash: hash, reason: "acceptance_coverage" }
+  ]
+};
+
+const contextReceipt = {
+  version: 2,
+  receipt_id: "CE-0123456789ab",
+  context_pack_id: contextPackV2.context_pack_id,
+  task_intent_id: taskIntent.task_intent_id,
+  agent_id: "implementation-001",
+  initial_token_estimate: 100,
+  additional_tokens: 0,
+  used_source_ids: [sourceRecord.source_id],
+  unused_source_ids: [],
+  missing_context: [],
+  user_corrections: 0,
+  incorrect_project_facts: 0,
+  compaction_count: 0,
+  acceptance_results: [
+    { criterion_id: "acceptance:1", status: "passed", evidence_refs: ["test:contracts"] }
+  ],
+  created_at: timestamp
+};
+
+const projectControlPlane = {
+  version: 2,
+  project_id: "orquesta",
+  revision: 1,
+  active_workstream: {
+    workstream_id: "workstream:contracts",
+    task_id: taskIntent.task_intent_id,
+    current_goal: "Validate V2 contracts.",
+    next_decision: "Enable shadow compilation."
+  },
+  project_brief: { goal: "Compile bounded context." },
+  user_intent: { hard_invariants: [] },
+  work_graph: { active: [taskIntent.task_intent_id] },
+  organization_map: { agents: ["implementation-001"] },
+  decision_ledger: [],
+  risk_and_approval: { pending: [] },
+  background_workstreams: [],
+  updated_at: timestamp
+};
+
+const sessionRotationRegistry = {
+  schema_version: 1,
+  revision: 1,
+  policy: { prepare_at: 12, pending_at: 15, required_at: 20 },
+  sessions: {},
+  applied_event_ids: [],
+  updated_at: timestamp
+};
+
+const sessionHandoffManifest = {
+  schema_version: 1,
+  kind: "orquesta_session_handoff_manifest",
+  created_at: timestamp,
+  agent_id: "orchestrator",
+  predecessor: { session_id: "session-1", thread_id: "thread-1", generation: 1, compaction_count: 15 },
+  successor_generation: 2,
+  canonical_state_files: [{ path: ".orquesta/state/tasks.json", sha256: hash }],
+  active_tasks: [],
+  conversation_tail: [],
+  continuity_rules: ["Canonical state outranks conversation history."]
+};
+
+const sessionHandoffReceipt = {
+  agent_id: "orchestrator",
+  expected_generation: 2,
+  observed_generation: 2,
+  handoff_manifest_hash: hash,
+  ready_to_assume_ownership: true,
+  evidence_checked: [".orquesta/state/tasks.json"],
+  next_action: "Continue the current accepted task."
+};
+
+const projectLayout = {
+  schema_version: 1,
+  status: "draft",
+  project_id: "orquesta",
+  project_kind: "hybrid_software_product",
+  components: [{
+    component_id: "core",
+    kind: "software_modules",
+    roots: ["packages"],
+    owner: "orquesta-core",
+    default_lifecycle: "current",
+    default_authority: "supporting",
+    default_read_policy: "task_candidate",
+    include: ["**"],
+    exclude: ["**/node_modules/**"]
+  }],
+  generated_roots: ["**/node_modules/**"],
+  external_storage_roots: [],
+  updated_at: "2026-08-01T00:00:00.000Z"
+};
+
+const lifecycleRegistry = {
+  schema_version: 1,
+  status: "draft",
+  rules: [{
+    rule_id: "generated",
+    match: ["**/node_modules/**"],
+    lifecycle: "current",
+    authority: "derived",
+    read_policy: "never",
+    storage_policy: "gitignored",
+    reason: "Generated dependency content."
+  }],
+  overrides: [],
+  canonical_claims: [{ claim_key: "orquesta.skill.source", source_ref: "orquesta/SKILL.md" }],
+  updated_at: "2026-08-01T00:00:00.000Z"
+};
+
+const lifecycleContextReceipt = {
+  version: 1,
+  mode: "shadow",
+  status: "ready",
+  project_id: "orquesta",
+  receipt_id: "LCR-aaaaaaaaaaaa",
+  inventory_generated_at: "2026-08-01T00:00:00.000Z",
+  project_map_id: "PM-aaaaaaaaaaaaaaaa",
+  lifecycle_overlay_id: "LO-bbbbbbbbbbbbbbbb",
+  source_catalog: {
+    previous_current_sources: 2,
+    candidate_sources: 1,
+    effective_sources: 1,
+    excluded_sources: 1,
+    estimated_candidate_tokens: 10
+  },
+  exclusions: [{
+    source_ref: "dist/output.js",
+    reason: "derived",
+    component_id: "build-output",
+    lifecycle: "current",
+    authority: "derived",
+    read_policy: "explicit_only"
+  }],
+  canonical_claim_errors: [],
+  created_at: "2026-08-01T00:00:00.000Z"
+};
+
+const projectStructureSetup = {
+  schema_version: 1,
+  template_version: "project-structure-v1",
+  status: "ready",
+  mode: "existing_shadow",
+  project_id: "orquesta",
+  source_kind: "existing_folder",
+  archetype: "hybrid",
+  archetype_candidates: [{ archetype: "software", score: 12, evidence: ["software_manifest"] }],
+  setup_answers: [{ question_id: "SETUP-Q1", answer: "Ship the desktop application." }],
+  manifests: {
+    layout_ref: ".orquesta/project/layout.json",
+    lifecycle_ref: ".orquesta/project/lifecycle.json",
+    manifest_source: "generated"
+  },
+  physical_changes: { created_directories: [], created_files: [], moved_paths: [] },
+  created_at: "2026-08-01T00:00:00.000Z",
+  updated_at: "2026-08-01T00:00:00.000Z"
+};
+
+const projectStructureContextView = {
+  version: 1,
+  view_id: "PSCV-aaaaaaaaaaaaaaaa",
+  project_id: "orquesta",
+  template_version: "project-structure-v1",
+  archetype: "hybrid",
+  setup_mode: "existing_shadow",
+  goal: "Ship the desktop application.",
+  components: [{ component_id: "core", kind: "software_modules", roots: ["packages"], indexed_sources: 8, candidate_sources: 6 }],
+  sources: { indexed_count: 8, candidate_count: 6, excluded_count: 2, candidate_source_refs: ["packages/core/src/index.js"] },
+  warnings: [],
+  generated_at: "2026-08-01T00:00:00.000Z"
+};
+
+const projectStructureMigrationPlan = {
+  version: 1,
+  plan_id: "PSMP-aaaaaaaaaaaaaaaa",
+  project_id: "orquesta",
+  status: "review_required",
+  dry_run: true,
+  source_snapshot: {
+    inventory_generated_at: "2026-08-01T00:00:00.000Z",
+    workspace_fingerprint: hash,
+    indexed_files: 10,
+    hashed_files: 10,
+    dirty_worktree: true,
+    dirty_path_count: 3
+  },
+  operations: [{
+    operation_id: "MOVE-0001",
+    action: "quarantine",
+    source_ref: ".orquesta/state/sessions.json.bak",
+    target_ref: ".orquesta/archive/structure-migrations/PSMP-aaaaaaaaaaaaaaaa/runtime-ephemeral/state/sessions.json.bak",
+    reason: "Temporary backup beside canonical state.",
+    confidence: "high",
+    destructive: false,
+    source_sha256: hash,
+    target_precondition: "missing",
+    reference_policy: "none",
+    reference_count: 0,
+    status: "planned"
+  }],
+  reference_rewrites: [],
+  manifest_updates: [{
+    action: "add_rule",
+    rule_id: "structure-migration-archive",
+    match: [".orquesta/archive/structure-migrations/**"],
+    lifecycle: "archived",
+    authority: "supporting",
+    read_policy: "explicit_only",
+    storage_policy: "versioned",
+    reason: "Exclude migration quarantine from normal context."
+  }],
+  checks: [{ code: "dry_run_only", status: "passed", details: "No source changed." }],
+  rollback: {
+    reversible: true,
+    steps: [{
+      operation_id: "MOVE-0001",
+      action: "move",
+      source_ref: ".orquesta/archive/structure-migrations/PSMP-aaaaaaaaaaaaaaaa/runtime-ephemeral/state/sessions.json.bak",
+      target_ref: ".orquesta/state/sessions.json.bak",
+      expected_sha256: hash
+    }]
+  },
+  approval: { required: true, scope: "entire_plan", destructive_confirmation_required: false, applied: false },
+  decisions: [],
+  blockers: [],
+  generated_at: "2026-08-01T00:00:00.000Z"
+};
+
+const placementRequest = {
+  version: 1,
+  task_id: "TASK-1",
+  proposed_path: null,
+  suggested_name: "feature.ts",
+  target_component_id: "core",
+  artifact_kind: "source_code",
+  authority_intent: "supporting",
+  audience: "machine",
+  retention: "project",
+  replaces: [],
+  claim_key: null,
+  root_placement_reason: null,
+  created_at: "2026-08-01T00:00:00.000Z"
+};
+
+const placementDecision = {
+  version: 1,
+  decision_id: "PD-aaaaaaaaaaaa",
+  task_id: "TASK-1",
+  status: "proposed",
+  target_path: "packages/core/feature.ts",
+  component_id: "core",
+  lifecycle: "draft",
+  authority: "supporting",
+  read_policy: "task_candidate",
+  supersedes: [],
+  supersedes_candidates: [],
+  warnings: [],
+  hard_errors: [],
+  reason: "The requested component has a declared project root.",
+  created_at: "2026-08-01T00:00:00.000Z"
+};
+
 const fixtures = {
   "task-intent": [taskIntent, (value) => { value.acceptance_criteria = []; }],
   "capability-need": [capabilityNeed, (value) => { value.kind = "unknown"; }],
@@ -313,7 +680,24 @@ const fixtures = {
   "agent-capability-profile": [agentCapabilityProfile, (value) => { value.availability = "unknown"; }],
   "organization-state": [organizationState, (value) => { value.agents.push(clone(value.agents[0])); }],
   "organization-decision": [organizationDecision, (value) => { value.selected_action = "unknown"; }],
-  "specialist-plan-v2": [specialistPlanV2, (value) => { value.schema_version = 1; }]
+  "specialist-plan-v2": [specialistPlanV2, (value) => { value.schema_version = 1; }],
+  "task-envelope": [taskEnvelope, (value) => { value.continue_policy = "invented"; }],
+  "context-requirement": [contextRequirement, (value) => { value.initial_token_budget = -1; }],
+  "source-record": [sourceRecord, (value) => { value.source_hash = "not-a-hash"; }],
+  "context-pack-v2": [contextPackV2, (value) => { value.status = "published"; }],
+  "context-receipt": [contextReceipt, (value) => { value.compaction_count = -1; }],
+  "project-control-plane": [projectControlPlane, (value) => { value.revision = -1; }],
+  "session-rotation-registry": [sessionRotationRegistry, (value) => { value.policy.prepare_at = 0; }],
+  "session-handoff-manifest": [sessionHandoffManifest, (value) => { value.continuity_rules = []; }],
+  "session-handoff-receipt": [sessionHandoffReceipt, (value) => { value.ready_to_assume_ownership = false; }],
+  "project-layout": [projectLayout, (value) => { value.status = "unknown"; }],
+  "lifecycle-registry": [lifecycleRegistry, (value) => { value.rules[0].read_policy = "always"; }],
+  "lifecycle-context-receipt": [lifecycleContextReceipt, (value) => { value.exclusions[0].reason = "unknown"; }],
+  "project-structure-setup": [projectStructureSetup, (value) => { value.mode = "unknown"; }],
+  "project-structure-context-view": [projectStructureContextView, (value) => { value.view_id = "invalid"; }],
+  "project-structure-migration-plan": [projectStructureMigrationPlan, (value) => { value.dry_run = false; }],
+  "placement-request": [placementRequest, (value) => { value.authority_intent = "unknown"; }],
+  "placement-decision": [placementDecision, (value) => { value.status = "unknown"; }]
 };
 
 test("public contract surface is stable", () => {
@@ -429,6 +813,19 @@ test("Execution Plan accepts the documented fast trigger set and rejects invente
 
   fast.escalation_triggers = ["invented_trigger"];
   assert.equal(validateContract("execution-plan", fast).ok, false);
+});
+
+test("Execution Plan policy version 2 requires independent execution and review axes", () => {
+  const v2 = clone(executionPlan);
+  v2.policy_version = 2;
+  v2.execution_mode = "solo_direct";
+  v2.review_intensity = "normal";
+  v2.routing = { routing_class: "inline_verified", handoff_required: false, specialist_report_required: false };
+  v2.review_policy = "independent_once";
+  assert.equal(validateContract("execution-plan", v2).ok, true);
+
+  delete v2.execution_mode;
+  assert.equal(validateContract("execution-plan", v2).ok, false);
 });
 
 test("EventBatch matches the journal event contract and rejects obsolete event shapes", () => {

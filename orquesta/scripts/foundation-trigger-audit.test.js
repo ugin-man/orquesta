@@ -151,6 +151,28 @@ function incident(id, status) {
 }
 
 {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-trigger-superseded-setup-"));
+  try {
+    writeBaseState(root, []);
+    writeJson(path.join(root, ".orquesta", "state", "tasks.json"), {
+      version: 1,
+      tasks: [{
+        task_id: "SETUP-OLD-001",
+        title: "superseded setup task",
+        owner_agent_id: "implementation-001",
+        state: "superseded",
+      }],
+    });
+    const audit = buildAudit(root, NOW);
+    const admin = audit.foundation_agents.find((agent) => agent.agent_id === "orquesta-admin");
+    assert.strictEqual(admin.trigger_status, "clear");
+    assert.deepStrictEqual(admin.reasons, []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+{
   const curator = runCase([
     candidate("QC-LOW", { priority: "low" }),
     candidate("QC-DONE", { status: "promoted_to_question", priority: "high", suggested_timing: "before_acceptance" })

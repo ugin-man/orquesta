@@ -1,0 +1,4 @@
+{
+  "schema_version": 1,
+  "instruction": "Review only requirements/ui.md, ui/dashboard.html, and ui/styles.css. Create reports/ui-review.json with an issues array. Each issue must include category, severity, summary, and source_refs. Check the implementation against every explicit requirement. Do not edit the UI."
+}

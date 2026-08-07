@@ -9,6 +9,9 @@ const { createModelEvidence } = require("./model-evidence");
 const SDK_CAPABILITIES = Object.freeze({
   createThread: true,
   resumeThread: true,
+  setThreadName: false,
+  archiveThread: false,
+  listThreads: false,
   startTurn: true,
   steerTurn: false,
   interruptTurn: true,
@@ -16,6 +19,7 @@ const SDK_CAPABILITIES = Object.freeze({
   subscribeEvents: true,
   readActualModel: false,
   readThread: false,
+  listThreadTurns: false,
   readAccount: false,
   startLogin: false,
   runtimeInfo: true,
@@ -269,6 +273,24 @@ function createSdkAdapter({
       });
     }),
 
+    setThreadName: ({ correlationId }) => unsupported(
+      "setThreadName",
+      correlationId,
+      "Codex SDK 0.144.5 does not expose persisted thread naming."
+    ),
+
+    archiveThread: ({ correlationId }) => unsupported(
+      "archiveThread",
+      correlationId,
+      "Codex SDK 0.144.5 does not expose persisted thread archival."
+    ),
+
+    listThreads: ({ correlationId }) => unsupported(
+      "listThreads",
+      correlationId,
+      "Codex SDK 0.144.5 does not expose persisted thread listing."
+    ),
+
     startTurn: ({
       correlationId,
       threadHandle,
@@ -364,6 +386,12 @@ function createSdkAdapter({
       "readThread",
       correlationId,
       "Codex SDK 0.144.5 does not expose canonical thread history reads."
+    ),
+
+    listThreadTurns: ({ correlationId }) => unsupported(
+      "listThreadTurns",
+      correlationId,
+      "Codex SDK 0.144.5 does not expose persisted turn history paging."
     ),
 
     readAccount: ({ correlationId }) => unsupported(

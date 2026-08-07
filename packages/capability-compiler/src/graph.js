@@ -4,8 +4,10 @@ const { assertContract, canonicalHash } = require("@orquesta/contracts");
 const { compareText, normalizeText } = require("./normalize");
 const { compilerError } = require("./rule-source");
 
-function needKey({ kind, description, verification_method }) {
-  return canonicalHash({ kind, description: normalizeText(description), verification_method: normalizeText(verification_method) });
+function needKey({ kind, description, verification_method, acquisition_mode }) {
+  const content = { kind, description: normalizeText(description), verification_method: normalizeText(verification_method) };
+  if (acquisition_mode !== undefined && acquisition_mode !== null) content.acquisition_mode = acquisition_mode;
+  return canonicalHash(content);
 }
 
 function needId(candidate) {
@@ -120,4 +122,41 @@ function buildGraph({ taskIntent, matches }) {
   return { graph_id: `CG-${graph_hash.slice(0, 12)}`, ...content, graph_hash };
 }
 
-module.exports = { buildGraph };
+function buildDeclaredGraph({ taskIntent, declaredNeeds }) {
+  if (!Array.isArray(declaredNeeds) || declaredNeeds.length === 0) {
+    throw compilerError("CAPABILITY_DECLARED_NEEDS_INVALID", "Declared Capability Needs must be a non-empty array");
+  }
+  const needs = declaredNeeds.map((need) => assertContract("capability-need", JSON.parse(JSON.stringify(need))))
+    .sort((left, right) => compareText(left.need_id, right.need_id));
+  const ids = new Set();
+  for (const need of needs) {
+    if (ids.has(need.need_id)) {
+      throw compilerError("CAPABILITY_DECLARED_NEEDS_INVALID", "Declared Capability Need ids must be unique", { need_id: need.need_id });
+    }
+    ids.add(need.need_id);
+  }
+  for (const need of needs) {
+    for (const dependency of need.dependencies) {
+      if (!ids.has(dependency)) {
+        throw compilerError("CAPABILITY_GRAPH_UNKNOWN_DEPENDENCY", "Declared Capability Need dependency does not exist", { need_id: need.need_id, dependency });
+      }
+    }
+  }
+  detectCycles(needs);
+  const edges = needs.flatMap((need) => need.dependencies.map((from_need_id) => ({ from_need_id, to_need_id: need.need_id })))
+    .sort((left, right) => compareText(left.from_need_id, right.from_need_id) || compareText(left.to_need_id, right.to_need_id));
+  const provenance = needs.map((need) => ({ need_id: need.need_id, rule_id: null, matched_field: "declared_need" }));
+  const unresolved_need_ids = needs.filter((need) => need.status === "open" && need.confidence === 0).map((need) => need.need_id);
+  const content = {
+    task_intent_id: taskIntent.task_intent_id,
+    compiler_version: 2,
+    needs,
+    edges,
+    unresolved_need_ids,
+    provenance,
+  };
+  const graph_hash = canonicalHash(content);
+  return { graph_id: `CG-${graph_hash.slice(0, 12)}`, ...content, graph_hash };
+}
+
+module.exports = { buildDeclaredGraph, buildGraph };

@@ -57,7 +57,7 @@ export function SetupIntake({ bridge, locale }: { bridge: OrquestaRendererBridge
 
   useEffect(() => {
     let alive = true;
-    void Promise.all([bridge.readSetupDraft(), bridge.readSetupAccount()]).then(([nextDraft, nextAccount]) => {
+    void bridge.readSetupDraft().then((nextDraft) => {
       if (!alive) return;
       setDraft(nextDraft);
       setSourceMode(nextDraft?.source.kind ?? 'none');
@@ -67,12 +67,20 @@ export function SetupIntake({ bridge, locale }: { bridge: OrquestaRendererBridge
       } else if (nextDraft) {
         setGithubParent(parentFromSource(nextDraft.source));
       }
-      setAccount(nextAccount);
       setLoading(false);
     }).catch((error: unknown) => {
       if (!alive) return;
       setNotice(error instanceof Error ? error.message : String(error));
       setLoading(false);
+    });
+    void bridge.readSetupAccount().then((nextAccount) => {
+      if (alive) setAccount(nextAccount);
+    }).catch((error: unknown) => {
+      if (!alive) return;
+      setAccount({
+        status: 'unavailable', accountType: null, requiresOpenaiAuth: null,
+        reason: error instanceof Error ? error.message : String(error)
+      });
     });
     return () => { alive = false; };
   }, [bridge]);

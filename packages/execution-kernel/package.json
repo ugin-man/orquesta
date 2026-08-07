@@ -1,0 +1,16 @@
+{
+  "name": "@orquesta/execution-kernel",
+  "version": "0.4.0-preview.1",
+  "private": true,
+  "license": "MIT",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "test": "node --test",
+    "evaluate:cutover": "node scripts/evaluate-cutover.js",
+    "proof:app-server": "node scripts/live-two-task-proof.js"
+  },
+  "dependencies": {
+    "@orquesta/codex-adapter": "*"
+  }
+}

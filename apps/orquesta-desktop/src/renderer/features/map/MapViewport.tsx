@@ -50,6 +50,12 @@ export function visualScaleForZoom(zoom: number): number {
     : clamp(zoom / 0.52, 0.55, 1);
 }
 
+export function agentVisualScaleForZoom(zoom: number, organizationSource: 'explicit' | 'legacy'): number {
+  // Legacy maps already switch icon and label sizes through semantic CSS.
+  // Scaling their contents again makes ordinary seven-agent projects unreadable.
+  return organizationSource === 'legacy' ? 1 : visualScaleForZoom(zoom);
+}
+
 export function compactAgentName(displayName: string): string {
   const normalized = displayName.trim().toUpperCase();
   const numbered = normalized.match(/^(.*?)\s+(\d+)$/u);
@@ -777,7 +783,7 @@ export function MapViewport({
           const dimmed = Boolean((selectedAgentId || selectedTaskId) && !selected && !connectedAgentIds.has(agent.id));
             const activeTask = agent.currentTaskId ? taskById.get(agent.currentTaskId) : undefined;
             const motion = isActiveTask(activeTask, online) && !reducedMotion;
-            const visualScale = visualScaleForZoom(camera.zoom);
+            const visualScale = agentVisualScaleForZoom(camera.zoom, layout.organization.source);
             const visualBaseSize = agent.id === 'orchestrator' ? 66 : 54;
             const interactionSize = interactionSizeForZoom(camera.zoom, visualBaseSize);
           return (

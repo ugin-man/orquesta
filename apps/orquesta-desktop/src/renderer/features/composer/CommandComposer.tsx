@@ -13,6 +13,7 @@ export function CommandComposer({
   targetAgentId,
   error,
   directSendFailure,
+  deliveryState = null,
   attachments,
   canAttach,
   onTargetChange,
@@ -31,6 +32,7 @@ export function CommandComposer({
   targetAgentId: string;
   error: string | null;
   directSendFailure: string | null;
+  deliveryState?: 'queued' | 'accepted' | 'started' | 'completed' | 'failed' | null;
   attachments: ComposerAttachment[];
   canAttach: boolean;
   onTargetChange(id: string): void;
@@ -42,7 +44,12 @@ export function CommandComposer({
   onRetryDirect(): void;
   onOpenCodexDraft(): void;
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
+  const deliveryLabel = deliveryState ? (locale === 'ja' ? {
+    queued: 'Codexタスクへ接続中…', accepted: '送信済み・開始待ち', started: '回答を作成中', completed: '完了', failed: '失敗'
+  } : {
+    queued: 'Connecting to Codex task…', accepted: 'Sent · waiting to start', started: 'Generating response', completed: 'Completed', failed: 'Failed'
+  })[deliveryState] : null;
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -65,6 +72,7 @@ export function CommandComposer({
         </div>
       </div>
       {attachments.length ? <div className="composer-attachments" aria-label={t('selectedAttachments')}>{attachments.map((attachment) => <span key={attachment.id}>{attachment.name}<button type="button" onClick={() => onRemoveAttachment(attachment.id)} aria-label={`${t('removeAttachment')} ${attachment.name}`}><X size={12} /></button></span>)}</div> : null}
+      {deliveryLabel ? <p className={`composer-delivery composer-delivery--${deliveryState}`} role="status"><i aria-hidden="true" />{deliveryLabel}</p> : null}
       {!online ? <p className="composer-message composer-message--warning">{t('offlineDraft')}</p> : directSendFailure ? (
         <div className="composer-fallback" role="status">
           <p className="composer-message composer-message--error">{directSendFailure}</p>

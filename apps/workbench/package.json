@@ -10,5 +10,6 @@
   "dependencies": {
     "@orquesta/core": "*",
     "@orquesta/event-store": "*"
-  }
+  },
+  "license": "MIT"
 }

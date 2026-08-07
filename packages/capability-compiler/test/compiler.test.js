@@ -197,3 +197,48 @@ test("compiler emits one honest human judgment need when no rule matches", () =>
   assert.deepEqual(graph.unresolved_need_ids, [graph.needs[0].need_id]);
   assert.deepEqual(graph.provenance, []);
 });
+
+test("compiler accepts semantic declared needs without keyword rules", () => {
+  const taskIntent = createTaskIntent(input({
+    desiredOutcome: "架空都市の宗教と物流の矛盾を解消する",
+    acceptanceCriteria: ["設定同士の因果関係が説明できる"],
+  }));
+  const declaredNeeds = [{
+    need_id: "CN-world-causality",
+    description: "世界観内の宗教制度と物流網を結ぶ因果モデル",
+    kind: "knowledge",
+    required_level: "required",
+    hard_constraints: ["既存設定を破壊しない"],
+    dependencies: [],
+    verification_method: "矛盾一覧と修正後の因果鎖を照合する",
+    status: "open",
+    confidence: 85,
+    acquisition_mode: "external_if_missing",
+  }];
+  const graph = compileCapabilities({ taskIntent, rules: rules([]), declaredNeeds });
+  assert.equal(graph.compiler_version, 2);
+  assert.deepEqual(graph.needs, declaredNeeds);
+  assert.deepEqual(graph.provenance, [{ need_id: "CN-world-causality", rule_id: null, matched_field: "declared_need" }]);
+  assert.equal(graph.needs[0].acquisition_mode, "external_if_missing");
+});
+
+test("declared needs reject duplicate ids and unknown dependencies", () => {
+  const taskIntent = createTaskIntent(input());
+  const base = {
+    need_id: "CN-declared",
+    description: "任意の能力",
+    kind: "tool",
+    required_level: "required",
+    hard_constraints: [],
+    dependencies: [],
+    verification_method: "動作確認",
+    status: "open",
+    confidence: 80,
+  };
+  assert.throws(() => compileCapabilities({ taskIntent, rules: rules([]), declaredNeeds: [base, base] }), { code: "CAPABILITY_DECLARED_NEEDS_INVALID" });
+  assert.throws(() => compileCapabilities({
+    taskIntent,
+    rules: rules([]),
+    declaredNeeds: [{ ...base, dependencies: ["CN-missing"] }],
+  }), { code: "CAPABILITY_GRAPH_UNKNOWN_DEPENDENCY" });
+});

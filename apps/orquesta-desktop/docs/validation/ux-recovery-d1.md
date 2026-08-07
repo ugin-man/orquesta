@@ -40,12 +40,12 @@ Mapは35 agentsを100%、125%、150%、200%で確認した。全倍率でagent�
 
 ## Visual確認
 
-次の画面を実画像で確認してからbaselineを更新した。
+次の画面を実画像で確認してからbaselineを更新した。これらの一時スクリーンショットはローカル検証出力であり、公開リポジトリには含めない。
 
-- [Home 1440 x 900](../../artifacts/screenshots/renderer-active-1440x900.png)
-- [Home 1366 x 768](../../artifacts/screenshots/renderer-active-1366x768.png)
-- [Operations 1440 x 900](../../artifacts/screenshots/operations-1440x900.png)
-- [Operations 1366 x 768](../../artifacts/screenshots/operations-1366x768.png)
+- Home 1440 x 900: `artifacts/screenshots/renderer-active-1440x900.png`
+- Home 1366 x 768: `artifacts/screenshots/renderer-active-1366x768.png`
+- Operations 1440 x 900: `artifacts/screenshots/operations-1440x900.png`
+- Operations 1366 x 768: `artifacts/screenshots/operations-1366x768.png`
 
 Homeでは円形Mapが中央の主役になっており、画面全体のスクロールは発生していない。左上のlauncher、左下のdock、中央下のComposerは重なっていない。ToastはComposerと同じ下端に置き、右側の要対応と重ならない。
 

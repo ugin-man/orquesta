@@ -9,6 +9,7 @@ Use these templates when appointing, steering, or receiving reports from special
 
 agent_id:
 role:
+thread_title:
 mission:
 workspace_path:
 thread_policy: long_lived_specialist
@@ -33,6 +34,10 @@ thread_policy: long_lived_specialist
 
 task_id:
 title:
+completion_transport: wait_threads | compact_receipt | manual_recovery
+orchestrator_thread_id:
+orchestrator_host_id:
+specialist_report_required: true | false
 acceptance_checks:
 - 
 
@@ -42,9 +47,11 @@ You may speak directly with the user about this role's domain. Preserve nuance. 
 
 ## Vision Question Policy
 
-Every specialist report must include structured `question_candidates` metadata. Submit 0-3 useful candidates that would clarify user intent, future plans, quality risk, design direction, or task scope. Do not ask the user directly unless the handoff explicitly says to; `user-support` curates raw candidates into useful user-facing batches.
+Include structured `question_candidates` metadata only when the task exposes a useful candidate or the handoff explicitly requests it. Submit 0-3 useful candidates that would clarify user intent, future plans, quality risk, design direction, or task scope. Do not ask the user directly unless the handoff explicitly says to; `user-support` curates raw candidates into useful user-facing batches. Omission by itself is not an acceptance failure.
 
-If there are no useful candidates, set `status: "none"` and provide a valid `none_reason` plus a one-sentence rationale. This prevents forced garbage questions while proving the specialist considered whether the task exposed useful ambiguity.
+A candidate is useful only when the answer could change direction or acceptance, prevent costly rework, resolve a non-inferable choice, or preserve a recurring preference or contradiction. Do not submit a candidate when repository inspection, live research, or a cheap reversible test can answer it. This is a relevance test, not a requirement to manufacture questions.
+
+If the handoff requires a question decision and there are no useful candidates, set `status: "none"` and provide a valid `none_reason` plus a one-sentence rationale. Otherwise omit the field rather than proving that the specialist considered it.
 
 Valid `none_reason` values:
 
@@ -60,7 +67,7 @@ Candidate items must include `priority`, `category`, `question`, `why_now`, `use
 
 ## Control Evidence Policy
 
-For staged-in `specialist_required` and medium/high-risk work, include a valid `completion_envelope` JSON block in the report. It must match the task delegation evidence and list changed files, checks, explicit gaps, fallbacks, and model-route evidence.
+For staged-in `specialist_required` and medium/high-risk work, prefer one compact `specialist_result` JSON block containing task and agent IDs, `changes[]` with `path`, `kind`, and `summary`, `verification[]` with `command`, `status`, `expected`, and `evidence`, explicit gaps, and risks. Include `question_candidates` only under the policy above. The specialist must not reconstruct handoff, model, task-state, or audit evidence. The deterministic acceptance controller expands the compact result into a valid `completion_envelope` and adds those controller-owned facts. Existing valid `completion_envelope` blocks remain supported for compatibility.
 
 Keep `recommended_model`, `requested_model`, `applied_model`, and `actual_model` separate. A requested override is not an applied model, and no actual-model value may be claimed without independent evidence. In repository-only mode, record `adapter: "repository_only"`, `applied_model: null`, and `actual_model: null` unless later evidence proves otherwise.
 
@@ -77,9 +84,23 @@ For Phase 2 work, a specialist receives only the current TaskIntent, Resolution,
 
 When a task needs user capability evidence, state the exact evidence gap and stop the affected verification. Ask `user-support` for a narrow procedure only when visual review, tacit judgment, credentialed judgment, or direct user experience is the stronger source. Do not use this route as a generic request for the user to do specialist work.
 
+Architecture judgment remains the orchestrator's responsibility. Do not require a specialist to produce a separate reframe checklist, status, or report. When a handoff uses a newly chosen approach, state it through the normal mission, constraints, required reading, forbidden actions, or acceptance checks. If implementation evidence contradicts that framing, the specialist may report the evidence and pause for a revised handoff without being treated as scope drift.
+
 ## Done Signal
 
-Write a report to `.orquesta/reports/<task-id>-<agent-id>.md` using the report template.
+1. If `specialist_report_required` is not `false`, write a report to `.orquesta/reports/<task-id>-<agent-id>.md` using the report template. For an explicit report-free task, the handoff must name `wait_threads` or `manual_recovery`, an exact done signal, and any task-owned evidence refs required for recovery. Return only that assigned result.
+2. Persist any task-owned completion evidence required by the handoff before signaling.
+3. If `completion_transport` is `wait_threads`, do not send a separate completion chat message.
+4. If `completion_transport` is `compact_receipt`, use `send_message_to_thread` once with the supplied orchestrator thread and optional host. Send the receipt only when a report path was assigned:
+
+<orquesta_completion_receipt version="1">
+  <task_id><task-id></task_id>
+  <agent_id><agent-id></agent_id>
+  <report_path>.orquesta/reports/<task-id>-<agent-id>.md</report_path>
+  <receipt_id><task-id>:<agent-id>:<report-produced-at></receipt_id>
+</orquesta_completion_receipt>
+
+Do not paste report content into the message. A receipt wakes the orchestrator but does not prove completion. If the same receipt was already sent, do not send it again.
 ```
 
 ## Orquesta Admin Appointment Template
@@ -181,11 +202,11 @@ status: completed | blocked | needs_review | rejected_scope
 
 ## Completion Envelope
 
-Include one valid `completion_envelope` JSON block. For report-only work with no command checks, state why the changes are all `report_only`. Include any fallback and its approval state. Missing or invalid envelope metadata blocks staged-in acceptance.
+Prefer one compact `specialist_result` JSON block. For report-only work with no command checks, use an empty `verification` array and a nonempty `no_commands_reason`; every change must be `report_only`. Include any fallback and its approval state. The acceptance controller must expand and validate the canonical `completion_envelope` before staged-in acceptance.
 
 ## Question Candidates
 
-Include exactly one structured block:
+When a useful candidate exists or the handoff explicitly requires this metadata, include one structured block:
 
 ```json
 {
@@ -208,7 +229,7 @@ Include exactly one structured block:
 }
 ```
 
-If no useful candidate exists, use:
+If the handoff explicitly requires a decision record but no useful candidate exists, use:
 
 ```json
 {

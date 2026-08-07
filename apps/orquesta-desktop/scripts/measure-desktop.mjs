@@ -80,10 +80,56 @@ async function createProjectFixture(root) {
   const now = new Date().toISOString();
   await Promise.all([
     writeFile(path.join(state, 'agents.json'), `${JSON.stringify({
+      schema_version: 2,
+      organization_revision: 1,
       updated_at: now,
-      agents: [{ agent_id: 'orchestrator', role: 'orchestrator', display_name: 'Coordinator', status: 'standby', mission: 'Measure selected-project idle state.' }]
+      agents: [{
+        agent_id: 'orchestrator',
+        role: 'orchestrator',
+        role_id: 'orchestrator',
+        role_version: 1,
+        organization_scope: 'project',
+        organization_parent_agent_id: 'user',
+        lifecycle_state: 'active',
+        operational_status: 'standby',
+        display_name: 'Coordinator',
+        status: 'standby',
+        mission: 'Measure selected-project idle state.',
+        updated_at: now
+      }]
     }, null, 2)}\n`, 'utf8'),
-    writeFile(path.join(state, 'tasks.json'), `${JSON.stringify({ updated_at: now, tasks: [] }, null, 2)}\n`, 'utf8')
+    writeFile(path.join(state, 'tasks.json'), `${JSON.stringify({ updated_at: now, tasks: [] }, null, 2)}\n`, 'utf8'),
+    writeFile(path.join(state, 'sessions.json'), `${JSON.stringify({ updated_at: now, sessions: [] }, null, 2)}\n`, 'utf8'),
+    writeFile(path.join(state, 'roles.json'), `${JSON.stringify({
+      schema_version: 1,
+      organization_revision: 1,
+      updated_at: now,
+      roles: [{
+        role_id: 'orchestrator',
+        version: 1,
+        display_names: { ja: '統括者', en: 'Orchestrator' },
+        aliases: [],
+        capability_ids: ['role:orchestrator'],
+        default_contract_template: 'orchestrator-v1',
+        lifecycle_state: 'active'
+      }]
+    }, null, 2)}\n`, 'utf8'),
+    writeFile(path.join(state, 'organization.json'), `${JSON.stringify({
+      schema_version: 2,
+      revision: 1,
+      policy: {
+        organization_changes: 'autonomous_except_new_line',
+        max_concurrent_provisioning: 3,
+        require_executable_task_per_new_agent: true,
+        require_no_file_ownership_conflict: true
+      },
+      agents: [{ agent_id: 'orchestrator', role_id: 'orchestrator', organization_scope: 'project', lifecycle_state: 'active', operational_status: 'standby' }],
+      teams: [{ team_id: 'foundation', line_id: null, display_name: 'Orquesta Foundation', purpose: 'Project-wide orchestration', lifecycle_state: 'active' }],
+      memberships: [{ membership_id: 'membership-foundation-orchestrator', agent_id: 'orchestrator', team_id: 'foundation', position: 'lead', ordinal: 1, active_from: now, active_to: null }],
+      relationships: [],
+      lines: [],
+      applied_decision_ids: []
+    }, null, 2)}\n`, 'utf8')
   ]);
 }
 
@@ -99,10 +145,11 @@ async function launchMeasured({ userData, projectRoot }) {
   const rootProcessId = desktop.process().pid;
   const window = await desktop.firstWindow();
   await window.getByRole('application', { name: 'Orquesta Desktop' }).waitFor({ state: 'visible' });
+  const shellReadyAt = performance.now();
   if (projectRoot) await window.getByLabel('Orquesta Map').waitFor({ state: 'visible' });
-  else await window.getByRole('heading', { name: 'Open your first Orquesta project' }).waitFor({ state: 'visible' });
+  else await window.locator('.setup-intake__account, :is(h1, h2):has-text("Open your first Orquesta project")').first().waitFor({ state: 'visible' });
   await waitForRenderer(rootProcessId);
-  return { desktop, rootProcessId, window };
+  return { desktop, rootProcessId, window, shellReadyAt };
 }
 
 async function isolateMeasurementInput(desktop, window) {
@@ -137,7 +184,7 @@ async function measureNormal(idleWaitMs) {
     await createProjectFixture(projectRoot);
     const startedAt = performance.now();
     noProject = await launchMeasured({ userData: noProjectProfile, projectRoot: null });
-    const coldStartMs = performance.now() - startedAt;
+    const coldStartMs = noProject.shellReadyAt - startedAt;
     await isolateMeasurementInput(noProject.desktop, noProject.window);
     const noProjectHost = await noProject.window.evaluate(() => globalThis.orquestaDesktop.getHostInfo());
     await delay(idleWaitMs);
@@ -183,10 +230,10 @@ async function measureNormal(idleWaitMs) {
   } finally {
     if (noProject) await closeMeasured(noProject.desktop, noProject.rootProcessId).catch(() => undefined);
     if (selected) await closeMeasured(selected.desktop, selected.rootProcessId).catch(() => undefined);
-    await Promise.all([
-      rm(noProjectProfile, { force: true, recursive: true }),
-      rm(selectedProfile, { force: true, recursive: true }),
-      rm(projectRoot, { force: true, recursive: true })
+    await Promise.allSettled([
+      rm(noProjectProfile, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 }),
+      rm(selectedProfile, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 }),
+      rm(projectRoot, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 })
     ]);
   }
 }
@@ -244,7 +291,10 @@ async function measureLeak(idleWaitMs) {
     if (leakGrowthBytes > 75 * 1_048_576) process.exitCode = 1;
   } finally {
     if (selected) await closeMeasured(selected.desktop, selected.rootProcessId).catch(() => undefined);
-    await Promise.all([rm(userData, { force: true, recursive: true }), rm(projectRoot, { force: true, recursive: true })]);
+    await Promise.allSettled([
+      rm(userData, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 }),
+      rm(projectRoot, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 })
+    ]);
   }
 }
 

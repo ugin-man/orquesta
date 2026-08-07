@@ -10,10 +10,12 @@ const {
 } = require("./scripts/dashboard-port-selection");
 const { buildDashboardStateEtag } = require("./scripts/dashboard-state-cache");
 const { appendJsonlAtomic, updateJsonAtomic, writeJsonAtomic } = require("./scripts/json-state");
+const { buildAudit } = require("./scripts/foundation-trigger-audit");
 const {
-  appendSubmittedQuestionCandidates,
+  ingestReportQuestionCandidates,
   inspectReportQuestionCandidates
 } = require("./scripts/report-question-candidates-check");
+const { persistUserSupportWakeRequest } = require("./scripts/user-support-wake");
 const { reviewTaskControl } = require("./scripts/control-audit");
 const { createEmptyCapacityLedger } = require("./scripts/capacity-gate");
 const { defaultModelPolicy } = require("./scripts/model-policy");
@@ -1086,7 +1088,7 @@ function reviewSpecialistReport(payload) {
   const reportAbsolutePath = safeReportAbsolutePath(reportPath);
   const questionCandidateCheck = inspectReportQuestionCandidates(reportAbsolutePath || reportPath);
   if (decision === "accept" && questionCandidateCheck.errors.length) {
-    const error = new Error(`Report is missing valid question_candidates metadata: ${questionCandidateCheck.errors.join("; ")}`);
+    const error = new Error(`Report has invalid question_candidates metadata: ${questionCandidateCheck.errors.join("; ")}`);
     error.statusCode = 409;
     throw error;
   }
@@ -1121,10 +1123,13 @@ function reviewSpecialistReport(payload) {
     }
   }
 
-  let recordedQuestionCandidates = { recorded: 0, skipped: 0, candidates: [] };
-  if (decision === "accept" && questionCandidateCheck.status === "submitted") {
-    recordedQuestionCandidates = appendSubmittedQuestionCandidates(root, questionCandidateCheck.metadata, now);
-  }
+  const questionCandidateIntake = decision === "accept"
+    ? ingestReportQuestionCandidates(root, reportAbsolutePath || reportPath, now, questionCandidateCheck)
+    : {
+      recorded_count: 0,
+      skipped_duplicate_count: 0,
+      candidates: []
+    };
 
   if (decision === "accept" && controlReview.completion?.present) {
     reconcileCapacityReportProduced({
@@ -1140,8 +1145,8 @@ function reviewSpecialistReport(payload) {
       present: questionCandidateCheck.present,
       status: questionCandidateCheck.status,
       item_count: questionCandidateCheck.itemCount,
-      recorded_count: recordedQuestionCandidates.recorded,
-      skipped_duplicate_count: recordedQuestionCandidates.skipped,
+      recorded_count: questionCandidateIntake.recorded_count,
+      skipped_duplicate_count: questionCandidateIntake.skipped_duplicate_count,
       errors: questionCandidateCheck.errors,
       warnings: questionCandidateCheck.warnings
   };
@@ -1229,7 +1234,7 @@ function reviewSpecialistReport(payload) {
       task_id: taskId,
       agent_id: task.owner_agent_id || null,
       report: reportPath,
-      summary: `Recorded ${recordedQuestionCandidates.recorded} question candidates from ${taskId}; skipped ${recordedQuestionCandidates.skipped} duplicates.`
+      summary: `Recorded ${questionCandidateIntake.recorded_count} question candidates from ${taskId}; skipped ${questionCandidateIntake.skipped_duplicate_count} duplicates.`
     });
   }
 
@@ -1246,6 +1251,13 @@ function reviewSpecialistReport(payload) {
     });
   }
 
+  let supportWake = null;
+  if (decision === "accept") {
+    const triggerAudit = buildAudit(root, new Date(now));
+    writeJsonAtomic(path.join(stateRoot, "trigger_audit.json"), triggerAudit);
+    supportWake = persistUserSupportWakeRequest(root, triggerAudit, now);
+  }
+
   return {
     saved: true,
     task_id: taskId,
@@ -1253,6 +1265,7 @@ function reviewSpecialistReport(payload) {
     state: task.state,
     report: reportPath,
     question_candidates: reviewRecord.question_candidates,
+    support_wake: supportWake,
     task,
     productionStart,
     specialistPlan,

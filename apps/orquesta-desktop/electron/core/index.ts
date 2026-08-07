@@ -12,5 +12,8 @@ const resourcesPath = electronProcess.resourcesPath ?? appRoot;
 runDesktopCore(new DesktopCodexService({
   packaged: appRoot.toLowerCase().includes('.asar') || electronProcess.defaultApp === false,
   appRoot,
-  resourcesPath
+  resourcesPath,
+  conversationProjectionRoot: process.env.ORQUESTA_DESKTOP_DATA_PATH
+    ? path.join(process.env.ORQUESTA_DESKTOP_DATA_PATH, 'conversation-history')
+    : undefined
 }));

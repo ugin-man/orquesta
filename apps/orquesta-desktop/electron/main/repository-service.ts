@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { access } from 'node:fs/promises';
+import { access, readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { ProjectSummary, UiActionResult } from '../../src/contracts/bridge';
 import { emptyV4OperationsSnapshot, INSPECTION_TEMPLATE_DEFINITIONS, type OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 import type { SetupSourceDraft } from '../../src/contracts/setup';
+import type { RuntimeLaunchContext } from '../core/protocol';
 import { ProjectRegistry, projectIdForRoot } from './project-registry';
 
 export interface RepositoryProjectionHost {
-  selectRepository(projectId: string, rootPath: string): Promise<OrquestaUiSnapshot>;
+  selectRepository(projectId: string, rootPath: string, launchContext?: RuntimeLaunchContext): Promise<OrquestaUiSnapshot>;
   getRepositorySnapshot(): Promise<OrquestaUiSnapshot>;
   subscribeRepository(listener: (snapshot: OrquestaUiSnapshot) => void): () => void;
 }
@@ -16,6 +17,7 @@ export interface RepositoryServiceOptions {
   registryPath: string;
   coreHost: RepositoryProjectionHost;
   initialRootPath?: string | null;
+  initialLaunchContext?: RuntimeLaunchContext | null;
   chooseDirectory?: () => Promise<string | null>;
   prepareSetupSource?: (source: Extract<SetupSourceDraft, { kind: 'detected_root' | 'existing_folder' }>) => Promise<void>;
   requiresSetup?: (rootPath: string) => Promise<boolean>;
@@ -33,13 +35,23 @@ async function exists(filePath: string): Promise<boolean> {
 
 async function defaultRequiresSetup(rootPath: string): Promise<boolean> {
   const setupState = path.join(rootPath, '.orquesta', 'setup', 'setup_state.json');
-  if (await exists(setupState)) return false;
+  if (await exists(setupState)) {
+    try {
+      JSON.parse(await readFile(setupState, 'utf8'));
+    } catch {
+      throw new Error(`Orquesta setup state is unreadable and must be repaired: ${setupState}`);
+    }
+    return false;
+  }
   const stateRoot = path.join(rootPath, '.orquesta', 'state');
   const [hasAgents, hasTasks] = await Promise.all([
     exists(path.join(stateRoot, 'agents.json')),
     exists(path.join(stateRoot, 'tasks.json'))
   ]);
-  return !hasAgents || !hasTasks;
+  if (hasAgents !== hasTasks) {
+    throw new Error(`Orquesta state is incomplete and was not overwritten: ${stateRoot}`);
+  }
+  return !hasAgents;
 }
 
 function result(status: 'accepted'): UiActionResult;
@@ -105,7 +117,11 @@ export class RepositoryService {
     });
 
     if (this.#options.initialRootPath) {
-      const selected = await this.selectRoot(this.#options.initialRootPath, 'detected_root');
+      const selected = await this.selectRoot(
+        this.#options.initialRootPath,
+        'detected_root',
+        this.#options.initialLaunchContext ?? undefined
+      );
       if (selected.status !== 'accepted') this.#snapshotError = selected.reason;
       return;
     }
@@ -133,20 +149,8 @@ export class RepositoryService {
     return this.#registry.listProjects();
   }
 
-  getCurrentRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null {
-    return this.#registry.getCurrentRuntimeContext();
-  }
-
-  setCoordinatorThread(projectId: string, threadId: string): Promise<void> {
-    return this.#registry.setCoordinatorThread(projectId, threadId);
-  }
-
-  getLucaRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null {
-    return this.#registry.getLucaRuntimeContext();
-  }
-
-  setLucaThread(projectId: string, threadId: string): Promise<void> {
-    return this.#registry.setLucaThread(projectId, threadId);
+  getCurrentProjectContext(): { projectId: string; rootPath: string } | null {
+    return this.#registry.getCurrentProjectContext();
   }
 
   getLastLucaHomeSeenAt(projectId: string): string | null {
@@ -163,17 +167,26 @@ export class RepositoryService {
     return this.selectRoot(rootPath);
   }
 
-  async selectRoot(rootPath: string, sourceKind: 'detected_root' | 'existing_folder' = 'existing_folder'): Promise<UiActionResult> {
+  async selectRoot(
+    rootPath: string,
+    sourceKind: 'detected_root' | 'existing_folder' = 'existing_folder',
+    launchContext?: RuntimeLaunchContext
+  ): Promise<UiActionResult> {
     try {
-      const requiresSetup = await (this.#options.requiresSetup ?? defaultRequiresSetup)(rootPath);
+      const canonicalRoot = await realpath(rootPath);
+      const requiresSetup = await (this.#options.requiresSetup ?? defaultRequiresSetup)(canonicalRoot);
       if (requiresSetup && this.#options.prepareSetupSource) {
-        await this.#options.prepareSetupSource({ kind: sourceKind, rootPath });
+        await this.#options.prepareSetupSource({ kind: sourceKind, rootPath: canonicalRoot });
         this.#snapshot = emptySnapshot();
         this.#snapshotError = null;
         this.#emit();
         return result('accepted');
       }
-      const next = await this.#options.coreHost.selectRepository(projectIdForRoot(rootPath), rootPath);
+      const next = await this.#options.coreHost.selectRepository(
+        projectIdForRoot(canonicalRoot),
+        canonicalRoot,
+        launchContext
+      );
       this.#snapshot = structuredClone(next);
       this.#snapshotError = null;
       await this.#registry.remember(next);

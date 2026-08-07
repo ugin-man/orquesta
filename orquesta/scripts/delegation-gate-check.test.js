@@ -125,10 +125,139 @@ test("legacy tasks remain on the existing delegation path", () => {
   }).errors, []);
 });
 
+test("accepted legacy report-free specialist work requires durable completion evidence", () => {
+  const task = {
+    task_id: "T-REPORT-FREE",
+    state: "accepted",
+    routing_class: "specialist_required",
+    handoff_required: true,
+    handoff_sent_at: "2026-08-05T00:00:00.000Z",
+    specialist_report_required: false,
+  };
+  assert.match(checkTask(task).errors.join("\n"), /completion_evidence/);
+  task.completion_evidence = [{ kind: "test", ref: "artifact:test-output", status: "passed" }];
+  assert.deepEqual(checkTask(task).errors, []);
+});
+
 test("accepts valid fast, standard, and critical Phase 1.5 tasks", () => {
   for (const lane of ["fast", "standard", "critical"]) {
     assert.deepEqual(checkTask(phase15Task(lane)).errors, [], lane);
   }
+});
+
+test("policy version 2 keeps solo direct handoffs separate from a strict crossed-axis review", () => {
+  const task = phase15Task("standard");
+  const content = {
+    ...task.execution_plan,
+    policy_version: 2,
+    execution_mode: "solo_direct",
+    review_intensity: "strict",
+    routing: { routing_class: "inline_verified", handoff_required: false, specialist_report_required: false },
+    review_policy: "independent_twice"
+  };
+  delete content.execution_plan_id;
+  task.execution_plan = { execution_plan_id: `EP-${canonicalHash(content).slice(0, 12)}`, ...content };
+  task.task_intent = { task_intent_id: content.task_intent_id };
+  task.task_profile = { risk_profile: { effects: content.risk_profile.effects } };
+  task.routing_class = "inline_verified";
+  task.handoff_required = false;
+  task.handoff_sent_at = null;
+  task.handoff_attempts = [];
+  task.specialist_report_required = false;
+  task.specialist_report_path = null;
+  task.execution_metrics.handoffs = 0;
+  assert.deepEqual(checkTask(task).errors, []);
+});
+
+test("policy version 2 requires replanning instead of a user decision for correction threshold overflow", () => {
+  const task = phase15Task("standard");
+  const originalPlan = {
+    ...task.execution_plan,
+    policy_version: 2,
+    execution_mode: "durable_specialist",
+    review_intensity: "normal"
+  };
+  delete originalPlan.execution_plan_id;
+  task.execution_plan = { execution_plan_id: `EP-${canonicalHash(originalPlan).slice(0, 12)}`, ...originalPlan };
+  task.task_intent = { task_intent_id: originalPlan.task_intent_id };
+  task.task_profile = { risk_profile: { effects: originalPlan.risk_profile.effects } };
+  task.execution_cycles.push(
+    { cycle_id: "correction-1", kind: "correction", owner_agent_id: "implementation-001", status: "completed", evidence_refs: ["commit:correction-1"] },
+    { cycle_id: "correction-2", kind: "correction", owner_agent_id: "implementation-001", status: "completed", evidence_refs: ["commit:correction-2"] }
+  );
+  task.execution_metrics.correction_batches = 2;
+
+  assert.match(checkTask(task).errors.join("\n"), /revise the V2 execution plan/);
+
+  const revisedPlan = {
+    ...task.execution_plan,
+    reason_codes: [...task.execution_plan.reason_codes, "correction_threshold_replanned"].sort(),
+    revision: 2,
+    supersedes_execution_plan_id: task.execution_plan.execution_plan_id
+  };
+  delete revisedPlan.execution_plan_id;
+  task.execution_plan = { execution_plan_id: `EP-${canonicalHash(revisedPlan).slice(0, 12)}`, ...revisedPlan };
+  const result = checkTask(task);
+  assert.deepEqual(result.errors, []);
+  assert.match(result.warnings.join("\n"), /revised V2 plan records continuation/);
+});
+
+test("policy version 2 rejects a forged revision or changed intent and effects", () => {
+  const task = phase15Task("standard");
+  const content = {
+    ...task.execution_plan,
+    policy_version: 2,
+    execution_mode: "durable_specialist",
+    review_intensity: "normal",
+    reason_codes: [...task.execution_plan.reason_codes, "correction_threshold_replanned"].sort(),
+    revision: 2,
+    supersedes_execution_plan_id: task.execution_plan.execution_plan_id
+  };
+  delete content.execution_plan_id;
+  task.execution_plan = { execution_plan_id: `EP-${canonicalHash(content).slice(0, 12)}`, ...content };
+  task.task_intent = { task_intent_id: "TI-deadbeef0000" };
+  task.task_profile = { risk_profile: { effects: ["external_write"] } };
+
+  const errors = checkTask(task).errors.join("\n");
+  assert.match(errors, /task_intent\.task_intent_id/);
+  assert.match(errors, /task_profile\.risk_profile\.effects/);
+});
+
+test("legacy V2 bindings warn for compatibility but are mandatory before correction continuation", () => {
+  const task = phase15Task("standard");
+  task.state = "working";
+  const content = {
+    ...task.execution_plan,
+    policy_version: 2,
+    execution_mode: "durable_specialist",
+    review_intensity: "normal",
+  };
+  delete content.execution_plan_id;
+  task.execution_plan = { execution_plan_id: `EP-${canonicalHash(content).slice(0, 12)}`, ...content };
+  const compatible = checkTask(task);
+  assert.deepEqual(compatible.errors, []);
+  assert.match(compatible.warnings.join("\n"), /legacy V2 task/);
+
+  for (const state of ["accepted", "superseded"]) {
+    const closed = structuredClone(task);
+    closed.state = state;
+    assert.deepEqual(checkTask(closed).warnings, [], `${state} legacy history is not actionable`);
+  }
+
+  task.execution_cycles.push(
+    { cycle_id: "correction-1", kind: "correction", owner_agent_id: "implementation-001", status: "completed", evidence_refs: ["commit:1"] },
+    { cycle_id: "correction-2", kind: "correction", owner_agent_id: "implementation-001", status: "completed", evidence_refs: ["commit:2"] },
+  );
+  task.execution_metrics.correction_batches = 2;
+  const revised = {
+    ...task.execution_plan,
+    reason_codes: [...task.execution_plan.reason_codes, "correction_threshold_replanned"].sort(),
+    revision: 2,
+    supersedes_execution_plan_id: task.execution_plan.execution_plan_id,
+  };
+  delete revised.execution_plan_id;
+  task.execution_plan = { execution_plan_id: `EP-${canonicalHash(revised).slice(0, 12)}`, ...revised };
+  assert.match(checkTask(task).errors.join("\n"), /revise the V2 execution plan/);
 });
 
 test("rejects invalid Phase 1.5 lane routing, accepted review evidence, and budget counts", () => {
@@ -148,6 +277,19 @@ test("rejects invalid Phase 1.5 lane routing, accepted review evidence, and budg
   critical.handoff_attempts = Array.from({ length: 5 }, () => ({ sent_at: "2026-07-16T00:00:00.000Z" }));
   critical.execution_metrics.handoffs = 5;
   assert.match(checkTask(critical).errors.join("\n"), /max_handoffs/);
+
+  for (const [lane, count] of [["standard", 2], ["critical", 3]]) {
+    const correctionOverrun = phase15Task(lane);
+    correctionOverrun.execution_cycles.push(...Array.from({ length: count }, (_, index) => ({
+      cycle_id: `correction-${index + 1}`,
+      kind: "correction",
+      owner_agent_id: "implementation-001",
+      status: "completed",
+      evidence_refs: [`commit:correction-${index + 1}`],
+    })));
+    correctionOverrun.execution_metrics.correction_batches = count;
+    assert.match(checkTask(correctionOverrun).errors.join("\n"), /max_correction_batches/, `${lane} V1 correction hard cap`);
+  }
 });
 
 test("requires completion evidence, matching metrics, and honest token evidence", () => {

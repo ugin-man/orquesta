@@ -1,0 +1,77 @@
+{
+  "$id": "context-requirement",
+  "type": "object",
+  "required": [
+    "version",
+    "requirement_id",
+    "task_intent_id",
+    "task_envelope_id",
+    "project_scope",
+    "knowledge_domains",
+    "artifact_types",
+    "dependency_inputs",
+    "decision_authority",
+    "detail_level",
+    "freshness",
+    "evidence_needs",
+    "must_include",
+    "must_exclude",
+    "initial_token_budget",
+    "expansion_budget",
+    "missing_context_policy",
+    "status"
+  ],
+  "properties": {
+    "version": { "const": 2 },
+    "requirement_id": { "type": "string", "pattern": "^CR-[a-f0-9]{12}$" },
+    "task_intent_id": { "type": "string", "pattern": ".+" },
+    "task_envelope_id": { "type": "string", "pattern": "^TE-[a-f0-9]{12}$" },
+    "project_scope": { "enum": ["none", "local", "component", "global"] },
+    "knowledge_domains": {
+      "type": "array",
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "artifact_types": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "dependency_inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id", "required_output"],
+        "properties": {
+          "task_id": { "type": "string", "pattern": ".+" },
+          "required_output": { "type": "string", "pattern": ".+" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "decision_authority": {
+      "enum": ["read_only", "proposal_only", "bounded_execution", "user_only"]
+    },
+    "detail_level": { "enum": ["minimal", "bounded", "deep"] },
+    "freshness": { "enum": ["current", "allow_stale_with_warning"] },
+    "evidence_needs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "must_include": {
+      "type": "array",
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "must_exclude": {
+      "type": "array",
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "initial_token_budget": { "type": "integer", "minimum": 0 },
+    "expansion_budget": { "type": "integer", "minimum": 0 },
+    "missing_context_policy": {
+      "enum": ["request_bounded_expansion", "needs_user", "stop"]
+    },
+    "status": { "enum": ["draft", "ready", "needs_user"] }
+  },
+  "additionalProperties": false
+}

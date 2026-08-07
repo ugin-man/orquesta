@@ -38,7 +38,7 @@ function snapshot(id: string, title: string, rootPath: string): OrquestaUiSnapsh
 }
 
 describe('ProjectRegistry', () => {
-  test('owns recent-project persistence, folder choice, and coordinator thread ids', async () => {
+  test('owns recent-project persistence and folder choice without runtime thread routing', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-project-registry-'));
     temporaryRoots.push(root);
     const registryPath = path.join(root, 'repositories.json');
@@ -52,21 +52,21 @@ describe('ProjectRegistry', () => {
     await registry.initialize();
     await expect(registry.chooseRoot()).resolves.toBe('C:\\project');
     await registry.remember(snapshot('repo-1', 'Project', 'C:\\project'));
-    await registry.setCoordinatorThread('repo-1', 'thread-1');
 
-    expect(registry.getCurrentRuntimeContext()).toEqual({
-      projectId: 'repo-1', rootPath: 'C:\\project', threadId: 'thread-1'
+    expect(registry.getCurrentProjectContext()).toEqual({
+      projectId: 'repo-1', rootPath: 'C:\\project'
     });
     expect(await registry.listProjects()).toEqual([
       expect.objectContaining({ id: 'repo-1', title: 'Project' })
     ]);
     const stored = JSON.parse(await readFile(registryPath, 'utf8')) as {
-      projects: Array<{ coordinatorThreadId: string | null }>;
+      projects: Array<Record<string, unknown>>;
     };
-    expect(stored.projects[0].coordinatorThreadId).toBe('thread-1');
+    expect(stored.projects[0]).not.toHaveProperty('coordinatorThreadId');
+    expect(stored.projects[0]).not.toHaveProperty('lucaThreadId');
   });
 
-  test('migrates a version 1 registry without losing the coordinator thread', async () => {
+  test('reads a version 1 registry but does not reuse its coordinator thread', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-project-registry-v1-'));
     temporaryRoots.push(root);
     const registryPath = path.join(root, 'repositories.json');
@@ -83,34 +83,31 @@ describe('ProjectRegistry', () => {
     const registry = new ProjectRegistry({ registryPath });
     await registry.initialize();
 
-    expect(registry.getCurrentRuntimeContext()).toMatchObject({ threadId: 'thread-coordinator' });
-    expect(registry.getLucaRuntimeContext()).toMatchObject({ threadId: null });
+    expect(registry.getCurrentProjectContext()).toEqual({ projectId: 'repo-1', rootPath: 'C:\\project' });
     expect(registry.getLastLucaHomeSeenAt('repo-1')).toBeNull();
   });
 
-  test('persists Luca thread and Home baseline independently from coordinator state', async () => {
+  test('persists the Luca Home baseline without app-owned runtime thread ids', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'orquesta-project-registry-luca-'));
     temporaryRoots.push(root);
     const registryPath = path.join(root, 'repositories.json');
     const registry = new ProjectRegistry({ registryPath });
     await registry.initialize();
     await registry.remember(snapshot('repo-1', 'Project', 'C:\\project'));
-    await registry.setCoordinatorThread('repo-1', 'thread-coordinator');
-    await registry.setLucaThread('repo-1', 'thread-luca');
     await registry.markLucaHomeSeen('repo-1', '2026-07-22T00:00:00.000Z');
 
-    expect(registry.getCurrentRuntimeContext()).toMatchObject({ threadId: 'thread-coordinator' });
-    expect(registry.getLucaRuntimeContext()).toMatchObject({ threadId: 'thread-luca' });
+    expect(registry.getCurrentProjectContext()).toEqual({ projectId: 'repo-1', rootPath: 'C:\\project' });
     expect(registry.getLastLucaHomeSeenAt('repo-1')).toBe('2026-07-22T00:00:00.000Z');
     const stored = JSON.parse(await readFile(registryPath, 'utf8')) as {
       version: number;
-      projects: Array<{ lucaThreadId: string | null; lastLucaHomeSeenAt: string | null }>;
+      projects: Array<Record<string, unknown> & { lastLucaHomeSeenAt: string | null }>;
     };
     expect(stored.version).toBe(2);
     expect(stored.projects[0]).toMatchObject({
-      lucaThreadId: 'thread-luca',
       lastLucaHomeSeenAt: '2026-07-22T00:00:00.000Z'
     });
+    expect(stored.projects[0]).not.toHaveProperty('coordinatorThreadId');
+    expect(stored.projects[0]).not.toHaveProperty('lucaThreadId');
   });
 });
 

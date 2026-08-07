@@ -396,7 +396,7 @@ describe('DesktopRendererApp', () => {
     expect(within(channels).getByText('Agent routes')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Conversation · Orchestrator' })).toBeVisible();
     expect(screen.getByText('Actual delivery')).toBeVisible();
-    expect(screen.getByText('Coordinator Codex thread')).toBeVisible();
+    expect(screen.getByText('Coordinator Codex task')).toBeVisible();
     expect(screen.getByText('Direct coordinator message')).toBeVisible();
 
     await user.click(within(channels).getByRole('button', { name: 'Analyst · Analyst' }));
@@ -416,7 +416,7 @@ describe('DesktopRendererApp', () => {
     await user.click(within(channels).getByRole('button', { name: 'Luca · Project explainer' }));
 
     expect(await screen.findByRole('heading', { name: 'Conversation · Luca' })).toBeVisible();
-    expect(screen.getByText('Luca Codex thread')).toBeVisible();
+    expect(screen.getByText('Luca Codex task')).toBeVisible();
     expect(screen.getByText('Read-only project explanation')).toBeVisible();
   });
 
@@ -463,8 +463,8 @@ describe('DesktopRendererApp', () => {
     expect(within(filters).getByRole('button', { name: 'Errors 3' })).toBeVisible();
     expect(within(filters).getByRole('button', { name: 'Conversation 2' })).toBeVisible();
     expect(within(filters).getByRole('button', { name: 'Decisions 2' })).toBeVisible();
-    expect(listConversation).toHaveBeenCalledWith({ targetAgentId: 'orchestrator', cursor: null, limit: 100 });
-    expect(listConversation).toHaveBeenCalledWith({ targetAgentId: 'analyst', cursor: null, limit: 100 });
+    expect(listConversation).toHaveBeenCalledWith({ targetAgentId: 'orchestrator', cursor: null, limit: 8 });
+    expect(listConversation).toHaveBeenCalledWith({ targetAgentId: 'analyst', cursor: null, limit: 8 });
     expect(screen.getByText('3 messages · Build the approved desktop Renderer and keep the Electron boundary clean.')).toBeVisible();
 
     await user.click(within(filters).getByRole('button', { name: 'Errors 3' }));

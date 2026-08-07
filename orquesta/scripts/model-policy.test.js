@@ -15,6 +15,7 @@ const {
   recommendModelRoute,
   scoreControlSignals
 } = require("./model-policy");
+const { createTaskIntent, profileTask } = require("../../packages/core/src");
 const { readModelPolicyState } = require("../dashboard-server");
 
 function task(overrides = {}) {
@@ -36,6 +37,53 @@ function task(overrides = {}) {
     model_route: { actual_model: null },
     ...overrides
   };
+}
+
+{
+  const profiled = profileTask({
+    taskIntent: {
+      task_intent_id: "TI-PROFILE-FAILURES",
+      raw_request_ref: "test:profile",
+      desired_outcome: "Repair a local check after repeated failures.",
+      acceptance_criteria: ["Run the focused check."],
+      constraints: [],
+      risk: { impact: "medium", reversible: true },
+      authority_boundary: { agent_may: ["write"], user_only: [] },
+      assumptions: [],
+      status: "compiled"
+    },
+    workItem: { scope_boundaries: ["orquesta/scripts"], verification_method: "deterministic" },
+    failureHistory: [{ kind: "failed_check" }, { kind: "failed_check" }]
+  });
+  const route = recommendModelRoute(task({ control_signals: profiled.control_signals }), defaultModelPolicy(), {
+    work_mode: "implementation"
+  });
+  assert.strictEqual(route.required_review_model, "Sol");
+  assert(route.reason_codes.includes("high_failure_history"));
+}
+
+{
+  const profiled = profileTask({
+    taskIntent: createTaskIntent({
+      rawRequestRef: "test:semantic-profile",
+      desiredOutcome: "Choose an interface direction.",
+      acceptanceCriteria: ["Obtain visual review."],
+      constraints: [],
+      risk: { impact: "medium", reversible: true },
+      authorityBoundary: { agent_may: ["write"], user_only: [] },
+      assumptions: [],
+      status: "compiled"
+    }),
+    workItem: {
+      scope_boundaries: ["apps/desktop"],
+      verification_method: "human_only",
+      control_signals: { ambiguity: "high", aesthetic_judgment: "high" }
+    }
+  });
+  const route = recommendModelRoute(task({ task_profile: profiled }), defaultModelPolicy());
+  assert.strictEqual(profiled.recommended_work_mode, "semantic_decision");
+  assert.strictEqual(route.recommended_model, "Sol");
+  assert.strictEqual(route.signals.verifiability, "low");
 }
 
 {

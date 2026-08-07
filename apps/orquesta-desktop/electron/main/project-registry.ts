@@ -6,8 +6,6 @@ import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 
 interface RegistryEntry extends ProjectSummary {
   rootPath: string;
-  coordinatorThreadId: string | null;
-  lucaThreadId: string | null;
   lastLucaHomeSeenAt: string | null;
 }
 
@@ -41,10 +39,6 @@ function validRegistry(value: unknown): RegistryDocument | null {
         ? entry.status as ProjectSummary['status'] : 'unknown',
       connectionLabel: typeof entry.connectionLabel === 'string' ? entry.connectionLabel : 'Saved project',
       lastOpenedAt: entry.lastOpenedAt,
-      coordinatorThreadId: typeof entry.coordinatorThreadId === 'string'
-        && /^[a-zA-Z0-9._:-]{1,128}$/u.test(entry.coordinatorThreadId) ? entry.coordinatorThreadId : null,
-      lucaThreadId: typeof entry.lucaThreadId === 'string'
-        && /^[a-zA-Z0-9._:-]{1,128}$/u.test(entry.lucaThreadId) ? entry.lucaThreadId : null,
       lastLucaHomeSeenAt: typeof entry.lastLucaHomeSeenAt === 'string'
         && Number.isFinite(Date.parse(entry.lastLucaHomeSeenAt)) ? entry.lastLucaHomeSeenAt : null
     }];
@@ -104,8 +98,6 @@ export class ProjectRegistry {
       status: snapshot.project.status,
       connectionLabel: snapshot.project.connectionLabel,
       lastOpenedAt: (this.#options.now?.() ?? new Date()).toISOString(),
-      coordinatorThreadId: existing?.coordinatorThreadId ?? null,
-      lucaThreadId: existing?.lucaThreadId ?? null,
       lastLucaHomeSeenAt: existing?.lastLucaHomeSeenAt ?? null
     };
     this.#document.projects = [entry, ...this.#document.projects.filter((item) => item.id !== entry.id)].slice(0, 24);
@@ -124,37 +116,14 @@ export class ProjectRegistry {
   async listProjects(): Promise<ProjectSummary[]> {
     return this.#document.projects.map(({
       rootPath: _rootPath,
-      coordinatorThreadId: _coordinatorThreadId,
-      lucaThreadId: _lucaThreadId,
       lastLucaHomeSeenAt: _lastLucaHomeSeenAt,
       ...project
     }) => structuredClone(project));
   }
 
-  getCurrentRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null {
+  getCurrentProjectContext(): { projectId: string; rootPath: string } | null {
     const project = this.#document.projects.find((item) => item.id === this.#document.currentProjectId);
-    return project ? { projectId: project.id, rootPath: project.rootPath, threadId: project.coordinatorThreadId } : null;
-  }
-
-  async setCoordinatorThread(projectId: string, threadId: string): Promise<void> {
-    if (!/^[a-zA-Z0-9._:-]{1,128}$/u.test(threadId)) throw new Error('Invalid coordinator thread id');
-    const project = this.#document.projects.find((item) => item.id === projectId);
-    if (!project) throw new Error('Unknown project for coordinator thread');
-    project.coordinatorThreadId = threadId;
-    await this.#persist();
-  }
-
-  getLucaRuntimeContext(): { projectId: string; rootPath: string; threadId: string | null } | null {
-    const project = this.#document.projects.find((item) => item.id === this.#document.currentProjectId);
-    return project ? { projectId: project.id, rootPath: project.rootPath, threadId: project.lucaThreadId } : null;
-  }
-
-  async setLucaThread(projectId: string, threadId: string): Promise<void> {
-    if (!/^[a-zA-Z0-9._:-]{1,128}$/u.test(threadId)) throw new Error('Invalid Luca thread id');
-    const project = this.#document.projects.find((item) => item.id === projectId);
-    if (!project) throw new Error('Unknown project for Luca thread');
-    project.lucaThreadId = threadId;
-    await this.#persist();
+    return project ? { projectId: project.id, rootPath: project.rootPath } : null;
   }
 
   getLastLucaHomeSeenAt(projectId: string): string | null {

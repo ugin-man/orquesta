@@ -1,0 +1,47 @@
+{
+  "schema_version": 2,
+  "benchmark_id": "orquesta-v4-product",
+  "modes": [
+    "plain",
+    "skills",
+    "orquesta"
+  ],
+  "execution": {
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "sandbox": "workspace-write",
+    "approval_policy": "never",
+    "agent_timeout_sec": 900,
+    "verifier_timeout_sec": 60
+  },
+  "tasks": [
+    {
+      "id": "organization-json-generator",
+      "category": "structured_data_generation",
+      "fixed_inputs": {
+        "organization_name": "Pilot Organization",
+        "organization_founded": "2020-01-01"
+      }
+    },
+    {
+      "id": "parallel-integration",
+      "category": "multi_file_implementation"
+    },
+    {
+      "id": "conflicting-requirements-triage",
+      "category": "requirements_conflict_triage"
+    },
+    {
+      "id": "worldbuilding-consistency-review",
+      "category": "cross_artifact_consistency"
+    },
+    {
+      "id": "ui-visual-review",
+      "category": "ui_visual_review"
+    },
+    {
+      "id": "external-comparison-review",
+      "category": "evidence_bounded_comparison"
+    }
+  ]
+}

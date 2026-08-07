@@ -15,9 +15,14 @@ const { createJsonlTransport } = require("./jsonl-transport");
 const { createModelEvidence } = require("./model-evidence");
 const { resolveBundledCodexRuntime } = require("./runtime-path");
 
+const APP_SERVER_MAX_LINE_BYTES = 64 * 1024 * 1024;
+
 const APP_SERVER_CAPABILITIES = Object.freeze({
   createThread: true,
   resumeThread: true,
+  setThreadName: true,
+  archiveThread: true,
+  listThreads: true,
   startTurn: true,
   steerTurn: true,
   interruptTurn: true,
@@ -25,6 +30,7 @@ const APP_SERVER_CAPABILITIES = Object.freeze({
   subscribeEvents: true,
   readActualModel: false,
   readThread: true,
+  listThreadTurns: true,
   readAccount: true,
   startLogin: true,
   runtimeInfo: true,
@@ -60,6 +66,16 @@ function validateResponse(method, result) {
   requireFields(result, definition.response_required, `${method} response`);
 }
 
+function normalizeSandboxMode(value) {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  if (value.type === "readOnly") return "read-only";
+  if (value.type === "workspaceWrite") return "workspace-write";
+  if (value.type === "dangerFullAccess") return "danger-full-access";
+  if (value.type === "externalSandbox") return "external-sandbox";
+  return null;
+}
+
 function validateServerMessage(collection, message, label) {
   const definition = collection[message?.method];
   if (!definition) throw new Error(`schema validation failed: unsupported ${label} ${message?.method}`);
@@ -83,6 +99,7 @@ function createAppServerAdapter({
   sdkPackageRoot = null,
   spawnProcess = spawn,
   transportFactory = createJsonlTransport,
+  maxLineBytes = APP_SERVER_MAX_LINE_BYTES,
   onDiagnostic = () => {}
 } = {}) {
   const eventListeners = new Set();
@@ -299,6 +316,7 @@ function createAppServerAdapter({
     }
     transport = transportFactory({
       process: child,
+      maxLineBytes,
       onDiagnostic,
       onProtocolError: () => approvalRelay.reset()
     });
@@ -316,7 +334,8 @@ function createAppServerAdapter({
             name: "orquesta",
             title: "Orquesta",
             version: "0.4.0-preview.1"
-          }
+          },
+          capabilities: { experimentalApi: true }
         };
         validateRequest("initialize", params);
         const result = await connection.request("initialize", params);
@@ -364,7 +383,7 @@ function createAppServerAdapter({
           applied_model: result.model ?? null,
           runtime_profile: {
             cwd: result.cwd ?? null,
-            sandbox: result.sandbox ?? null,
+            sandbox: normalizeSandboxMode(result.sandbox),
             approval_policy: result.approvalPolicy ?? null,
             requested_web_search_mode: params.webSearchMode ?? null
           },
@@ -401,7 +420,7 @@ function createAppServerAdapter({
           applied_model: result.model ?? null,
           runtime_profile: {
             cwd: result.cwd ?? null,
-            sandbox: result.sandbox ?? null,
+            sandbox: normalizeSandboxMode(result.sandbox),
             approval_policy: result.approvalPolicy ?? null,
             requested_web_search_mode: params.webSearchMode ?? null
           },
@@ -410,6 +429,53 @@ function createAppServerAdapter({
             requested: requestedModel ?? params.model,
             applied: result.model
           })
+        });
+      }
+    ),
+
+    setThreadName: ({ correlationId, threadId, name }) => run(
+      "setThreadName",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        const params = { threadId, name };
+        validateRequest("thread/name/set", params);
+        const result = await transport.request("thread/name/set", params);
+        validateResponse("thread/name/set", result);
+        return success("setThreadName", correlationId, {
+          thread_id: threadId,
+          name
+        });
+      }
+    ),
+
+    archiveThread: ({ correlationId, threadId }) => run(
+      "archiveThread",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        const params = { threadId };
+        validateRequest("thread/archive", params);
+        const result = await transport.request("thread/archive", params);
+        validateResponse("thread/archive", result);
+        return success("archiveThread", correlationId, {
+          thread_id: threadId
+        });
+      }
+    ),
+
+    listThreads: ({ correlationId, params = {} }) => run(
+      "listThreads",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        validateRequest("thread/list", params);
+        const result = await transport.request("thread/list", params);
+        validateResponse("thread/list", result);
+        return success("listThreads", correlationId, {
+          threads: result.data,
+          next_cursor: result.nextCursor ?? null,
+          backwards_cursor: result.backwardsCursor ?? null
         });
       }
     ),
@@ -543,6 +609,32 @@ function createAppServerAdapter({
       }
     ),
 
+    listThreadTurns: ({
+      correlationId,
+      threadId,
+      cursor = null,
+      limit = 50,
+      sortDirection = "desc",
+      itemsView = "summary"
+    }) => run(
+      "listThreadTurns",
+      correlationId,
+      async () => {
+        await ensureInitialized();
+        const params = { threadId, limit, sortDirection, itemsView };
+        if (cursor) params.cursor = cursor;
+        validateRequest("thread/turns/list", params);
+        const result = await transport.request("thread/turns/list", params);
+        validateResponse("thread/turns/list", result);
+        return success("listThreadTurns", correlationId, {
+          thread_id: threadId,
+          turns: result.data,
+          next_cursor: result.nextCursor ?? null,
+          backwards_cursor: result.backwardsCursor ?? null
+        });
+      }
+    ),
+
     readAccount: ({ correlationId, refreshToken = false }) => run(
       "readAccount",
       correlationId,
@@ -641,6 +733,7 @@ function createAppServerAdapter({
 
 module.exports = {
   APP_SERVER_CAPABILITIES,
+  APP_SERVER_MAX_LINE_BYTES,
   createAppServerAdapter,
   findInstalledSdkPackageRoot,
   requireFields,

@@ -28,10 +28,10 @@ export function ConversationRecordsWorkspace({ agents, targetAgentId, messages, 
   const messagePane = useRef<HTMLDivElement>(null);
   const copy = locale === 'ja' ? {
     channels: '会話先', search: '会話先を検索', coordinator: '統括者', helper: '利用者支援', routes: 'エージェント経路', noMatch: '一致する会話先はありません。',
-    logicalTarget: '論理的な送信先', actualDelivery: '実際の送信先', coordinatorThread: '統括者のCodex thread', lucaThread: 'Luca専用Codex thread', route: '経路', direct: '統括者への直接メッセージ', readOnly: '読み取り専用のプロジェクト説明', reading: '履歴を読み込み中…'
+    logicalTarget: '論理的な送信先', actualDelivery: '実際の送信先', coordinatorThread: '統括者自身のCodexタスク', agentThread: '選択したエージェント自身のCodexタスク', lucaThread: 'Luca自身のCodexタスク', route: '経路', direct: '統括者への直接メッセージ', readOnly: '読み取り専用のプロジェクト説明', reading: '履歴を読み込み中…'
   } : {
     channels: 'Conversation channels', search: 'Search conversations', coordinator: 'Coordinator', helper: 'User helper', routes: 'Agent routes', noMatch: 'No matching conversations.',
-    logicalTarget: 'Logical target', actualDelivery: 'Actual delivery', coordinatorThread: 'Coordinator Codex thread', lucaThread: 'Luca Codex thread', route: 'Route', direct: 'Direct coordinator message', readOnly: 'Read-only project explanation', reading: 'Reading history…'
+    logicalTarget: 'Logical target', actualDelivery: 'Actual delivery', coordinatorThread: 'Coordinator Codex task', agentThread: 'Selected agent Codex task', lucaThread: 'Luca Codex task', route: 'Route', direct: 'Direct coordinator message', readOnly: 'Read-only project explanation', reading: 'Reading history…'
   };
   const conversationAgents = useMemo<AgentUiModel[]>(() => {
     const lucaRole = locale === 'ja' ? 'プロジェクト説明係' : 'Project explainer';
@@ -114,7 +114,7 @@ export function ConversationRecordsWorkspace({ agents, targetAgentId, messages, 
           <div><small>{locale === 'ja' ? '選択中の会話' : 'Selected conversation'}</small><h2>{t('recordConversation')} · {target?.displayName ?? targetAgentId}</h2></div>
           <dl>
             <div><dt>{copy.logicalTarget}</dt><dd>{target?.displayName ?? targetAgentId} <span>{targetAgentId}</span></dd></div>
-            <div><dt>{copy.actualDelivery}</dt><dd>{targetAgentId === LUCA_AGENT_ID ? copy.lucaThread : copy.coordinatorThread}</dd></div>
+            <div><dt>{copy.actualDelivery}</dt><dd>{targetAgentId === LUCA_AGENT_ID ? copy.lucaThread : targetAgentId === coordinator?.id ? copy.coordinatorThread : copy.agentThread}</dd></div>
             <div><dt>{copy.route}</dt><dd>{targetAgentId === LUCA_AGENT_ID ? copy.readOnly : targetAgentId === coordinator?.id ? copy.direct : `agent_id=${targetAgentId}`}</dd></div>
           </dl>
         </header>
@@ -122,7 +122,15 @@ export function ConversationRecordsWorkspace({ agents, targetAgentId, messages, 
           {hasOlder ? <button type="button" className="workspace-load-older" disabled={loading} onClick={onLoadOlder}>{loading ? t('loadingOlder') : t('loadOlder')}</button> : null}
           {loading && !messages.length ? <p className="workspace-empty">{copy.reading}</p> : null}
           {!loading && !messages.length ? <p className="workspace-empty">{t('noMessages')}</p> : null}
-          {messages.map((message) => (
+          {messages.map((message) => message.kind === 'session_boundary' && message.sessionBoundary ? (
+            <div key={message.id} className="session-boundary" role="separator">
+              <span />
+              <p>{locale === 'ja'
+                ? `会話を保ったまま、実行セッションを世代${message.sessionBoundary.toGeneration}へ引き継ぎました。`
+                : `Execution continued in generation ${message.sessionBoundary.toGeneration} while preserving this conversation.`}</p>
+              <span />
+            </div>
+          ) : (
             <article key={message.id} className={`workspace-message workspace-message--${message.role}`}>
               <span>{message.role === 'user' ? <UserRound size={15} /> : <Bot size={15} />}</span>
               <div>

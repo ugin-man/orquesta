@@ -1,15 +1,15 @@
-# Orquesta Beta V3 QA
+# Orquesta Legacy Beta V3 QA
 
-この手順は Beta V3 の状態ファイル、制御ロジック、外部UATの境界を確認するためのものです。初期化だけで実行済みのdispatch、turn、model、capacityの事実を作ってはいけません。
+この手順は旧Beta V3 projectだけを対象にした互換確認です。V5 setupや通常の `npm run check` では実行しません。初期化だけで実行済みのdispatch、turn、model、capacityの事実を作ってはいけません。
 
 ## Release commands
 
 新しいcheckoutでは、まず次を実行します。既存の有効なデータは初期化で上書きされません。
 
 ```powershell
-npm run test:beta-v3-state
+npm run legacy:test:beta-v3-state
 npm run test:control-integration
-npm run init:beta-v3-state
+npm run legacy:init:beta-v3-state
 npm run check
 npm run check:encoding
 ```
@@ -29,7 +29,7 @@ Get-ChildItem -Path .orquesta -Recurse -Force -File |
 
 ## Required current state
 
-`npm run init:beta-v3-state` は共有atomic writerを通して、次の空のinboxを不足時だけ作ります。
+`npm run legacy:init:beta-v3-state` は共有atomic writerを通して、次の空のinboxを不足時だけ作ります。
 
 ```json
 { "version": 1, "actions": [] }

@@ -5,7 +5,7 @@ This file records the repository discovery settings that should be applied on Gi
 ## Recommended Repository Description
 
 ```text
-Codex skill for running long-lived specialist AI teams with a local dashboard.
+Local-first Windows command room and Codex skill for long-lived, evidence-backed AI teams.
 ```
 
 ## Recommended GitHub Topics
@@ -19,9 +19,9 @@ ai-agents
 multi-agent
 developer-tools
 human-in-the-loop
-game-development
 agent-workflows
-local-dashboard
+electron
+windows
 openai
 ```
 
@@ -31,18 +31,11 @@ openai
 - `ai-agents`, `multi-agent`, `agent-workflows`: describes the core workflow problem.
 - `developer-tools`: places Orquesta with tools builders already search for.
 - `human-in-the-loop`: makes the project's non-autonomous design explicit.
-- `game-development`: reflects the first major target use case.
-- `local-dashboard`: highlights the visual operations surface.
+- `electron`, `windows`: describe the current Desktop release surface.
 
-## Current Environment Note
+## Publication Step
 
-This Codex environment could not update GitHub topics directly:
-
-- `gh` is not installed.
-- `GITHUB_TOKEN` and `GH_TOKEN` are not present.
-- The available GitHub connector tools expose repository files, commits, pull requests, and issues, but not repository topic updates.
-
-Apply the topics from the GitHub repository page:
+Apply these settings only after the release candidate passes review:
 
 1. Open `https://github.com/ugin-man/orquesta`.
 2. Click the settings gear near the repository About/sidebar area.

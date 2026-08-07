@@ -8,10 +8,11 @@ describe('startup curtain markup', () => {
     expect(documentHtml.indexOf('id="startup-curtain"')).toBeLessThan(documentHtml.indexOf('id="root"'));
   });
 
-  test('uses the same warm canvas and paper texture as the home screen', () => {
+  test('uses the same warm canvas and procedural paper texture as the home screen', () => {
     expect(documentHtml).toContain('#f3f0e8');
     expect(documentHtml).toContain('radial-gradient(circle at 50% 45%');
-    expect(documentHtml).toContain('./reference/paper-grain.png');
+    expect(documentHtml).toContain('repeating-radial-gradient');
+    expect(documentHtml).not.toContain('/reference/paper-grain.png');
   });
 
   test('moves the logo upward and disables movement for reduced motion', () => {

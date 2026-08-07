@@ -4,6 +4,22 @@
 
 Coordinate long-lived specialist Codex threads without making the orchestrator a bottleneck for every nuance. Keep the project coherent through contracts, state files, reports, and dashboard-visible synchronization.
 
+## Entry Routing
+
+Use only the sections selected by `SKILL.md` Startup. Do not read or execute this full protocol by default for an existing-project status query, a small state-backed coordination update, or an already-scoped specialist task.
+
+- Bootstrap uses `Bootstrap Loop`.
+- Appointment or delegation uses `Execution Policy`, `Delegation Gate`, and `Appointment`.
+- Live delegated work uses `Event-Driven Completion And Resume`.
+- Acceptance uses `Synchronization`, `Acceptance`, and `Report Freshness`.
+- Organization changes use `Organization Preflight And New Line Gate`.
+- User-side questions, repeated failures, approvals, or capability evidence use only their matching routes.
+- Dashboard UI work uses `Dashboard UI Verification`.
+
+Every route preserves canonical file-backed authority, required approval for destructive effects, concurrent-owner exclusion, `dispatch_accepted != turn_started`, evidence-bound `actual_model`, and user control of final external actions.
+
+Classify an external action by its actual target, data, and effect. Typing, upload, or draft save is not automatically user-only when it is an already-authorized, reversible intermediate step that neither discloses unapproved data nor finalizes the action. Final send, submission, publication, purchase, contract, and consent remain user-controlled.
+
 ## Operating Loop
 
 1. Intake
@@ -21,13 +37,55 @@ Coordinate long-lived specialist Codex threads without making the orchestrator a
    - Classify work as `bootstrap`, `persistent_role`, `bounded_task`, `review`, `standby`, or `direct_specialist_refinement`.
    - Reuse existing agents before creating new ones.
 
+Use `references/architecture-reframe.md` as an optional judgment lens when evidence puts the current framing in doubt. It does not create a separate stage or gate. If the approach changes materially, reflect only the affected outcome, assumptions, constraints, or acceptance criteria in the existing TaskIntent or handoff. Do not block work merely because no separate reframe artifact exists.
+
+## Event-Driven Completion And Resume
+
+<!-- ORQUESTA_EVENT_WAKE_CONTRACT_V1 -->
+
+The orchestrator uses the first real completion or attention event to advance that branch. It does not wait for all parallel branches before starting review, correction, or newly unblocked dependent work.
+
+Choose one transport from current callable tools:
+
+- `wait_threads`: send all live targets and their latest cursors in one bounded call. Process the first returned completion or attention request, dispatch its next step, then wait again with remaining and newly started targets.
+- `compact_receipt`: when `wait_threads` is not callable, `send_message_to_thread` is callable, and a specialist report is required, put the orchestrator `thread_id` and optional `host_id` from `.orquesta/state/sessions.json` into the specialist handoff. The specialist writes durable evidence first, then sends exactly one compact receipt to wake the orchestrator.
+- `manual_recovery`: when neither event tool is callable, or when a report-free task cannot use `wait_threads`, do not claim monitoring. Preserve the assigned durable evidence and recover it from canonical state on the next real turn.
+
+For a Codex-hosted project placement migration, prepare an out-of-project legacy owner with `session-placement-prepare.js` before creating its successor task. After the host-created task ID exists, bind that exact generation with `session-rotation-bind.js`. Preparation does not create a task or change ownership; the predecessor remains owner until the successor receipt passes.
+
+The compact receipt schema is:
+
+```xml
+<orquesta_completion_receipt version="1">
+  <task_id>T123</task_id>
+  <agent_id>implementation-001</agent_id>
+  <report_path>.orquesta/reports/T123-implementation-001.md</report_path>
+  <receipt_id>T123:implementation-001:report-produced-at</receipt_id>
+</orquesta_completion_receipt>
+```
+
+The receipt is not completion evidence. It contains no report body, commentary, review claim, or project-complete claim. For report-producing work, bind completion to this sequence:
+
+```text
+thread completion or compact receipt
+→ compact specialist_result expansion and completion envelope validation
+→ canonical task synchronization
+→ review, correction, dependent dispatch, blocker, or user-support route
+→ wait or wake again
+```
+
+Explicitly report-free work does not enter this report-reconciliation path. Its assigned transport or controller must validate the canonical done signal and durable evidence before changing task state. If no such controller is available, use `manual_recovery` and do not accept automatically. Do not invent a report or completion envelope.
+
+Before sending any review, correction, or dependent handoff, check the task's current state, execution cycle, report path, receipt ID, existing handoff attempt, and terminal state. Repeated delivery must not create duplicate work. When the same accepted receipt returns after a partial projection failure, replay only the idempotent question-intake, completion-map, capacity, and event projections so missing derived state can heal. A live branch may remain untouched while another branch advances. Do not claim project completion until every required branch is terminal.
+
 ## Execution Policy
 
 After Classification, create one deterministic Execution Plan for a Phase 1.5 task before Appointment. Use the enumerated risk profile to classify `fast`, `standard`, or `critical`; do not score free prose.
 
 - `fast` uses `inline_verified`, has no handoff or independent review, and needs deterministic completion evidence.
-- `standard` uses one owner handoff and one independent review. One correction batch is allowed on the same task.
-- `critical` uses one owner, up to two independent reviews, up to two correction batches, and optional QA.
+- `standard` uses one owner handoff and one independent review. In V1, one correction batch is a hard budget boundary.
+- `critical` uses one owner, up to two independent reviews, and optional QA. In V1, two correction batches are a hard budget boundary.
+- In V2, `max_correction_batches` is a replanning threshold rather than an automatic request for user intervention. Reassess the cause and revise the same Execution Plan with reason code `correction_threshold_replanned` before continuing. Preserve TaskIntent, authority, effects, and both execution axes; ask the user only when one of those boundaries changes.
 - Store implementation, review, correction, and QA as `execution_cycles` on the same task. `R`, `F`, and `RR` auxiliary task entries are invalid for a Phase 1.5 parent.
 - Escalate an insufficient lane on the same TaskIntent. Do not automatically downgrade a lane.
 
@@ -64,7 +122,7 @@ For legacy `specialist_required` tasks:
 2. Set `specialist_report_required: true` unless the task is explicitly report-free and low risk.
 3. Send the specialist handoff before implementation starts.
 4. Record `handoff_sent_at` and the specialist `owner_agent_id`.
-5. Do not accept the task until `specialist_report_path`, `report`, or a specialist report artifact is present and reviewed.
+5. When `specialist_report_required` is not `false`, do not accept the task until `specialist_report_path`, `report`, or a specialist report artifact is present and reviewed. A report-free task instead uses its assigned deterministic evidence.
 6. Set `routing_gate_status: "passed"` only after the handoff evidence exists.
 
 For legacy `direct_exception` tasks:
@@ -76,30 +134,31 @@ For legacy `direct_exception` tasks:
 
 For Phase 1.5 tasks, validate the Execution Plan contract and canonical ID, lane routing flags, exact budget, completed `execution_cycles`, completion evidence, and honest token coverage. `unknown` token coverage has `known_total: null`; `partial` and `complete` coverage retain unique `thread_id`, measured token values, and an evidence source. `complete` also records the full participating thread set. Accepted standard and critical tasks require a completed implementation cycle, an independent accepted review whose handoff and report reference that review cycle, and Critical and Important counts at zero. Accepted critical tasks also retain the existing approved `user_approval_evidence` record.
 
-For legacy `specialist_required` work, the short rule is: no handoff, no implementation; no report, no acceptance. Phase 1.5 fast work is instead `inline_verified` with no handoff or report; standard and critical use the lane-specific review rules above. Direct exceptions must be visible in task state rather than remembered from chat.
+For legacy `specialist_required` work, the short rule is: no handoff, no implementation; when a report is required, no report means no acceptance. Explicit report-free work uses its assigned deterministic evidence. Phase 1.5 fast work is `inline_verified` with no handoff or report; standard and critical use the lane-specific review rules above. Direct exceptions must be visible in task state rather than remembered from chat.
 
 ## Bootstrap Loop
 
 Use this before the normal operating loop when Orquesta is invoked in a project without current Orquesta state:
 
 1. Treat the calling chat as the orchestrator foundation agent.
-2. Rename the calling Codex thread to `★ Orquesta 統括` when thread-title tools are available.
+2. Rename the calling Codex thread to `★ Orquesta 統括者` when thread-title tools are available.
 3. Pin the calling Codex thread when pin tools are available.
 4. Create the `.orquesta` state skeleton.
 5. Record bootstrap status, title policy, and pin policy in `.orquesta/setup/options.json`.
 6. Create or reuse the foundation sessions:
    - `user-support`
    - `orquesta-admin`
-7. Start the dashboard server or record why it cannot start.
-8. Verify the dashboard through `/api/state`; do not rely on HTTP 200 alone.
-9. Open the verified dashboard URL in the user's external browser when possible.
-10. Give the user the verified dashboard URL.
+7. Launch Orquesta Desktop with `node "<orquesta-skill-root>\scripts\desktop-launch.js" --project-root "<project-root>"`, where `<orquesta-skill-root>` is the absolute directory containing the active `SKILL.md`; the launcher passes `--orquesta-project <project-root>` and never uses the default browser.
+8. Verify the Desktop process and selected project root. Treat the web dashboard as an optional diagnostic surface.
+9. Only if the user explicitly asks for the diagnostic web surface, start it and verify it through `/api/state`; do not rely on HTTP 200 alone.
+10. Report the verified dashboard URL without auto-opening it. If the user explicitly requests browser diagnostics, first resolve TaskIntent, project policy, `forbidden_actions`, live stop state, and manual-only constraints, then pass the allowed browser family and tab-count/reuse limits to the available browser-control skill and its browser/tab binding contract. The more restrictive current authority wins; do not hardcode a browser or use the operating system's default-browser launch.
 11. Collect the project folder, name, and description; clarification questions are optional.
 12. Build the first executable work, run the organization preflight, and provision only the specialists with current owned work.
+13. After foundation and initial task/session state exist, run or refresh the foundation trigger audit before first production routing.
 
 Bootstrap is idempotent. If setup runs again, inspect existing state and create only the missing foundation pieces.
 
-Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open once after first successful dashboard verification, then store the open attempt in setup state.
+Do not auto-open dashboard browser tabs during bootstrap or resume. Orquesta Desktop remains the primary surface.
 
 4. Appointment
    - Create or update an agent contract.
@@ -116,7 +175,7 @@ Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open
    - Update `agents.json` heartbeat and status.
    - Update `tasks.json` state and artifacts.
    - Update task delegation fields: `routing_class`, `routing_gate_status`, `handoff_required`, `handoff_sent_at`, `specialist_report_required`, `specialist_report_path`, `direct_exception_reason`, and `bypass_review_owner`.
-   - Extract required specialist report `question_candidates` metadata. Store submitted candidates in `.orquesta/vision/question_candidates.json`; accept a `status: "none"` block only when it includes a valid `none_reason` and plausible rationale.
+   - Extract `question_candidates` when a specialist report contains them. Store submitted candidates in `.orquesta/vision/question_candidates.json`; accept a present `status: "none"` block only when it includes a valid `none_reason` and plausible rationale. Omission is valid unless the task's own acceptance checks explicitly require a question decision.
    - Update `directives.json` for user-to-specialist decisions or nuance.
    - Add unresolved creative question candidates to `.orquesta/vision/question_candidates.json` first. `user-support` promotes useful candidates into `.orquesta/vision/questions.json`.
    - Store new command failures, ineffective repeats, and quality-degrading fallbacks as candidate evidence first. `incident_candidates.json` and `incident_clusters.json` are pre-acceptance records; only accepted incidents belong in `incidents.json`, and only `status: "open"` incidents keep an active concierge wake reason.
@@ -127,10 +186,10 @@ Do not repeatedly open dashboard browser tabs during bootstrap resume. Auto-open
 
 7. Acceptance
    - Orchestrator checks the report against acceptance checks.
-   - For `specialist_required` tasks, verify `handoff_sent_at` and a specialist report path or report artifact before acceptance.
-   - For staged-in `specialist_required` and medium/high-risk work, validate the report `completion_envelope` and run a task-scoped control audit before acceptance. Missing or invalid evidence becomes `needs_revision` or a blocker; legacy accepted work remains warning-only unless reopened.
-   - For specialist-owned reports, verify the report includes structured `question_candidates`. If the field is missing, set the task to `needs_revision`, `needs_report_metadata`, or equivalent instead of accepting it.
-   - Accept `question_candidates.status: "none"` only when it includes a valid `none_reason` and a plausible one-sentence rationale. If the task clearly exposed user choice, product direction, quality risk, or future planning and the `none` rationale is weak, request revision.
+   - For `specialist_required` tasks, verify `handoff_sent_at` and the assigned evidence before acceptance. Require a specialist report path or report artifact only when `specialist_report_required` is not `false`.
+   - For staged-in report-producing `specialist_required` and medium/high-risk work, expand a compact `specialist_result` with deterministic controller-owned handoff and model evidence, validate the resulting report `completion_envelope`, and run a task-scoped control audit before acceptance. Report-free work follows its assigned evidence path. Missing or invalid required evidence becomes `needs_revision` or a blocker; legacy accepted work remains warning-only unless reopened.
+   - For specialist-owned reports, validate structured `question_candidates` when present. Missing metadata does not block generic acceptance; only an explicit task acceptance check may require it.
+   - Accept a present `question_candidates.status: "none"` only when it includes a valid `none_reason` and a plausible one-sentence rationale. If an explicit question-decision acceptance check applies and the `none` rationale is weak, request revision.
    - If candidates are submitted, record them in `.orquesta/vision/question_candidates.json` for later `user-support` review. Do not push raw candidates directly to the user.
    - For `direct_exception` tasks, verify `direct_exception_reason` and any `bypass_review_owner` before acceptance.
    - Use `accepted`, `needs_review`, `blocked`, or `rejected_scope_drift`.
@@ -198,10 +257,10 @@ Specialists may add question candidates, but they must not treat raw user answer
 
 Use this flow:
 
-1. Every specialist report includes a structured `question_candidates` block.
-2. Specialist proposes 0-3 domain question candidates when a task exposes important ambiguity, future planning, quality risk, design direction, or user-intent uncertainty.
-3. If no useful candidate exists, specialist records `question_candidates.status: "none"` with a valid `none_reason` and rationale.
-4. Orchestrator checks the field before report acceptance.
+1. A specialist includes structured `question_candidates` only when the task exposes a useful candidate or explicitly requires a question decision.
+2. Specialist proposes 0-3 domain question candidates when important ambiguity, future planning, quality risk, design direction, or user-intent uncertainty could materially change the work.
+3. If an explicit decision record is required but no useful candidate exists, specialist records `question_candidates.status: "none"` with a valid `none_reason` and rationale. Otherwise omission is valid.
+4. Orchestrator validates the field when present or explicitly required.
 5. Orchestrator records submitted candidates in `.orquesta/vision/question_candidates.json` with `status: "pending_curator_review"`.
 6. Wake `user-support` only when a question trigger in `references/user-support.md` is met.
 7. Curator deduplicates, filters, prioritizes, and promotes useful candidates into `.orquesta/vision/questions.json`; rejected or duplicate raw candidates must not reach the user.
@@ -255,8 +314,8 @@ Stop and report instead of continuing when:
 - two agents are about to edit the same ownership boundary
 - the task requires a forbidden action
 - a `specialist_required` task has no `handoff_sent_at`
-- a `specialist_required` task is being accepted without `specialist_report_path`, `report`, or a report artifact
-- a specialist-owned report is being accepted without structured `question_candidates`
+- a `specialist_required` task whose report is required is being accepted without `specialist_report_path`, `report`, or a report artifact
+- explicitly required question-decision evidence is missing or invalid
 - a `direct_exception` task has no `direct_exception_reason`
 - acceptance checks cannot be run or described
 - the specialist's scope has drifted

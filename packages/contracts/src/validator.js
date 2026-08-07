@@ -26,6 +26,23 @@ const SCHEMA_NAMES = [
   "organization-state",
   "organization-decision",
   "specialist-plan-v2",
+  "task-envelope",
+  "context-requirement",
+  "source-record",
+  "context-pack-v2",
+  "context-receipt",
+  "project-control-plane",
+  "session-rotation-registry",
+  "session-handoff-manifest",
+  "session-handoff-receipt",
+  "project-layout",
+  "lifecycle-registry",
+  "lifecycle-context-receipt",
+  "project-structure-setup",
+  "project-structure-context-view",
+  "project-structure-migration-plan",
+  "placement-request",
+  "placement-decision",
   "live-source-query",
   "live-source-result",
   "audition-plan",
@@ -402,16 +419,26 @@ function executionPlanErrors(value) {
     && !isDeepStrictEqual(value.budget, EXECUTION_BUDGETS[value.lane])) {
     errors.push(schemaError("$.budget", "execution_budget", "must match the lane budget"));
   }
-  const expectedRouting = value.lane === "fast"
+  const isV2 = value.policy_version === 2;
+  const direct = isV2 ? value.execution_mode === "solo_direct" : value.lane === "fast";
+  if (isV2 && !["solo_direct", "bounded_parallel", "durable_specialist"].includes(value.execution_mode)) {
+    errors.push(schemaError("$.execution_mode", "execution_mode", "is required for policy version 2"));
+  }
+  if (isV2 && !["light", "normal", "strict"].includes(value.review_intensity)) {
+    errors.push(schemaError("$.review_intensity", "review_intensity", "is required for policy version 2"));
+  }
+  const expectedRouting = direct
     ? { routing_class: "inline_verified", handoff_required: false, specialist_report_required: false }
     : { routing_class: "specialist_required", handoff_required: true, specialist_report_required: true };
   if (["fast", "standard", "critical"].includes(value.lane)
     && !isDeepStrictEqual(value.routing, expectedRouting)) {
     errors.push(schemaError("$.routing", "execution_routing", "must match the lane routing policy"));
   }
-  const expectedReviewPolicy = value.lane === "fast" ? "none"
-    : value.lane === "standard" ? "independent_once"
-      : value.lane === "critical" ? "independent_twice" : null;
+  const expectedReviewPolicy = isV2
+    ? (value.review_intensity === "light" ? "none" : value.review_intensity === "normal" ? "independent_once" : value.review_intensity === "strict" ? "independent_twice" : null)
+    : value.lane === "fast" ? "none"
+      : value.lane === "standard" ? "independent_once"
+        : value.lane === "critical" ? "independent_twice" : null;
   if (expectedReviewPolicy && value.review_policy !== expectedReviewPolicy) {
     errors.push(schemaError("$.review_policy", "execution_review_policy", "must match the lane review policy"));
   }
@@ -563,6 +590,8 @@ function validateContract(name, value, options = {}) {
   if (name === "approval-attestation") errors.push(...approvalAttestationErrors(value));
   if (name === "capability-provider") errors.push(...timestampFieldErrors(value, ["last_verified_at"]));
   if (name === "context-pack") errors.push(...timestampFieldErrors(value, ["expires_at"]));
+  if (name === "context-receipt") errors.push(...timestampFieldErrors(value, ["created_at"]));
+  if (name === "project-control-plane") errors.push(...timestampFieldErrors(value, ["updated_at"]));
   if (name === "phase-review") {
     errors.push(...timestampFieldErrors(value, ["review_requested_at", "reviewed_at"]));
     errors.push(...phaseReviewErrors(value));

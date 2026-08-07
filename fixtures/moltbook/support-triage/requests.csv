@@ -1,0 +1,9 @@
+request_id,received_at,plan,subject,summary
+R-101,2026-08-05T08:10:00Z,team,Shared notebook unavailable,"Six teammates receive an access denied message for the same shared notebook after an owner changed permissions."
+R-102,2026-08-05T08:24:00Z,free,Export question,"User asks whether Markdown export keeps image captions."
+R-103,2026-08-05T08:31:00Z,pro,Duplicate annual charge,"User reports two annual charges with the same date and amount."
+R-104,2026-08-05T08:44:00Z,team,Suspicious login alert,"Admin received a login alert from an unfamiliar region and has not confirmed whether the account is compromised."
+R-105,2026-08-05T09:02:00Z,free,Dark mode request,"User asks for a darker editor theme."
+R-106,2026-08-05T09:18:00Z,pro,Mobile sync delay,"New notes appear on desktop but took about twenty minutes to appear on mobile."
+R-107,2026-08-05T09:35:00Z,team,Offboarding question,"Admin asks how to transfer notebooks before removing an employee."
+R-108,2026-08-05T09:49:00Z,pro,PDF layout issue,"A wide table is clipped in PDF export; the user included no sample file."

@@ -16,6 +16,20 @@ async function makeProject(parent: string, name: string) {
   await mkdir(state, { recursive: true });
   await writeFile(path.join(state, 'agents.json'), JSON.stringify({ updated_at: '2026-07-18T11:00:00.000Z', agents: [{ agent_id: 'orchestrator', role: 'orchestrator', display_name: `${name} Lead`, status: 'standby' }] }), 'utf8');
   await writeFile(path.join(state, 'tasks.json'), JSON.stringify({ updated_at: '2026-07-18T11:00:00.000Z', tasks: [] }), 'utf8');
+  await writeFile(path.join(state, 'roles.json'), JSON.stringify({
+    schema_version: 1,
+    organization_revision: 1,
+    roles: [{ role_id: 'orchestrator', display_names: { en: 'Orchestrator', ja: '統括者' } }]
+  }), 'utf8');
+  await writeFile(path.join(state, 'organization.json'), JSON.stringify({
+    schema_version: 2,
+    revision: 1,
+    agents: [{ agent_id: 'orchestrator', role_id: 'orchestrator', organization_scope: 'project', lifecycle_state: 'active', operational_status: 'standby' }],
+    teams: [],
+    memberships: [],
+    relationships: [],
+    lines: []
+  }), 'utf8');
   return root;
 }
 
@@ -58,6 +72,62 @@ describe('RepositoryService', () => {
     await expect(readFile(path.join(project, '.orquesta', 'setup', 'setup_state.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  test('does not overwrite a partial Orquesta state as a new setup', async () => {
+    const temporary = await mkdtemp(path.join(os.tmpdir(), 'orquesta-partial-state-'));
+    temporaryRoots.push(temporary);
+    const project = path.join(temporary, 'partial');
+    const state = path.join(project, '.orquesta', 'state');
+    await mkdir(state, { recursive: true });
+    await writeFile(path.join(state, 'agents.json'), JSON.stringify({ agents: [] }), 'utf8');
+    const prepareSetupSource = vi.fn(async () => undefined);
+    const coreHost = {
+      selectRepository: vi.fn(),
+      getRepositorySnapshot: vi.fn(),
+      subscribeRepository: vi.fn(() => () => undefined)
+    };
+    const service = new RepositoryService({
+      registryPath: path.join(temporary, 'repositories.json'),
+      coreHost,
+      chooseDirectory: async () => project,
+      prepareSetupSource
+    });
+    await service.initialize();
+
+    await expect(service.openProject()).resolves.toMatchObject({
+      status: 'rejected',
+      reason: expect.stringContaining('incomplete')
+    });
+    expect(prepareSetupSource).not.toHaveBeenCalled();
+    expect(coreHost.selectRepository).not.toHaveBeenCalled();
+  });
+
+  test('does not treat malformed setup state as a resumable project', async () => {
+    const temporary = await mkdtemp(path.join(os.tmpdir(), 'orquesta-broken-setup-'));
+    temporaryRoots.push(temporary);
+    const project = path.join(temporary, 'broken');
+    const setup = path.join(project, '.orquesta', 'setup');
+    await mkdir(setup, { recursive: true });
+    await writeFile(path.join(setup, 'setup_state.json'), '{broken', 'utf8');
+    const coreHost = {
+      selectRepository: vi.fn(),
+      getRepositorySnapshot: vi.fn(),
+      subscribeRepository: vi.fn(() => () => undefined)
+    };
+    const service = new RepositoryService({
+      registryPath: path.join(temporary, 'repositories.json'),
+      coreHost,
+      chooseDirectory: async () => project,
+      prepareSetupSource: vi.fn()
+    });
+    await service.initialize();
+
+    await expect(service.openProject()).resolves.toMatchObject({
+      status: 'rejected',
+      reason: expect.stringContaining('unreadable')
+    });
+    expect(coreHost.selectRepository).not.toHaveBeenCalled();
+  });
+
   test('persists app-owned recent projects and switches without writing project state', async () => {
     const temporary = await mkdtemp(path.join(os.tmpdir(), 'orquesta-repositories-'));
     temporaryRoots.push(temporary);
@@ -75,12 +145,9 @@ describe('RepositoryService', () => {
 
     await service.initialize();
     expect((await service.getSnapshot()).project.title).toBe('first');
-    const firstContext = service.getCurrentRuntimeContext()!;
-    await service.setCoordinatorThread(firstContext.projectId, 'thread-1');
-    await service.setLucaThread(firstContext.projectId, 'thread-luca-1');
+    const firstContext = service.getCurrentProjectContext()!;
     await service.markLucaHomeSeen(firstContext.projectId, '2026-07-18T11:05:00.000Z');
-    expect(service.getCurrentRuntimeContext()).toMatchObject({ rootPath: first, threadId: 'thread-1' });
-    expect(service.getLucaRuntimeContext()).toMatchObject({ rootPath: first, threadId: 'thread-luca-1' });
+    expect(service.getCurrentProjectContext()).toMatchObject({ rootPath: first });
     expect(service.getLastLucaHomeSeenAt(firstContext.projectId)).toBe('2026-07-18T11:05:00.000Z');
     await expect(service.selectRoot(second)).resolves.toMatchObject({ status: 'accepted' });
     const projects = await service.listProjects();
@@ -89,10 +156,34 @@ describe('RepositoryService', () => {
     expect((await service.getSnapshot()).project.title).toBe('first');
     expect(snapshots).toContain('second');
     expect(await readFile(path.join(first, '.orquesta', 'state', 'agents.json'), 'utf8')).toBe(firstAgentsBefore);
-    const registry = JSON.parse(await readFile(registryPath, 'utf8')) as { projects: Array<{ title: string; coordinatorThreadId: string | null; lucaThreadId: string | null }> };
+    const registry = JSON.parse(await readFile(registryPath, 'utf8')) as { projects: Array<Record<string, unknown> & { title: string }> };
     expect(registry.projects).toHaveLength(2);
-    expect(registry.projects.find((project) => project.title === 'first')?.coordinatorThreadId).toBe('thread-1');
-    expect(registry.projects.find((project) => project.title === 'first')?.lucaThreadId).toBe('thread-luca-1');
+    expect(registry.projects.find((project) => project.title === 'first')).not.toHaveProperty('coordinatorThreadId');
+    expect(registry.projects.find((project) => project.title === 'first')).not.toHaveProperty('lucaThreadId');
+    await service.stop();
+    await projection.runtime.stop();
+  });
+
+  test('forwards the initial Codex launch context only for the explicitly opened project', async () => {
+    const temporary = await mkdtemp(path.join(os.tmpdir(), 'orquesta-hosted-project-'));
+    temporaryRoots.push(temporary);
+    const project = await makeProject(temporary, 'hosted');
+    const projection = createProjectionHost();
+    const selectRepository = vi.spyOn(projection.host, 'selectRepository');
+    const service = new RepositoryService({
+      registryPath: path.join(temporary, 'repositories.json'),
+      coreHost: projection.host,
+      initialRootPath: project,
+      initialLaunchContext: { source: 'argv', callingThreadId: 'thread-calling-chat' }
+    });
+
+    await service.initialize();
+
+    expect(selectRepository).toHaveBeenCalledWith(
+      expect.stringMatching(/^repo-/u),
+      project,
+      { source: 'argv', callingThreadId: 'thread-calling-chat' }
+    );
     await service.stop();
     await projection.runtime.stop();
   });

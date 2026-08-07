@@ -35,4 +35,9 @@ const adapter = createAppServerAdapter({
   )
 });
 
-runDesktopCore(new DesktopCodexService({ adapter }));
+runDesktopCore(new DesktopCodexService({
+  adapter,
+  conversationProjectionRoot: process.env.ORQUESTA_DESKTOP_DATA_PATH
+    ? path.join(process.env.ORQUESTA_DESKTOP_DATA_PATH, 'conversation-history')
+    : undefined
+}));

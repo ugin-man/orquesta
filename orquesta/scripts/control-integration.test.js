@@ -5,7 +5,6 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { ensureBetaV3ReleaseState } = require("./beta-v3-state-init");
 const { writeJsonAtomic, readJsonFile } = require("./json-state");
 const { inspectCompletionEnvelope } = require("./completion-envelope-check");
 const {
@@ -145,9 +144,7 @@ function foundationState(root) {
   writeState(root, ".orquesta/state/agents.json", {
     version: 1,
     agents: [
-      { agent_id: "vision-curator", role: "vision-curator", status: "standby" },
-      { agent_id: "error-concierge", role: "error-concierge", status: "standby" },
-      { agent_id: "user-liaison", role: "user-liaison", status: "standby" },
+      { agent_id: "user-support", role: "user-support", status: "standby" },
       { agent_id: "orquesta-admin", role: "orquesta-admin", status: "standby" }
     ]
   });
@@ -160,10 +157,16 @@ function foundationState(root) {
   writeState(root, ".orquesta/setup/options.json", { version: 1, setup_status: "ready", bootstrap_status: "ready" });
 }
 
+function controlFixtureState(root) {
+  writeState(root, ".orquesta/state/dashboard_actions.json", { version: 1, actions: [] });
+  writeState(root, ".orquesta/failures/incident_candidates.json", { version: 1, updated_at: null, candidates: [] });
+  writeState(root, ".orquesta/failures/incident_clusters.json", { version: 1, updated_at: null, clusters: [] });
+}
+
 test("temp integration fixture keeps completion, capacity, intake, model, and audit evidence separate", () => {
   const root = makeRoot();
   try {
-    ensureBetaV3ReleaseState(root);
+    controlFixtureState(root);
     foundationState(root);
     const subject = task();
     const reportEnvelope = envelope(subject);
@@ -245,11 +248,11 @@ test("temp integration fixture keeps completion, capacity, intake, model, and au
     const clustered = clusterIncidentCandidates(root, { now: "2026-07-10T06:16:00.000Z" });
     assert.strictEqual(clustered.clusters.length, 1);
     const activeFailureAudit = buildAudit(root, new Date("2026-07-10T06:16:00.000Z"));
-    assert.ok(activeFailureAudit.foundation_agents.find((agent) => agent.agent_id === "error-concierge").reasons.some((reason) => /Open incident clusters/.test(reason)));
+    assert.ok(activeFailureAudit.foundation_agents.find((agent) => agent.agent_id === "user-support").reasons.some((reason) => /Open incident clusters/.test(reason)));
     writeState(root, ".orquesta/failures/incident_clusters.json", { version: 1, clusters: [{ ...clustered.clusters[0], status: "resolved" }] });
     writeState(root, ".orquesta/failures/incident_candidates.json", { version: 1, candidates: readJsonFile(path.join(root, ".orquesta/failures/incident_candidates.json"), { candidates: [] }).candidates.map((candidate) => ({ ...candidate, status: "retired" })) });
     const resolvedFailureAudit = buildAudit(root, new Date("2026-07-10T06:17:00.000Z"));
-    assert.ok(!resolvedFailureAudit.foundation_agents.find((agent) => agent.agent_id === "error-concierge").reasons.some((reason) => /Open incident clusters/.test(reason)));
+    assert.ok(!resolvedFailureAudit.foundation_agents.find((agent) => agent.agent_id === "user-support").reasons.some((reason) => /Open incident clusters/.test(reason)));
 
     const mismatchedRoute = recordModelRoute({ version: 1, tasks: [subject] }, subject.task_id, {
       recommended_model: "Terra",

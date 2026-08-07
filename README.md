@@ -10,7 +10,7 @@ The V4 Desktop application combines a live organization map, user-task queue, co
 
 New here? Start with [START_HERE.md](START_HERE.md).
 
-OpenAI Build Week judges can start with [BUILD_WEEK.md](BUILD_WEEK.md), which separates the pre-existing project from work completed during the submission period and includes testing and installation guidance.
+[BUILD_WEEK.md](BUILD_WEEK.md) is retained as historical submission evidence. It is not the current release status or installation guide.
 
 Orquesta is not just one Codex thread with a team-themed dashboard. Real operation requires evidence: a task is routed to a non-orchestrator specialist when the work belongs to that lane, the handoff is recorded, the specialist returns a report or artifact, and the orchestrator accepts, holds, or requests changes in state. Direct orchestrator work is reserved for orchestration bookkeeping, tiny state/report updates, emergency unblockers, or explicit user instruction.
 
@@ -18,11 +18,13 @@ The Desktop is a mission-control workspace for that loop. It is meant to make de
 
 ## Current Status
 
-Current hackathon build: **Orquesta V4 Desktop, 0.1.0 preview**.
+Current public release candidate: **Orquesta V4 Desktop, 0.4.0-preview.1**.
 
-The current application targets Windows x64. It is unsigned preview software, so Windows may show an unknown-publisher warning. Code signing, automatic updates, macOS/Linux packaging, and V4 Phase 3 learning are not part of this submission.
+The current application targets Windows x64. It is unsigned preview software, so Windows may show an unknown-publisher warning. Code signing, automatic updates, and macOS/Linux packaging are not included in this preview.
 
-The first GitHub-install bootstrap smoke test passed on 2026-06-22. During OpenAI Build Week, Orquesta was meaningfully extended into a Windows desktop product with a one-screen project intake, six-phase setup experience, Home tutorial, adaptive organization projection, inspection agents, Luca explanations, and a packaged Codex runtime. See [BUILD_WEEK.md](BUILD_WEEK.md) for the dated evidence boundary.
+V5 is a separate development line for reusable business workflows. Its Phase 1 work is not included in this V4 candidate. Build Week material is historical evidence for part of V4, not a second current edition.
+
+The first GitHub-install bootstrap smoke test passed on 2026-06-22. It is historical evidence, not proof that every current environment will install successfully. During OpenAI Build Week, Orquesta was extended into a Windows desktop product with a one-screen project intake, six-phase setup experience, Home tutorial, adaptive organization projection, inspection agents, Luca explanations, and a packaged Codex runtime. See [BUILD_WEEK.md](BUILD_WEEK.md) for that dated evidence boundary.
 
 Bootstrap smoke and delegation-loop smoke are separate checks. Bootstrap smoke proves setup, project-owned `/api/state`, foundation agents, dashboard rendering, and encoding health. Delegation-loop smoke proves the operating model: a real specialist receives a task, reports back, and the orchestrator records an acceptance decision. Do not treat the dashboard alone as proof of multi-agent operation.
 
@@ -40,11 +42,13 @@ Orquesta also keeps model cost visible. Policy automatically recommends Luna, Te
 
 ## Try the Desktop App
 
-The fastest review path is [the Windows x64 installer](https://github.com/ugin-man/orquesta/releases/download/v0.1.0-v4-preview/OrquestaSetup.exe). The build is unsigned preview software.
+When a reviewed installer is published, it will appear on [GitHub Releases](https://github.com/ugin-man/orquesta/releases/latest). Until then, run the candidate from source. Published preview builds are unsigned.
 
-To run from source, install Node.js 22.12.0 or newer, then run:
+To run from source, use Windows x64 with Node.js 22.12.0 or newer and an installed, signed-in Codex Desktop environment. Then run:
 
 ```powershell
+git clone https://github.com/ugin-man/orquesta.git
+cd orquesta
 npm install
 npm install --prefix apps/orquesta-desktop
 npm run start:desktop --prefix apps/orquesta-desktop
@@ -67,6 +71,8 @@ I am sincerely looking for people who want to develop Orquesta together.
 This project is still small and experimental, but I believe there is something important here: a way to make Codex work with the user as a long-lived creative team instead of a pile of disposable tasks.
 
 If you are interested in multi-agent workflows, Codex skills, game-development tools, human-in-the-loop creative systems, dashboard design, or just making this strange thing actually usable, please reach out. I am genuinely, urgently looking for collaborators.
+
+If you want a bounded first test instead, use the [Moltbook AI preview test](docs/testing/moltbook-ai-preview-test.md). It separates documentation review from a disposable Windows execution test and asks for failures as well as successful runs.
 
 ## What Orquesta Provides
 
@@ -96,10 +102,12 @@ orquesta/
   dashboard-server.js          Local dashboard API/server
   agents/openai.yaml           Skill metadata
 docs/
-  articles/                    Draft articles for Zenn, Qiita, and launch notes
   design/                      Design notes
-  release/                     Public release and discovery notes
-  research/                    Multi-agent research notes
+  release/                     Maintainer publication checklists
+  release-notes/               Versioned public release notes
+  superpowers/                 Historical design and implementation records
+benchmarks/
+  orquesta-v4-product/         Reproducible V4 product benchmark harness
 package.json                   Dashboard start script
 ```
 
@@ -120,23 +128,28 @@ Manual local install:
 ```powershell
 $skillRoot = "$env:USERPROFILE\\.codex\\skills\\orquesta"
 New-Item -ItemType Directory -Force -Path $skillRoot
-Copy-Item -Recurse -Force .\\orquesta\\* $skillRoot
+node .\\scripts\\sync-orquesta-skill.js --target $skillRoot
+node .\\scripts\\sync-orquesta-skill.js --check --target $skillRoot
 ```
+
+The sync command copies every canonical V4 skill file and verifies the result. It preserves target-only metadata such as a local `package.json`.
 
 Then start a new Codex thread in your target project and ask Codex to use the `orquesta` skill.
 
 Expected bootstrap behavior:
 
 1. The calling chat becomes the orchestrator.
-2. The orchestrator thread is renamed to `★ Orquesta 統括` and pinned when thread tools are available.
+2. The orchestrator thread is renamed to `★ Orquesta 統括者` and pinned when thread tools are available.
 3. Orquesta creates or reuses foundation roles.
 4. Orquesta initializes file-backed state under `.orquesta/`.
-5. Orquesta verifies the dashboard with `/api/state`.
-6. Orquesta opens the verified dashboard URL in your external browser when possible.
-7. Orquesta gives you the dashboard URL in chat as a fallback.
-8. Only after setup does it plan production specialists for the user's actual task.
+5. Orquesta launches Orquesta Desktop with the selected project root.
+6. Orquesta Desktop loads that project instead of handing a dashboard URL to the default browser.
+7. The browser dashboard stays available as a diagnostic surface only when the user explicitly requests it.
+8. Only after setup does Orquesta plan production specialists for the user's actual task.
 
-## Dashboard
+## Diagnostic Browser Dashboard
+
+Orquesta Desktop is the normal operating surface. Use the browser dashboard only for explicit state diagnostics; setup and resume do not open it automatically.
 
 From the repository root:
 
@@ -199,8 +212,8 @@ npm run smoke:dashboard -- http://127.0.0.1:4177/
 
 This check catches the user-only visualizer failure mode by asserting that agent nodes render and that the browser console has no render-stopping errors. If the in-app Browser is unstable, pause that verification route and use the documented external-browser UAT procedure instead of claiming a smoke pass.
 
-See [GitHub install bootstrap smoke test](docs/testing/github-install-bootstrap-smoke-test.md) for the first external install result.
+See [GitHub install bootstrap smoke test](docs/testing/github-install-bootstrap-smoke-test.md) for historical external-install evidence and its limits.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+MIT License. See [LICENSE](LICENSE). Third-party and adapted components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
