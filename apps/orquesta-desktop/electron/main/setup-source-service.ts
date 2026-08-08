@@ -1,10 +1,11 @@
 import { randomUUID as nodeRandomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
-import { access, mkdir, readFile, readdir, realpath, rename, rm, rmdir, stat } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, rename, rm, rmdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import { isSetupSourceDraft, type SetupSourceDraft } from '../../src/contracts/setup';
+import { pathIdentity } from '../core/path-identity';
 
 interface CloneRepositoryInput {
   url: string;
@@ -34,7 +35,9 @@ async function exists(filePath: string): Promise<boolean> {
 
 async function canonicalDirectory(directoryPath: string, label: string): Promise<string> {
   if (!path.isAbsolute(directoryPath)) throw new Error(`${label} must be an absolute path`);
-  const resolved = await realpath(directoryPath);
+  const identity = await pathIdentity(directoryPath);
+  if (!identity.exists) throw Object.assign(new Error(`${label} does not exist`), { code: 'ENOENT' });
+  const resolved = identity.resolvedPath;
   if (!(await stat(resolved)).isDirectory()) throw new Error(`${label} must be a directory`);
   return resolved;
 }

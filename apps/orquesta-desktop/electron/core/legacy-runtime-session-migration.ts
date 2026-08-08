@@ -1,6 +1,7 @@
 import { readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { RuntimeBinding } from './runtime-binding-store';
+import { pathIdentity } from './path-identity';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -18,10 +19,6 @@ function safeString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function comparablePath(value: string): string {
-  return path.resolve(value).replaceAll('/', '\\').toLowerCase();
-}
-
 async function readSessions(rootPath: string): Promise<{
   canonicalRoot: string;
   statePath: string;
@@ -37,13 +34,14 @@ async function readSessions(rootPath: string): Promise<{
   return { canonicalRoot, statePath, state, sessions: sessions as JsonRecord[] };
 }
 
-function visibleThreadIds(canonicalRoot: string, threads: LegacyMigrationThread[]): Set<string> {
-  const comparableRoot = comparablePath(canonicalRoot);
-  return new Set(threads.flatMap((thread) => {
+async function visibleThreadIds(canonicalRoot: string, threads: LegacyMigrationThread[]): Promise<Set<string>> {
+  const comparableRoot = (await pathIdentity(canonicalRoot)).key;
+  const entries = await Promise.all(threads.map(async (thread) => {
     if (thread.archived || !thread.id.trim()) return [];
-    if (thread.cwd && comparablePath(thread.cwd) !== comparableRoot) return [];
+    if (thread.cwd && (await pathIdentity(thread.cwd)).key !== comparableRoot) return [];
     return [thread.id.trim()];
   }));
+  return new Set(entries.flat());
 }
 
 function requiresMigration(session: JsonRecord): boolean {
@@ -57,7 +55,7 @@ export async function legacyCodexHostedSessionIds(
   threads: LegacyMigrationThread[]
 ): Promise<string[]> {
   const { canonicalRoot, sessions } = await readSessions(rootPath);
-  const visible = visibleThreadIds(canonicalRoot, threads);
+  const visible = await visibleThreadIds(canonicalRoot, threads);
   return sessions.flatMap((session) => {
     const threadId = safeString(session.thread_id);
     return threadId && visible.has(threadId) && requiresMigration(session) ? [threadId] : [];
@@ -72,7 +70,7 @@ export async function migrateLegacyCodexHostedSessions(input: {
 }): Promise<string[]> {
   if (input.binding.mode !== 'codex_hosted') throw new Error('legacy_runtime_migration_requires_codex_hosted_binding');
   const { canonicalRoot, statePath, state, sessions } = await readSessions(input.rootPath);
-  const visible = visibleThreadIds(canonicalRoot, input.threads);
+  const visible = await visibleThreadIds(canonicalRoot, input.threads);
   const migratedThreadIds: string[] = [];
 
   const nextSessions = sessions.map((session) => {

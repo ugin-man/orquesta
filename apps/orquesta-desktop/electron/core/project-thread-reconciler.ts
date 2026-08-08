@@ -2,6 +2,7 @@ import { readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { selectActiveAgentSession } from '@orquesta/execution-kernel';
 import { readRuntimeBinding } from './runtime-binding-store';
+import { pathIdentity } from './path-identity';
 
 export interface ProjectCodexThread {
   id: string;
@@ -52,10 +53,6 @@ function timestamp(value: number | string | null, fallback: string): string {
   return fallback;
 }
 
-function comparableWindowsPath(value: string): string {
-  return path.resolve(value).replaceAll('/', '\\').toLowerCase();
-}
-
 export class ProjectThreadReconciler {
   readonly #listProjectThreads: ProjectThreadReconcilerOptions['listProjectThreads'];
   readonly #setThreadName: ProjectThreadReconcilerOptions['setThreadName'];
@@ -69,16 +66,18 @@ export class ProjectThreadReconciler {
   }
 
   async reconcile(rootPath: string): Promise<void> {
-    const canonicalRoot = await realpath(rootPath);
-    const current = this.#reconcileByRoot.get(canonicalRoot);
+    const rootIdentity = await pathIdentity(rootPath);
+    if (!rootIdentity.exists) throw Object.assign(new Error(`Project root does not exist: ${rootPath}`), { code: 'ENOENT' });
+    const canonicalRoot = rootIdentity.resolvedPath;
+    const current = this.#reconcileByRoot.get(rootIdentity.key);
     if (current) return current;
     const pending = this.#reconcileCanonicalRoot(canonicalRoot);
-    this.#reconcileByRoot.set(canonicalRoot, pending);
+    this.#reconcileByRoot.set(rootIdentity.key, pending);
     try {
       await pending;
     } finally {
-      if (this.#reconcileByRoot.get(canonicalRoot) === pending) {
-        this.#reconcileByRoot.delete(canonicalRoot);
+      if (this.#reconcileByRoot.get(rootIdentity.key) === pending) {
+        this.#reconcileByRoot.delete(rootIdentity.key);
       }
     }
   }
@@ -227,7 +226,7 @@ export class ProjectThreadReconciler {
         }
       });
     }
-    const reconciled = sessions.map((value) => {
+    const reconciled = await Promise.all(sessions.map(async (value) => {
       const session = record(value) ?? {};
       const threadId = safeString(session.thread_id);
       if (!threadId) {
@@ -256,9 +255,9 @@ export class ProjectThreadReconciler {
         return { ...migratedSession, binding_status: 'missing', runtime_status: 'missing', status: 'stale', updated_at: now };
       }
       const recordedCwd = safeString(session.cwd);
-      const allowedCwds = new Set([canonicalRoot, ...(agentId && workspaceByAgent.has(agentId) ? [workspaceByAgent.get(agentId)!] : []), ...(recordedCwd ? [recordedCwd] : [])]
-        .map(comparableWindowsPath));
-      if (!allowedCwds.has(comparableWindowsPath(thread.cwd))) {
+      const allowedCwds = await Promise.all([canonicalRoot, ...(agentId && workspaceByAgent.has(agentId) ? [workspaceByAgent.get(agentId)!] : []), ...(recordedCwd ? [recordedCwd] : [])]
+        .map(async (cwd) => (await pathIdentity(cwd)).key));
+      if (!allowedCwds.includes((await pathIdentity(thread.cwd)).key)) {
         return { ...migratedSession, binding_status: 'cwd_mismatch', runtime_status: thread.status, status: 'stale', updated_at: now };
       }
       if (thread.archived) {
@@ -275,7 +274,7 @@ export class ProjectThreadReconciler {
         last_seen: timestamp(thread.updatedAt, now),
         updated_at: now
       };
-    });
+    }));
     const next = {
       ...state,
       source: 'codex_app.thread_list',

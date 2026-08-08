@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathIdentity } from '../core/path-identity';
 import type { ProjectSummary } from '../../src/contracts/bridge';
 import type { OrquestaUiSnapshot } from '../../src/contracts/orquesta-ui';
 
@@ -50,9 +51,9 @@ function validRegistry(value: unknown): RegistryDocument | null {
   };
 }
 
-export function projectIdForRoot(rootPath: string): string {
-  const normalized = path.resolve(rootPath).replaceAll('\\', '/').toLowerCase();
-  return `repo-${createHash('sha256').update(normalized).digest('hex').slice(0, 16)}`;
+export async function projectIdForRoot(rootPath: string): Promise<string> {
+  const identity = await pathIdentity(rootPath);
+  return `repo-${createHash('sha256').update(identity.key).digest('hex').slice(0, 16)}`;
 }
 
 export class ProjectRegistry {

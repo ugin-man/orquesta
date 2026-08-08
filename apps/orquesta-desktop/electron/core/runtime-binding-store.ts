@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { SetupLaunchContext } from './setup-launch-context-store';
+import { pathIdentity } from './path-identity';
 
 export type RuntimeMode = 'codex_hosted' | 'standalone' | 'migrating';
 export type RuntimeTransport = 'codex_shared_app_server' | 'app_server';
@@ -45,13 +46,8 @@ function safeIso(value: unknown): string | null {
     : null;
 }
 
-function normalizeRoot(value: string): string {
-  const resolved = path.resolve(value).replaceAll('\\', '/');
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-}
-
-function fingerprintRoot(canonicalRoot: string): string {
-  return createHash('sha256').update(normalizeRoot(canonicalRoot), 'utf8').digest('hex');
+async function fingerprintRoot(canonicalRoot: string): Promise<string> {
+  return createHash('sha256').update((await pathIdentity(canonicalRoot)).key, 'utf8').digest('hex');
 }
 
 function bindingPath(canonicalRoot: string): string {
@@ -120,7 +116,7 @@ export async function establishRuntimeBinding(input: EstablishRuntimeBindingInpu
   const canonicalRoot = await realpath(input.rootPath);
   const projectId = safeId(input.projectId);
   if (!projectId) throw new Error('Runtime binding requires a project id');
-  const rootFingerprint = fingerprintRoot(canonicalRoot);
+  const rootFingerprint = await fingerprintRoot(canonicalRoot);
   const callingThreadId = input.launchContext.callingThreadId?.trim() || null;
   const mode: RuntimeBinding['mode'] = callingThreadId ? 'codex_hosted' : 'standalone';
   const transport: RuntimeTransport = callingThreadId ? 'codex_shared_app_server' : 'app_server';
