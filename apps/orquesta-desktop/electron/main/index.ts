@@ -11,6 +11,7 @@ import { useFakeRuntimeCore } from './startup-mode';
 import { SetupDraftStore } from './setup-draft-store';
 import { resolveSetupLaunchIntent } from './setup-launch-intent';
 import { SetupSourceService } from './setup-source-service';
+import { samePathIdentity } from '../core/path-identity';
 
 if (squirrelStartup) app.quit();
 
@@ -161,7 +162,7 @@ if (!hasSingleInstanceLock) {
       start: async (draft) => {
         const materialized = await setupSources.materialize(draft.source);
         const launchContext = pendingLaunchIntent
-          && path.resolve(pendingLaunchIntent.rootPath).toLowerCase() === path.resolve(materialized.rootPath).toLowerCase()
+          && await samePathIdentity(pendingLaunchIntent.rootPath, materialized.rootPath)
           ? {
               source: pendingLaunchIntent.source,
               callingThreadId: pendingLaunchIntent.callingThreadId

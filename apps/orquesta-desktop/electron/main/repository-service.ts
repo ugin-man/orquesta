@@ -183,7 +183,7 @@ export class RepositoryService {
         return result('accepted');
       }
       const next = await this.#options.coreHost.selectRepository(
-        projectIdForRoot(canonicalRoot),
+        await projectIdForRoot(canonicalRoot),
         canonicalRoot,
         launchContext
       );

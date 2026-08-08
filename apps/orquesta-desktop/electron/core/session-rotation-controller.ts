@@ -15,6 +15,7 @@ import type { ConversationMessage } from '../../src/contracts/bridge';
 import type { RuntimeNotification } from './protocol';
 import type { DesktopCodexService } from './desktop-codex-service';
 import { readRuntimeBinding, type RuntimeBinding } from './runtime-binding-store';
+import { pathIdentity, samePathIdentity } from './path-identity';
 // @ts-expect-error Canonical CommonJS setup helper does not publish TypeScript declarations.
 import sessionRotationHookInstaller from '../../../../orquesta/scripts/session-rotation-hook-install.js';
 
@@ -53,12 +54,6 @@ function safeString(value: unknown): string | null {
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
-}
-
-function samePath(left: string, right: string): boolean {
-  return process.platform === 'win32'
-    ? path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase()
-    : path.resolve(left) === path.resolve(right);
 }
 
 async function gitCommonDirectory(rootPath: string): Promise<string | null> {
@@ -156,9 +151,11 @@ export class SessionRotationController {
   }
 
   async open(rootPath: string, projectId: string): Promise<void> {
-    const canonicalRoot = await realpath(rootPath);
+    const identity = await pathIdentity(rootPath);
+    if (!identity.exists) throw new Error(`Project root does not exist: ${rootPath}`);
+    const canonicalRoot = identity.resolvedPath;
     await this.#installRotationHooks(canonicalRoot);
-    this.#projects.set(canonicalRoot, { rootPath: canonicalRoot, projectId });
+    this.#projects.set(identity.key, { rootPath: canonicalRoot, projectId });
     await this.#enqueue(canonicalRoot, async () => {
       await this.#recoverWarming(canonicalRoot, projectId);
       await this.#recoverBoundHostedSuccessors(canonicalRoot, projectId);
@@ -167,8 +164,10 @@ export class SessionRotationController {
   }
 
   async ensureReadyForDispatch(rootPath: string, projectId: string, agentId: string): Promise<void> {
-    const canonicalRoot = await realpath(rootPath);
-    this.#projects.set(canonicalRoot, { rootPath: canonicalRoot, projectId });
+    const identity = await pathIdentity(rootPath);
+    if (!identity.exists) throw new Error(`Project root does not exist: ${rootPath}`);
+    const canonicalRoot = identity.resolvedPath;
+    this.#projects.set(identity.key, { rootPath: canonicalRoot, projectId });
     let waitForCutover: Promise<void> | null = null;
     await this.#enqueue(canonicalRoot, async () => {
       const registry = await this.#readRegistry(canonicalRoot);
@@ -209,10 +208,12 @@ export class SessionRotationController {
     agentId: string;
     successorThreadId: string;
   }): Promise<void> {
-    const canonicalRoot = await realpath(input.rootPath);
+    const identity = await pathIdentity(input.rootPath);
+    if (!identity.exists) throw new Error(`Project root does not exist: ${input.rootPath}`);
+    const canonicalRoot = identity.resolvedPath;
     const successorThreadId = input.successorThreadId.trim();
     if (!successorThreadId) throw new Error('Hosted session rotation requires a successor thread id');
-    this.#projects.set(canonicalRoot, { rootPath: canonicalRoot, projectId: input.projectId });
+    this.#projects.set(identity.key, { rootPath: canonicalRoot, projectId: input.projectId });
     await this.#enqueue(canonicalRoot, async () => {
       const registry = await this.#readRegistry(canonicalRoot);
       const owner = activeOwner(registry, input.agentId);
@@ -249,9 +250,10 @@ export class SessionRotationController {
   }
 
   async #enqueue(rootPath: string, task: () => Promise<void>): Promise<void> {
-    const prior = this.#queues.get(rootPath) ?? Promise.resolve();
+    const key = (await pathIdentity(rootPath)).key;
+    const prior = this.#queues.get(key) ?? Promise.resolve();
     const next = prior.then(task, task);
-    this.#queues.set(rootPath, next.catch(() => undefined));
+    this.#queues.set(key, next.catch(() => undefined));
     return next;
   }
 
@@ -312,9 +314,9 @@ export class SessionRotationController {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
         throw error;
       }
-      if (samePath(placement, canonicalRoot)) continue;
+      if (await samePathIdentity(placement, canonicalRoot)) continue;
       const placementGit = await gitCommonDirectory(placement);
-      if (!placementGit || !samePath(placementGit, canonicalGit)) continue;
+      if (!placementGit || !await samePathIdentity(placementGit, canonicalGit)) continue;
       installer.installSessionRotationHook({ projectRoot: placement, canonicalRoot });
     }
   }
