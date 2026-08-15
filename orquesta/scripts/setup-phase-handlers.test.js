@@ -248,6 +248,13 @@ test("solo direct work skips specialist provisioning while retaining a profiled 
   assert.ok(tasks.tasks.every((task) => !task.task_intent?.authority_boundary?.user_only?.includes("authorize external or destructive actions")));
   assert.ok(tasks.tasks.every((task) => task.model_route?.recommended_model));
   assert.ok(tasks.tasks.every((task) => task.task_profile?.risk_profile));
+  assert.ok(tasks.tasks.every((task) => /^RE-[a-f0-9]{12}$/u.test(task.runtime_estimate?.runtime_estimate_id)));
+  assert.ok(tasks.tasks.every((task) => task.runtime_estimate?.task_intent_id === task.task_intent?.task_intent_id));
+  assert.ok(tasks.tasks.every((task) => task.runtime_estimate?.source === "profile_inferred"));
+  assert.ok(tasks.tasks.every((task) => task.runtime_estimate?.calibration?.mode === "cold_start"));
+  assert.ok(tasks.tasks.every((task) => task.runtime_estimate?.confidence <= 0.5));
+  assert.ok(tasks.tasks.every((task) => task.runtime_estimate?.runtime?.agent_active_minutes?.p50 > 0));
+  assert.ok(tasks.tasks.every((task) => task.runtime_estimate_updated_at === NOW));
   assert.ok(tasks.tasks.every((task) => task.task_profile?.context_manifest?.required_reading?.length > 0));
   assert.ok(tasks.tasks.every((task) => task.task_profile?.task_envelope?.task_envelope_id));
   assert.ok(tasks.tasks.every((task) => task.task_profile?.context_requirement?.requirement_id));
