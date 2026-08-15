@@ -2,7 +2,7 @@
 
 A standalone Agent Skill for estimating how long an AI agent itself is likely to spend on a bounded task.
 
-It is designed to avoid a common failure mode: answering an AI-runtime question with human engineering estimates such as “three business days” or “two weeks.” Instead, the skill decomposes the task into agent-native work units, separates parallel work from the serial critical path, and reports uncertainty as P50/P80 runtime ranges.
+It avoids a common failure mode: answering an AI-runtime question with human engineering estimates such as “three business days” or “two weeks.” Instead, the skill decomposes the task into agent-native work units, separates parallel work from the serial critical path, and reports uncertainty as P50/P80 runtime ranges.
 
 ## What it reports
 
@@ -31,9 +31,23 @@ See `references/estimate-contract.md`. Validate JSON estimates with:
 
 `node scripts/validate-estimate.js estimate.json`
 
-## Calibration
+## Lightweight adaptive calibration
 
-The default cold-start prior is intentionally low-confidence. When comparable completed-run data is available, replace it with observed active-minutes-per-critical-unit statistics for the same model/reasoning/task/tool profile.
+The skill works without history using a deliberately low-confidence cold-start prior. It can optionally improve for each user's actual environment without loading a growing history into the prompt.
+
+Runtime observations are stored outside the skill package in `~/.agent-runtime-estimator/history.jsonl` by default. Set `AGENT_RUNTIME_ESTIMATOR_HOME` to use another directory. A completed run can be recorded with:
+
+`node scripts/calibration-store.js record --model gpt-5.6-sol --reasoning high --task-class coding --execution-mode codex --tool-profile local-tests --units 8 --elapsed 14 --active 11`
+
+Raw history is periodically reduced to a small `calibration.json`:
+
+`node scripts/calibration-store.js compact`
+
+Normal estimation reads only the most relevant compact profile entry, not the raw history. This keeps prompt/token cost essentially bounded as observations accumulate.
+
+Profiles keep model, reasoning setting, task class, execution mode, and tool profile separate. A Sol/high coding sample is therefore not silently mixed with a different known model or reasoning level just to increase sample count.
+
+Automatic lifecycle capture is intentionally an adapter concern. A Codex hook or another host may call the same record command when it can reliably observe completion, but the core skill does not depend on hooks and remains portable when they are unavailable.
 
 ## Scope
 
