@@ -1,6 +1,6 @@
 ---
 name: agent-runtime-estimator
-description: Estimate bounded AI/Codex agent work in agent execution time and uncertainty instead of human developer hours or business days. Use when asked how long the AI itself will take, when preparing a per-task ETA for Orquesta, or when a workflow needs a machine-readable runtime estimate. Do not use as a human labor estimate or as a whole-project scheduler.
+description: Estimate bounded AI or Codex agent work in agent execution time and uncertainty instead of human developer hours or business days. Use when asked how long the AI itself will take, when comparing the runtime of alternative AI task plans, or when another workflow needs a machine-readable per-task runtime estimate. Do not use as a human labor estimate or as a whole-project scheduler.
 ---
 
 # Agent Runtime Estimator
@@ -8,6 +8,12 @@ description: Estimate bounded AI/Codex agent work in agent execution time and un
 Estimate the work the current AI agent must actually perform. Never start from how long a human developer, analyst, designer, or team would take, and never convert human days using a speed multiplier.
 
 Read `references/estimate-contract.md` before producing a machine-readable estimate. Run `scripts/validate-estimate.js` when the estimate will be consumed by another system or persisted.
+
+## Inputs
+
+Use the task as stated. When available, also use evidence about the execution environment: model or reasoning mode, repository or artifact size, relevant tools, test/build latency, likely external waits, and comparable prior runs.
+
+Do not ask for information that is not needed to make a useful estimate. Missing calibration data is normal; represent it as lower confidence instead of blocking the estimate.
 
 ## Procedure
 
@@ -49,6 +55,22 @@ Read `references/estimate-contract.md` before producing a machine-readable estim
    - Do not revise merely because time has passed.
    - Preserve predicted and actual runtimes when actual data becomes available so future estimates can be calibrated.
 
+## Default response
+
+For ordinary conversational use, keep the result compact and include:
+
+- `AI active`: P50 and P80.
+- `Elapsed`: P50 and P80, or explicitly say that completion time is unbounded by a named external gate.
+- `Human intervention`: P50 and P80 when non-zero or operationally relevant.
+- `Basis`: critical-path work units and whether calibration is cold-start, hybrid, or historical.
+- `Confidence`: a value from 0 to 1 plus the main uncertainty drivers.
+
+Example shape:
+
+`AI active: 18–34 min (P50/P80) | Elapsed: 22–46 min | Human: 0–5 min | Basis: 9/11 critical-path units, cold start | Confidence: 0.4`
+
+When another system needs structured output, use the JSON contract in `references/estimate-contract.md` instead of inventing a new schema.
+
 ## Anti-patterns
 
 - Never say “this is normally a one-week engineering task, therefore the AI needs one week.”
@@ -58,6 +80,6 @@ Read `references/estimate-contract.md` before producing a machine-readable estim
 - Never use token count alone as runtime.
 - Never report high confidence from a cold-start profile.
 
-## Orchestrator boundary
+## Project-scheduling boundary
 
-This skill estimates one bounded task or one agent assignment. A project/workflow scheduler should consume per-task estimates, dependency edges, parallelism, resource constraints, and external gates, then calculate the project critical path separately. Summing per-task ETAs is not a valid project schedule.
+This skill estimates one bounded task or one agent assignment. A separate project/workflow scheduler may consume per-task estimates, dependency edges, parallelism, resource constraints, and external gates and then calculate the project critical path. Summing per-task ETAs is not a valid project schedule.
