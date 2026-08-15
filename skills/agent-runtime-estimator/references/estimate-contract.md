@@ -64,18 +64,26 @@ Produce a JSON object with this shape when another system will consume the estim
 
 ## Calibration observation
 
-When actual runtime becomes available, a caller can record:
+A completed run may be recorded outside the skill package with these fields:
 
 ```json
 {
-  "profile_key": "gpt-x|reasoning-high|repo-class|tool-class",
+  "model": "gpt-x",
+  "reasoning": "high",
+  "task_class": "coding",
+  "execution_mode": "codex",
+  "tool_profile": "local-tests",
   "critical_path_units": 7,
   "actual_agent_active_minutes": 11.5,
   "actual_elapsed_minutes": 16.2
 }
 ```
 
-The useful calibration ratio is `actual_agent_active_minutes / critical_path_units`. Keep profiles comparable; do not pool unrelated task classes merely to increase sample count.
+The useful ratios are actual minutes divided by critical-path units. Keep profiles comparable; do not pool a different known model or reasoning setting merely to increase sample count.
+
+Raw observations are storage data, not prompt context. `scripts/calibration-store.js compact` reduces them to a small `calibration.json` containing only P50/P80 per-unit statistics and sample counts for each profile. Normal estimation should read at most the selected compact profile entry.
+
+Active time is optional because some hosts can reliably observe only wall-clock elapsed time. Missing active-time observations must not prevent elapsed-time calibration.
 
 ## Project scheduling boundary
 
