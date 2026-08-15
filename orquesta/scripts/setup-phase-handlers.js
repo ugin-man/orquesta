@@ -327,11 +327,7 @@ function initialTaskExecution(work, rootPath, projectUnderstanding = {}) {
     assumptions: [`The ${work.role_id || "specialist"} role owns this first executable work item.`],
     status: "compiled",
   });
-  const {
-    task_profile: taskProfile,
-    execution_plan: executionPlan,
-    runtime_estimate: runtimeEstimate,
-  } = createProfiledExecutionPlan({
+  const { task_profile: taskProfile, execution_plan: executionPlan } = createProfiledExecutionPlan({
     taskIntent,
     workItem: {
       scope_boundaries: scopes,
@@ -351,14 +347,7 @@ function initialTaskExecution(work, rootPath, projectUnderstanding = {}) {
     defaultModelPolicy(),
     { work_mode: taskProfile.recommended_work_mode, task_profile: taskProfile },
   );
-  return {
-    taskIntent,
-    taskProfile,
-    executionPlan,
-    runtimeEstimate,
-    modelRoute,
-    canonicalStateRoot: path.resolve(rootPath),
-  };
+  return { taskIntent, taskProfile, executionPlan, modelRoute, canonicalStateRoot: path.resolve(rootPath) };
 }
 
 function contextV2ShadowArtifacts({
@@ -556,8 +545,6 @@ function executableTasks(completion, batch, current, now, rootPath, projectUnder
         reports: 0,
         token_usage: { coverage: "unknown", known_total: null, by_thread: [] },
       },
-      runtime_estimate: existing.runtime_estimate || execution.runtimeEstimate,
-      runtime_estimate_updated_at: existing.runtime_estimate_updated_at || now,
       model_route: existing.model_route || execution.modelRoute,
     });
   }
