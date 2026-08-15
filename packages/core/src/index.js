@@ -28,6 +28,13 @@ const { FOUNDATION, normalizeProjectUnderstanding, selectFirstExecutableBatch, c
 const { profileTask } = require("./task-profiler");
 const { createProfiledExecutionPlan } = require("./profiled-execution-plan");
 const {
+  DEFAULT_CALIBRATION,
+  UNIT_KINDS,
+  createRuntimeEstimate,
+  deriveCalibrationProfile,
+  validateRuntimeEstimate,
+} = require("./runtime-estimator");
+const {
   completeReuseDiscovery,
   executeReuseDiscovery,
   integrateReuseDiscovery,
@@ -40,6 +47,7 @@ module.exports = {
   ORGANIZATION_POLICY, createOrganizationState, canonicalRoleId, assertOrganizationInvariants, applyOrganizationDecision, agentCapabilityProviders,
   STAFFING_ORDER, analyzeTaskStructure, evaluateStaffing, createOrganizationPreflight,
   FOUNDATION, normalizeProjectUnderstanding, selectFirstExecutableBatch, createFoundationPlan, createAdaptiveSpecialistPlan,
+  DEFAULT_CALIBRATION, UNIT_KINDS, createRuntimeEstimate, deriveCalibrationProfile, validateRuntimeEstimate,
   completeReuseDiscovery, createProfiledExecutionPlan, executeReuseDiscovery, integrateReuseDiscovery, planReuseDiscovery, profileTask,
   initialProjection, projectionHash, replayProjection,
 };

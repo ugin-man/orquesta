@@ -2,6 +2,7 @@
 
 const { profileTask } = require("./task-profiler");
 const { createExecutionPlan } = require("./execution-policy");
+const { createRuntimeEstimate } = require("./runtime-estimator");
 
 const LEVELS = Object.freeze({
   reversibility: ["easy", "costly", "irreversible"],
@@ -124,7 +125,15 @@ function createProfiledExecutionPlan({
     taskIntent: clone(taskIntent), riskProfile: task_profile.risk_profile,
     executionEvidence: normalizedWorkItem.execution_evidence || {},
   });
-  return Object.freeze({ task_profile: Object.freeze(task_profile), execution_plan });
+  const runtime_estimate = createRuntimeEstimate({
+    taskIntent: clone(taskIntent),
+    taskProfile: task_profile,
+    executionPlan: execution_plan,
+    estimateInput: normalizedWorkItem.runtime_estimate || normalizedWorkItem.runtime_estimate_input || {},
+    calibration: normalizedWorkItem.runtime_calibration,
+    observations: normalizedWorkItem.runtime_observations || [],
+  });
+  return Object.freeze({ task_profile: Object.freeze(task_profile), execution_plan, runtime_estimate });
 }
 
 module.exports = { createProfiledExecutionPlan, normalizeLegacyRiskProfile };
