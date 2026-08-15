@@ -2,17 +2,25 @@
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const { createTaskIntent } = require("../src/task-intent");
 const {
   createRuntimeEstimate,
   deriveCalibrationProfile,
   validateRuntimeEstimate
 } = require("../src/runtime-estimator");
 
-const intent = {
-  task_intent_id: "TI-0123456789ab",
-  desired_outcome: "Implement and verify a bounded runtime estimator.",
-  acceptance_criteria: ["The estimator returns a validated result."],
-};
+function intent() {
+  return createTaskIntent({
+    rawRequestRef: "request:runtime-estimator-unit",
+    desiredOutcome: "Implement and verify a bounded runtime estimator.",
+    acceptanceCriteria: ["The estimator returns a validated result."],
+    constraints: ["Keep work within the approved repository."],
+    risk: { impact: "low", reversible: true },
+    authorityBoundary: { agent_may: ["edit approved files"], user_only: ["authorize external actions"] },
+    assumptions: [],
+    status: "compiled",
+  });
+}
 
 function taskProfile(overrides = {}) {
   return {
@@ -43,7 +51,7 @@ function executionPlan(overrides = {}) {
 
 test("cold-start estimate uses agent clocks and low confidence", () => {
   const estimate = createRuntimeEstimate({
-    taskIntent: intent,
+    taskIntent: intent(),
     taskProfile: taskProfile(),
     executionPlan: executionPlan()
   });
@@ -87,7 +95,7 @@ test("accepts the standalone skill contract without recomputing it", () => {
     confidence: 0.4
   };
   const estimate = createRuntimeEstimate({
-    taskIntent: intent,
+    taskIntent: intent(),
     taskProfile: taskProfile(),
     executionPlan: executionPlan({ execution_mode: "bounded_parallel" }),
     estimateInput: declared
@@ -100,7 +108,7 @@ test("accepts the standalone skill contract without recomputing it", () => {
 
 test("known gates affect elapsed time while unknown gates do not fabricate wait", () => {
   const estimate = createRuntimeEstimate({
-    taskIntent: intent,
+    taskIntent: intent(),
     taskProfile: taskProfile(),
     executionPlan: executionPlan(),
     estimateInput: {
@@ -144,7 +152,7 @@ test("derives hybrid then historical calibration from comparable observations", 
 
 test("rejects inverted uncertainty ranges", () => {
   const valid = createRuntimeEstimate({
-    taskIntent: intent,
+    taskIntent: intent(),
     taskProfile: taskProfile(),
     executionPlan: executionPlan()
   });
@@ -155,7 +163,7 @@ test("rejects inverted uncertainty ranges", () => {
 
 test("bounded parallel mode reduces critical path but not total work", () => {
   const estimate = createRuntimeEstimate({
-    taskIntent: intent,
+    taskIntent: intent(),
     taskProfile: taskProfile({ scope: "multiple_boundaries", verification: "mixed" }),
     executionPlan: executionPlan({
       lane: "standard",
