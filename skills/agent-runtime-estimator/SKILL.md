@@ -21,8 +21,9 @@ Calibration must stay cheap at estimate time.
 
 - Never load raw runtime history into the model context for a normal estimate.
 - If `~/.agent-runtime-estimator/calibration.json` exists, read only the single most relevant compact profile entry. The location may be overridden with `AGENT_RUNTIME_ESTIMATOR_HOME`.
-- Match profiles by model, reasoning setting, task class, execution mode, and tool profile. Never pool a different known model or reasoning setting merely to increase sample count.
-- Prefer the most specific compatible profile with useful samples. If none exists, use the cold-start prior.
+- Match profiles by model, reasoning setting, task class, execution mode, and tool profile.
+- Never cross a known model or reasoning boundary merely to increase sample count. Fallback may relax tool profile and execution mode while keeping model, reasoning, and task class fixed.
+- If no compatible compact profile exists, use the cold-start prior.
 - Raw observations belong in `history.jsonl` and are consumed only by `scripts/calibration-store.js compact`; they are not prompt context.
 - Recording and compaction are optional. The skill must remain useful when the host cannot observe completion automatically.
 
