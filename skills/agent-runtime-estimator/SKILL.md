@@ -15,6 +15,19 @@ Use the task as stated. When available, also use evidence about the execution en
 
 Do not ask for information that is not needed to make a useful estimate. Missing calibration data is normal; represent it as lower confidence instead of blocking the estimate.
 
+## Lightweight calibration
+
+Calibration must stay cheap at estimate time.
+
+- Never load raw runtime history into the model context for a normal estimate.
+- If `~/.agent-runtime-estimator/calibration.json` exists, read only the single most relevant compact profile entry. The location may be overridden with `AGENT_RUNTIME_ESTIMATOR_HOME`.
+- Match profiles by model, reasoning setting, task class, execution mode, and tool profile. Never pool a different known model or reasoning setting merely to increase sample count.
+- Prefer the most specific compatible profile with useful samples. If none exists, use the cold-start prior.
+- Raw observations belong in `history.jsonl` and are consumed only by `scripts/calibration-store.js compact`; they are not prompt context.
+- Recording and compaction are optional. The skill must remain useful when the host cannot observe completion automatically.
+
+A host, hook, or user may record a completed run with `scripts/calibration-store.js record`, then compact history with `scripts/calibration-store.js compact`. Hook integration is deliberately outside the core skill so a missing or broken lifecycle hook cannot break estimation.
+
 ## Procedure
 
 1. Bound the task.
@@ -30,12 +43,12 @@ Do not ask for information that is not needed to make a useful estimate. Missing
    - Separate parallel branches from the serial critical path. Parallel work affects total work but must not be summed linearly into elapsed time.
 
 3. Estimate from the agent environment.
-   - Prefer observed runtime from comparable runs: same model/reasoning setting, repository/task class, and tool environment.
-   - With no useful history, use the cold-start normalized-unit prior: one serial work unit = 2 minutes P50 and 4 minutes P80.
+   - Prefer a compact calibrated profile from comparable runs when available.
+   - With no useful calibration, use the cold-start normalized-unit prior: one serial work unit = 2 minutes P50 and 4 minutes P80.
    - This is only a bootstrap prior. Keep cold-start confidence at 0.5 or lower.
    - Add known blocking tool/command wait to elapsed time instead of inflating active time.
    - Split heavy reasoning or multi-stage changes into multiple units rather than silently making one unit huge.
-   - When observations exist, calibrate with median observed active-minutes-per-critical-unit for P50 and the 80th percentile for P80 from the most comparable profile.
+   - When a selected profile has observed active-time statistics, use its P50/P80 active-minutes-per-critical-unit. Otherwise keep active-time calibration conservative and use elapsed calibration only for elapsed estimates.
 
 4. Produce separate clocks.
    - `agent_active_minutes`: reasoning, tool calls, edits, inspection, and verification performed by the agent.
@@ -78,6 +91,7 @@ When another system needs structured output, use the JSON contract in `reference
 - Never sum every parallel branch to produce elapsed time.
 - Never turn unknown approval or queue latency into a made-up number.
 - Never use token count alone as runtime.
+- Never load the full raw calibration history into normal estimate context.
 - Never report high confidence from a cold-start profile.
 
 ## Project-scheduling boundary
