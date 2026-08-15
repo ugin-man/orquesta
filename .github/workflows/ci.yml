@@ -25,6 +25,8 @@ jobs:
         run: npm ci --prefix apps/orquesta-desktop
       - name: Root checks
         run: npm run check
+      - name: Runtime estimator tests
+        run: node --test packages/core/test/runtime-estimator.test.js packages/core/test/profiled-runtime-estimate.test.js
       - name: Desktop unit tests
         run: npm run test --prefix apps/orquesta-desktop
       - name: Desktop build
