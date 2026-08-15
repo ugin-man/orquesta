@@ -43,9 +43,9 @@ Raw history is periodically reduced to a small `calibration.json`:
 
 `node scripts/calibration-store.js compact`
 
-Normal estimation reads only the most relevant compact profile entry, not the raw history. This keeps prompt/token cost essentially bounded as observations accumulate.
+Normal estimation reads only the most relevant compact profile entry, not the raw history. Prompt/token cost therefore stays bounded as observations accumulate.
 
-Profiles keep model, reasoning setting, task class, execution mode, and tool profile separate. A Sol/high coding sample is therefore not silently mixed with a different known model or reasoning level just to increase sample count.
+Profiles keep model, reasoning setting, task class, execution mode, and tool profile separate. Fallback can relax tool profile or execution mode, but it never crosses a known model or reasoning setting merely to increase sample count.
 
 Automatic lifecycle capture is intentionally an adapter concern. A Codex hook or another host may call the same record command when it can reliably observe completion, but the core skill does not depend on hooks and remains portable when they are unavailable.
 
