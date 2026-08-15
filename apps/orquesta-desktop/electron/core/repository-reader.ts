@@ -30,6 +30,7 @@ import { emptyV4OperationsSnapshot, INSPECTION_TEMPLATE_DEFINITIONS, type
 import { parseInspectionState } from './inspection-run-store';
 import { LUCA_AGENT_ID, LUCA_DISPLAY_NAME, LUCA_ROLE_LABEL, LUCA_ROLE_SUMMARY } from '../../src/contracts/luca';
 import { assertExplicitOrganizationState } from './legacy-organization-migration';
+import { projectRuntimeEstimate } from './runtime-estimate-projection';
 
 type JsonObject = Record<string, unknown>;
 
@@ -520,6 +521,7 @@ function mapTask(raw: JsonObject, progressEventObserved = false): TaskUiModel | 
     requestedModel: string(modelRoute?.requested_model),
     actualModel,
     actualModelEvidence,
+    runtimeEstimate: projectRuntimeEstimate(raw.runtime_estimate),
     startedAt: string(raw.started_at),
     updatedAt: newestTimestamp([raw.updated_at, raw.completed_at, raw.accepted_at, raw.started_at, raw.created_at]),
     userActionId: string(raw.user_action_id)
