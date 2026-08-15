@@ -27,7 +27,9 @@ jobs:
         run: npm run check
       - name: Runtime estimator tests
         run: node --test packages/core/test/runtime-estimator.test.js packages/core/test/profiled-runtime-estimate.test.js orquesta/scripts/runtime-estimate-state.test.js
-      - name: Desktop unit tests
-        run: npm run test --prefix apps/orquesta-desktop
+      - name: Runtime estimator Desktop slice
+        run: npm run test --prefix apps/orquesta-desktop -- electron/core/runtime-estimate-projection.test.ts electron/core/repository-runtime-estimate.test.ts tests/unit/task-detail-runtime-estimate.test.tsx
       - name: Desktop build
         run: npm run build --prefix apps/orquesta-desktop
+      - name: Desktop unit tests
+        run: npm run test --prefix apps/orquesta-desktop
