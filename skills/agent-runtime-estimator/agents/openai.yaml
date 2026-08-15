@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Runtime Estimator"
+  short_description: "Estimate AI task runtime without human-time anchoring."
+  default_prompt: "Use $agent-runtime-estimator to estimate this bounded task in AI agent execution time with P50/P80 uncertainty."
