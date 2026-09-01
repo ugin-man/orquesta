@@ -1,0 +1,1413 @@
+{
+  "schemaVersion": 1,
+  "commands": {
+    "openRendererSession": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "expectedPreviousSessionId": null
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "windowLabel": "main",
+          "runtimeAuthority": null,
+          "runtimeStatus": {
+            "phase": "stopped",
+            "runtimeGeneration": null,
+            "statusRevision": 0,
+            "pid": null,
+            "startedAtMs": null,
+            "activeProjectId": null,
+            "authorityActivationToken": null,
+            "authorityRendererSessionId": null,
+            "authorityRendererGeneration": null,
+            "processTerminationConfirmed": true,
+            "lastError": null
+          }
+        }
+      }
+    },
+    "cancelRendererSession": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": null
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "cancelled": true,
+          "runtimeStatus": {
+            "phase": "stopped",
+            "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+            "statusRevision": 8,
+            "pid": null,
+            "startedAtMs": null,
+            "activeProjectId": null,
+            "authorityActivationToken": null,
+            "authorityRendererSessionId": null,
+            "authorityRendererGeneration": null,
+            "processTerminationConfirmed": true,
+            "lastError": null
+          }
+        }
+      }
+    },
+    "bootstrap": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "settings": {
+            "schemaVersion": 2,
+            "revision": 3,
+            "locale": "ja",
+            "theme": "system",
+            "reducedMotion": false,
+            "notificationsEnabled": false
+          },
+          "projects": [
+            {
+              "projectId": "project-1",
+              "displayName": "Project One",
+              "rootPath": "/workspace/project-1",
+              "rootIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "rootIdentityV2": "v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "createdAtMs": 1700000000000,
+              "lastOpenedAtMs": 1700000001000,
+              "hiddenFromRecent": false,
+              "lastWorkAgentId": "orchestrator"
+            }
+          ],
+          "starterCreationRecoveries": [],
+          "selectedProjectId": "project-1",
+          "runtime": {
+            "phase": "ready",
+            "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+            "statusRevision": 7,
+            "pid": 4242,
+            "startedAtMs": 1700000002000,
+            "activeProjectId": "project-1",
+            "authorityActivationToken": "22222222-2222-4222-8222-222222222222",
+            "authorityRendererSessionId": "11111111-1111-4111-8111-111111111111",
+            "authorityRendererGeneration": 7,
+            "processTerminationConfirmed": false,
+            "lastError": null
+          },
+          "runtimeAuthority": {
+            "projectId": "project-1",
+            "activationToken": "22222222-2222-4222-8222-222222222222",
+            "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+            "rendererGeneration": 7,
+            "windowLabel": "main"
+          },
+          "dispatchRecovery": null,
+          "pendingAttachmentSelections": [],
+          "runtimeTransitionInProgress": false
+        }
+      }
+    },
+    "updateSettings": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "expectedRevision": 3,
+          "locale": "ja",
+          "theme": "dark",
+          "reducedMotion": true,
+          "notificationsEnabled": false
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "schemaVersion": 2,
+          "revision": 4,
+          "locale": "ja",
+          "theme": "dark",
+          "reducedMotion": true,
+          "notificationsEnabled": false
+        }
+      }
+    },
+    "reconcileRuntimeSession": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "settings": {
+            "schemaVersion": 2,
+            "revision": 3,
+            "locale": "ja",
+            "theme": "system",
+            "reducedMotion": false,
+            "notificationsEnabled": false
+          },
+          "projects": [
+            {
+              "projectId": "project-1",
+              "displayName": "Project One",
+              "rootPath": "/workspace/project-1",
+              "rootIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "rootIdentityV2": "v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "createdAtMs": 1700000000000,
+              "lastOpenedAtMs": 1700000001000,
+              "hiddenFromRecent": false,
+              "lastWorkAgentId": "orchestrator"
+            }
+          ],
+          "starterCreationRecoveries": [],
+          "selectedProjectId": "project-1",
+          "runtime": {
+            "phase": "ready",
+            "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+            "statusRevision": 7,
+            "pid": 4242,
+            "startedAtMs": 1700000002000,
+            "activeProjectId": "project-1",
+            "authorityActivationToken": "22222222-2222-4222-8222-222222222222",
+            "authorityRendererSessionId": "11111111-1111-4111-8111-111111111111",
+            "authorityRendererGeneration": 7,
+            "processTerminationConfirmed": false,
+            "lastError": null
+          },
+          "runtimeAuthority": {
+            "projectId": "project-1",
+            "activationToken": "22222222-2222-4222-8222-222222222222",
+            "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+            "rendererGeneration": 7,
+            "windowLabel": "main"
+          },
+          "dispatchRecovery": null,
+          "pendingAttachmentSelections": [],
+          "runtimeTransitionInProgress": false
+        }
+      }
+    },
+    "listProjects": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": [
+          {
+            "projectId": "project-1",
+            "displayName": "Project One",
+            "rootPath": "/workspace/project-1",
+            "rootIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "rootIdentityV2": "v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "createdAtMs": 1700000000000,
+            "lastOpenedAtMs": 1700000001000,
+            "hiddenFromRecent": false,
+            "lastWorkAgentId": "orchestrator"
+          }
+        ]
+      }
+    },
+    "forgetRecentProject": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-2"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": [
+          {
+            "projectId": "project-1",
+            "displayName": "Project One",
+            "rootPath": "/workspace/project-1",
+            "rootIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "rootIdentityV2": "v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "createdAtMs": 1700000000000,
+            "lastOpenedAtMs": 1700000001000,
+            "hiddenFromRecent": false,
+            "lastWorkAgentId": "orchestrator"
+          }
+        ]
+      }
+    },
+    "recordLastWorkAgent": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-1",
+          "activationToken": "22222222-2222-4222-8222-222222222222",
+          "targetAgentId": "orchestrator"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "projectId": "project-1",
+          "displayName": "Project One",
+          "rootPath": "/workspace/project-1",
+          "rootIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rootIdentityV2": "v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "createdAtMs": 1700000000000,
+          "lastOpenedAtMs": 1700000001000,
+          "hiddenFromRecent": false,
+          "lastWorkAgentId": "orchestrator"
+        }
+      }
+    },
+    "openProjectFolder": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "projectId": "project-1",
+          "displayName": "Project One",
+          "rootPath": "/workspace/project-1",
+          "rootIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rootIdentityV2": "v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "createdAtMs": 1700000000000,
+          "lastOpenedAtMs": 1700000001000,
+          "hiddenFromRecent": false,
+          "lastWorkAgentId": null
+        }
+      }
+    },
+    "createStarterProject": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "operationRef": "77777777-7777-4777-8777-777777777777",
+          "projectName": "Starter Project"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "projectId": "project-starter-1",
+          "displayName": "Starter Project",
+          "rootPath": "/workspace/Starter Project",
+          "rootIdentity": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "rootIdentityV2": "v2:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "createdAtMs": 1700000002000,
+          "lastOpenedAtMs": 1700000002000,
+          "hiddenFromRecent": false,
+          "lastWorkAgentId": null,
+          "creationOperationRef": "77777777-7777-4777-8777-777777777777",
+          "creationRequestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      }
+    },
+    "activateProject": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "expectedStatusRevision": 6,
+          "projectId": "project-1",
+          "activationToken": "22222222-2222-4222-8222-222222222222"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "project": {
+            "projectId": "project-1",
+            "displayName": "Project One",
+            "rootPath": "/workspace/project-1",
+            "rootIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "rootIdentityV2": "v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "createdAtMs": 1700000000000,
+            "lastOpenedAtMs": 1700000001000,
+            "hiddenFromRecent": false,
+            "lastWorkAgentId": null
+          },
+          "activationToken": "22222222-2222-4222-8222-222222222222",
+          "runtime": {
+            "phase": "ready",
+            "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+            "statusRevision": 7,
+            "pid": 4242,
+            "startedAtMs": 1700000002000,
+            "activeProjectId": "project-1",
+            "authorityActivationToken": "22222222-2222-4222-8222-222222222222",
+            "authorityRendererSessionId": "11111111-1111-4111-8111-111111111111",
+            "authorityRendererGeneration": 7,
+            "processTerminationConfirmed": false,
+            "lastError": null
+          },
+          "snapshot": {
+            "project": {
+              "id": "project-1",
+              "title": "Project One",
+              "rootPath": "/workspace/project-1",
+              "rootPathLabel": "/workspace/project-1",
+              "status": "ready",
+              "connectionLabel": "Connected",
+              "lastOpenedAt": "2023-11-14T22:13:21.000Z",
+              "summary": "",
+              "nextMilestone": null,
+              "currentPhaseId": null,
+              "agentCount": 0,
+              "provenWorkingAgentCount": 0,
+              "lastSyncedAt": null
+            },
+            "participants": [],
+            "agents": [],
+            "tasks": [],
+            "attention": [],
+            "phases": [],
+            "inspectionRuns": []
+          }
+        }
+      }
+    },
+    "stopRuntime": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "expectedStatusRevision": 7,
+          "projectId": "project-1",
+          "activationToken": "22222222-2222-4222-8222-222222222222",
+          "runtimeGeneration": "33333333-3333-4333-8333-333333333333"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "phase": "stopped",
+          "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+          "statusRevision": 8,
+          "pid": null,
+          "startedAtMs": null,
+          "activeProjectId": null,
+          "authorityActivationToken": null,
+          "authorityRendererSessionId": null,
+          "authorityRendererGeneration": null,
+          "processTerminationConfirmed": true,
+          "lastError": null
+        }
+      }
+    },
+    "voiceStatus": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "schemaVersion": 2,
+          "revision": 3,
+          "providerId": "whisper.cpp-local",
+          "binaryAssetId": "whisper.cpp-windows-x64-b4938-spike",
+          "initialModelAssetId": "whisper.cpp-model-small-multilingual",
+          "comparisonModelAssetId": "whisper.cpp-model-base-multilingual",
+          "requiredAssetsReady": false,
+          "assets": [
+            {
+              "assetId": "whisper.cpp-windows-x64-b4938-spike",
+              "kind": "native_binary_bundle",
+              "phase": "downloading",
+              "downloadedBytes": 4194304,
+              "expectedBytes": 8361840,
+              "operationRef": "77777777-7777-4777-8777-777777777777",
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-base-multilingual",
+              "kind": "model",
+              "phase": "absent",
+              "downloadedBytes": 0,
+              "expectedBytes": 147951465,
+              "operationRef": null,
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-small-multilingual",
+              "kind": "model",
+              "phase": "absent",
+              "downloadedBytes": 0,
+              "expectedBytes": 487601967,
+              "operationRef": null,
+              "lastErrorCode": null
+            }
+          ],
+          "operations": []
+        }
+      }
+    },
+    "acquireVoiceAsset": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "assetId": "whisper.cpp-model-small-multilingual"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "schemaVersion": 2,
+          "revision": 3,
+          "providerId": "whisper.cpp-local",
+          "binaryAssetId": "whisper.cpp-windows-x64-b4938-spike",
+          "initialModelAssetId": "whisper.cpp-model-small-multilingual",
+          "comparisonModelAssetId": "whisper.cpp-model-base-multilingual",
+          "requiredAssetsReady": false,
+          "assets": [
+            {
+              "assetId": "whisper.cpp-windows-x64-b4938-spike",
+              "kind": "native_binary_bundle",
+              "phase": "downloading",
+              "downloadedBytes": 4194304,
+              "expectedBytes": 8361840,
+              "operationRef": "77777777-7777-4777-8777-777777777777",
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-base-multilingual",
+              "kind": "model",
+              "phase": "absent",
+              "downloadedBytes": 0,
+              "expectedBytes": 147951465,
+              "operationRef": null,
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-small-multilingual",
+              "kind": "model",
+              "phase": "absent",
+              "downloadedBytes": 0,
+              "expectedBytes": 487601967,
+              "operationRef": null,
+              "lastErrorCode": null
+            }
+          ],
+          "operations": []
+        }
+      }
+    },
+    "cancelVoiceAssetAcquisition": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "operationRef": "77777777-7777-4777-8777-777777777777"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "schemaVersion": 2,
+          "revision": 3,
+          "providerId": "whisper.cpp-local",
+          "binaryAssetId": "whisper.cpp-windows-x64-b4938-spike",
+          "initialModelAssetId": "whisper.cpp-model-small-multilingual",
+          "comparisonModelAssetId": "whisper.cpp-model-base-multilingual",
+          "requiredAssetsReady": false,
+          "assets": [
+            {
+              "assetId": "whisper.cpp-windows-x64-b4938-spike",
+              "kind": "native_binary_bundle",
+              "phase": "downloading",
+              "downloadedBytes": 4194304,
+              "expectedBytes": 8361840,
+              "operationRef": "77777777-7777-4777-8777-777777777777",
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-base-multilingual",
+              "kind": "model",
+              "phase": "absent",
+              "downloadedBytes": 0,
+              "expectedBytes": 147951465,
+              "operationRef": null,
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-small-multilingual",
+              "kind": "model",
+              "phase": "absent",
+              "downloadedBytes": 0,
+              "expectedBytes": 487601967,
+              "operationRef": null,
+              "lastErrorCode": null
+            }
+          ],
+          "operations": []
+        }
+      }
+    },
+    "deleteVoiceAsset": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "assetId": "whisper.cpp-model-base-multilingual"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "schemaVersion": 2,
+          "revision": 3,
+          "providerId": "whisper.cpp-local",
+          "binaryAssetId": "whisper.cpp-windows-x64-b4938-spike",
+          "initialModelAssetId": "whisper.cpp-model-small-multilingual",
+          "comparisonModelAssetId": "whisper.cpp-model-base-multilingual",
+          "requiredAssetsReady": false,
+          "assets": [
+            {
+              "assetId": "whisper.cpp-windows-x64-b4938-spike",
+              "kind": "native_binary_bundle",
+              "phase": "downloading",
+              "downloadedBytes": 4194304,
+              "expectedBytes": 8361840,
+              "operationRef": "77777777-7777-4777-8777-777777777777",
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-base-multilingual",
+              "kind": "model",
+              "phase": "absent",
+              "downloadedBytes": 0,
+              "expectedBytes": 147951465,
+              "operationRef": null,
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-small-multilingual",
+              "kind": "model",
+              "phase": "absent",
+              "downloadedBytes": 0,
+              "expectedBytes": 487601967,
+              "operationRef": null,
+              "lastErrorCode": null
+            }
+          ],
+          "operations": []
+        }
+      }
+    },
+    "transcribeVoicePcm": {
+      "args": {
+        "rawHeaders": {
+          "x-orquesta-schema-version": "1",
+          "x-orquesta-renderer-session-id": "11111111-1111-4111-8111-111111111111",
+          "x-orquesta-renderer-generation": "7",
+          "x-orquesta-operation-ref": "88888888-8888-4888-8888-888888888888",
+          "x-orquesta-sample-rate-hz": "16000",
+          "x-orquesta-channel-count": "1",
+          "x-orquesta-sample-format": "pcm-s16le",
+          "x-orquesta-sample-count": "1600",
+          "x-orquesta-composer-target": "agent",
+          "x-orquesta-composer-draft-sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "x-orquesta-composer-project-id": "project-1",
+          "x-orquesta-composer-agent-id": "orchestrator",
+          "x-orquesta-runtime-activation-token": "22222222-2222-4222-8222-222222222222"
+        },
+        "rawBodyBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "operationRef": "88888888-8888-4888-8888-888888888888",
+          "composerBinding": {
+            "state": "agent",
+            "projectId": "project-1",
+            "agentId": "orchestrator",
+            "draftSha256": "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          "phase": "staging",
+          "durationMs": 100,
+          "transcript": null,
+          "lastErrorCode": null
+        }
+      }
+    },
+    "cancelVoiceTranscription": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "operationRef": "88888888-8888-4888-8888-888888888888"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "schemaVersion": 2,
+          "revision": 4,
+          "providerId": "whisper.cpp-local",
+          "binaryAssetId": "whisper.cpp-windows-x64-b4938-spike",
+          "initialModelAssetId": "whisper.cpp-model-small-multilingual",
+          "comparisonModelAssetId": "whisper.cpp-model-base-multilingual",
+          "requiredAssetsReady": true,
+          "assets": [
+            {
+              "assetId": "whisper.cpp-windows-x64-b4938-spike",
+              "kind": "native_binary_bundle",
+              "phase": "installed",
+              "downloadedBytes": 8361840,
+              "expectedBytes": 8361840,
+              "operationRef": null,
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-base-multilingual",
+              "kind": "model",
+              "phase": "absent",
+              "downloadedBytes": 0,
+              "expectedBytes": 147951465,
+              "operationRef": null,
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-small-multilingual",
+              "kind": "model",
+              "phase": "installed",
+              "downloadedBytes": 487601967,
+              "expectedBytes": 487601967,
+              "operationRef": null,
+              "lastErrorCode": null
+            }
+          ],
+          "operations": [
+            {
+              "operationRef": "88888888-8888-4888-8888-888888888888",
+              "composerBinding": {
+                "state": "agent",
+                "projectId": "project-1",
+                "agentId": "orchestrator",
+                "draftSha256": "1111111111111111111111111111111111111111111111111111111111111111"
+              },
+              "phase": "cancelled",
+              "durationMs": 100,
+              "transcript": null,
+              "lastErrorCode": null
+            }
+          ]
+        }
+      }
+    },
+    "acknowledgeVoiceTranscription": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "operationRef": "88888888-8888-4888-8888-888888888888"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "schemaVersion": 2,
+          "revision": 5,
+          "providerId": "whisper.cpp-local",
+          "binaryAssetId": "whisper.cpp-windows-x64-b4938-spike",
+          "initialModelAssetId": "whisper.cpp-model-small-multilingual",
+          "comparisonModelAssetId": "whisper.cpp-model-base-multilingual",
+          "requiredAssetsReady": true,
+          "assets": [
+            {
+              "assetId": "whisper.cpp-windows-x64-b4938-spike",
+              "kind": "native_binary_bundle",
+              "phase": "installed",
+              "downloadedBytes": 8361840,
+              "expectedBytes": 8361840,
+              "operationRef": null,
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-base-multilingual",
+              "kind": "model",
+              "phase": "absent",
+              "downloadedBytes": 0,
+              "expectedBytes": 147951465,
+              "operationRef": null,
+              "lastErrorCode": null
+            },
+            {
+              "assetId": "whisper.cpp-model-small-multilingual",
+              "kind": "model",
+              "phase": "installed",
+              "downloadedBytes": 487601967,
+              "expectedBytes": 487601967,
+              "operationRef": null,
+              "lastErrorCode": null
+            }
+          ],
+          "operations": []
+        }
+      }
+    },
+    "beginAttachmentImport": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "selectionId": "44444444-4444-4444-8444-444444444444",
+          "files": [
+            {
+              "slotId": "77777777-7777-4777-8777-777777777777",
+              "displayName": "evidence.png",
+              "sizeBytes": 8
+            }
+          ]
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "selectionId": "44444444-4444-4444-8444-444444444444",
+          "fileCount": 1,
+          "stagedCount": 0,
+          "attachments": []
+        }
+      }
+    },
+    "stageAttachmentBytes": {
+      "args": {
+        "rawHeaders": {
+          "x-orquesta-schema-version": "1",
+          "x-orquesta-renderer-session-id": "11111111-1111-4111-8111-111111111111",
+          "x-orquesta-renderer-generation": "7",
+          "x-orquesta-selection-id": "44444444-4444-4444-8444-444444444444",
+          "x-orquesta-slot-id": "77777777-7777-4777-8777-777777777777"
+        },
+        "rawBodyBase64": "iVBORw0KGgo="
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "selectionId": "44444444-4444-4444-8444-444444444444",
+          "slotId": "77777777-7777-4777-8777-777777777777",
+          "staged": true
+        }
+      }
+    },
+    "finishAttachmentImport": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "selectionId": "44444444-4444-4444-8444-444444444444"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "selectionId": "44444444-4444-4444-8444-444444444444",
+          "fileCount": 1,
+          "stagedCount": 1,
+          "attachments": [
+            {
+              "publicId": "55555555-5555-4555-8555-555555555555",
+              "displayName": "evidence.png",
+              "kind": "image",
+              "mediaType": "image/png",
+              "sizeBytes": 8
+            }
+          ]
+        }
+      }
+    },
+    "readAttachmentPreview": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "selectionId": "44444444-4444-4444-8444-444444444444",
+          "publicId": "55555555-5555-4555-8555-555555555555"
+        }
+      },
+      "response": {
+        "rawBodyBase64": "iVBORw0KGgo="
+      }
+    },
+    "forgetAttachment": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "selectionId": "44444444-4444-4444-8444-444444444444",
+          "publicId": "55555555-5555-4555-8555-555555555555"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": null
+      }
+    },
+    "abandonAttachmentSelection": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "selectionId": "44444444-4444-4444-8444-444444444444"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": null
+      }
+    },
+    "runtimeSend": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-1",
+          "activationToken": "22222222-2222-4222-8222-222222222222",
+          "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+          "expectedStatusRevision": 7,
+          "messageId": "66666666-6666-4666-8666-666666666666",
+          "runtimeProjectId": "project-1",
+          "targetAgentId": "agent-root",
+          "text": "Continue the audit.",
+          "threadId": null,
+          "threadTitle": null,
+          "attachmentRefs": [
+            {
+              "selectionId": "44444444-4444-4444-8444-444444444444",
+              "publicId": "55555555-5555-4555-8555-555555555555"
+            }
+          ],
+          "selectedContextIds": [],
+          "additionalParams": {
+            "effort": null,
+            "recommendedModel": null,
+            "requestedModel": null
+          }
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "runtimeResult": {
+            "threadId": "thread-1",
+            "turnId": "turn-1"
+          },
+          "dispatchRecovery": {
+            "phase": "accepted",
+            "messageId": "66666666-6666-4666-8666-666666666666",
+            "projectId": "project-1",
+            "runtimeProjectId": "project-1",
+            "targetAgentId": "agent-root",
+            "actionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "attachmentCount": 1,
+            "selectedContextCount": 0,
+            "createdAtMs": 1700000003000,
+            "updatedAtMs": 1700000004000,
+            "receipt": {
+              "threadId": "thread-1",
+              "turnId": "turn-1"
+            }
+          }
+        }
+      }
+    },
+    "interruptTurn": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-1",
+          "activationToken": "22222222-2222-4222-8222-222222222222",
+          "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+          "expectedStatusRevision": 7,
+          "targetAgentId": "agent-root",
+          "threadId": "thread-1",
+          "turnId": "turn-1"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "status": "interrupting",
+          "targetAgentId": "agent-root",
+          "threadId": "thread-1",
+          "turnId": "turn-1"
+        }
+      }
+    },
+    "steerTurn": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-1",
+          "activationToken": "22222222-2222-4222-8222-222222222222",
+          "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+          "expectedStatusRevision": 7,
+          "steerId": "77777777-7777-4777-8777-777777777777",
+          "targetAgentId": "agent-root",
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "text": "Focus on the root cause."
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "status": "accepted",
+          "steerId": "77777777-7777-4777-8777-777777777777",
+          "targetAgentId": "agent-root",
+          "threadId": "thread-1",
+          "turnId": "turn-1"
+        }
+      }
+    },
+    "runtimeCall": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-1",
+          "activationToken": "22222222-2222-4222-8222-222222222222",
+          "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+          "expectedStatusRevision": 7,
+          "method": "repository.get-snapshot",
+          "params": {},
+          "timeoutMs": null
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "project": {
+            "id": "project-1",
+            "title": "Project One",
+            "rootPath": "/workspace/project-1",
+            "rootPathLabel": "/workspace/project-1",
+            "status": "ready",
+            "connectionLabel": "Connected",
+            "lastOpenedAt": "2023-11-14T22:13:21.000Z",
+            "summary": "",
+            "nextMilestone": null,
+            "currentPhaseId": null,
+            "agentCount": 0,
+            "provenWorkingAgentCount": 0,
+            "lastSyncedAt": null
+          },
+          "participants": [],
+          "agents": [],
+          "tasks": [],
+          "attention": [],
+          "phases": [],
+          "inspectionRuns": []
+        }
+      }
+    },
+    "readDispatchRecovery": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "phase": "outcome_unknown",
+          "messageId": "66666666-6666-4666-8666-666666666666",
+          "projectId": "project-1",
+          "runtimeProjectId": "project-1",
+          "targetAgentId": "agent-root",
+          "actionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "attachmentCount": 1,
+          "selectedContextCount": 0,
+          "createdAtMs": 1700000003000,
+          "updatedAtMs": 1700000004000,
+          "receipt": null
+        }
+      }
+    },
+    "reconcileDispatchRecovery": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "messageId": "66666666-6666-4666-8666-666666666666",
+          "projectId": "project-1",
+          "activationToken": "22222222-2222-4222-8222-222222222222",
+          "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+          "expectedStatusRevision": 7
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "runtimeResult": {
+            "threadId": "thread-1",
+            "turnId": "turn-1"
+          },
+          "dispatchRecovery": {
+            "phase": "accepted",
+            "messageId": "66666666-6666-4666-8666-666666666666",
+            "projectId": "project-1",
+            "runtimeProjectId": "project-1",
+            "targetAgentId": "agent-root",
+            "actionFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "attachmentCount": 1,
+            "selectedContextCount": 0,
+            "createdAtMs": 1700000003000,
+            "updatedAtMs": 1700000004000,
+            "receipt": {
+              "threadId": "thread-1",
+              "turnId": "turn-1"
+            }
+          }
+        }
+      }
+    },
+    "projectionConversation": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-1",
+          "targetAgentId": "orchestrator",
+          "expectedStreamId": null,
+          "afterJournalSequence": 0,
+          "expectedProjectionRevision": 0,
+          "cursor": null,
+          "activityCursor": null,
+          "pendingRequestCursor": null,
+          "limit": 50
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "projectId": "project-1",
+          "targetAgentId": "orchestrator",
+          "streamId": "stream_00000000-0000-4000-8000-000000000001",
+          "appliedJournalSequence": 42,
+          "projectionRevision": 17,
+          "syncState": "current",
+          "items": [],
+          "activities": [],
+          "streamingItems": [],
+          "activeTurns": [],
+          "latestTurn": null,
+          "olderCursor": null,
+          "activityOlderCursor": null,
+          "pendingRequestOlderCursor": null,
+          "pendingRequests": [],
+          "resolvedRequests": []
+        }
+      }
+    },
+    "projectionHistoryIndex": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-1",
+          "cursor": null,
+          "limit": 50
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "projectId": "project-1",
+          "items": [
+            {
+          "targetAgentId": "orchestrator",
+          "updatedAt": "2026-08-27T00:00:00.000Z",
+          "lastMessageId": "message-1",
+          "lastRole": "agent",
+          "preview": "履歴の続きを確認します。"
+            }
+          ],
+          "nextCursor": null
+        }
+      }
+    },
+    "projectionHistoryPage": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-1",
+          "targetAgentId": "orchestrator",
+          "query": "続きを確認",
+          "cursor": null,
+          "limit": 50
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "projectId": "project-1",
+          "targetAgentId": "orchestrator",
+          "query": "続きを確認",
+          "items": [],
+          "nextCursor": null
+        }
+      }
+    }
+  },
+  "events": {
+    "runtimeStatus": {
+      "schemaVersion": 1,
+      "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+      "rendererGeneration": 7,
+      "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+      "statusRevision": 7,
+      "status": {
+        "phase": "ready",
+        "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+        "statusRevision": 7,
+        "pid": 4242,
+        "startedAtMs": 1700000002000,
+        "activeProjectId": "project-1",
+        "authorityActivationToken": "22222222-2222-4222-8222-222222222222",
+        "authorityRendererSessionId": "11111111-1111-4111-8111-111111111111",
+        "authorityRendererGeneration": 7,
+        "processTerminationConfirmed": false,
+        "lastError": null
+      }
+    },
+    "runtimeEvent": {
+      "schemaVersion": 1,
+      "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+      "rendererGeneration": 7,
+      "projectId": "project-1",
+      "activationToken": "22222222-2222-4222-8222-222222222222",
+      "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+      "statusRevision": 7,
+      "event": {
+        "type": "repository.snapshot.changed",
+        "snapshot": {
+          "project": {
+            "id": "project-1",
+            "title": "Project One",
+            "rootPath": "/workspace/project-1",
+            "rootPathLabel": "/workspace/project-1",
+            "status": "ready",
+            "connectionLabel": "Connected",
+            "lastOpenedAt": "2023-11-14T22:13:21.000Z",
+            "summary": "",
+            "nextMilestone": null,
+            "currentPhaseId": null,
+            "agentCount": 0,
+            "provenWorkingAgentCount": 0,
+            "lastSyncedAt": null
+          },
+          "agents": [],
+          "tasks": [],
+          "attention": [],
+          "phases": [],
+          "inspectionRuns": []
+        }
+      }
+    },
+    "dispatchRecoveryCleared": {
+      "schemaVersion": 1,
+      "projectId": "project-1",
+      "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+      "activationToken": "22222222-2222-4222-8222-222222222222",
+      "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+      "rendererGeneration": 7,
+      "statusRevision": 7,
+      "dispatchId": "66666666-6666-4666-8666-666666666666"
+    },
+    "projectionChanged": {
+      "schemaVersion": 1,
+      "projectId": "project-1",
+      "streamId": "stream_00000000-0000-4000-8000-000000000001",
+      "appliedJournalSequence": 42,
+      "projectionRevision": 17,
+      "eventCount": 3,
+      "messageCount": 1,
+      "status": "applied"
+    },
+    "projectionStatus": {
+      "schemaVersion": 1,
+      "projectId": "project-1",
+      "status": "faulted",
+      "error": {
+        "code": "projection_apply_failed",
+        "message": "Projection apply failed.",
+        "retryable": false,
+        "outcomeUnknown": false
+      }
+    },
+    "voiceStatus": {
+      "schemaVersion": 1,
+      "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+      "rendererGeneration": 7,
+      "windowLabel": "main",
+      "status": {
+        "schemaVersion": 2,
+        "revision": 3,
+        "providerId": "whisper.cpp-local",
+        "binaryAssetId": "whisper.cpp-windows-x64-b4938-spike",
+        "initialModelAssetId": "whisper.cpp-model-small-multilingual",
+        "comparisonModelAssetId": "whisper.cpp-model-base-multilingual",
+        "requiredAssetsReady": false,
+        "assets": [
+          {
+            "assetId": "whisper.cpp-windows-x64-b4938-spike",
+            "kind": "native_binary_bundle",
+            "phase": "downloading",
+            "downloadedBytes": 4194304,
+            "expectedBytes": 8361840,
+            "operationRef": "77777777-7777-4777-8777-777777777777",
+            "lastErrorCode": null
+          },
+          {
+            "assetId": "whisper.cpp-model-base-multilingual",
+            "kind": "model",
+            "phase": "absent",
+            "downloadedBytes": 0,
+            "expectedBytes": 147951465,
+            "operationRef": null,
+            "lastErrorCode": null
+          },
+          {
+            "assetId": "whisper.cpp-model-small-multilingual",
+            "kind": "model",
+            "phase": "absent",
+            "downloadedBytes": 0,
+            "expectedBytes": 487601967,
+            "operationRef": null,
+            "lastErrorCode": null
+          }
+        ],
+        "operations": []
+      }
+    }
+  },
+  "scenarios": {
+    "cleanupPendingReconcile": {
+      "command": "dispatch_recovery_reconcile",
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "messageId": "66666666-6666-4666-8666-666666666666",
+          "projectId": "project-1",
+          "activationToken": null,
+          "runtimeGeneration": null,
+          "expectedStatusRevision": null
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "runtimeResult": null,
+          "dispatchRecovery": null
+        }
+      }
+    },
+    "readOnlyReadyStatus": {
+      "status": {
+        "phase": "ready",
+        "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+        "statusRevision": 7,
+        "pid": 4242,
+        "startedAtMs": 1700000002000,
+        "activeProjectId": null,
+        "authorityActivationToken": null,
+        "authorityRendererSessionId": null,
+        "authorityRendererGeneration": null,
+        "processTerminationConfirmed": false,
+        "lastError": null
+      }
+    },
+    "interruptAccepted": {
+      "nativeCommand": "interruptTurn",
+      "runtimeMethod": "runtime.turn.interrupt",
+      "mutationKind": "interrupt",
+      "recoveryStrategy": "exact_turn_interrupt",
+      "acceptedEvent": {
+        "type": "runtime.turn.interrupt.accepted",
+        "targetAgentId": "agent-root",
+        "threadId": "thread-1",
+        "turnId": "turn-1"
+      }
+    },
+    "steerAccepted": {
+      "nativeCommand": "steerTurn",
+      "runtimeMethod": "runtime.turn.steer",
+      "mutationKind": "steer",
+      "recoveryStrategy": "exact_turn_steer",
+      "acceptedEvent": {
+        "type": "runtime.turn.steer.accepted",
+        "steerId": "77777777-7777-4777-8777-777777777777",
+        "targetAgentId": "agent-root",
+        "threadId": "thread-1",
+        "turnId": "turn-1"
+      }
+    }
+  }
+}

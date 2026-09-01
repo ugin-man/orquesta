@@ -1,0 +1,14 @@
+{
+  "name": "@orquesta/contracts",
+  "version": "0.5.0-next.0",
+  "private": true,
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "check:desktop-bindings": "node ../../apps/orquesta-desktop-next/scripts/run-desktop-lifecycle.mjs check:desktop-bindings",
+    "generate:organization-v3-types": "node scripts/generate-organization-v3-types.mjs",
+    "check:organization-v3-types": "node scripts/generate-organization-v3-types.mjs --check",
+    "test": "node --test && npm run check:organization-v3-types && npm run check:desktop-bindings"
+  },
+  "license": "MIT"
+}

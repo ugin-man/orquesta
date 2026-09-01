@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orquesta"
+  short_description: "Coordinate durable V5 work without unnecessary ceremony."
+  default_prompt: "Use $orquesta to choose the lightest valid direct, coordinated, or control route while keeping canonical authority and evidence honest."

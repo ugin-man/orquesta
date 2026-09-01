@@ -1,0 +1,163 @@
+{
+  "$id": "organization-state-v3",
+  "type": "object",
+  "required": ["schema_version", "revision", "policy", "participants", "lines", "teams", "memberships", "relationships", "applied_decision_ids", "applied_decision_bindings"],
+  "properties": {
+    "schema_version": { "const": 3 },
+    "revision": { "type": "integer", "minimum": 0 },
+    "policy": {
+      "type": "object",
+      "required": ["line_creation", "max_concurrent_provisioning", "require_executable_task_per_new_agent", "require_no_file_ownership_conflict"],
+      "properties": {
+        "line_creation": { "enum": ["autonomous", "review", "forbidden"] },
+        "max_concurrent_provisioning": { "type": "integer", "minimum": 1 },
+        "require_executable_task_per_new_agent": { "const": true },
+        "require_no_file_ownership_conflict": { "const": true }
+      },
+      "additionalProperties": false
+    },
+    "participants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["participant_id", "display_name", "participant_kind", "lifecycle_state", "joined_at"],
+        "properties": {
+          "participant_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "display_name": { "type": "string", "pattern": ".+" },
+          "participant_kind": { "const": "human" },
+          "lifecycle_state": { "enum": ["active", "inactive", "retired"] },
+          "joined_at": {
+            "anyOf": [
+              { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["line_id", "display_name", "goal", "deliverable_ids", "completion_root_ids", "scope", "owner_ref", "status", "approval_source"],
+        "properties": {
+          "line_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "display_name": { "type": "string", "pattern": ".+" },
+          "goal": { "type": "string", "pattern": ".+" },
+          "deliverable_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": ".+" } },
+          "completion_root_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": ".+" } },
+          "scope": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": ".+" } },
+          "owner_ref": {
+            "type": "object",
+            "required": ["kind", "id"],
+            "properties": {
+              "kind": { "enum": ["participant", "agent"] },
+              "id": { "type": "string", "pattern": ".+" }
+            },
+            "additionalProperties": false
+          },
+          "status": { "enum": ["active", "paused", "retired"] },
+          "approval_source": { "enum": ["user_approval", "organization_decision", "migrated_legacy"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "teams": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["team_id", "line_id", "display_name", "purpose", "coordination_mode", "lead_agent_id", "lifecycle_state"],
+        "properties": {
+          "team_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "line_id": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              { "type": "null" }
+            ]
+          },
+          "display_name": { "type": "string", "pattern": ".+" },
+          "purpose": { "type": "string", "pattern": ".+" },
+          "coordination_mode": { "enum": ["peer", "supervised", "workflow_managed"] },
+          "lead_agent_id": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              { "type": "null" }
+            ]
+          },
+          "lifecycle_state": { "enum": ["active", "retired"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "memberships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["membership_id", "agent_id", "team_id", "position", "ordinal", "active_from", "active_to"],
+        "properties": {
+          "membership_id": { "type": "string", "pattern": ".+" },
+          "agent_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "team_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "position": { "enum": ["member", "lead"] },
+          "ordinal": { "type": "integer", "minimum": 1 },
+          "active_from": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+          "active_to": {
+            "anyOf": [
+              { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["relationship_id", "type", "subject_ref", "object_ref"],
+        "properties": {
+          "relationship_id": { "type": "string", "pattern": ".+" },
+          "type": { "enum": ["reports_to", "authority_over", "supports"] },
+          "subject_ref": {
+            "type": "object",
+            "required": ["kind", "id"],
+            "properties": {
+              "kind": { "enum": ["participant", "agent", "line", "team"] },
+              "id": { "type": "string", "pattern": ".+" }
+            },
+            "additionalProperties": false
+          },
+          "object_ref": {
+            "type": "object",
+            "required": ["kind", "id"],
+            "properties": {
+              "kind": { "enum": ["participant", "agent", "line", "team"] },
+              "id": { "type": "string", "pattern": ".+" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "applied_decision_ids": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^OD-[a-f0-9]{12}$" }
+    },
+    "applied_decision_bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["decision_id", "content_hash"],
+        "properties": {
+          "decision_id": { "type": "string", "pattern": "^OD-[a-f0-9]{12}$" },
+          "content_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

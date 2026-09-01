@@ -1,0 +1,13 @@
+{
+  "name": "@orquesta/project-structure",
+  "version": "0.5.0-next.0",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@orquesta/contracts": "*"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,64 @@
+{
+  "$id": "source-record",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_id",
+    "source_ref",
+    "source_hash",
+    "source_type",
+    "authority",
+    "freshness",
+    "knowledge_domains",
+    "artifact_types",
+    "supports_criteria",
+    "token_estimate",
+    "content_mode",
+    "summary",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "source_id": { "type": "string", "pattern": "^SRC-[a-f0-9]{12}$" },
+    "source_ref": { "type": "string", "pattern": ".+" },
+    "source_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "source_type": {
+      "enum": [
+        "task_record",
+        "accepted_decision",
+        "user_directive",
+        "project_file",
+        "interface",
+        "test",
+        "report",
+        "summary",
+        "external_evidence"
+      ]
+    },
+    "authority": { "enum": ["canonical", "accepted", "workspace", "external"] },
+    "freshness": { "enum": ["current", "stale", "unknown"] },
+    "knowledge_domains": {
+      "type": "array",
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "artifact_types": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "supports_criteria": {
+      "type": "array",
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "token_estimate": { "type": "integer", "minimum": 0 },
+    "content_mode": { "enum": ["reference", "summary", "inline"] },
+    "summary": {
+      "anyOf": [
+        { "type": "string" },
+        { "type": "null" }
+      ]
+    },
+    "status": { "enum": ["current", "stale", "superseded", "missing"] }
+  },
+  "additionalProperties": false
+}

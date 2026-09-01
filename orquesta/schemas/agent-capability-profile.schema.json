@@ -1,0 +1,25 @@
+{
+  "$id": "agent-capability-profile",
+  "type": "object",
+  "required": ["agent_id", "capabilities", "availability", "organization_revision"],
+  "properties": {
+    "agent_id": { "type": "string", "pattern": ".+" },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["capability_id", "status", "evidence_refs", "scope"],
+        "properties": {
+          "capability_id": { "type": "string", "pattern": ".+" },
+          "status": { "enum": ["verified", "limited", "unknown"] },
+          "evidence_refs": { "type": "array", "items": { "type": "string", "pattern": ".+" } },
+          "scope": { "type": "array", "items": { "type": "string", "pattern": ".+" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "availability": { "enum": ["available", "busy", "unavailable"] },
+    "organization_revision": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false
+}

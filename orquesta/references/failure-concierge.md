@@ -1,0 +1,135 @@
+# Failure Concierge Layer
+
+Migration note: the behaviors in this document are now owned by `user-support`. See `user-support.md`. Keep this file only so older reports and state references remain understandable; do not generate an `error-concierge` agent for new projects.
+
+## Purpose
+
+Prevent repeated Codex retries, hidden local-environment blockers, and quality-lowering fallbacks from becoming invisible project drag. The Failure Concierge Layer turns tool failures into inspectable incidents and, when useful, user-actionable repair cards.
+
+This layer is independent from the orchestrator in the same sense as the Vision Alignment Layer. It is user-facing and event-driven, not a permanent watcher.
+
+## Owner
+
+`error-concierge` owns failure clustering, user-side repair proposals, and fallback quality warnings.
+
+The role should usually be `standby`. Wake it only when a trigger is met.
+
+## Wake Triggers
+
+Wake `error-concierge` when one of these is true:
+
+- the same failure class occurs 2 or more times in one task
+- permission, admin-rights, file-lock, antivirus, OneDrive sync, or shell policy denial appears likely
+- a local server, browser, package manager, runtime, or build tool cannot start
+- a command fails because a dependency, executable, PATH entry, credential, or environment variable is missing
+- a specialist proposes a fallback that may reduce quality, skip visual verification, or avoid an intended workflow
+- a task is blocked by environment state rather than by project ambiguity
+- the user asks why repeated execution is failing
+
+## Incident Capture
+
+Any specialist or the orchestrator may capture new failure evidence. In Beta V3, new command failures, ineffective repeats, and quality-degrading fallbacks enter `.orquesta/failures/incident_candidates.json` first. Deterministic fingerprinting removes volatile temp paths, timestamps, thread IDs, and ports before repeated evidence is clustered in `.orquesta/failures/incident_clusters.json`.
+
+`incidents.json` remains the accepted incident history. A candidate or cluster is not yet an accepted incident, repair card, or user task. Same-quality fallback noise may be retired without creating a repair card. Only `status: "open"` incident evidence keeps an active concierge wake reason; mitigated and resolved history remains visible but does not keep the role awake.
+
+Record only concise evidence:
+
+```json
+{
+  "incident_id": "F001",
+  "task_id": "T038",
+  "source_agent_id": "implementation-001",
+  "command_or_action": "npm run dashboard",
+  "failure_class": "local_server_startup",
+  "severity": "medium",
+  "summary": "Dashboard server could not bind to the expected port.",
+  "evidence": "EADDRINUSE: address already in use 127.0.0.1:4177",
+  "attempted_fixes": ["checked running process list"],
+  "suspected_owner": "codex",
+  "status": "open",
+  "created_at": "2026-06-22T00:00:00+09:00"
+}
+```
+
+Use `suspected_owner` values:
+
+- `codex`: Codex can likely fix it inside the workspace.
+- `user`: the user likely needs to grant permission, close a program, install something, sign in, or change machine settings.
+- `shared`: Codex can prepare steps, but the user must approve or perform part of the repair.
+- `unknown`: classification needs concierge review.
+
+## Repair Cards
+
+`error-concierge` writes user-facing proposals to `.orquesta/failures/user_actions.json`.
+
+Repair cards must be concrete, short, and safe:
+
+```json
+{
+  "action_id": "UA001",
+  "source_incident_ids": ["F001"],
+  "status": "ready",
+  "title": "Free dashboard port 4177",
+  "why_this_helps": "The dashboard cannot start while another process owns the port.",
+  "user_steps": [
+    "Close the other app using port 4177, or allow Orquesta to use another port."
+  ],
+  "codex_can_do": [
+    "Retry the dashboard server after the port is free."
+  ],
+  "risk": "low",
+  "requires_user_approval": true,
+  "created_at": "2026-06-22T00:00:00+09:00"
+}
+```
+
+## Fallback Quality Gate
+
+Before accepting a fallback after repeated failure, check whether the fallback changes the user-visible result.
+
+If it does, record:
+
+- what failed
+- what fallback is proposed
+- what quality, evidence, or workflow will be lost
+- what user-side action might preserve the original plan
+
+Do not quietly downgrade visual verification, asset generation, browser testing, or runtime integration when a user-side repair might unblock the intended path.
+
+When the only automated proof surface is unsafe or unstable, record the limitation and pause that verification path. Do not call an unobserved fallback a pass. If visual review or direct user experience is the strongest remaining evidence, use the `user_capability_review` route through `user-liaison` with a concrete external procedure and expected response.
+
+The Codex in-app Browser crash is an external tool limitation, not an Orquesta defect by itself. It may be captured as an environment/browser-runtime candidate. External-browser UAT is a same-quality fallback only when the user checks the named behaviors and the result is recorded.
+
+## Acceptance Flow
+
+1. Candidate evidence is atomically recorded.
+2. Deterministic fingerprinting and clustering decide whether repeated or quality-degrading evidence is open.
+3. Orchestrator checks whether a wake trigger is met.
+4. `error-concierge` reviews the open cluster and writes a concise report.
+5. Orchestrator accepts or rejects the report.
+6. Accepted user-side work is exposed as repair cards or a narrow user capability review task.
+7. Codex retries only after the relevant action is completed or explicitly skipped.
+
+## Stale Failure Reports
+
+Failure reports are snapshots. If an incident is recorded after `error-concierge` has already reported "no failures", that earlier report is stale.
+
+When this happens:
+
+1. Keep the incident in `.orquesta/failures/incidents.json` as the source of truth.
+2. Ask `error-concierge` to re-read incidents and user actions.
+3. Update or append the concierge report.
+4. Only then mark bootstrap readiness or the affected task as fully synchronized.
+
+This matters during bootstrap because Foundation sessions may write readiness reports before the controller and failure evidence are fully synchronized.
+
+## Boundaries
+
+`error-concierge` must not:
+
+- run continuously as a background watcher
+- request broad machine changes when a narrow action is enough
+- ask the user to run destructive commands
+- hide security or credential implications
+- replace the implementation or QA agent
+- treat a workaround as equivalent when it reduces quality

@@ -1,0 +1,61 @@
+{
+  "$id": "placement-request",
+  "type": "object",
+  "required": [
+    "version",
+    "task_id",
+    "proposed_path",
+    "suggested_name",
+    "target_component_id",
+    "artifact_kind",
+    "authority_intent",
+    "audience",
+    "retention",
+    "replaces",
+    "claim_key",
+    "root_placement_reason",
+    "created_at"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "task_id": { "type": "string", "pattern": ".+" },
+    "proposed_path": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": ".+" }
+      ]
+    },
+    "suggested_name": { "type": "string", "pattern": "^[^/\\\\]+$" },
+    "target_component_id": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+      ]
+    },
+    "artifact_kind": { "type": "string", "pattern": ".+" },
+    "authority_intent": { "enum": ["canonical_update", "supporting", "derived", "external"] },
+    "audience": { "enum": ["human", "machine", "mixed"] },
+    "retention": { "enum": ["temporary", "task", "project", "permanent"] },
+    "replaces": {
+      "type": "array",
+      "items": { "type": "string", "pattern": ".+" }
+    },
+    "claim_key": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" }
+      ]
+    },
+    "root_placement_reason": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": ".+" }
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    }
+  },
+  "additionalProperties": false
+}

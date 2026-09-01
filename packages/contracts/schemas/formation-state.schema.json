@@ -1,0 +1,72 @@
+{
+  "$id": "formation-state",
+  "type": "object",
+  "required": ["schema_version", "organization_revision", "formations"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "organization_revision": { "type": "integer", "minimum": 0 },
+    "formations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["formation_id", "formation_kind", "source_ref", "scope_ref", "member_agent_ids", "coordination_mode", "lead_agent_id", "target_refs", "lifecycle_state", "created_at", "retired_at"],
+        "properties": {
+          "formation_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "formation_kind": { "enum": ["work_cell", "inspection"] },
+          "source_ref": {
+            "type": "object",
+            "required": ["kind", "id"],
+            "properties": {
+              "kind": { "enum": ["task", "workflow_run"] },
+              "id": { "type": "string", "pattern": ".+" }
+            },
+            "additionalProperties": false
+          },
+          "scope_ref": {
+            "type": "object",
+            "required": ["kind", "id"],
+            "properties": {
+              "kind": { "enum": ["project", "line", "team", "agent", "task", "workflow_run"] },
+              "id": { "type": "string", "pattern": ".+" }
+            },
+            "additionalProperties": false
+          },
+          "member_agent_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+          },
+          "coordination_mode": { "enum": ["peer", "supervised", "workflow_managed"] },
+          "lead_agent_id": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              { "type": "null" }
+            ]
+          },
+          "target_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["kind", "id"],
+              "properties": {
+                "kind": { "enum": ["project", "line", "team", "agent", "task", "workflow_run"] },
+                "id": { "type": "string", "pattern": ".+" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "lifecycle_state": { "enum": ["active", "retired"] },
+          "created_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+          "retired_at": {
+            "anyOf": [
+              { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

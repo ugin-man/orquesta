@@ -1,0 +1,60 @@
+{
+  "$id": "agent-registry-v3",
+  "type": "object",
+  "required": ["schema_version", "organization_revision", "agents"],
+  "properties": {
+    "schema_version": { "const": 3 },
+    "organization_revision": { "type": "integer", "minimum": 0 },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["agent_id", "role_id", "role_version", "mission", "context_scope", "lifecycle_state", "origin", "created_from_ref", "retired_at"],
+        "properties": {
+          "agent_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "role_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "role_version": { "type": "integer", "minimum": 1 },
+          "mission": {
+            "anyOf": [
+              { "type": "string", "pattern": ".+" },
+              { "type": "null" }
+            ]
+          },
+          "context_scope": {
+            "type": "array",
+            "items": { "type": "string", "pattern": ".+" }
+          },
+          "lifecycle_state": { "enum": ["proposed", "provisioning", "active", "retired", "superseded"] },
+          "origin": {
+            "anyOf": [
+              { "enum": ["foundation", "user", "controller", "workflow", "inspection"] },
+              { "type": "null" }
+            ]
+          },
+          "created_from_ref": {
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["kind", "id"],
+                "properties": {
+                  "kind": { "enum": ["task", "workflow_run", "project_bootstrap", "migration", "user", "organization_decision", "inspection"] },
+                  "id": { "type": "string", "pattern": ".+" }
+                },
+                "additionalProperties": false
+              },
+              { "type": "null" }
+            ]
+          },
+          "retired_at": {
+            "anyOf": [
+              { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

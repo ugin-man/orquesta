@@ -1,0 +1,27 @@
+{
+  "name": "@orquesta/local-core",
+  "version": "0.5.0-next.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "test": "vitest run && node --test test/*.node-test.mjs",
+    "test:load": "vitest run --config vitest.load.config.ts",
+    "typecheck": "node ../../apps/orquesta-desktop-next/scripts/run-desktop-lifecycle.mjs typecheck:local-core"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "0.144.5",
+    "@orquesta/business-orchestrator": "file:../business-orchestrator",
+    "@orquesta/codex-adapter": "file:../codex-adapter",
+    "@orquesta/contracts": "file:../contracts",
+    "@orquesta/event-store": "file:../event-store",
+    "@orquesta/execution-kernel": "file:../execution-kernel"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
+  }
+}

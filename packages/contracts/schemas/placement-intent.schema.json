@@ -1,0 +1,43 @@
+{
+  "$id": "placement-intent",
+  "type": "object",
+  "required": ["placement_intent_id", "purpose", "capability_needs", "scope_ref", "lifetime", "requested_count", "coordination_hint", "source_ref"],
+  "properties": {
+    "placement_intent_id": { "type": "string", "pattern": "^PI-[a-f0-9]{12}$" },
+    "purpose": { "type": "string", "maxLength": 8192, "pattern": ".+" },
+    "capability_needs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "maxLength": 128, "pattern": "^[a-z][a-z0-9.-]*$" }
+    },
+    "scope_ref": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "enum": ["project", "line", "team", "agent", "task", "workflow_run"] },
+        "id": { "type": "string", "maxLength": 256, "pattern": ".+" }
+      },
+      "additionalProperties": false
+    },
+    "lifetime": { "enum": ["persistent", "task", "workflow_run", "one_shot"] },
+    "requested_count": { "type": "integer", "minimum": 1, "maximum": 1024 },
+    "coordination_hint": {
+      "anyOf": [
+        { "enum": ["peer", "supervised", "workflow_managed"] },
+        { "type": "null" }
+      ]
+    },
+    "source_ref": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "enum": ["project", "user", "task", "workflow_run"] },
+        "id": { "type": "string", "maxLength": 256, "pattern": ".+" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

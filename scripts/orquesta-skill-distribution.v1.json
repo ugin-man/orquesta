@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "source": "orquesta",
+  "targets": [
+    {
+      "id": "v5-repository-skill",
+      "base": "repository",
+      "path": ".agents/skills/orquesta",
+      "requiredMarkers": ["package.json", "orquesta/SKILL.md"]
+    },
+    {
+      "id": "coordination-project-skill",
+      "base": "sibling",
+      "sibling": "Orquesta",
+      "path": ".agents/skills/orquesta",
+      "requiredMarkers": [".orquesta/CURRENT_ORCHESTRA.md"]
+    },
+    {
+      "id": "coordination-compatibility-mirror",
+      "base": "sibling",
+      "sibling": "Orquesta",
+      "path": "orquesta",
+      "requiredMarkers": [".orquesta/CURRENT_ORCHESTRA.md"]
+    },
+    {
+      "id": "codex-installed-skill",
+      "base": "home",
+      "path": ".codex/skills/orquesta",
+      "requiredMarkers": [".codex"]
+    }
+  ]
+}

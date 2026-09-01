@@ -1,0 +1,19 @@
+{
+  "name": "@orquesta/execution-kernel",
+  "version": "0.5.0-next.0",
+  "private": true,
+  "license": "MIT",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "check:organization-types": "tsc -p tsconfig.organization-v3.json --pretty false",
+    "test": "npm run check:organization-types && node --test",
+    "test:load": "node --test load/organization-v3.load.js",
+    "evaluate:cutover": "node scripts/evaluate-cutover.js",
+    "proof:app-server": "node scripts/live-two-task-proof.js"
+  },
+  "dependencies": {
+    "@orquesta/codex-adapter": "*",
+    "@orquesta/contracts": "*"
+  }
+}

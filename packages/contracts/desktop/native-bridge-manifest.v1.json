@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "tauri": {
+    "argumentKey": "input",
+    "rejectUnknownCommands": true,
+    "responseEnvelope": {
+      "schemaVersion": 1,
+      "resultKey": "result"
+    }
+  },
+  "contentPolicy": {
+    "schemaVersion": 1,
+    "message": {
+      "maxUtf8Bytes": 65536
+    },
+    "voice": {
+      "transcriptMaxUtf8Bytes": 65536
+    },
+    "attachments": {
+      "maxPerDispatch": 4,
+      "maxImageBytes": 20971520,
+      "maxTextBytes": 524288,
+      "maxTextBytesPerDispatch": 524288,
+      "maxImagePreviewBytes": 5242880,
+      "formats": [
+        { "extension": ".png", "kind": "image", "mediaType": "image/png" },
+        { "extension": ".jpg", "kind": "image", "mediaType": "image/jpeg" },
+        { "extension": ".jpeg", "kind": "image", "mediaType": "image/jpeg" },
+        { "extension": ".gif", "kind": "image", "mediaType": "image/gif" },
+        { "extension": ".webp", "kind": "image", "mediaType": "image/webp" },
+        { "extension": ".txt", "kind": "text", "mediaType": "text/plain" },
+        { "extension": ".log", "kind": "text", "mediaType": "text/plain" },
+        { "extension": ".diff", "kind": "text", "mediaType": "text/plain" },
+        { "extension": ".patch", "kind": "text", "mediaType": "text/plain" },
+        { "extension": ".ini", "kind": "text", "mediaType": "text/plain" },
+        { "extension": ".cfg", "kind": "text", "mediaType": "text/plain" },
+        { "extension": ".conf", "kind": "text", "mediaType": "text/plain" },
+        { "extension": ".md", "kind": "text", "mediaType": "text/markdown" },
+        { "extension": ".markdown", "kind": "text", "mediaType": "text/markdown" },
+        { "extension": ".json", "kind": "text", "mediaType": "application/json" },
+        { "extension": ".jsonl", "kind": "text", "mediaType": "application/json" },
+        { "extension": ".csv", "kind": "text", "mediaType": "text/csv" },
+        { "extension": ".tsv", "kind": "text", "mediaType": "text/tab-separated-values" },
+        { "extension": ".yaml", "kind": "text", "mediaType": "application/yaml" },
+        { "extension": ".yml", "kind": "text", "mediaType": "application/yaml" },
+        { "extension": ".xml", "kind": "text", "mediaType": "application/xml" },
+        { "extension": ".html", "kind": "text", "mediaType": "text/html" },
+        { "extension": ".htm", "kind": "text", "mediaType": "text/html" },
+        { "extension": ".css", "kind": "text", "mediaType": "text/css" },
+        { "extension": ".js", "kind": "text", "mediaType": "text/javascript" },
+        { "extension": ".jsx", "kind": "text", "mediaType": "text/javascript" },
+        { "extension": ".mjs", "kind": "text", "mediaType": "text/javascript" },
+        { "extension": ".cjs", "kind": "text", "mediaType": "text/javascript" },
+        { "extension": ".ts", "kind": "text", "mediaType": "text/typescript" },
+        { "extension": ".tsx", "kind": "text", "mediaType": "text/typescript" },
+        { "extension": ".py", "kind": "text", "mediaType": "text/x-python" },
+        { "extension": ".rs", "kind": "text", "mediaType": "text/x-rust" },
+        { "extension": ".go", "kind": "text", "mediaType": "text/x-go" },
+        { "extension": ".java", "kind": "text", "mediaType": "text/x-java-source" },
+        { "extension": ".kt", "kind": "text", "mediaType": "text/x-kotlin" },
+        { "extension": ".kts", "kind": "text", "mediaType": "text/x-kotlin" },
+        { "extension": ".c", "kind": "text", "mediaType": "text/x-c" },
+        { "extension": ".h", "kind": "text", "mediaType": "text/x-c" },
+        { "extension": ".cc", "kind": "text", "mediaType": "text/x-c" },
+        { "extension": ".cpp", "kind": "text", "mediaType": "text/x-c" },
+        { "extension": ".hpp", "kind": "text", "mediaType": "text/x-c" },
+        { "extension": ".cs", "kind": "text", "mediaType": "text/x-csharp" },
+        { "extension": ".rb", "kind": "text", "mediaType": "text/x-ruby" },
+        { "extension": ".php", "kind": "text", "mediaType": "text/x-php" },
+        { "extension": ".sh", "kind": "text", "mediaType": "text/x-shellscript" },
+        { "extension": ".bash", "kind": "text", "mediaType": "text/x-shellscript" },
+        { "extension": ".zsh", "kind": "text", "mediaType": "text/x-shellscript" },
+        { "extension": ".ps1", "kind": "text", "mediaType": "text/x-powershell" },
+        { "extension": ".psm1", "kind": "text", "mediaType": "text/x-powershell" },
+        { "extension": ".toml", "kind": "text", "mediaType": "application/toml" },
+        { "extension": ".sql", "kind": "text", "mediaType": "application/sql" },
+        { "extension": ".graphql", "kind": "text", "mediaType": "application/graphql" },
+        { "extension": ".gql", "kind": "text", "mediaType": "application/graphql" }
+      ]
+    }
+  },
+  "commands": {
+    "openRendererSession": "renderer_session_open",
+    "cancelRendererSession": "renderer_session_cancel",
+    "bootstrap": "native_bootstrap",
+    "updateSettings": "settings_update",
+    "reconcileRuntimeSession": "runtime_session_reconcile",
+    "listProjects": "projects_list",
+    "forgetRecentProject": "project_recent_forget",
+    "recordLastWorkAgent": "project_last_work_agent_set",
+    "openProjectFolder": "project_open_folder",
+    "createStarterProject": "project_create_starter",
+    "activateProject": "project_activate_runtime",
+    "stopRuntime": "runtime_stop",
+    "voiceStatus": "voice_status",
+    "acquireVoiceAsset": "voice_asset_acquire",
+    "cancelVoiceAssetAcquisition": "voice_asset_acquire_cancel",
+    "deleteVoiceAsset": "voice_asset_delete",
+    "transcribeVoicePcm": "voice_transcribe_pcm",
+    "cancelVoiceTranscription": "voice_transcription_cancel",
+    "acknowledgeVoiceTranscription": "voice_transcription_ack",
+    "beginAttachmentImport": "attachment_import_begin",
+    "stageAttachmentBytes": "attachment_import_stage",
+    "finishAttachmentImport": "attachment_import_finish",
+    "readAttachmentPreview": "attachment_preview_read",
+    "forgetAttachment": "attachment_forget",
+    "abandonAttachmentSelection": "attachment_selection_cancel",
+    "runtimeSend": "runtime_send",
+    "interruptTurn": "runtime_turn_interrupt",
+    "steerTurn": "runtime_turn_steer",
+    "runtimeCall": "runtime_call",
+    "readDispatchRecovery": "dispatch_recovery_status",
+    "reconcileDispatchRecovery": "dispatch_recovery_reconcile",
+    "projectionConversation": "projection_conversation",
+    "projectionHistoryIndex": "projection_history_index",
+    "projectionHistoryPage": "projection_history_page"
+  },
+  "binaryTransports": {
+    "stageAttachmentBytes": {
+      "request": "raw_octet_stream",
+      "response": "json_envelope"
+    },
+    "transcribeVoicePcm": {
+      "request": "raw_octet_stream",
+      "response": "json_envelope"
+    },
+    "readAttachmentPreview": {
+      "request": "json_envelope",
+      "response": "raw_octet_stream"
+    }
+  },
+  "events": {
+    "runtimeStatus": "orquesta-next://runtime-status",
+    "runtimeEvent": "orquesta-next://runtime-event",
+    "dispatchRecoveryCleared": "orquesta-next://dispatch-recovery-cleared",
+    "projectionChanged": "orquesta-next://projection-event",
+    "projectionStatus": "orquesta-next://projection-status",
+    "voiceStatus": "orquesta-next://voice-status"
+  }
+}

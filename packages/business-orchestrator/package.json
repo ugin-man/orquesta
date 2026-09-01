@@ -1,0 +1,25 @@
+{
+  "name": "@orquesta/business-orchestrator",
+  "version": "0.5.0-preview.0",
+  "private": true,
+  "license": "MIT",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "require": "./src/index.js",
+      "default": "./src/index.js"
+    }
+  },
+  "scripts": {
+    "test": "node test/run-platform-suite.js",
+    "test:linux": "node test/run-platform-suite.js --linux-required"
+  },
+  "dependencies": {
+    "@orquesta/contracts": "*"
+  },
+  "devDependencies": {
+    "@orquesta/event-store": "*"
+  }
+}

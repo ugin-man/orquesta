@@ -1,0 +1,17 @@
+{
+  "$id": "task-intent",
+  "type": "object",
+  "required": ["task_intent_id", "raw_request_ref", "desired_outcome", "acceptance_criteria", "constraints", "risk", "authority_boundary", "assumptions", "status"],
+  "properties": {
+    "task_intent_id": { "type": "string", "pattern": ".+" },
+    "raw_request_ref": { "type": "string", "pattern": ".+" },
+    "desired_outcome": { "type": "string", "pattern": ".+" },
+    "acceptance_criteria": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": ".+" } },
+    "constraints": { "type": "array", "items": { "type": "string" } },
+    "risk": { "type": "object", "required": ["impact", "reversible"], "properties": { "impact": { "enum": ["low", "medium", "high"] }, "reversible": { "type": "boolean" } }, "additionalProperties": false },
+    "authority_boundary": { "type": "object", "required": ["agent_may", "user_only"], "properties": { "agent_may": { "type": "array", "items": { "type": "string" } }, "user_only": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": false },
+    "assumptions": { "type": "array" },
+    "status": { "enum": ["draft", "compiled", "approved", "superseded"] }
+  },
+  "additionalProperties": false
+}

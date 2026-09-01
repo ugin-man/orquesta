@@ -1,0 +1,54 @@
+{
+  "name": "@orquesta/desktop-next",
+  "productName": "Orquesta Next",
+  "version": "0.5.0-next.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  },
+  "scripts": {
+    "dev": "node scripts/build-frontend-generation.mjs --dev-browser",
+    "generate:desktop-bindings": "node scripts/run-desktop-lifecycle.mjs generate:desktop-bindings",
+    "check:desktop-bindings": "node scripts/run-desktop-lifecycle.mjs check:desktop-bindings",
+    "build": "node scripts/build-frontend-generation.mjs",
+    "typecheck": "node scripts/run-desktop-lifecycle.mjs typecheck",
+    "typecheck:runtime": "node scripts/run-desktop-lifecycle.mjs typecheck",
+    "test": "node scripts/run-desktop-lifecycle.mjs test",
+    "test:load": "node scripts/run-desktop-lifecycle.mjs test:load",
+    "test:focused": "node scripts/run-desktop-lifecycle.mjs test:focused",
+    "test:runtime": "node scripts/run-desktop-lifecycle.mjs test:runtime",
+    "build:runtime": "node scripts/build-frontend-generation.mjs --runtime-only",
+    "dev:desktop": "node scripts/build-frontend-generation.mjs --dev-desktop",
+    "build:desktop": "node scripts/build-frontend-generation.mjs --desktop",
+    "test:native-contract": "node scripts/run-desktop-lifecycle.mjs test:native-contract",
+    "clean:native": "node scripts/run-desktop-lifecycle.mjs clean:native",
+    "lifecycle:retire-generation": "node scripts/run-desktop-lifecycle.mjs retire-generation"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "0.15.1",
+    "@openai/codex": "0.144.5",
+    "@openai/codex-sdk": "0.144.5",
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-notification": "2.3.3",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@yao-pkg/pkg": "6.22.0",
+    "esbuild": "0.28.1",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vite": "7.3.6",
+    "vitest": "^4.1.10"
+  }
+}

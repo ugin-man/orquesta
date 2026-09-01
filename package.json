@@ -1,0 +1,55 @@
+{
+  "name": "orquesta-v5",
+  "version": "0.5.0-next.0",
+  "license": "MIT",
+  "private": false,
+  "workspaces": [
+    "packages/business-orchestrator",
+    "packages/codex-adapter",
+    "packages/context-compiler",
+    "packages/contracts",
+    "packages/event-store",
+    "packages/execution-kernel",
+    "packages/local-core",
+    "packages/project-structure"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "description": "Orquesta V5 desktop platform for durable multi-agent work.",
+  "keywords": [
+    "codex",
+    "desktop",
+    "ai-agents",
+    "multi-agent",
+    "developer-tools",
+    "human-in-the-loop",
+    "agent-orchestration",
+    "agent-workflows",
+    "openai"
+  ],
+  "scripts": {
+    "test:workspaces": "npm run test --workspaces --if-present",
+    "test:load": "npm run test:load --workspace @orquesta/execution-kernel && npm run test:load --workspace @orquesta/local-core && npm --prefix apps/orquesta-desktop-next run test:load",
+    "check": "npm run test:workspaces && npm run test:desktop-p0 && npm run test:product-boundary && npm run test:state-atomic && npm run test:task-controller && npm run test:skill-sync && npm run test:desktop-launch && npm run test:skill-runtime && npm run check:encoding && npm run check:skill:all",
+    "audit:control": "node orquesta/scripts/control-audit.js",
+    "check:encoding": "node orquesta/scripts/validate-state-encoding.js",
+    "test:desktop-p0": "npm --prefix apps/orquesta-desktop-next run test && npm --prefix apps/orquesta-desktop-next run test:runtime && npm --prefix apps/orquesta-desktop-next run test:native-contract",
+    "typecheck:p2-runtime": "npm run typecheck --workspace @orquesta/local-core && npm --prefix apps/orquesta-desktop-next run typecheck:runtime",
+    "test:product-boundary": "npm run typecheck:p2-runtime && node scripts/product-boundary-check.js && node --test scripts/product-boundary-check.test.js scripts/desktop-workspace-boundary.test.js",
+    "task:accept": "node orquesta/scripts/task-controller.js accept",
+    "task:progress": "node orquesta/scripts/task-controller.js progress",
+    "task:inspect": "node orquesta/scripts/task-controller.js inspect",
+    "test:state-atomic": "node --test scripts/json-state-atomic.test.js",
+    "test:task-controller": "node --test scripts/task-controller.test.js",
+    "test:skill-sync": "node --test scripts/sync-orquesta-skill.test.js",
+    "test:desktop-launch": "node --test orquesta/scripts/desktop-release-attestation.test.js orquesta/scripts/desktop-launch.test.js",
+    "test:skill-runtime": "node scripts/build-context-v2-runtime.js --check",
+    "test:live-canary:onedrive": "npm run test:live-canary --workspace @orquesta/event-store",
+    "sync:skill:repo": "node scripts/sync-orquesta-skill.js --target .agents/skills/orquesta",
+    "sync:skill:all": "node scripts/sync-orquesta-skill.js --all",
+    "check:skill:all": "node scripts/sync-orquesta-skill.js --check --all",
+    "test:project-structure": "node --test packages/contracts/test/contracts.test.js packages/project-structure/test/project-structure.test.js",
+    "plan:project-structure-migration": "node orquesta/scripts/project-structure-migration-plan.js --root ."
+  }
+}

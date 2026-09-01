@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orquesta.local/contracts/session-handoff-manifest.schema.json",
+  "type": "object",
+  "required": ["schema_version", "kind", "created_at", "agent_id", "predecessor", "successor_generation", "canonical_state_files", "active_tasks", "conversation_tail", "continuity_rules"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "const": "orquesta_session_handoff_manifest" },
+    "created_at": { "type": "string" },
+    "agent_id": { "type": "string", "pattern": "^[a-zA-Z0-9._:-]{1,128}$" },
+    "predecessor": {
+      "type": "object",
+      "required": ["session_id", "thread_id", "generation", "compaction_count"],
+      "properties": {
+        "session_id": { "type": "string" },
+        "thread_id": { "type": "string" },
+        "generation": { "type": "integer", "minimum": 1 },
+        "compaction_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "successor_generation": { "type": "integer", "minimum": 2 },
+    "canonical_state_files": { "type": "array", "items": { "type": "object" } },
+    "active_tasks": { "type": "array", "items": { "type": "object" } },
+    "conversation_tail": { "type": "array", "items": { "type": "object" } },
+    "continuity_rules": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

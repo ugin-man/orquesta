@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "authorityKind": "immutable_desktop_asset_catalog",
+  "catalogScope": {
+    "includes": [
+      "immutable source identity",
+      "exact byte size and SHA256",
+      "license and ownership layer",
+      "static extraction allowlist",
+      "reviewed update authority"
+    ],
+    "excludes": [
+      "download progress",
+      "installed inventory",
+      "partial transfer records",
+      "cleanup queues",
+      "runtime process records"
+    ]
+  },
+  "updateAuthority": {
+    "owner": "source_controlled_independent_review",
+    "discoverySources": [
+      "https://api.github.com/repos/ggml-org/whisper.cpp/releases",
+      "https://huggingface.co/api/models/ggerganov/whisper.cpp"
+    ],
+    "automaticRuntimeUpdate": false,
+    "requiredReview": [
+      "tag and source commit",
+      "asset identity and exact size",
+      "SHA256 calculated before execution",
+      "license and bundled notice inventory",
+      "security issue delta",
+      "Windows CPU-only benchmark",
+      "independent packaging acceptance"
+    ]
+  },
+  "voice": {
+    "providerId": "whisper.cpp-local",
+    "binaryAssetId": "whisper.cpp-windows-x64-b4938-spike",
+    "initialModelAssetId": "whisper.cpp-model-small-multilingual",
+    "comparisonModelAssetId": "whisper.cpp-model-base-multilingual",
+    "automaticFallback": false,
+    "assets": [
+      {
+        "assetId": "whisper.cpp-windows-x64-b4938-spike",
+        "kind": "native_binary_bundle",
+        "purpose": "p2_spike_candidate_not_shipping_approved",
+        "ownerLayer": "tauri_native_voice",
+        "releaseTag": "b4938",
+        "sourceCommit": "371b5a7561823ab2bb32142d2751e35e7534727b",
+        "githubAssetId": 522168829,
+        "fileName": "whisper-bin-x64.zip",
+        "sourceUrl": "https://github.com/ggml-org/whisper.cpp/releases/download/b4938/whisper-bin-x64.zip",
+        "sizeBytes": 8361840,
+        "sha256": "c2a4b60edb11f7e11a9191ffb50929535527d4d91c9903dbe3e554583bbbc63d",
+        "authenticode": "not_signed",
+        "archiveInspection": {
+          "entryCount": 38,
+          "licenseFilePresent": false,
+          "allowlistedEntries": [
+            "Release/whisper-cli.exe",
+            "Release/whisper.dll",
+            "Release/ggml.dll",
+            "Release/ggml-base.dll",
+            "Release/ggml-cpu-alderlake.dll",
+            "Release/ggml-cpu-cannonlake.dll",
+            "Release/ggml-cpu-cascadelake.dll",
+            "Release/ggml-cpu-haswell.dll",
+            "Release/ggml-cpu-icelake.dll",
+            "Release/ggml-cpu-sandybridge.dll",
+            "Release/ggml-cpu-skylakex.dll",
+            "Release/ggml-cpu-sse42.dll",
+            "Release/ggml-cpu-x64.dll"
+          ],
+          "excludedExamples": [
+            "Release/SDL2.dll",
+            "Release/llama.dll",
+            "Release/parakeet.dll",
+            "Release/whisper-server.exe",
+            "Release/whisper-stream.exe"
+          ]
+        },
+        "licenses": [
+          {
+            "spdx": "MIT",
+            "component": "whisper.cpp",
+            "sourceUrl": "https://raw.githubusercontent.com/ggml-org/whisper.cpp/371b5a7561823ab2bb32142d2751e35e7534727b/LICENSE",
+            "sizeBytes": 1078,
+            "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+          },
+          {
+            "spdx": "MIT",
+            "component": "OpenAI Whisper code and model weights",
+            "sourceCommit": "5f86d1d86363843179951550570367b37c5d6f78",
+            "sourceUrl": "https://raw.githubusercontent.com/openai/whisper/5f86d1d86363843179951550570367b37c5d6f78/LICENSE",
+            "sizeBytes": 1063,
+            "sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d"
+          }
+        ]
+      },
+      {
+        "assetId": "whisper.cpp-model-base-multilingual",
+        "kind": "model",
+        "purpose": "measured_low_resource_comparison",
+        "ownerLayer": "tauri_native_voice",
+        "repository": "ggerganov/whisper.cpp",
+        "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+        "fileName": "ggml-base.bin",
+        "sourceUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin",
+        "sizeBytes": 147951465,
+        "sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+        "multilingual": true,
+        "englishOnly": false,
+        "license": {
+          "spdx": "MIT",
+          "sourceCommit": "5f86d1d86363843179951550570367b37c5d6f78",
+          "sourceUrl": "https://raw.githubusercontent.com/openai/whisper/5f86d1d86363843179951550570367b37c5d6f78/LICENSE",
+          "sizeBytes": 1063,
+          "sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d"
+        }
+      },
+      {
+        "assetId": "whisper.cpp-model-small-multilingual",
+        "kind": "model",
+        "purpose": "p2_initial_model_candidate_not_shipping_approved",
+        "ownerLayer": "tauri_native_voice",
+        "repository": "ggerganov/whisper.cpp",
+        "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+        "fileName": "ggml-small.bin",
+        "sourceUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.bin",
+        "sizeBytes": 487601967,
+        "sha256": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+        "multilingual": true,
+        "englishOnly": false,
+        "license": {
+          "spdx": "MIT",
+          "sourceCommit": "5f86d1d86363843179951550570367b37c5d6f78",
+          "sourceUrl": "https://raw.githubusercontent.com/openai/whisper/5f86d1d86363843179951550570367b37c5d6f78/LICENSE",
+          "sizeBytes": 1063,
+          "sha256": "b5d65a59060e68c4ff940e1eddfa6f94b2d68fdf58ed7f4dd57721c997e35e9d"
+        }
+      }
+    ]
+  }
+}

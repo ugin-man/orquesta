@@ -1,0 +1,20 @@
+{
+  "$id": "role-definition",
+  "type": "object",
+  "required": ["role_id", "version", "display_names", "aliases", "capability_ids", "default_contract_template", "lifecycle_state"],
+  "properties": {
+    "role_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "version": { "type": "integer", "minimum": 1 },
+    "display_names": {
+      "type": "object",
+      "required": ["en", "ja"],
+      "properties": { "en": { "type": "string", "pattern": ".+" }, "ja": { "type": "string", "pattern": ".+" } },
+      "additionalProperties": false
+    },
+    "aliases": { "type": "array", "items": { "type": "string", "pattern": ".+" } },
+    "capability_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": ".+" } },
+    "default_contract_template": { "type": "string", "pattern": ".+" },
+    "lifecycle_state": { "enum": ["active", "retired", "superseded"] }
+  },
+  "additionalProperties": false
+}

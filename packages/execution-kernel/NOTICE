@@ -1,0 +1,6 @@
+The architecture of this package is informed by the OpenAI Symphony service
+specification at commit f8e8b8a670c799f6e0ade7a8c25c4bf4a4a56ec7.
+
+OpenAI Symphony is Copyright 2025 OpenAI and licensed under the Apache
+License, Version 2.0. This package is an independent Node.js implementation
+for Orquesta and does not copy the Symphony reference implementation.

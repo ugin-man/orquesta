@@ -1,0 +1,354 @@
+{
+  "schema_version": 1,
+  "contract_id": "codex-app-server-0.144.5-recorded-v1",
+  "contract_sha256": "3fdd8867fea7f85faa8dc263c08478e3e15516da42ad5e5b86e2c15e4707d96d",
+  "provider": "codex_app_server",
+  "capture": {
+    "mode": "live_evidence_bound_schema_fixture",
+    "live_runtime_capture": "bounded_normalized_evidence",
+    "raw_frame_capture": false,
+    "cli_version": "0.144.5",
+    "schema_source": "codex_app_server_protocol.v2.schemas.json",
+    "schema_source_canonical_sha256": "f76d741a299026cf4a1c75847b41562078d54c6f0aab9faae8781831e73d97d4",
+    "live_evidence_ref": "packages/codex-adapter/fixtures/live-app-server-proof.v1.json",
+    "live_evidence_sha256": "cb46e32d463cfb2da72a1dd9969a4c74ad875c5bc58eb0dc7913cf29589b923c",
+    "live_observed_categories": ["thread_read", "turn_lifecycle"],
+    "schema_fixture_categories": ["initialize", "thread_pagination", "streamed_items", "approval", "failure"],
+    "unverified_categories": ["request_user_input"],
+    "note": "The contract is bound to a tracked, sanitized two-thread App Server proof plus schema-valid deterministic frames. The proof does not establish the provider version or raw-frame equivalence; unknown capabilities remain unverified."
+  },
+  "cases": [
+    {
+      "case_id": "initialize.response",
+      "category": "initialize",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "request": {
+          "id": "initialize-1",
+          "method": "initialize",
+          "params": {
+            "clientInfo": {
+              "name": "orquesta-fixture",
+              "title": "Orquesta Fixture",
+              "version": "1"
+            }
+          }
+        },
+        "frame": {
+          "id": "initialize-1",
+          "result": {
+            "codexHome": "C:/fixture/codex",
+            "platformFamily": "windows",
+            "platformOs": "windows",
+            "userAgent": "codex-cli/0.144.5"
+          }
+        }
+      },
+      "expected_event_type": "runtime.initialized"
+    },
+    {
+      "case_id": "thread-list.response",
+      "category": "thread_pagination",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "request": {
+          "id": "thread-list-1",
+          "method": "thread/list",
+          "params": {}
+        },
+        "frame": {
+          "id": "thread-list-1",
+          "result": {
+            "data": [
+              {
+                "id": "thread-1",
+                "cwd": "C:/fixture/project",
+                "status": "idle",
+                "turns": []
+              }
+            ],
+            "nextCursor": "cursor-2"
+          }
+        }
+      },
+      "expected_event_type": "history.page"
+    },
+    {
+      "case_id": "thread-read.response",
+      "category": "thread_read",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "request": {
+          "id": "thread-read-1",
+          "method": "thread/read",
+          "params": {
+            "threadId": "thread-1",
+            "includeTurns": true
+          }
+        },
+        "frame": {
+          "id": "thread-read-1",
+          "result": {
+            "thread": {
+              "id": "thread-1",
+              "cwd": "C:/fixture/project",
+              "status": "idle",
+              "turns": []
+            }
+          }
+        }
+      },
+      "expected_event_type": "thread.snapshot"
+    },
+    {
+      "case_id": "thread-turns-list.response",
+      "category": "thread_pagination",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "request": {
+          "id": "thread-turns-list-1",
+          "method": "thread/turns/list",
+          "params": {
+            "threadId": "thread-1",
+            "limit": 50,
+            "itemsView": "full"
+          }
+        },
+        "frame": {
+          "id": "thread-turns-list-1",
+          "result": {
+            "data": [
+              {
+                "id": "turn-1",
+                "items": [],
+                "status": "completed"
+              }
+            ],
+            "nextCursor": null,
+            "backwardsCursor": null
+          }
+        }
+      },
+      "expected_event_type": "history.page"
+    },
+    {
+      "case_id": "turn-start.response",
+      "category": "turn_lifecycle",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "request": {
+          "id": "turn-start-1",
+          "method": "turn/start",
+          "params": {
+            "threadId": "thread-1",
+            "input": [
+              {
+                "type": "text",
+                "text": "fixture"
+              }
+            ]
+          }
+        },
+        "frame": {
+          "id": "turn-start-1",
+          "result": {
+            "turn": {
+              "id": "turn-1",
+              "items": [],
+              "status": "inProgress"
+            }
+          }
+        }
+      },
+      "expected_event_type": "turn.accepted"
+    },
+    {
+      "case_id": "turn-started.notification",
+      "category": "turn_lifecycle",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "frame": {
+          "method": "turn/started",
+          "params": {
+            "threadId": "thread-1",
+            "turn": {
+              "id": "turn-1",
+              "items": [],
+              "status": "inProgress"
+            }
+          }
+        }
+      },
+      "expected_event_type": "turn.started"
+    },
+    {
+      "case_id": "item-started.notification",
+      "category": "streamed_items",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "frame": {
+          "method": "item/started",
+          "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "startedAtMs": 2,
+            "item": {
+              "id": "item-1",
+              "type": "agentMessage",
+              "text": "fixture"
+            }
+          }
+        }
+      },
+      "expected_event_type": "item.started"
+    },
+    {
+      "case_id": "item-completed.notification",
+      "category": "streamed_items",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "frame": {
+          "method": "item/completed",
+          "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "completedAtMs": 3,
+            "item": {
+              "id": "item-1",
+              "type": "agentMessage",
+              "text": "fixture complete"
+            }
+          }
+        }
+      },
+      "expected_event_type": "item.completed"
+    },
+    {
+      "case_id": "turn-completed.notification",
+      "category": "turn_lifecycle",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "frame": {
+          "method": "turn/completed",
+          "params": {
+            "threadId": "thread-1",
+            "turn": {
+              "id": "turn-1",
+              "items": [],
+              "status": "completed"
+            }
+          }
+        }
+      },
+      "expected_event_type": "turn.completed"
+    },
+    {
+      "case_id": "command-approval.request",
+      "category": "approval",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "frame": {
+          "id": "provider-approval-1",
+          "method": "item/commandExecution/requestApproval",
+          "params": {
+            "itemId": "item-command-1",
+            "startedAtMs": 1,
+            "threadId": "thread-1",
+            "turnId": "turn-1"
+          }
+        }
+      },
+      "expected_event_type": "attention.approval_requested"
+    },
+    {
+      "case_id": "request-user-input.unverified-forward-request",
+      "category": "request_user_input",
+      "verified_runtime_method": false,
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "frame": {
+          "id": "future-user-input-1",
+          "method": "future/requestUserInput",
+          "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "prompt": "fixture-only forward-compatible request"
+          }
+        }
+      },
+      "expected_event_type": "provider.unknown_request"
+    },
+    {
+      "case_id": "turn-start.error-response",
+      "category": "failure",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "request": {
+          "id": "turn-start-failed-1",
+          "method": "turn/start",
+          "params": {
+            "threadId": "thread-1",
+            "input": [
+              {
+                "type": "text",
+                "text": "fixture failure"
+              }
+            ]
+          }
+        },
+        "frame": {
+          "id": "turn-start-failed-1",
+          "error": {
+            "code": -32000,
+            "message": "fixture failure"
+          }
+        }
+      },
+      "expected_event_type": "provider.failure"
+    },
+    {
+      "case_id": "runtime-error.notification",
+      "category": "failure",
+      "input": {
+        "streamId": "fixture-stream-1",
+        "direction": "provider_to_client",
+        "frame": {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "fixture runtime failure"
+            },
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "willRetry": false
+          }
+        }
+      },
+      "expected_event_type": "provider.failure"
+    }
+  ],
+  "explicit_unknowns": [
+    {
+      "capability": "approval_reconnect_recovery",
+      "state": "unknown",
+      "reason": "No list or replay method for unresolved approval requests exists in the pinned schema subset."
+    },
+    {
+      "capability": "request_user_input",
+      "state": "unknown",
+      "reason": "No verified request-user-input method exists in the pinned schema subset; the fixture only proves unknown requests remain visible."
+    }
+  ]
+}

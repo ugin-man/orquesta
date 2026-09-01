@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "evidence_id": "codex-app-server-live-two-task-sanitized-v1",
+  "source": {
+    "kind": "sanitized_projection",
+    "raw_proof_sha256": "718b4158e787b18ee3e0ac8b3d9f38d040f2ca3da7a682c01fb6836c44013639",
+    "raw_proof_tracked": false,
+    "raw_frame_capture": false,
+    "provider_runtime_version_observed": false,
+    "provider_runtime_version_contract_ref": "protocol/app-server-version.json",
+    "redactions": [
+      "repository_root",
+      "provider_thread_and_turn_ids",
+      "model_labels",
+      "message_content",
+      "stderr_and_local_paths"
+    ]
+  },
+  "observation": {
+    "status": "passed",
+    "started_at": "2026-08-15T14:11:27.337Z",
+    "finished_at": "2026-08-15T14:12:02.018Z",
+    "task_count": 2,
+    "distinct_thread_count": 2,
+    "distinct_turn_count": 2,
+    "contract_categories_observed": [
+      "thread_read",
+      "turn_lifecycle"
+    ],
+    "event_counts": {
+      "turn_started": 2,
+      "progress_observed": 22,
+      "turn_completed": 2
+    },
+    "runtime_reads": [
+      {
+        "thread_status": "idle",
+        "turn_count": 1,
+        "last_turn_status": "completed",
+        "message_present": true
+      },
+      {
+        "thread_status": "idle",
+        "turn_count": 1,
+        "last_turn_status": "completed",
+        "message_present": true
+      }
+    ],
+    "final_task_summaries": [
+      {
+        "state": "accepted",
+        "runtime_status": "completed",
+        "dispatch_accepted": true,
+        "turn_started": true,
+        "progress_observed": true,
+        "finished": true
+      },
+      {
+        "state": "accepted",
+        "runtime_status": "completed",
+        "dispatch_accepted": true,
+        "turn_started": true,
+        "progress_observed": true,
+        "finished": true
+      }
+    ]
+  },
+  "limits": {
+    "raw_frames_available": false,
+    "streamed_item_frames_observed": false,
+    "approval_frames_observed": false,
+    "request_user_input_frames_observed": false,
+    "runtime_version_join": "The live proof did not record a provider version. Runtime 0.144.5 is pinned independently by app-server-version.json and the captured schema, not inferred from this proof."
+  }
+}

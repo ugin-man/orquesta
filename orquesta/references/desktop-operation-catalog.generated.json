@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "operations": [
+    {
+      "operation_id": "organization.agent-placement.persistent.v1",
+      "version": 1,
+      "description": "Create one or more persistent specialist agents from an AI-normalized semantic template.",
+      "schema_id": "organization-agent-placement-persistent-v1",
+      "schema_ref": "orquesta/references/organization-agent-placement-persistent-v1.schema.json",
+      "instruction_ref": "orquesta/references/organization-agent-placement-persistent-v1.md",
+      "schema_sha256": "c3a1c6823761236aa41df52ace106b786f4d0758ae6c6a7fd6d63e8f9d8de77f",
+      "instruction_sha256": "0deffba167ddd034f25142ddd79c446601bc6b28919fb57d4828046b88e942ff"
+    }
+  ]
+}

@@ -1,0 +1,1229 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const {
+  SCHEMA_NAMES,
+  canonicalJson,
+  canonicalHash,
+  loadSchema,
+  validateContract,
+  assertContract,
+  validatePhaseApprovalBinding
+} = require("../src");
+
+const hash = "a".repeat(64);
+const laterHash = "b".repeat(64);
+const timestamp = "2026-07-15T00:00:00.000Z";
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function withTaskIntentSchema(schema, callback) {
+  const schemaDir = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-contract-schema-"));
+  const schemaPath = path.join(schemaDir, "task-intent.schema.json");
+  fs.writeFileSync(schemaPath, JSON.stringify(schema), "utf8");
+  try {
+    return callback(schemaDir);
+  } finally {
+    fs.rmSync(schemaDir, { recursive: true, force: true });
+  }
+}
+
+const taskIntent = {
+  task_intent_id: "TI-local-reuse",
+  raw_request_ref: "fixture:local-reuse",
+  desired_outcome: "Reuse a local helper safely.",
+  acceptance_criteria: ["A source hash is recorded."],
+  constraints: ["No network"],
+  risk: { impact: "low", reversible: true },
+  authority_boundary: { agent_may: ["propose"], user_only: ["approve"] },
+  assumptions: [],
+  status: "compiled"
+};
+
+const capabilityNeed = {
+  need_id: "NEED-contracts",
+  description: "Validate a deterministic contract.",
+  kind: "code",
+  required_level: "required",
+  hard_constraints: ["No external dependency"],
+  dependencies: [],
+  verification_method: "node:test",
+  status: "open",
+  confidence: 80
+};
+
+const capabilityProvider = {
+  provider_id: "PROVIDER-local",
+  provider_type: "local_code",
+  source_uri: "file:packages/contracts",
+  capabilities: ["validation"],
+  trust_tier: "local",
+  availability: "available",
+  version: "0.5.0-next.0",
+  last_verified_at: timestamp,
+  evidence_refs: ["fixture:provider"]
+};
+
+const axes = Object.fromEntries([
+  "task_fit",
+  "integration_ease",
+  "evidence_strength",
+  "maintainability",
+  "security",
+  "license_fit",
+  "exit_option",
+  "cost"
+].map((name) => [name, { value: 80, reason: `${name} fixture evidence` }]));
+
+const candidateEvaluation = {
+  evaluation_id: "CE-local",
+  need_id: capabilityNeed.need_id,
+  candidate_id: capabilityProvider.provider_id,
+  policy_version: "phase1-v1",
+  axes,
+  uncertainty_penalty: 5,
+  weighted_sum: 80,
+  candidate_score: 75,
+  hard_gate_results: [{ gate: "license", status: "pass", reason: "local fixture" }],
+  eligibility: "eligible",
+  actual_model: null
+};
+
+const audition = {
+  audition_id: "AUD-local",
+  candidate_id: capabilityProvider.provider_id,
+  hypothesis: "The local fixture validates deterministically.",
+  sandbox: "temp",
+  steps: ["run test"],
+  expected_evidence: ["pass"],
+  observed_evidence: ["pass"],
+  side_effects: [],
+  verdict: "pass",
+  cleanup_status: "clean"
+};
+
+const resolution = {
+  resolution_id: "RES-local",
+  need_id: capabilityNeed.need_id,
+  mode: "reuse",
+  status: "proposed",
+  selected_provider_id: capabilityProvider.provider_id,
+  rejected_provider_ids: [],
+  rationale: "Local implementation is sufficient.",
+  evidence_refs: ["fixture:resolution"],
+  total_cost: 0,
+  approval_status: "pending_user",
+  reevaluate_when: []
+};
+
+const contextPack = {
+  context_pack_id: "CP-local",
+  task_intent_id: taskIntent.task_intent_id,
+  owner_agent_id: "implementation-001",
+  objective: "Validate contracts.",
+  acceptance_criteria: taskIntent.acceptance_criteria,
+  adopted_decisions: [],
+  capability_resolutions: [],
+  required_reading: [],
+  relevant_state_excerpts: [],
+  interfaces: [],
+  allowed_files: ["packages/contracts/**"],
+  forbidden_actions: ["network"],
+  excluded_context: [],
+  evidence_requirements: [],
+  provenance: [],
+  token_budget: null,
+  expires_at: null,
+  status: "draft"
+};
+
+const eventBatch = {
+  sequence: 1,
+  expected_revision: 0,
+  batch_id: "BATCH-local",
+  actor: { type: "agent", id: "implementation-001" },
+  correlation_id: "CORR-local",
+  events: [{
+    event_id: "EVENT-contract-checked",
+    schema_version: 1,
+    type: "contract.checked",
+    payload: { source: "fixture" },
+    evidence_refs: []
+  }]
+};
+
+const phaseReview = {
+  phase_id: "phase-1",
+  status: "in_progress",
+  build_ref: null,
+  artifacts: [],
+  artifact_hashes: {},
+  review_packet_ref: null,
+  review_packet_hash: null,
+  checks: [],
+  demo_script: null,
+  screenshots: [],
+  known_gaps: [],
+  review_requested_at: null,
+  reviewed_at: null,
+  review_cycle_revision: 12,
+  user_decision: null
+};
+
+const approvalAttestation = {
+  source: "local_workbench_confirmation",
+  challenge_id: "CHALLENGE-local",
+  target_id: phaseReview.phase_id,
+  target_revision: 12,
+  review_packet_hash: hash,
+  token_hash: laterHash,
+  captured_at: "2099-07-15T00:00:00.000Z",
+  expires_at: "2099-07-15T00:10:00.000Z",
+  identity_assurance: "local_interaction_unverified_identity"
+};
+
+const executionPlan = {
+  execution_plan_id: "EP-06b6cf27e77f",
+  task_intent_id: "TI-4c2eea2b9e6d",
+  policy_version: 1,
+  lane: "standard",
+  risk_profile: {
+    reversibility: "easy",
+    scope: "multiple_boundaries",
+    verification: "deterministic",
+    uncertainty: "low",
+    effects: ["workspace_write"],
+    repeated_failures: 0,
+    user_review: "default"
+  },
+  reason_codes: ["multiple_boundaries"],
+  routing: {
+    routing_class: "specialist_required",
+    handoff_required: true,
+    specialist_report_required: true
+  },
+  budget: {
+    max_handoffs: 2,
+    max_independent_reviews: 1,
+    max_correction_batches: 1,
+    max_reports: 1,
+    max_auxiliary_tasks: 0
+  },
+  review_policy: "independent_once",
+  escalation_triggers: [
+    "budget_exhausted",
+    "critical_risk_discovered",
+    "scope_drift",
+    "semantic_finding_not_machine_verifiable"
+  ],
+  revision: 1,
+  supersedes_execution_plan_id: null
+};
+
+const roleDefinition = {
+  role_id: "implementation",
+  version: 1,
+  display_names: { en: "Implementation", ja: "実装係" },
+  aliases: ["coder", "developer"],
+  capability_ids: ["code.change", "code.test"],
+  default_contract_template: "specialist-implementation-v1",
+  lifecycle_state: "active"
+};
+
+const agentCapabilityProfile = {
+  agent_id: "implementation-001",
+  capabilities: [{
+    capability_id: "code.change",
+    status: "verified",
+    evidence_refs: ["evidence:code-change"],
+    scope: ["packages/local-core"]
+  }],
+  availability: "available",
+  organization_revision: 1
+};
+
+const taskEnvelope = {
+  schema_version: 2,
+  task_envelope_id: "TE-0123456789ab",
+  task_intent_id: taskIntent.task_intent_id,
+  parent_goal_id: null,
+  workstream_id: "workstream:contracts",
+  terminal_outcome: "Validate the V2 contracts.",
+  local_deliverable: "Return deterministic contract evidence.",
+  continue_policy: "return_after_local",
+  checkpoint_policy: "non_blocking",
+  escalation_conditions: ["required_user_action"],
+  notification_policy: {
+    silent_progress: true,
+    notify_on: ["blocker", "terminal"]
+  },
+  execution: {
+    execution_channel: "product_implementation",
+    inbox_policy: "exclusive",
+    accepted_command_types: ["product_implementation.execute"],
+    exclusive_active_command: true,
+    conversation_history_policy: "filtered"
+  },
+  status: "ready"
+};
+
+const contextRequirement = {
+  version: 2,
+  requirement_id: "CR-0123456789ab",
+  task_intent_id: taskIntent.task_intent_id,
+  task_envelope_id: taskEnvelope.task_envelope_id,
+  project_scope: "local",
+  knowledge_domains: ["contracts"],
+  artifact_types: ["source_code"],
+  dependency_inputs: [],
+  decision_authority: "bounded_execution",
+  detail_level: "bounded",
+  freshness: "current",
+  evidence_needs: ["acceptance:1"],
+  must_include: [`task_intent:${taskIntent.task_intent_id}`],
+  must_exclude: ["superseded"],
+  initial_token_budget: 6000,
+  expansion_budget: 4000,
+  missing_context_policy: "request_bounded_expansion",
+  status: "ready"
+};
+
+const sourceRecord = {
+  schema_version: 2,
+  source_id: "SRC-0123456789ab",
+  source_ref: "packages/contracts/src/index.js",
+  source_hash: hash,
+  source_type: "project_file",
+  authority: "workspace",
+  freshness: "current",
+  knowledge_domains: ["contracts"],
+  artifact_types: ["source_code"],
+  supports_criteria: ["acceptance:1"],
+  token_estimate: 100,
+  content_mode: "reference",
+  summary: null,
+  status: "current"
+};
+
+const contextPackV2 = {
+  version: 2,
+  context_pack_id: "CP2-0123456789ab",
+  requirement_id: contextRequirement.requirement_id,
+  task_intent_id: taskIntent.task_intent_id,
+  task_envelope_id: taskEnvelope.task_envelope_id,
+  owner_agent_id: "implementation-001",
+  status: "shadow",
+  pack_layers: [
+    { layer: "universal_contract", source_refs: ["contract:universal-operating-v2"] },
+    { layer: "task_envelope", source_refs: [`task_envelope:${taskEnvelope.task_envelope_id}`] },
+    { layer: "capability_slice", source_refs: ["agent-capability:implementation-001"] },
+    { layer: "project_sources", source_refs: [sourceRecord.source_ref] }
+  ],
+  selected_sources: [sourceRecord.source_id],
+  coverage_matrix: [
+    { criterion_id: "acceptance:1", status: "covered", source_refs: [sourceRecord.source_ref] }
+  ],
+  budget_receipt: {
+    initial_budget: 6000,
+    selected_tokens: 100,
+    omitted_tokens: 0,
+    mandatory_overflow: 0
+  },
+  retrieval_permissions: {
+    search: true,
+    open: true,
+    expand: true,
+    explain: true,
+    max_expansion_tokens: 4000
+  },
+  staleness: {
+    state: "current",
+    stale_source_ids: []
+  },
+  omitted_context: [],
+  fallback_reason: null,
+  provenance: [
+    { source_ref: sourceRecord.source_ref, source_hash: hash, reason: "acceptance_coverage" }
+  ]
+};
+
+const contextReceipt = {
+  version: 2,
+  receipt_id: "CE-0123456789ab",
+  context_pack_id: contextPackV2.context_pack_id,
+  task_intent_id: taskIntent.task_intent_id,
+  agent_id: "implementation-001",
+  initial_token_estimate: 100,
+  additional_tokens: 0,
+  used_source_ids: [sourceRecord.source_id],
+  unused_source_ids: [],
+  missing_context: [],
+  user_corrections: 0,
+  incorrect_project_facts: 0,
+  compaction_count: 0,
+  acceptance_results: [
+    { criterion_id: "acceptance:1", status: "passed", evidence_refs: ["test:contracts"] }
+  ],
+  created_at: timestamp
+};
+
+const projectControlPlane = {
+  version: 2,
+  project_id: "orquesta",
+  revision: 1,
+  active_workstream: {
+    workstream_id: "workstream:contracts",
+    task_id: taskIntent.task_intent_id,
+    current_goal: "Validate V2 contracts.",
+    next_decision: "Enable shadow compilation."
+  },
+  project_brief: { goal: "Compile bounded context." },
+  user_intent: { hard_invariants: [] },
+  work_graph: { active: [taskIntent.task_intent_id] },
+  organization_map: { agents: ["implementation-001"] },
+  decision_ledger: [],
+  risk_and_approval: { pending: [] },
+  background_workstreams: [],
+  updated_at: timestamp
+};
+
+const sessionHandoffManifest = {
+  schema_version: 1,
+  kind: "orquesta_session_handoff_manifest",
+  created_at: timestamp,
+  agent_id: "orchestrator",
+  predecessor: { session_id: "session-1", thread_id: "thread-1", generation: 1, compaction_count: 15 },
+  successor_generation: 2,
+  canonical_state_files: [{ path: ".orquesta/state/tasks.json", sha256: hash }],
+  active_tasks: [],
+  conversation_tail: [],
+  continuity_rules: ["Canonical state outranks conversation history."]
+};
+
+const sessionHandoffReceipt = {
+  agent_id: "orchestrator",
+  expected_generation: 2,
+  observed_generation: 2,
+  handoff_manifest_hash: hash,
+  ready_to_assume_ownership: true,
+  evidence_checked: [".orquesta/state/tasks.json"],
+  next_action: "Continue the current accepted task."
+};
+
+const projectLayout = {
+  schema_version: 1,
+  status: "draft",
+  project_id: "orquesta",
+  project_kind: "hybrid_software_product",
+  components: [{
+    component_id: "core",
+    kind: "software_modules",
+    roots: ["packages"],
+    owner: "orquesta-core",
+    default_lifecycle: "current",
+    default_authority: "supporting",
+    default_read_policy: "task_candidate",
+    include: ["**"],
+    exclude: ["**/node_modules/**"]
+  }],
+  generated_roots: ["**/node_modules/**"],
+  external_storage_roots: [],
+  updated_at: "2026-08-01T00:00:00.000Z"
+};
+
+const lifecycleRegistry = {
+  schema_version: 1,
+  status: "draft",
+  rules: [{
+    rule_id: "generated",
+    match: ["**/node_modules/**"],
+    lifecycle: "current",
+    authority: "derived",
+    read_policy: "never",
+    storage_policy: "gitignored",
+    reason: "Generated dependency content."
+  }],
+  overrides: [],
+  canonical_claims: [{ claim_key: "orquesta.skill.source", source_ref: "orquesta/SKILL.md" }],
+  updated_at: "2026-08-01T00:00:00.000Z"
+};
+
+const lifecycleContextReceipt = {
+  version: 1,
+  mode: "shadow",
+  status: "ready",
+  project_id: "orquesta",
+  receipt_id: "LCR-aaaaaaaaaaaa",
+  inventory_generated_at: "2026-08-01T00:00:00.000Z",
+  project_map_id: "PM-aaaaaaaaaaaaaaaa",
+  lifecycle_overlay_id: "LO-bbbbbbbbbbbbbbbb",
+  source_catalog: {
+    previous_current_sources: 2,
+    candidate_sources: 1,
+    effective_sources: 1,
+    excluded_sources: 1,
+    estimated_candidate_tokens: 10
+  },
+  exclusions: [{
+    source_ref: "dist/output.js",
+    reason: "derived",
+    component_id: "build-output",
+    lifecycle: "current",
+    authority: "derived",
+    read_policy: "explicit_only"
+  }],
+  canonical_claim_errors: [],
+  created_at: "2026-08-01T00:00:00.000Z"
+};
+
+const projectStructureSetup = {
+  schema_version: 1,
+  template_version: "project-structure-v1",
+  status: "ready",
+  mode: "existing_shadow",
+  project_id: "orquesta",
+  source_kind: "existing_folder",
+  archetype: "hybrid",
+  archetype_candidates: [{ archetype: "software", score: 12, evidence: ["software_manifest"] }],
+  setup_answers: [{ question_id: "SETUP-Q1", answer: "Ship the desktop application." }],
+  manifests: {
+    layout_ref: ".orquesta/project/layout.json",
+    lifecycle_ref: ".orquesta/project/lifecycle.json",
+    manifest_source: "generated"
+  },
+  physical_changes: { created_directories: [], created_files: [], moved_paths: [] },
+  created_at: "2026-08-01T00:00:00.000Z",
+  updated_at: "2026-08-01T00:00:00.000Z"
+};
+
+const projectStructureContextView = {
+  version: 1,
+  view_id: "PSCV-aaaaaaaaaaaaaaaa",
+  project_id: "orquesta",
+  template_version: "project-structure-v1",
+  archetype: "hybrid",
+  setup_mode: "existing_shadow",
+  goal: "Ship the desktop application.",
+  components: [{ component_id: "core", kind: "software_modules", roots: ["packages"], indexed_sources: 8, candidate_sources: 6 }],
+  sources: { indexed_count: 8, candidate_count: 6, excluded_count: 2, candidate_source_refs: ["packages/local-core/src/core/index.ts"] },
+  warnings: [],
+  generated_at: "2026-08-01T00:00:00.000Z"
+};
+
+const projectStructureMigrationPlan = {
+  version: 1,
+  plan_id: "PSMP-aaaaaaaaaaaaaaaa",
+  project_id: "orquesta",
+  status: "review_required",
+  dry_run: true,
+  source_snapshot: {
+    inventory_generated_at: "2026-08-01T00:00:00.000Z",
+    workspace_fingerprint: hash,
+    indexed_files: 10,
+    hashed_files: 10,
+    dirty_worktree: true,
+    dirty_path_count: 3
+  },
+  operations: [{
+    operation_id: "MOVE-0001",
+    action: "quarantine",
+    source_ref: ".orquesta/state/sessions.json.bak",
+    target_ref: ".orquesta/archive/structure-migrations/PSMP-aaaaaaaaaaaaaaaa/runtime-ephemeral/state/sessions.json.bak",
+    reason: "Temporary backup beside canonical state.",
+    confidence: "high",
+    destructive: false,
+    source_sha256: hash,
+    target_precondition: "missing",
+    reference_policy: "none",
+    reference_count: 0,
+    status: "planned"
+  }],
+  reference_rewrites: [],
+  manifest_updates: [{
+    action: "add_rule",
+    rule_id: "structure-migration-archive",
+    match: [".orquesta/archive/structure-migrations/**"],
+    lifecycle: "archived",
+    authority: "supporting",
+    read_policy: "explicit_only",
+    storage_policy: "versioned",
+    reason: "Exclude migration quarantine from normal context."
+  }],
+  checks: [{ code: "dry_run_only", status: "passed", details: "No source changed." }],
+  rollback: {
+    reversible: true,
+    steps: [{
+      operation_id: "MOVE-0001",
+      action: "move",
+      source_ref: ".orquesta/archive/structure-migrations/PSMP-aaaaaaaaaaaaaaaa/runtime-ephemeral/state/sessions.json.bak",
+      target_ref: ".orquesta/state/sessions.json.bak",
+      expected_sha256: hash
+    }]
+  },
+  approval: { required: true, scope: "entire_plan", destructive_confirmation_required: false, applied: false },
+  decisions: [],
+  blockers: [],
+  generated_at: "2026-08-01T00:00:00.000Z"
+};
+
+const placementRequest = {
+  version: 1,
+  task_id: "TASK-1",
+  proposed_path: null,
+  suggested_name: "feature.ts",
+  target_component_id: "core",
+  artifact_kind: "source_code",
+  authority_intent: "supporting",
+  audience: "machine",
+  retention: "project",
+  replaces: [],
+  claim_key: null,
+  root_placement_reason: null,
+  created_at: "2026-08-01T00:00:00.000Z"
+};
+
+const placementDecision = {
+  version: 1,
+  decision_id: "PD-aaaaaaaaaaaa",
+  task_id: "TASK-1",
+  status: "proposed",
+  target_path: "packages/local-core/feature.ts",
+  component_id: "core",
+  lifecycle: "draft",
+  authority: "supporting",
+  read_policy: "task_candidate",
+  supersedes: [],
+  supersedes_candidates: [],
+  warnings: [],
+  hard_errors: [],
+  reason: "The requested component has a declared project root.",
+  created_at: "2026-08-01T00:00:00.000Z"
+};
+
+const fixtures = {
+  "task-intent": [taskIntent, (value) => { value.acceptance_criteria = []; }],
+  "capability-need": [capabilityNeed, (value) => { value.kind = "unknown"; }],
+  "capability-provider": [capabilityProvider, (value) => { value.extra = true; }],
+  "candidate-evaluation": [candidateEvaluation, (value) => { value.actual_model = "invented"; }],
+  audition: [audition, (value) => { value.verdict = "maybe"; }],
+  resolution: [resolution, (value) => { value.mode = "automatic"; }],
+  "context-pack": [contextPack, (value) => { value.status = "published"; }],
+  "event-batch": [eventBatch, (value) => { value.events = []; }],
+  "phase-review": [phaseReview, (value) => { value.status = "ready_for_user_review"; }],
+  "approval-attestation": [approvalAttestation, (value) => { value.actor = { type: "user" }; }],
+  "execution-plan": [executionPlan, (value) => { value.lane = "unknown"; }],
+  "role-definition": [roleDefinition, (value) => { value.role_id = ""; }],
+  "agent-capability-profile": [agentCapabilityProfile, (value) => { value.availability = "unknown"; }],
+  "task-envelope": [taskEnvelope, (value) => { value.continue_policy = "invented"; }],
+  "context-requirement": [contextRequirement, (value) => { value.initial_token_budget = -1; }],
+  "source-record": [sourceRecord, (value) => { value.source_hash = "not-a-hash"; }],
+  "context-pack-v2": [contextPackV2, (value) => { value.status = "published"; }],
+  "context-receipt": [contextReceipt, (value) => { value.compaction_count = -1; }],
+  "project-control-plane": [projectControlPlane, (value) => { value.revision = -1; }],
+  "session-handoff-manifest": [sessionHandoffManifest, (value) => { value.continuity_rules = []; }],
+  "session-handoff-receipt": [sessionHandoffReceipt, (value) => { value.ready_to_assume_ownership = false; }],
+  "project-layout": [projectLayout, (value) => { value.status = "unknown"; }],
+  "lifecycle-registry": [lifecycleRegistry, (value) => { value.rules[0].read_policy = "always"; }],
+  "lifecycle-context-receipt": [lifecycleContextReceipt, (value) => { value.exclusions[0].reason = "unknown"; }],
+  "project-structure-setup": [projectStructureSetup, (value) => { value.mode = "unknown"; }],
+  "project-structure-context-view": [projectStructureContextView, (value) => { value.view_id = "invalid"; }],
+  "project-structure-migration-plan": [projectStructureMigrationPlan, (value) => { value.dry_run = false; }],
+  "placement-request": [placementRequest, (value) => { value.authority_intent = "unknown"; }],
+  "placement-decision": [placementDecision, (value) => { value.status = "unknown"; }]
+};
+
+test("public contract surface is stable", () => {
+  assert.deepEqual(Object.keys(require("../src")).sort(), [
+    "FOUNDATION_AGENT_IDS",
+    "SCHEMA_NAMES",
+    "assertContract",
+    "canonicalHash",
+    "canonicalJson",
+    "loadSchema",
+    "validateContract",
+    "validatePhaseApprovalBinding"
+  ].sort());
+  const organizationV3Schemas = ["agent-registry-v3", "organization-state-v3", "formation-state", "organization-agent-placement-persistent-v1", "placement-intent", "placement-task-state-v3", "session-binding-state-v1"];
+  assert.deepEqual(
+    [...SCHEMA_NAMES].sort(),
+    [...Object.keys(fixtures), ...organizationV3Schemas, ...Object.keys(phase2Contracts)].sort()
+  );
+});
+
+test("every approved schema accepts its fixture and rejects a meaningful invalid value", () => {
+  for (const [schemaName, [valid, mutate]] of Object.entries(fixtures)) {
+    assert.equal(validateContract(schemaName, valid).ok, true, schemaName);
+    const invalid = clone(valid);
+    mutate(invalid);
+    assert.equal(validateContract(schemaName, invalid).ok, false, schemaName);
+  }
+});
+
+test("Execution Plan rejects unbound identity, noncanonical effects, and altered lane budgets", () => {
+  for (const mutate of [
+    (value) => { value.task_intent_id = "unbound"; },
+    (value) => { value.risk_profile.effects = ["workspace_write", "workspace_write"]; },
+    (value) => { value.risk_profile.effects = ["unknown_effect"]; },
+    (value) => { value.budget.max_reports = 2; }
+  ]) {
+    const invalid = clone(executionPlan);
+    mutate(invalid);
+    assert.equal(validateContract("execution-plan", invalid).ok, false);
+  }
+});
+
+test("Execution Plan accepts the documented fast trigger set and rejects invented triggers", () => {
+  const fast = clone(executionPlan);
+  fast.lane = "fast";
+  fast.reason_codes = [];
+  fast.routing = { routing_class: "inline_verified", handoff_required: false, specialist_report_required: false };
+  fast.budget = { max_handoffs: 0, max_independent_reviews: 0, max_correction_batches: 1, max_reports: 0, max_auxiliary_tasks: 0 };
+  fast.review_policy = "none";
+  fast.escalation_triggers = ["acceptance_uncertain", "new_risk", "scope_drift", "test_failure"];
+  assert.equal(validateContract("execution-plan", fast).ok, true);
+
+  fast.escalation_triggers = ["invented_trigger"];
+  assert.equal(validateContract("execution-plan", fast).ok, false);
+});
+
+test("Execution Plan policy version 2 requires independent execution and review axes", () => {
+  const v2 = clone(executionPlan);
+  v2.policy_version = 2;
+  v2.execution_mode = "solo_direct";
+  v2.review_intensity = "normal";
+  v2.routing = { routing_class: "inline_verified", handoff_required: false, specialist_report_required: false };
+  v2.review_policy = "independent_once";
+  assert.equal(validateContract("execution-plan", v2).ok, true);
+
+  delete v2.execution_mode;
+  assert.equal(validateContract("execution-plan", v2).ok, false);
+});
+
+test("EventBatch matches the journal event contract and rejects obsolete event shapes", () => {
+  assert.equal(validateContract("event-batch", eventBatch).ok, true);
+  const validEvent = eventBatch.events[0];
+
+  for (const field of ["event_id", "schema_version", "evidence_refs"]) {
+    const invalid = clone(eventBatch);
+    delete invalid.events[0][field];
+    assert.equal(validateContract("event-batch", invalid).ok, false, field);
+  }
+  for (const [field, value] of [
+    ["event_id", ""],
+    ["schema_version", 0],
+    ["evidence_refs", [1]],
+    ["evidence", { obsolete: true }],
+    ["unknown", true]
+  ]) {
+    const invalid = clone(eventBatch);
+    invalid.events[0][field] = value;
+    assert.equal(validateContract("event-batch", invalid).ok, false, field);
+  }
+  assert.deepEqual(validEvent.evidence_refs, []);
+});
+
+test("TaskIntent rejects an empty acceptance criteria list with stable error shape", () => {
+  const invalid = clone(taskIntent);
+  invalid.acceptance_criteria = [];
+  const result = validateContract("task-intent", invalid);
+  assert.deepEqual(result, {
+    ok: false,
+    errors: [{ path: "$.acceptance_criteria", code: "minItems", message: "must contain at least 1 item" }]
+  });
+  assert.throws(() => assertContract("task-intent", invalid), /minItems/);
+});
+
+test("canonical JSON is key-order invariant, preserves arrays, and rejects nested undefined", () => {
+  assert.equal(canonicalJson({ b: 1, a: [2, 1] }), '{"a":[2,1],"b":1}');
+  assert.equal(canonicalHash({ b: 1, a: 2 }), canonicalHash({ a: 2, b: 1 }));
+  assert.notEqual(canonicalHash([1, 2]), canonicalHash([2, 1]));
+  assert.throws(() => canonicalJson({ nested: { value: undefined } }), /undefined/);
+});
+
+test("canonical JSON rejects value-collapsing input and preserves safe own keys", () => {
+  const circularArray = [];
+  circularArray.push(circularArray);
+  const shared = { source: "shared" };
+  const sparse = [];
+  sparse[1] = "present";
+  const protoKey = JSON.parse('{"__proto__":{"safe":true},"a":1}');
+
+  assert.throws(() => canonicalJson(circularArray), TypeError, "circular arrays must not recurse until RangeError");
+  assert.equal(canonicalJson([shared, shared]), '[{"source":"shared"},{"source":"shared"}]');
+  assert.throws(() => canonicalJson(sparse), /sparse/);
+  assert.throws(() => canonicalJson([undefined]), /undefined/);
+  assert.throws(() => canonicalJson(new Date(timestamp)), /plain/);
+  assert.throws(() => canonicalJson(new Map()), /plain/);
+  assert.throws(() => canonicalJson(new Set()), /plain/);
+  assert.throws(() => canonicalJson({ [Symbol("hidden")]: true }), /symbol/);
+  assert.equal(canonicalJson(protoKey), '{"__proto__":{"safe":true},"a":1}');
+});
+
+test("canonical JSON rejects non-index own array properties instead of discarding them", () => {
+  const enumerable = [1];
+  enumerable.extra = "dropped";
+  const nonEnumerable = [1];
+  Object.defineProperty(nonEnumerable, "hidden", { value: "dropped" });
+  const protoKey = [1];
+  Object.defineProperty(protoKey, "__proto__", { value: "dropped", enumerable: true });
+
+  assert.throws(() => canonicalJson(enumerable), /array properties/);
+  assert.throws(() => canonicalJson(nonEnumerable), /array properties/);
+  assert.throws(() => canonicalJson(protoKey), /array properties/);
+});
+
+test("schema loading rejects unknown keywords instead of ignoring them", () => {
+  const schemaDir = fs.mkdtempSync(path.join(os.tmpdir(), "orquesta-contract-schema-"));
+  const schemaPath = path.join(schemaDir, "task-intent.schema.json");
+  try {
+    fs.writeFileSync(schemaPath, JSON.stringify({ type: "object", unsupported_keyword: true }), "utf8");
+    assert.throws(() => loadSchema("task-intent", schemaDir), /Unsupported schema keyword/);
+  } finally {
+    fs.unlinkSync(schemaPath);
+    fs.rmdirSync(schemaDir);
+  }
+});
+
+test("schema loading rejects invalid supported keyword shapes and invalid patterns", () => {
+  const invalidSchemas = [
+    { type: "object", additionalProperties: "never" },
+    { type: "array", minItems: -1 },
+    { type: "string", pattern: "[" },
+    { type: "object", properties: { nested: { unsupported_keyword: true } } }
+  ];
+
+  for (const schema of invalidSchemas) {
+    withTaskIntentSchema(schema, (schemaDir) => {
+      assert.throws(() => loadSchema("task-intent", schemaDir), TypeError);
+    });
+  }
+});
+
+test("schema combinators keep sibling constraints, both keywords, exact oneOf, and code-unit error order", () => {
+  withTaskIntentSchema({
+    type: "object",
+    required: ["Z", "a"],
+    properties: {
+      Z: { type: "string", pattern: "^pass$", anyOf: [{ const: "pass" }, { const: "either" }], oneOf: [{ const: "pass" }, { const: "also" }] },
+      a: { oneOf: [{ type: "number" }, { type: "string", pattern: "^pass$" }, { const: "pass" }] }
+    },
+    additionalProperties: false
+  }, (schemaDir) => {
+    assert.equal(validateContract("task-intent", { Z: "pass", a: 1 }, { schemasDir: schemaDir }).ok, true);
+
+    const siblingFailure = validateContract("task-intent", { Z: "either", a: 1 }, { schemasDir: schemaDir });
+    assert.deepEqual(siblingFailure.errors.map((error) => error.code), ["oneOf", "pattern"]);
+
+    const multipleMatch = validateContract("task-intent", { Z: "pass", a: "pass" }, { schemasDir: schemaDir });
+    assert.equal(multipleMatch.ok, false);
+    assert.deepEqual(multipleMatch.errors.map((error) => error.code), ["oneOf"]);
+
+    const zeroMatch = validateContract("task-intent", { Z: "no", a: 1 }, { schemasDir: schemaDir });
+    assert.deepEqual(zeroMatch.errors.map((error) => error.code), ["anyOf", "oneOf", "pattern"]);
+  });
+});
+
+test("candidate evaluation requires every axis, bounded values, reasons, and actual_model null", () => {
+  const invalid = clone(candidateEvaluation);
+  delete invalid.axes.cost;
+  invalid.axes.task_fit.value = 101;
+  invalid.axes.security.reason = "";
+  invalid.actual_model = "gpt-5.6-terra";
+  const result = validateContract("candidate-evaluation", invalid);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.errors.map((error) => error.path), [
+    "$.actual_model",
+    "$.axes.cost",
+    "$.axes.security.reason",
+    "$.axes.task_fit.value"
+  ]);
+});
+
+test("approval attestation rejects raw token, secret, and request-supplied actor", () => {
+  for (const forbiddenField of ["raw_token", "secret", "actor"]) {
+    const invalid = { ...approvalAttestation, [forbiddenField]: forbiddenField === "actor" ? { type: "user" } : "secret" };
+    assert.equal(validateContract("approval-attestation", invalid).ok, false, forbiddenField);
+  }
+});
+
+test("phase review approval requires an explicit user decision and a bound redacted attestation", () => {
+  const ready = { ...phaseReview, status: "ready_for_user_review" };
+  assert.equal(validateContract("phase-review", ready).ok, false);
+  const complete = {
+    ...ready,
+    build_ref: "6be6d7f",
+    artifacts: ["output/v4-phase1-review/workbench.png"],
+    artifact_hashes: { "output/v4-phase1-review/workbench.png": hash },
+    review_packet_ref: "output/v4-phase1-review/phase-1-review.md",
+    review_packet_hash: laterHash
+  };
+  assert.equal(validateContract("phase-review", complete).ok, true);
+
+  const approved = {
+    ...complete,
+    status: "approved",
+    reviewed_at: "2020-07-15T00:05:00.000Z",
+    user_decision: {
+      decision: "approved",
+      attestation: {
+        ...approvalAttestation,
+        review_packet_hash: laterHash,
+        captured_at: "2020-07-15T00:00:00.000Z",
+        expires_at: "2020-07-15T00:10:00.000Z"
+      }
+    }
+  };
+  assert.equal(validateContract("phase-review", approved).ok, true);
+  assert.equal(validateContract("phase-review", { ...complete, status: "approved" }).ok, false);
+  assert.equal(validateContract("phase-review", {
+    ...approved,
+    user_decision: { decision: "approved", attestation: null }
+  }).ok, false);
+});
+
+test("phase approval binding fails closed for missing, target, packet, revision, and expiry mismatches", () => {
+  const binding = {
+    phaseReview: {
+      phase_id: phaseReview.phase_id,
+      review_packet_hash: hash,
+      review_cycle_revision: 12,
+      reviewed_at: "2020-07-15T00:05:00.000Z"
+    },
+    attestation: {
+      ...approvalAttestation,
+      review_packet_hash: hash,
+      captured_at: "2020-07-15T00:00:00.000Z",
+      expires_at: "2020-07-15T00:10:00.000Z"
+    }
+  };
+  assert.equal(validatePhaseApprovalBinding(binding).ok, true);
+  assert.equal(validatePhaseApprovalBinding().ok, false);
+  assert.equal(validatePhaseApprovalBinding({ phaseReview: binding.phaseReview }).ok, false);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    attestation: { ...binding.attestation, target_id: "another-phase" }
+  }).errors.some((error) => error.code === "approval_target_mismatch"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    attestation: { ...binding.attestation, review_packet_hash: laterHash }
+  }).errors.some((error) => error.code === "approval_packet_hash_mismatch"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    attestation: { ...binding.attestation, target_revision: 11 }
+  }).errors.some((error) => error.code === "approval_revision_mismatch"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    phaseReview: { ...binding.phaseReview, reviewed_at: "2020-07-15T00:10:00.000Z" }
+  }).errors.some((error) => error.code === "approval_attestation_expired"), true);
+});
+
+test("approval uses saved reviewed_at as a deterministic reference time", () => {
+  const binding = {
+    phaseReview: {
+      phase_id: phaseReview.phase_id,
+      review_packet_hash: hash,
+      review_cycle_revision: 12,
+      reviewed_at: "2020-07-15T00:05:00.000Z"
+    },
+    attestation: {
+      ...approvalAttestation,
+      review_packet_hash: hash,
+      captured_at: "2020-07-15T00:05:00.000Z",
+      expires_at: "2020-07-15T00:10:00.000Z"
+    }
+  };
+  const first = validatePhaseApprovalBinding(binding);
+  const second = validatePhaseApprovalBinding(binding);
+
+  assert.equal(first.ok, true, "historically valid evidence must not depend on the current machine date");
+  assert.deepEqual(second, first);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    phaseReview: { ...binding.phaseReview, reviewed_at: null }
+  }).errors.some((error) => error.code === "approval_reference_time_missing"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    attestation: { ...binding.attestation, captured_at: "2020-07-15T00:06:00.000Z" }
+  }).errors.some((error) => error.code === "approval_capture_after_review"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    phaseReview: { ...binding.phaseReview, reviewed_at: "2020-07-15T00:10:00.000Z" }
+  }).errors.some((error) => error.code === "approval_attestation_expired"), true);
+  assert.equal(validatePhaseApprovalBinding({
+    ...binding,
+    phaseReview: { ...binding.phaseReview, reviewed_at: "2020-07-15T00:11:00.000Z" }
+  }).errors.some((error) => error.code === "approval_attestation_expired"), true);
+});
+
+test("UTC timestamp schemas and approval attestation semantics reject malformed and reversed evidence", () => {
+  assert.equal(validateContract("approval-attestation", {
+    ...approvalAttestation,
+    captured_at: "not-a-timestamp",
+    expires_at: "also-not-a-timestamp"
+  }).ok, false);
+  assert.equal(validateContract("approval-attestation", {
+    ...approvalAttestation,
+    captured_at: "2026-02-30T00:00:00.000Z"
+  }).ok, false);
+  assert.equal(validateContract("approval-attestation", {
+    ...approvalAttestation,
+    expires_at: approvalAttestation.captured_at
+  }).ok, false);
+  assert.equal(validateContract("capability-provider", {
+    ...capabilityProvider,
+    last_verified_at: "not-a-timestamp"
+  }).ok, false);
+  assert.equal(validateContract("capability-provider", {
+    ...capabilityProvider,
+    last_verified_at: "2026-02-30T00:00:00.000Z"
+  }).ok, false);
+  assert.equal(validateContract("context-pack", {
+    ...contextPack,
+    expires_at: "not-a-timestamp"
+  }).ok, false);
+  assert.equal(validateContract("context-pack", {
+    ...contextPack,
+    expires_at: "2026-02-30T00:00:00.000Z"
+  }).ok, false);
+  assert.equal(validateContract("phase-review", {
+    ...phaseReview,
+    review_requested_at: "not-a-timestamp"
+  }).ok, false);
+  assert.equal(validateContract("phase-review", {
+    ...phaseReview,
+    review_requested_at: "2026-02-30T00:00:00.000Z"
+  }).ok, false);
+});
+
+test("validation errors use deterministic code-unit order", () => {
+  withTaskIntentSchema({
+    type: "object",
+    required: ["Z", "a"],
+    properties: { Z: { type: "string" }, a: { type: "string" } },
+    additionalProperties: false
+  }, (schemaDir) => {
+    const result = validateContract("task-intent", { Z: 1, a: 1 }, { schemasDir: schemaDir });
+    assert.deepEqual(result.errors.map((error) => error.path), ["$.Z", "$.a"]);
+  });
+});
+
+const phase2Contracts = {
+  "live-source-query": {
+    value: {
+      need_id: "NEED-live-source",
+      query_terms: ["json", "validation"],
+      allowed_connector_ids: ["official_docs", "registry"],
+      request_budget: { max_requests_per_need: 8, max_requests_per_connector: 2 },
+      candidate_limit: 3,
+      requested_at: timestamp
+    },
+    invalid: (value) => { value.allowed_connector_ids = ["registry", "registry"]; }
+  },
+  "live-source-result": {
+    value: {
+      connector_id: "official_docs",
+      trust_tier: "official",
+      fetched_at: timestamp,
+      expires_at: "2026-07-15T01:00:00.000Z",
+      status: "success",
+      candidates: [{ candidate_id: "candidate-a", source_ref: "https://example.test/a", source_hash: hash, version: "1.0.0", revision: null, trust_tier: "official", freshness: "fresh" }],
+      source_evidence: [{
+        source_id: "source:official_docs:candidate-a",
+        candidate_id: "candidate-a",
+        source_ref: "https://example.test/a",
+        source_hash: hash,
+        freshness: "fresh",
+        authoritative_fields: ["freshness", "license", "trust"],
+        facts: { freshness: "fresh", license: "MIT", trust: "official" },
+        unknowns: ["accessibility", "compatibility", "cost", "maintenance", "security"],
+      }],
+      cache_status: "fresh",
+      redaction_status: "redacted"
+    },
+    invalid: (value) => { value.candidates[0].source_hash = ""; }
+  },
+  "audition-plan": {
+    value: {
+      audition_plan_id: "AP-1234567890ab",
+      candidate_id: "candidate-a",
+      candidate_version: "1.0.0",
+      candidate_hash: hash,
+      task_intent_id: "TI-1234567890ab",
+      resolution_id: "CR-1234567890ab",
+      execution_root: { kind: "temporary", path: "output/v4-phase2/audition" },
+      expected_codex_profile: "phase2-audition",
+      permitted_effects: ["workspace_write"],
+      steps: ["run focused verification"],
+      expected_evidence: ["artifact:audition-result"],
+      cleanup_plan: ["remove temporary files"],
+      approval_refs: ["approval:audition"]
+    },
+    invalid: (value) => { value.unexpected = true; }
+  },
+  "audition-result": {
+    value: {
+      audition_plan_id: "AP-1234567890ab",
+      observed_codex_profile: "phase2-audition",
+      steps: [{ step: "run focused verification", status: "passed" }],
+      side_effects: [],
+      evidence_refs: ["artifact:audition-result"],
+      verdict: "passed",
+      cleanup_evidence: ["cleanup:verified"]
+    },
+    invalid: (value) => { value.observed_codex_profile = ""; }
+  },
+  "install-approval-target": {
+    value: {
+      candidate_id: "candidate-a",
+      candidate_version: "1.0.0",
+      source_hash: hash,
+      dependency_preview_hash: hash,
+      lockfile_preview_hash: laterHash,
+      target_workspace: "packages/codex-adapter",
+      effects: ["dependency_change"],
+      expires_at: "2026-07-15T01:00:00.000Z",
+      review_packet_ref: "artifact:install-review",
+      review_packet_hash: hash
+    },
+    invalid: (value) => { value.review_packet_hash = ""; }
+  },
+  "runtime-evidence": {
+    value: {
+      source: "app_server",
+      correlation_id: "CORR-phase2",
+      event_kind: "turn_started",
+      captured_at: timestamp,
+      thread_id: "thread-phase2",
+      turn_id: "turn-phase2",
+      payload_hash: hash,
+      payload_ref: "artifact:turn-started",
+      redaction_status: "redacted",
+      requested_model: "gpt-5.6-terra",
+      applied_model: "gpt-5.6-terra",
+      actual_model: null
+    },
+    invalid: (value) => { value.actual_model = "gpt-5.6-terra"; value.payload_ref = null; }
+  },
+  "codex-dispatch": {
+    value: {
+      adapter_kind: "app_server",
+      request_status: "dispatch_accepted",
+      thread_id: "thread-phase2",
+      turn_id: "turn-phase2",
+      requested_model: "gpt-5.6-terra",
+      applied_model: "gpt-5.6-terra",
+      evidence_refs: ["artifact:dispatch-accepted"],
+      turn_started_evidence_ref: null
+    },
+    invalid: (value) => { value.request_status = "turn_started"; }
+  }
+};
+
+test("Phase 2 durable evidence contracts accept bounded fixtures and reject semantic violations", () => {
+  const names = Object.keys(phase2Contracts);
+  assert.equal(names.every((name) => SCHEMA_NAMES.includes(name)), true, "Phase 2 schema names must be registered");
+
+  for (const [name, fixture] of Object.entries(phase2Contracts)) {
+    assert.equal(validateContract(name, fixture.value).ok, true, `${name} valid fixture`);
+    const invalid = clone(fixture.value);
+    fixture.invalid(invalid);
+    assert.equal(validateContract(name, invalid).ok, false, `${name} semantic invalid fixture`);
+  }
+});
+
+test("Phase 2 durable evidence contracts enforce fixed limits, timestamp order, and turn-start evidence", () => {
+  const query = clone(phase2Contracts["live-source-query"].value);
+  query.request_budget.max_requests_per_need = 9;
+  assert.equal(validateContract("live-source-query", query).ok, false);
+
+  query.request_budget.max_requests_per_need = 8;
+  query.candidate_limit = 4;
+  assert.equal(validateContract("live-source-query", query).ok, false);
+
+  query.candidate_limit = 3;
+  query.query_terms = ["validation", "json"];
+  assert.equal(validateContract("live-source-query", query).ok, false);
+
+  const result = clone(phase2Contracts["live-source-result"].value);
+  result.expires_at = result.fetched_at;
+  assert.equal(validateContract("live-source-result", result).ok, false);
+
+  const dispatch = clone(phase2Contracts["codex-dispatch"].value);
+  dispatch.request_status = "turn_started";
+  dispatch.turn_started_evidence_ref = "artifact:turn-started";
+  assert.equal(validateContract("codex-dispatch", dispatch).ok, true);
+});
+
+test("live source result binds record trust and freshness to its source evidence", () => {
+  const trustMismatch = clone(phase2Contracts["live-source-result"].value);
+  trustMismatch.candidates[0].trust_tier = "community";
+  assert.equal(validateContract("live-source-result", trustMismatch).ok, false);
+
+  const freshnessMismatch = clone(phase2Contracts["live-source-result"].value);
+  freshnessMismatch.candidates[0].freshness = "stale";
+  assert.equal(validateContract("live-source-result", freshnessMismatch).ok, false);
+});
+
+test("live source result requires exactly one source evidence record for every current candidate", () => {
+  const missingEvidence = clone(phase2Contracts["live-source-result"].value);
+  missingEvidence.source_evidence = [];
+  const missingResult = validateContract("live-source-result", missingEvidence);
+  assert.equal(missingResult.ok, false);
+  assert.deepEqual(missingResult.errors.filter((error) => error.code === "source_candidate_evidence_missing").map((error) => error.path), ["$.candidates.candidate-a"]);
+
+  const oneToOne = clone(phase2Contracts["live-source-result"].value);
+  oneToOne.candidates.push({
+    candidate_id: "candidate-b",
+    source_ref: "https://example.test/b",
+    source_hash: laterHash,
+    version: "2.0.0",
+    revision: "rev-b",
+    trust_tier: "official",
+    freshness: "fresh"
+  });
+  oneToOne.source_evidence.push({
+    source_id: "source:official_docs:candidate-b",
+    candidate_id: "candidate-b",
+    source_ref: "https://example.test/b",
+    source_hash: laterHash,
+    freshness: "fresh",
+    authoritative_fields: ["freshness", "license", "trust"],
+    facts: { freshness: "fresh", license: "MIT", trust: "official" },
+    unknowns: ["accessibility", "compatibility", "cost", "maintenance", "security"]
+  });
+  assert.equal(validateContract("live-source-result", oneToOne).ok, true);
+
+  const duplicateCandidate = clone(oneToOne);
+  duplicateCandidate.candidates[1].candidate_id = "candidate-a";
+  const duplicateCandidateResult = validateContract("live-source-result", duplicateCandidate);
+  assert.equal(duplicateCandidateResult.ok, false);
+  assert.ok(duplicateCandidateResult.errors.some((error) => error.path === "$.candidates" && error.code === "sorted_unique"));
+
+  const duplicateEvidence = clone(oneToOne);
+  duplicateEvidence.source_evidence[1].candidate_id = "candidate-a";
+  const duplicateEvidenceResult = validateContract("live-source-result", duplicateEvidence);
+  assert.equal(duplicateEvidenceResult.ok, false);
+  assert.ok(duplicateEvidenceResult.errors.some((error) => error.path === "$.source_evidence" && error.code === "sorted_unique"));
+});
+
+test("Phase 2 durable evidence contracts reject unknown durable fields", () => {
+  for (const [name, fixture] of Object.entries(phase2Contracts)) {
+    const invalid = clone(fixture.value);
+    invalid.unknown_durable_field = true;
+    assert.equal(validateContract(name, invalid).ok, false, name);
+  }
+});
+
+test("runtime evidence binds a non-null actual model to model observation evidence", () => {
+  const turnStarted = clone(phase2Contracts["runtime-evidence"].value);
+  turnStarted.actual_model = "gpt-5.6-terra";
+  assert.equal(validateContract("runtime-evidence", turnStarted).ok, false);
+
+  const observed = clone(turnStarted);
+  observed.event_kind = "model_observed";
+  assert.equal(validateContract("runtime-evidence", observed).ok, true);
+});
