@@ -32,7 +32,8 @@ describe('Core protocol validation', () => {
       info: {
         status: 'not_started', adapter: 'app_server', sdkVersion: '0.144.5', codexVersion: '0.144.5',
         runtimeVersion: '0.144.5-win32-x64', targetTriple: 'x86_64-pc-windows-msvc',
-        platformFamily: null, platformOs: null, userAgent: null, providerConnectionId: null, integrity: 'verified'
+        platformFamily: null, platformOs: null, userAgent: null, providerConnectionId: null, integrity: 'verified',
+        models: []
       }
     })).toBe(true);
   });

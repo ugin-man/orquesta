@@ -177,6 +177,15 @@ impl ProjectRegistry {
             .collect()
     }
 
+    pub fn archived_list(&self) -> Vec<ProjectRecord> {
+        self.document
+            .projects
+            .iter()
+            .filter(|project| project.hidden_from_recent)
+            .cloned()
+            .collect()
+    }
+
     pub fn checked_snapshot(&self) -> AppResult<ProjectRegistrySnapshot> {
         self.ensure_current_authority()?;
         Ok(ProjectRegistrySnapshot {
@@ -613,7 +622,15 @@ impl ProjectRegistry {
         Ok(record)
     }
 
-    pub fn hide_from_recent(&mut self, project_id: &str) -> AppResult<Vec<ProjectRecord>> {
+    pub fn archive(&mut self, project_id: &str) -> AppResult<()> {
+        self.set_archived(project_id, true)
+    }
+
+    pub fn restore_archived(&mut self, project_id: &str) -> AppResult<()> {
+        self.set_archived(project_id, false)
+    }
+
+    fn set_archived(&mut self, project_id: &str, archived: bool) -> AppResult<()> {
         bounded_id(project_id, "projectId")?;
         self.ensure_current_authority()?;
         let mut next = self.document.clone();
@@ -622,12 +639,20 @@ impl ProjectRegistry {
             .iter_mut()
             .find(|item| item.project_id == project_id)
             .ok_or_else(|| AppError::new("project_not_registered", "Project is not registered"))?;
-        project.hidden_from_recent = true;
-        if next.selected_project_id.as_deref() == Some(project_id) {
+        if project.hidden_from_recent == archived {
+            return Ok(());
+        }
+        project.hidden_from_recent = archived;
+        if archived && next.selected_project_id.as_deref() == Some(project_id) {
             next.selected_project_id = None;
         }
         self.persist_document(&next)?;
         self.document = next;
+        Ok(())
+    }
+
+    pub fn hide_from_recent(&mut self, project_id: &str) -> AppResult<Vec<ProjectRecord>> {
+        self.archive(project_id)?;
         Ok(self.visible_list())
     }
 
@@ -1618,7 +1643,7 @@ mod tests {
     }
 
     #[test]
-    fn hidden_recent_project_keeps_identity_history_authority_and_reopens_in_place() {
+    fn archived_project_keeps_identity_history_authority_and_restores_in_place() {
         let base = unique_registry_base("hidden-recent-reopen");
         let root = base.join("project");
         std::fs::create_dir_all(&root).expect("create project root");
@@ -1655,11 +1680,16 @@ mod tests {
         drop(registry);
         let mut reopened = ProjectRegistry::open(path).expect("reopen registry");
         assert!(reopened.visible_list().is_empty());
-        let restored = reopened
-            .register_read_only_named(root.to_str().expect("root utf8"), None)
-            .expect("reselect same project root");
+        assert_eq!(reopened.archived_list().len(), 1);
+        assert_eq!(reopened.archived_list()[0].project_id, record.project_id);
+        assert!(reopened.archived_list()[0].hidden_from_recent);
+        reopened
+            .restore_archived(&record.project_id)
+            .expect("restore archived project");
+        let restored = reopened.get(&record.project_id).expect("restored project");
         assert_eq!(restored.project_id, record.project_id);
         assert!(!restored.hidden_from_recent);
+        assert!(reopened.archived_list().is_empty());
         assert_eq!(reopened.visible_list().len(), 1);
         assert_eq!(
             reopened

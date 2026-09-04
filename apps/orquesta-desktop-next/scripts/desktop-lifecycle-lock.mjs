@@ -1,4 +1,4 @@
-import { open, lstat, mkdir, realpath, unlink } from 'node:fs/promises';
+import { open, lstat, mkdir, readFile, realpath, unlink } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,6 +9,7 @@ export const defaultDesktopLifecycleRoot = join(desktopProductRoot, '.build-gene
 // Keep the historical path so an older or crashed coordinator cannot be
 // silently bypassed during the lifecycle-lock cutover.
 export const desktopLifecycleLockName = 'build.lock';
+const invalidLockGraceMs = 60_000;
 
 function comparable(value) {
   const normalized = resolve(value);
@@ -63,14 +64,23 @@ export async function acquireDesktopLifecycleLock({
   const lifecycleRoot = await ensureDesktopLifecycleRoot({ root, stagingRoot });
   const lockPath = join(lifecycleRoot, desktopLifecycleLockName);
   let handle;
-  try {
-    handle = await open(lockPath, 'wx');
-  } catch (error) {
-    if (error?.code === 'EEXIST') {
-      throw new Error('desktop_lifecycle_maintenance_required:lock_exists');
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      handle = await open(lockPath, 'wx');
+      break;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      if (await desktopLifecycleLockIsActive(lockPath)) {
+        throw new Error('desktop_lifecycle_maintenance_required:lock_exists');
+      }
+      try {
+        await unlink(lockPath);
+      } catch (unlinkError) {
+        if (unlinkError?.code !== 'ENOENT') throw unlinkError;
+      }
     }
-    throw error;
   }
+  if (!handle) throw new Error('desktop_lifecycle_maintenance_required:lock_exists');
   try {
     await handle.writeFile(`${JSON.stringify({
       schemaVersion: 1,
@@ -89,6 +99,37 @@ export async function acquireDesktopLifecycleLock({
     }
     throw error;
   }
+}
+
+async function desktopLifecycleLockIsActive(lockPath) {
+  const metadata = await lstat(lockPath);
+  const canonical = await realpath(lockPath);
+  if (
+    !metadata.isFile()
+    || metadata.isSymbolicLink()
+    || comparable(canonical) !== comparable(lockPath)
+  ) {
+    throw new Error('desktop_lifecycle_lock_is_not_plain_file');
+  }
+
+  let owner = null;
+  try {
+    owner = JSON.parse(await readFile(lockPath, 'utf8'));
+  } catch {
+    // A newly-created lock can briefly be empty while its owner writes the
+    // metadata. Give that short window time instead of stealing a live lock.
+  }
+  if (Number.isSafeInteger(owner?.pid) && owner.pid > 0) {
+    try {
+      process.kill(owner.pid, 0);
+      return true;
+    } catch (error) {
+      if (error?.code === 'EPERM') return true;
+      if (error?.code === 'ESRCH') return false;
+      throw error;
+    }
+  }
+  return Date.now() - metadata.mtimeMs < invalidLockGraceMs;
 }
 
 export async function releaseDesktopLifecycleLock(lock) {

@@ -32,7 +32,11 @@ const npmOperations = new Set([
   'test:native-contract',
   'clean:native',
 ]);
-const maxRetiredGenerationPairs = 32;
+const exclusiveOperations = new Set([
+  'generate:desktop-bindings',
+  'clean:native',
+  'retire-generation',
+]);
 
 function comparable(value) {
   const normalized = resolve(value);
@@ -162,10 +166,11 @@ async function verifyRetiredPairCapacity(stagingRoot) {
   if (releaseIds.some((releaseId) => !generationIds.includes(releaseId))) {
     throw new Error('desktop_lifecycle_retire_archive_release_without_pair');
   }
-  if (generationIds.length >= maxRetiredGenerationPairs) {
-    throw new Error('desktop_lifecycle_retire_archive_capacity_exceeded');
-  }
   return { generationIds, receiptIds, releaseIds };
+}
+
+export function desktopLifecycleOperationNeedsLock(operation) {
+  return exclusiveOperations.has(operation);
 }
 
 export async function verifyCanonicalReleaseAuthority(root) {
@@ -467,7 +472,7 @@ export async function desktopLifecycleCommandPlan(operation) {
 
 export async function runDesktopLifecycle(argv = process.argv.slice(2)) {
   const request = parseDesktopLifecycleArguments(argv);
-  return withDesktopLifecycleLock({ operation: request.operation }, async () => {
+  const execute = async () => {
     if (request.kind === 'retire-generation') {
       const retired = await retireDesktopGeneration({ buildId: request.buildId });
       process.stdout.write(`desktop_generation_retired ${JSON.stringify(retired)}\n`);
@@ -488,7 +493,9 @@ export async function runDesktopLifecycle(argv = process.argv.slice(2)) {
     for (const command of commands) {
       await runProcess(command.executable, command.args, desktopProductRoot, command.env);
     }
-  });
+  };
+  if (!desktopLifecycleOperationNeedsLock(request.operation)) return execute();
+  return withDesktopLifecycleLock({ operation: request.operation }, execute);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

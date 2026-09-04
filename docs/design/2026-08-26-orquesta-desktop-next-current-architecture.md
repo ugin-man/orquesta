@@ -122,13 +122,15 @@ Historyの`historySelectedAgentId`、query、現在page、cursor、loading ticke
 
 ProjectRegistryが永続化するConversation再開hintは、projectごとの検証済み`lastWorkAgentId`一つだけです。これとは別に、同じRegistryDocumentがproject registrationとSQLite初期化の`Pending/Ready`境界を所有します。App再起動後はRuntimeを停止したままにし、利用者がprojectを明示的に開いた後にだけ、現在も有効な担当者のConversationをSQLiteから再開します。message、thread、generation、cursorはRegistryへ複製しません。
 
-## ビルドと保守の直列化
+## 開発経路とリリース経路
 
-Desktopの共有生成物を変更または参照する保守操作は、`.build-generations/build.lock`という一つの物理ロックを使います。対象はfrontend/runtime/Tauri package、release attestation、test、native clean、世代退役、source-matched executableのidentity再確認からspawn完了までです。build用、test用、clean用などの別ロックは増やしません。
+普段の`npm run dev`、typecheck、testは共有release生成物を変更しないため、`.build-generations/build.lock`を使いません。`dev:desktop`と`build:runtime`も長時間の開発作業を全体ロックで囲まず、各buildの一時directoryとatomic promotionだけで競合を局所化します。生成bindingの書換え、native clean、正式なfrontend／Tauri release buildだけを直列化します。
 
-通常の入口は`npm test`、`npm run test:native-contract`、`npm run clean:native`、`npm run lifecycle:retire-generation -- <build-id>`です。任意の実行ファイルを受け取る汎用exec入口と、ロック保持中の内部scriptは公開しません。P2-011の対話的NSIS installは別の利用者境界であり、silent/update modeをこの保守経路へ混ぜません。Coordinatorが異常終了した場合は、子processが残っている可能性があるためPIDだけで自動回収せず、lockを残してfail closedにします。runtimeの二領域promotionや世代退役でrollbackまで失敗した場合も同じlockを残し、分断状態のまま次操作へ進みません。
+`.build-generations/build.lock`は正式build中のfrontend receipt、executable、installer、release pointerの取り違えを防ぐためだけに残します。lockのPIDが生存している間だけbusyとし、owner processが終了した古いlockは次のrelease buildが自動回収します。直接の`tauri build`は古いfrontendを梱包し得るため、配布物を作る入口は引き続き`npm run build:desktop`です。
 
-世代退役は削除ではありません。現在のrelease setが参照する世代を拒否し、検証済みgenerationとreceiptの組だけを同じlock内で`retired/`へ移します。新しいcandidateはsource input、frontend receipt、executable、installerが一つのrelease setに一致して初めて配布候補になります。機械的attestationは利用者による実機受入やtask acceptanceの代わりではありません。
+過去のgeneration、receipt、release archive、retired archiveは再生成可能なbuild cacheです。release build開始時に現在のpromoted releaseだけを保護し、それ以外は自動整理します。人間がbuild IDを調べて世代退役する通常手順は廃止します。新しいcandidateはsource input、frontend receipt、executable、installerが一つのrelease setに一致して初めて配布候補になります。機械的attestationは利用者による実機受入やtask acceptanceの代わりではありません。
+
+Rendererの`localStorage`、`sessionStorage`、`indexedDB`は全面禁止しません。テーマ、panel開閉、未送信の表示状態など、消えても製品stateを壊さないUI preferenceには使えます。project登録、会話、送信状態、権限、runtime identityなどの業務・実行authorityは引き続きNative側だけが所有します。
 
 P2自体の進捗はcoordination task controllerが所有する`.orquesta/state/tasks.json`へ先に一度commitし、`CURRENT_ORCHESTRA.md`とeventはそこから再生できる派生projectionとして更新します。これは専門担当の配置を所有するPlacementTaskPort V3の`.orquesta/state/placement-tasks.json`とは別の正本です。CURRENTを第二の正本にせず、途中失敗は同じcontent-addressed packetで冪等に修復します。CURRENTの表示時刻はCURRENT lock内でcanonical ledgerを読み直し、同じ`event_id`の再生はevent全体が一致する場合だけ冪等とみなします。内容が違う同一IDはcollisionとして停止します。複数境界を同時に扱う場合のlock順はDesktop lifecycle、coordination task controller、CURRENT projectionです。
 

@@ -136,6 +136,12 @@ pub struct DispatchFingerprintInput {
     pub recommended_model: Option<String>,
     #[serde(default)]
     pub requested_model: Option<String>,
+    #[serde(default)]
+    pub sandbox: Option<String>,
+    #[serde(default)]
+    pub approval_policy: Option<String>,
+    #[serde(default)]
+    pub service_tier: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -580,6 +586,30 @@ pub fn action_fingerprint_v1(input: &DispatchFingerprintInput) -> AppResult<Stri
             .map(Value::String)
             .unwrap_or(Value::Null),
     );
+    options.insert(
+        "sandbox",
+        input
+            .sandbox
+            .clone()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    options.insert(
+        "approvalPolicy",
+        input
+            .approval_policy
+            .clone()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    options.insert(
+        "serviceTier",
+        input
+            .service_tier
+            .clone()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
     let mut material = BTreeMap::new();
     material.insert(
         "additionalParams",
@@ -740,6 +770,9 @@ mod tests {
             effort: None,
             recommended_model: None,
             requested_model: None,
+            sandbox: None,
+            approval_policy: None,
+            service_tier: None,
         }
     }
 
@@ -840,10 +873,13 @@ mod tests {
             effort: None,
             recommended_model: None,
             requested_model: None,
+            sandbox: None,
+            approval_policy: None,
+            service_tier: None,
         };
         assert_eq!(
             action_fingerprint_v1(&input).unwrap(),
-            "89c36422ee09175e85edcec6c4a05f03d92a1251cce22d885f2cfe3dfda932ab"
+            "8460f5ce538e2c63bb721bd59c33e8c8a4597bc976f0b2b44ca3097df73f4fe5"
         );
         let mut reversed = input.clone();
         reversed.selected_context_ids.reverse();

@@ -44,7 +44,8 @@ describe('user-facing copy boundary', () => {
     expect(userMessageCopy(userMessage('attachment_batch_rejected'), 'ja')).toContain('追加していません');
     expect(userMessageCopy(userMessage('attachment_batch_rejected'), 'en')).toContain('none were attached');
     expect(userMessageCopy(userMessage('project_metadata_directory_selected'), 'ja')).toContain('一つ上');
-    expect(userMessageCopy(userMessage('project_recent_forget_active'), 'en')).toContain('Stop it first');
+    expect(userMessageCopy(userMessage('project_recent_forget_active'), 'ja')).toContain('アーカイブできません');
+    expect(userMessageCopy(userMessage('project_recent_forget_active'), 'en')).toContain('cannot be archived');
   });
 
   test('creates runtime approval presentation copy only at the Desktop locale boundary', () => {

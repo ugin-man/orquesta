@@ -40,7 +40,7 @@ function state(patch: Partial<ApplicationState> = {}): ApplicationState {
     userSignalsBaselineReady: true,
     settings: {
       schemaVersion: 2, revision: 1, locale: 'en', theme: 'system',
-      reducedMotion: false, notificationsEnabled: true,
+      reducedMotion: false, notificationsEnabled: true, navigationCompact: true, workLedgerOpen: true,
     },
     ...patch,
   };
@@ -169,7 +169,7 @@ describe('NotificationCoordinator', () => {
     const disabled = state({
       settings: {
         schemaVersion: 2, revision: 1, locale: 'en', theme: 'system',
-        reducedMotion: false, notificationsEnabled: false,
+        reducedMotion: false, notificationsEnabled: false, navigationCompact: true, workLedgerOpen: true,
       },
     });
     await coordinator.observe(disabled, 'en', { visible: false, focused: false });

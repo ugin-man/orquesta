@@ -77,7 +77,10 @@ export interface DesktopRuntimeSendInput {
   selectedContextIds?: string[];
   recommendedModel: string | null;
   requestedModel: string | null;
-  effort?: 'low' | 'medium' | 'high' | null;
+  effort?: string | null;
+  sandbox?: 'workspace-write' | 'danger-full-access' | null;
+  approvalPolicy?: 'on-request' | 'never' | null;
+  serviceTier?: 'fast' | null;
   onThreadReady?: (threadId: string) => Promise<void> | void;
 }
 
@@ -134,7 +137,14 @@ function pathIsWithin(candidate: string, root: string): boolean {
     || normalizedCandidate.startsWith(`${normalizedRoot}${path.sep}`);
 }
 
-function requireSelectedProjectRuntimeProfile(result: UnknownRecord, rootPath: string): UnknownRecord {
+function requireSelectedProjectRuntimeProfile(
+  result: UnknownRecord,
+  rootPath: string,
+  expected?: {
+    sandbox?: DesktopRuntimeSendInput['sandbox'];
+    approvalPolicy?: DesktopRuntimeSendInput['approvalPolicy'];
+  },
+): UnknownRecord {
   const profile = record(result.runtime_profile);
   const actualCwd = nonEmptyString(profile?.cwd);
   if (!actualCwd || comparableAbsolutePath(actualCwd) !== comparableAbsolutePath(rootPath)) {
@@ -158,11 +168,56 @@ function requireSelectedProjectRuntimeProfile(result: UnknownRecord, rootPath: s
   if (ancestorInstruction) {
     throw new Error('provider_ancestor_instruction_source: Codex App Server loaded instructions above the selected project root');
   }
+  if (expected?.sandbox && profile?.sandbox !== expected.sandbox) {
+    throw new Error('provider_sandbox_profile_mismatch: Codex App Server did not apply the selected access mode');
+  }
+  if (expected?.approvalPolicy && profile?.approval_policy !== expected.approvalPolicy) {
+    throw new Error('provider_approval_profile_mismatch: Codex App Server did not apply the selected approval policy');
+  }
   return profile;
 }
 
 function nullableString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function runtimeModels(value: unknown): RuntimeInfoUi['models'] {
+  if (!Array.isArray(value) || value.length > 128) throw new Error('Codex model catalog is invalid');
+  return value.map((candidate) => {
+    const model = record(candidate);
+    const id = nonEmptyString(model?.id);
+    const displayName = nonEmptyString(model?.displayName);
+    if (!id || !displayName || typeof model?.isDefault !== 'boolean'
+      || !Array.isArray(model.supportedReasoningEfforts)
+      || model.supportedReasoningEfforts.length > 32
+      || !Array.isArray(model.serviceTiers)
+      || model.serviceTiers.length > 16) throw new Error('Codex model catalog entry is invalid');
+    const supportedReasoningEfforts = model.supportedReasoningEfforts.map((candidateEffort) => {
+      const entry = record(candidateEffort);
+      const effort = nonEmptyString(entry?.effort);
+      if (!effort || !(entry?.description === null || typeof entry?.description === 'string')) {
+        throw new Error('Codex model reasoning effort is invalid');
+      }
+      return { effort, description: nullableString(entry.description) };
+    });
+    const serviceTiers = model.serviceTiers.map((candidateTier) => {
+      const entry = record(candidateTier);
+      const tierId = nonEmptyString(entry?.id);
+      const name = nonEmptyString(entry?.name);
+      if (!tierId || !name || typeof entry?.description !== 'string') {
+        throw new Error('Codex model service tier is invalid');
+      }
+      return { id: tierId, name, description: entry.description.slice(0, 1_024) };
+    });
+    return {
+      id,
+      displayName,
+      isDefault: model.isDefault,
+      defaultReasoningEffort: nullableString(model.defaultReasoningEffort),
+      supportedReasoningEfforts,
+      serviceTiers,
+    };
+  });
 }
 
 export interface DesktopRuntimeSteerInput {
@@ -219,6 +274,41 @@ const ORCHESTRATOR_RUNTIME_CONTRACT = [
 ].join('\n');
 const ORCHESTRATOR_TURN = /^<orquesta_runtime_contract version="1">\n[\s\S]*?\n<\/orquesta_runtime_contract>\n<orquesta_user_message>\n([\s\S]*)\n<\/orquesta_user_message>$/u;
 const FOUNDATION_RECEIPT_MESSAGE = /^<orquesta_foundation_receipt(?:\s[^<>]*)?\s*\/>$/u;
+const PROVIDER_MODEL_ID = /^[a-z0-9][a-z0-9._:-]{0,127}$/u;
+
+interface RuntimeModelIdentity {
+  modelId: string;
+  developerInstructions: string;
+}
+
+function runtimeModelIdentity(requestedModel: string | null): RuntimeModelIdentity | null {
+  if (!requestedModel) return null;
+  const modelId = requestedModel.trim();
+  if (!PROVIDER_MODEL_ID.test(modelId)) throw new Error('requested_model_identity_invalid');
+  return {
+    modelId,
+    developerInstructions: [
+      '<orquesta_runtime_identity version="1">',
+      `The provider-confirmed applied model ID for this thread is "${modelId}".`,
+      'When asked which model is selected or which model you are using, answer with this exact full ID. Do not shorten it to GPT-5 or invent a different variant.',
+      'This identifies the provider-applied model setting; it is not independent actual-model telemetry.',
+      '</orquesta_runtime_identity>'
+    ].join('\n')
+  };
+}
+
+function requireConfirmedRuntimeModelIdentity(
+  identity: RuntimeModelIdentity | null,
+  evidence: RuntimeModelEvidence
+): void {
+  if (!identity) return;
+  if (!evidence.appliedModel) {
+    throw new Error('provider_applied_model_missing: Codex App Server did not confirm the model identity');
+  }
+  if (evidence.appliedModel !== identity.modelId) {
+    throw new Error(`provider_applied_model_mismatch: expected ${identity.modelId}, received ${evidence.appliedModel}`);
+  }
+}
 
 function routeText(targetAgentId: string, text: string): string {
   const foundationAssignment = text.startsWith('<orquesta_foundation_assignment version="1">\n')
@@ -344,9 +434,12 @@ export interface DispatchFingerprintInput {
   text: string;
   orderedAttachmentContentSha256: string[];
   selectedContextIds: string[];
-  effort: 'low' | 'medium' | 'high' | null;
+  effort: string | null;
   recommendedModel: string | null;
   requestedModel: string | null;
+  sandbox?: DesktopRuntimeSendInput['sandbox'];
+  approvalPolicy?: DesktopRuntimeSendInput['approvalPolicy'];
+  serviceTier?: DesktopRuntimeSendInput['serviceTier'];
 }
 
 export function dispatchActionFingerprint(input: DispatchFingerprintInput): string {
@@ -360,7 +453,10 @@ export function dispatchActionFingerprint(input: DispatchFingerprintInput): stri
     additionalParams: {
       effort: input.effort,
       recommendedModel: input.recommendedModel,
-      requestedModel: input.requestedModel
+      requestedModel: input.requestedModel,
+      sandbox: input.sandbox ?? null,
+      approvalPolicy: input.approvalPolicy ?? null,
+      serviceTier: input.serviceTier ?? null
     }
   };
   return createHash('sha256').update(canonicalJson(material), 'utf8').digest('hex');
@@ -376,7 +472,10 @@ export async function dispatchActionFingerprintForSend(input: DesktopRuntimeSend
     selectedContextIds: input.selectedContextIds ?? [],
     effort: input.effort ?? null,
     recommendedModel: input.recommendedModel,
-    requestedModel: input.requestedModel
+    requestedModel: input.requestedModel,
+    sandbox: input.sandbox ?? null,
+    approvalPolicy: input.approvalPolicy ?? null,
+    serviceTier: input.serviceTier ?? null
   });
 }
 
@@ -1169,6 +1268,14 @@ export class DesktopCodexService {
     if (record.action_fingerprint !== input.actionFingerprint || record.project_id !== input.projectId) {
       throw new Error('message_action_fingerprint_mismatch');
     }
+    if (record.state === 'queued' || record.state === 'thread_ready') {
+      throw new DispatchTerminalError(
+        'dispatch_not_started',
+        'The delivery ledger proves that the Provider turn was never started.',
+        input.messageId,
+        input.actionFingerprint
+      );
+    }
     if (['dispatch_accepted', 'turn_started', 'completed'].includes(record.state)
       && record.thread_id && record.turn_id) {
       return {
@@ -1206,8 +1313,13 @@ export class DesktopCodexService {
     const attachmentGuide = providerAttachmentGuide(preparedAttachments);
     const projectBoundary = selectedProjectThreadBoundary(input.rootPath);
     const params: UnknownRecord = { ...projectBoundary };
+    const modelIdentity = runtimeModelIdentity(input.requestedModel);
     if (!input.threadId) params.dynamicTools = [attachmentToolDefinition()];
     if (input.requestedModel) params.model = input.requestedModel;
+    if (modelIdentity) params.developerInstructions = modelIdentity.developerInstructions;
+    if (input.sandbox) params.sandbox = input.sandbox;
+    if (input.approvalPolicy) params.approvalPolicy = input.approvalPolicy;
+    if ('serviceTier' in input) params.serviceTier = input.serviceTier ?? null;
     if (!input.threadId && input.actionFingerprint) {
       params.threadSource = providerThreadSourceIdentity({
         projectId: input.projectId,
@@ -1218,7 +1330,10 @@ export class DesktopCodexService {
     const loadSignature = JSON.stringify([
       projectBoundary,
       input.recommendedModel,
-      input.requestedModel
+      input.requestedModel,
+      input.sandbox ?? null,
+      input.approvalPolicy ?? null,
+      input.serviceTier ?? null
     ]);
     const providerRuntime = requireSuccessfulResult(await adapter.runtimeInfo({
       correlationId: `${input.correlationId}:provider`,
@@ -1250,7 +1365,14 @@ export class DesktopCodexService {
         );
     const threadId = canReuseLoadedThread ? input.threadId! : nonEmptyString(threadResult?.thread_id);
     if (!threadId) throw new Error('Codex App Server did not return a thread id');
-    if (threadResult) requireSelectedProjectRuntimeProfile(threadResult, input.rootPath);
+    if (threadResult) requireSelectedProjectRuntimeProfile(threadResult, input.rootPath, {
+      sandbox: input.sandbox,
+      approvalPolicy: input.approvalPolicy,
+    });
+    const evidence = threadResult
+      ? modelEvidenceFromThreadResult(threadResult, input.recommendedModel, input.requestedModel)
+      : structuredClone(this.evidenceByThread.get(threadId) ?? unknownModelEvidence());
+    requireConfirmedRuntimeModelIdentity(modelIdentity, evidence);
     this.loadedThreadSignatures.set(threadId, {
       signature: loadSignature,
       providerConnectionId: nonEmptyString(threadResult?.provider_connection_id) ?? providerConnectionId
@@ -1272,9 +1394,6 @@ export class DesktopCodexService {
         console.warn('Optional Codex thread naming failed after durable thread admission', error);
       }
     }
-    const evidence = threadResult
-      ? modelEvidenceFromThreadResult(threadResult, input.recommendedModel, input.requestedModel)
-      : structuredClone(this.evidenceByThread.get(threadId) ?? unknownModelEvidence());
     this.evidenceByThread.set(threadId, evidence);
     this.projectByThread.set(threadId, input.projectId);
     this.targetByThread.set(threadId, input.targetAgentId);
@@ -1302,7 +1421,15 @@ export class DesktopCodexService {
         ],
         params: {
           clientUserMessageId: input.messageId ?? input.correlationId,
-          ...(input.effort ? { effort: input.effort } : {})
+          ...(input.effort ? { effort: input.effort } : {}),
+          ...(input.requestedModel ? { model: input.requestedModel } : {}),
+          ...(input.approvalPolicy ? { approvalPolicy: input.approvalPolicy } : {}),
+          ...(input.sandbox ? {
+            sandboxPolicy: input.sandbox === 'danger-full-access'
+              ? { type: 'dangerFullAccess' }
+              : { type: 'workspaceWrite', writableRoots: [path.resolve(input.rootPath)], networkAccess: false },
+          } : {}),
+          ...('serviceTier' in input ? { serviceTier: input.serviceTier ?? null } : {})
         },
         dynamicToolHandlerFactory
       }));
@@ -1671,7 +1798,8 @@ export class DesktopCodexService {
         platformOs: nullableString(result.platform_os),
         userAgent: nullableString(result.user_agent),
         providerConnectionId: nullableString(result.provider_connection_id),
-        integrity: this.integrity
+        integrity: this.integrity,
+        models: runtimeModels(result.models ?? [])
       };
     } catch {
       return {
@@ -1685,7 +1813,8 @@ export class DesktopCodexService {
         platformOs: null,
         userAgent: null,
         providerConnectionId: null,
-        integrity: this.integrity
+        integrity: this.integrity,
+        models: []
       };
     }
   }

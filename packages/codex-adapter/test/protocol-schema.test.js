@@ -19,6 +19,7 @@ test("pins the generated App Server v2 lifecycle subset", () => {
     "thread/name/set",
     "thread/archive",
     "thread/list",
+    "model/list",
     "thread/read",
     "thread/turns/list",
     "turn/start",
@@ -60,6 +61,11 @@ test("pins the generated App Server v2 lifecycle subset", () => {
     response_required: []
   });
   assert.deepEqual(schema.client_requests["thread/list"], {
+    required: ["id", "method", "params"],
+    params_required: [],
+    response_required: ["data"]
+  });
+  assert.deepEqual(schema.client_requests["model/list"], {
     required: ["id", "method", "params"],
     params_required: [],
     response_required: ["data"]

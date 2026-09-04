@@ -8,8 +8,8 @@
       "schema_id": "organization-agent-placement-persistent-v1",
       "schema_ref": "orquesta/references/organization-agent-placement-persistent-v1.schema.json",
       "instruction_ref": "orquesta/references/organization-agent-placement-persistent-v1.md",
-      "schema_sha256": "c3a1c6823761236aa41df52ace106b786f4d0758ae6c6a7fd6d63e8f9d8de77f",
-      "instruction_sha256": "0deffba167ddd034f25142ddd79c446601bc6b28919fb57d4828046b88e942ff"
+      "schema_sha256": "5845ed5d05b4e70305626eb2811ab2f5d3e0c959cc8eb4ef3506c025437eed09",
+      "instruction_sha256": "15aaa2d1bb828edd6ae78add1440cb1d847f6207a11bbb86db0b746262855745"
     }
   ]
 }

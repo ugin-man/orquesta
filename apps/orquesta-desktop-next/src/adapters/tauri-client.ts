@@ -13,6 +13,7 @@ import type {
   DispatchSendResult,
   DispatchRecovery,
   DispatchRecoveryResult,
+  ProjectFolderSelection,
   ProjectSummary,
   ProjectBootstrapResult,
   RendererAuthority,
@@ -31,9 +32,12 @@ import { runtimeAuthorityFrom, sameRendererAuthority, sameRuntimeAuthority } fro
 import {
   isRecord,
   parseBootstrap,
+  parseComposerRuntimeOptions,
   parseDispatchRecovery,
   parseDispatchReconcileResult,
   parseNativeProjectSummary,
+  parseProjectArchiveMutation,
+  parseProjectFolderSelection,
   parseNativeSettings,
   parseRuntimeStatus,
   parseWorkspaceSnapshot,
@@ -289,27 +293,64 @@ export class TauriDesktopClient implements DesktopClient {
     return value.slice(0, 1_024).map(parseNativeProjectSummary);
   }
 
-  async forgetRecentProject(renderer: RendererAuthority, projectId: string): Promise<ProjectSummary[]> {
+  async listArchivedProjects(renderer: RendererAuthority): Promise<ProjectSummary[]> {
     const guard = this.#captureRendererOperation(renderer);
     const transport = await this.#transport();
     this.#assertRendererOperation(guard);
-    const raw = await invokeNative<unknown>(transport, NATIVE_COMMANDS.forgetRecentProject, {
+    const raw = await invokeNative<unknown>(transport, NATIVE_COMMANDS.listArchivedProjects, { ...renderer });
+    this.#assertRendererOperation(guard);
+    const value = unwrapResult(raw);
+    if (!Array.isArray(value)) throw new Error('Native archived-project list is invalid.');
+    return value.slice(0, 1_024).map(parseNativeProjectSummary);
+  }
+
+  async archiveProject(renderer: RendererAuthority, projectId: string): Promise<import('../domain/models').ProjectArchiveMutation> {
+    const guard = this.#captureRendererOperation(renderer);
+    const transport = await this.#transport();
+    this.#assertRendererOperation(guard);
+    const raw = await invokeNative<unknown>(transport, NATIVE_COMMANDS.archiveProject, {
       ...renderer,
       projectId,
     });
     this.#assertRendererOperation(guard);
-    const value = unwrapResult(raw);
-    if (!Array.isArray(value)) throw new Error('Native recent-project list is invalid.');
-    return value.slice(0, 1_024).map(parseNativeProjectSummary);
+    return parseProjectArchiveMutation(unwrapResult(raw));
   }
 
-  async openProjectFolder(renderer: RendererAuthority): Promise<ProjectSummary | null> {
+  async restoreArchivedProject(renderer: RendererAuthority, projectId: string): Promise<import('../domain/models').ProjectArchiveMutation> {
     const guard = this.#captureRendererOperation(renderer);
     const transport = await this.#transport();
     this.#assertRendererOperation(guard);
-    const result = await invokeNativeResult(transport, NATIVE_COMMANDS.openProjectFolder, { ...renderer });
+    const raw = await invokeNative<unknown>(transport, NATIVE_COMMANDS.restoreArchivedProject, {
+      ...renderer,
+      projectId,
+    });
     this.#assertRendererOperation(guard);
-    return result === null ? null : parseNativeProjectSummary(result);
+    return parseProjectArchiveMutation(unwrapResult(raw));
+  }
+
+  async chooseProjectFolder(renderer: RendererAuthority): Promise<ProjectFolderSelection | null> {
+    const guard = this.#captureRendererOperation(renderer);
+    const transport = await this.#transport();
+    this.#assertRendererOperation(guard);
+    const result = await invokeNativeResult(transport, NATIVE_COMMANDS.chooseProjectFolder, { ...renderer });
+    this.#assertRendererOperation(guard);
+    return result === null ? null : parseProjectFolderSelection(result);
+  }
+
+  async openProjectFolder(
+    renderer: RendererAuthority,
+    input: { selectionRef: string; projectName: string },
+  ): Promise<ProjectSummary> {
+    const guard = this.#captureRendererOperation(renderer);
+    const transport = await this.#transport();
+    this.#assertRendererOperation(guard);
+    const result = await invokeNativeResult(transport, NATIVE_COMMANDS.openProjectFolder, {
+      ...renderer,
+      selectionRef: input.selectionRef,
+      projectName: input.projectName.trim(),
+    });
+    this.#assertRendererOperation(guard);
+    return parseNativeProjectSummary(result);
   }
 
   async updateSettings(
@@ -326,6 +367,8 @@ export class TauriDesktopClient implements DesktopClient {
       theme: input.theme,
       reducedMotion: input.reducedMotion,
       notificationsEnabled: input.notificationsEnabled,
+      navigationCompact: input.navigationCompact,
+      workLedgerOpen: input.workLedgerOpen,
     });
     this.#assertRendererOperation(guard);
     return parseNativeSettings(unwrapResult(raw));
@@ -421,6 +464,23 @@ export class TauriDesktopClient implements DesktopClient {
   async readSnapshot(authority: RuntimeAuthority): Promise<WorkspaceSnapshot> {
     const result = await this.#runtimeCall(authority, 'repository.get-snapshot', {});
     return parseWorkspaceSnapshot(result);
+  }
+
+  async readComposerRuntimeOptions(renderer: RendererAuthority) {
+    const guard = this.#captureRendererOperation(renderer);
+    const transport = await this.#transport();
+    this.#assertRendererOperation(guard);
+    const raw = await invokeNative<unknown>(transport, NATIVE_COMMANDS.readComposerRuntimeOptions, {
+      ...renderer,
+    });
+    this.#assertRendererOperation(guard);
+    const result = unwrapResult(raw);
+    if (!isRecord(result) || !isRecord(result.runtime) || !isRecord(result.info)) {
+      throw new Error('Composer runtime options response is invalid.');
+    }
+    const status = parseRuntimeStatus(result.runtime);
+    this.#acceptStatus(status);
+    return parseComposerRuntimeOptions({ models: result.info.models });
   }
 
   async recordLastWorkAgent(authority: RuntimeAuthority, targetAgentId: string): Promise<ProjectSummary> {

@@ -47,6 +47,11 @@
       "params_required": [],
       "response_required": ["data"]
     },
+    "model/list": {
+      "required": ["id", "method", "params"],
+      "params_required": [],
+      "response_required": ["data"]
+    },
     "thread/read": {
       "required": ["id", "method", "params"],
       "params_required": ["threadId"],

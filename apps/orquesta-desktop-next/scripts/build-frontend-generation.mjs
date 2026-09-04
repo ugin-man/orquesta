@@ -1165,6 +1165,119 @@ async function metadataOrNull(path) {
   }
 }
 
+function receiptBuildId(name) {
+  const match = /^([0-9a-f-]{36})\.json$/u.exec(name);
+  return match !== null && buildIdPattern.test(match[1]) ? match[1] : null;
+}
+
+async function currentReleaseBuildId(stagingRoot) {
+  const pointerPath = join(stagingRoot, currentReleasePointerName);
+  if (await metadataOrNull(pointerPath) === null) return null;
+  const pointer = parseJsonBytes(await readPlainFileBytes(pointerPath, 'current_pointer'), 'current_pointer');
+  if (
+    !exactKeys(pointer, ['schemaVersion', 'kind', 'buildId', 'promotion'])
+    || pointer.schemaVersion !== releasePromotionSchemaVersion
+    || pointer.kind !== 'orquesta-desktop-current-release-pointer'
+    || !buildIdPattern.test(pointer.buildId ?? '')
+  ) {
+    throw new Error('desktop_release_current_pointer_invalid');
+  }
+  return pointer.buildId;
+}
+
+async function removeBuildDirectory(directory, buildId, label) {
+  return removeOwnedPlainDirectory(join(directory, buildId), label);
+}
+
+async function removeBuildReceipt(directory, buildId, label) {
+  return removeOwnedPlainFile(join(directory, `${buildId}.json`), label);
+}
+
+/**
+ * Keeps only the current promoted release in the active history. Everything
+ * else is a reproducible build artifact and is cleared before a new build so
+ * developers never have to retire generations by hand.
+ */
+export async function pruneObsoleteDesktopBuildHistory({
+  stagingRoot = defaultStagingRoot,
+  root = productRoot,
+} = {}) {
+  const expectedRoot = join(resolve(root), '.build-generations');
+  if (!samePath(stagingRoot, expectedRoot)) {
+    throw new Error('frontend_generation_prune_staging_root_mismatch');
+  }
+  const generationRoot = join(stagingRoot, 'generations');
+  const receiptRoot = join(stagingRoot, 'receipts');
+  const releaseRoot = join(stagingRoot, 'releases');
+  const protectedBuildId = await currentReleaseBuildId(stagingRoot);
+  const buildIds = new Set();
+
+  for (const entry of await readdir(generationRoot, { withFileTypes: true })) {
+    if (buildIdPattern.test(entry.name)) buildIds.add(entry.name);
+  }
+  for (const entry of await readdir(receiptRoot, { withFileTypes: true })) {
+    const buildId = receiptBuildId(entry.name);
+    if (buildId !== null) buildIds.add(buildId);
+  }
+  for (const entry of await readdir(releaseRoot, { withFileTypes: true })) {
+    if (entry.name !== 'staging' && buildIdPattern.test(entry.name)) buildIds.add(entry.name);
+  }
+
+  const removedBuildIds = [];
+  for (const buildId of [...buildIds].sort()) {
+    if (buildId === protectedBuildId) continue;
+    await removeBuildDirectory(releaseRoot, buildId, 'obsolete_release');
+    await removeBuildReceipt(receiptRoot, buildId, 'obsolete_receipt');
+    await removeBuildDirectory(generationRoot, buildId, 'obsolete_generation');
+    removedBuildIds.push(buildId);
+  }
+
+  const removedTemporaryPaths = [];
+  for (const entry of await readdir(join(releaseRoot, 'staging'), { withFileTypes: true })) {
+    if (/^[0-9a-f-]{36}\.[0-9a-f-]{36}\.tmp$/u.test(entry.name)) {
+      if (await removeOwnedPlainDirectory(join(releaseRoot, 'staging', entry.name), 'obsolete_release_staging')) {
+        removedTemporaryPaths.push(`releases/staging/${entry.name}`);
+      }
+    }
+  }
+  for (const entry of await readdir(receiptRoot, { withFileTypes: true })) {
+    if (/^[0-9a-f-]{36}\.json\.[0-9a-f-]{36}\.tmp$/u.test(entry.name)) {
+      if (await removeOwnedPlainFile(join(receiptRoot, entry.name), 'obsolete_receipt_temporary')) {
+        removedTemporaryPaths.push(`receipts/${entry.name}`);
+      }
+    }
+  }
+
+  const retiredRoot = join(stagingRoot, 'retired');
+  const removedRetiredBuildIds = [];
+  if (await metadataOrNull(retiredRoot) !== null) {
+    const retiredGenerationRoot = join(retiredRoot, 'generations');
+    const retiredReceiptRoot = join(retiredRoot, 'receipts');
+    const retiredReleaseRoot = join(retiredRoot, 'releases');
+    const retiredIds = new Set();
+    for (const [directory, kind] of [
+      [retiredGenerationRoot, 'directory'],
+      [retiredReceiptRoot, 'receipt'],
+      [retiredReleaseRoot, 'directory'],
+    ]) {
+      if (await metadataOrNull(directory) === null) continue;
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        const buildId = kind === 'receipt' ? receiptBuildId(entry.name) : (buildIdPattern.test(entry.name) ? entry.name : null);
+        if (buildId !== null) retiredIds.add(buildId);
+      }
+    }
+    for (const buildId of [...retiredIds].sort()) {
+      if (buildId === protectedBuildId) continue;
+      await removeBuildDirectory(retiredReleaseRoot, buildId, 'retired_release');
+      await removeBuildReceipt(retiredReceiptRoot, buildId, 'retired_receipt');
+      await removeBuildDirectory(retiredGenerationRoot, buildId, 'retired_generation');
+      removedRetiredBuildIds.push(buildId);
+    }
+  }
+
+  return { protectedBuildId, removedBuildIds, removedRetiredBuildIds, removedTemporaryPaths };
+}
+
 async function removeOwnedPlainFile(path, label) {
   const metadata = await metadataOrNull(path);
   if (metadata === null) return false;
@@ -1477,28 +1590,37 @@ export async function buildFrontendGeneration({
   root = productRoot,
 } = {}) {
   const paths = generationPaths(stagingRoot, buildId);
+  if (devBrowser) {
+    await runNodeCli('vite', [], { cwd: root });
+    return { paths, devBrowser: true };
+  }
+  if (runtimeOnly) {
+    await buildDesktopRuntime();
+    return { paths, runtimeOnly: true };
+  }
+  if (devDesktop) {
+    await buildDesktopRuntime();
+    await runNodeCli('@tauri-apps/cli', ['dev', ...tauriArgs], { cwd: root });
+    return { paths, devDesktop: true };
+  }
+
   return withDesktopLifecycleLock({
     root,
     stagingRoot: paths.stagingRoot,
-    operation: desktop ? 'build:desktop' : runtimeOnly ? 'build:runtime' : devBrowser ? 'dev' : devDesktop ? 'dev:desktop' : 'build',
+    operation: desktop ? 'build:desktop' : 'build',
     ownerId: paths.buildId,
   }, async () => {
     await ensureBuildRoots(paths.stagingRoot, root);
+    const pruned = await pruneObsoleteDesktopBuildHistory({ stagingRoot: paths.stagingRoot, root });
+    if (
+      pruned.removedBuildIds.length > 0
+      || pruned.removedRetiredBuildIds.length > 0
+      || pruned.removedTemporaryPaths.length > 0
+    ) {
+      process.stdout.write(`desktop_build_history_pruned ${JSON.stringify(pruned)}\n`);
+    }
     await generateDesktopBindings();
     await runTypeScriptChecks(root);
-    if (runtimeOnly) {
-      await buildDesktopRuntime();
-      return { paths, runtimeOnly: true };
-    }
-    if (devBrowser) {
-      await runNodeCli('vite', [], { cwd: root });
-      return { paths, devBrowser: true };
-    }
-    if (devDesktop) {
-      await buildDesktopRuntime();
-      await runNodeCli('@tauri-apps/cli', ['dev', ...tauriArgs], { cwd: root });
-      return { paths, devDesktop: true };
-    }
     const transactionId = randomUUID();
     let generationCreated = false;
     let receiptCreated = false;

@@ -1,5 +1,6 @@
 import type {
   ComposerAttachment,
+  ConversationActivity,
   ConversationActivityCursor,
   ConversationMessage,
   ConversationCursor,
@@ -14,6 +15,7 @@ import type {
   HistoryCursor,
   HistoryIndexPage,
   NativeSettings,
+  ProjectArchiveMutation,
   ProjectSummary,
   ProjectBootstrapResult,
   ProjectedPendingRequest,
@@ -297,6 +299,74 @@ function createPreviewConversation(requestedCount: number): ConversationMessage[
   });
 }
 
+const previewConversationActivities: ConversationActivity[] = [
+  ...['inspect', 'create-files', 'verify', 'typecheck'].map((name, index): ConversationActivity => ({
+    id: `preview-command-${name}`,
+    threadId: 'preview-thread',
+    turnId: 'preview-turn',
+    itemId: `command-${index + 1}`,
+    targetAgentId: 'orchestrator',
+    kind: 'command',
+    state: 'completed',
+    title: `pwsh.exe.${name}`,
+    createdAt: new Date(Date.parse('2026-08-10T08:40:00.000Z') + index * 1_000).toISOString(),
+    updatedAt: new Date(Date.parse('2026-08-10T08:40:00.800Z') + index * 1_000).toISOString(),
+    lastJournalSequence: index + 1,
+    details: {
+      commandName: 'pwsh.exe',
+      actionTypes: ['unknown'],
+      actionTypesTruncated: false,
+      exitCode: 0,
+      durationMs: 820 + index * 690,
+      outputPresent: true,
+      outputBytes: 32,
+      outputText: `preview ${name} output\ncompleted`,
+      outputTruncated: false,
+      outputRedacted: false,
+      cwdOmitted: true,
+      commandArgumentsOmitted: true,
+      contentOmitted: true,
+    },
+  })),
+  {
+    id: 'preview-file-changes',
+    threadId: 'preview-thread',
+    turnId: 'preview-turn',
+    itemId: 'file-changes',
+    targetAgentId: 'orchestrator',
+    kind: 'file_change',
+    state: 'completed',
+    title: '3 file changes',
+    createdAt: '2026-08-10T08:40:05.000Z',
+    updatedAt: '2026-08-10T08:40:05.000Z',
+    lastJournalSequence: 5,
+    details: {
+      changes: [
+        { path: '~/Projects/test1/auto-test-1/numbers.txt', kind: 'created', originalBytes: 0, addedLines: 1, removedLines: 0 },
+        { path: '~/Projects/test1/auto-test-2/numbers.txt', kind: 'created', originalBytes: 0, addedLines: 1, removedLines: 0 },
+        { path: '~/Projects/test1/auto-test-3/numbers.txt', kind: 'created', originalBytes: 0, addedLines: 1, removedLines: 0 },
+      ],
+      changeCount: 3,
+      changesTruncated: false,
+      contentOmitted: true,
+    },
+  },
+  {
+    id: 'preview-turn-diff',
+    threadId: 'preview-thread',
+    turnId: 'preview-turn',
+    itemId: 'turn-diff',
+    targetAgentId: 'orchestrator',
+    kind: 'diff',
+    state: 'updated',
+    title: 'Turn diff',
+    createdAt: '2026-08-10T08:40:06.000Z',
+    updatedAt: '2026-08-10T08:40:06.000Z',
+    lastJournalSequence: 6,
+    details: { originalBytes: 300, addedLines: 3, removedLines: 0, contentOmitted: true },
+  },
+];
+
 const nativeConversation: ConversationMessage[] = [
   {
     id: 'native-message-1', role: 'user', targetAgentId: 'security', authorLabel: 'YOU',
@@ -371,6 +441,8 @@ export interface PreviewDesktopClientOptions {
   organizationLines?: number;
   organizationLineSizes?: number[];
   conversationMessageCount?: number;
+  conversationActivityFixture?: boolean;
+  theme?: NativeSettings['theme'];
 }
 
 export class PreviewMethodNotConfiguredError extends Error {
@@ -386,15 +458,19 @@ export class PreviewDesktopClient implements DesktopClient {
   readonly #status: RuntimeStatus;
   readonly #snapshot: WorkspaceSnapshot | null;
   readonly #projects: ProjectSummary[];
+  readonly #archivedProjects: ProjectSummary[] = [];
   readonly #showBusinessFixture: boolean;
+  readonly #conversationActivityFixture: boolean;
   readonly #recovery: DispatchRecovery | null;
-  readonly #settings: NativeSettings = {
+  #settings: NativeSettings = {
     schemaVersion: 2,
     revision: 1,
     locale: 'en',
     theme: 'system',
     reducedMotion: false,
     notificationsEnabled: false,
+    navigationCompact: true,
+    workLedgerOpen: true,
   };
   #disposed = false;
 
@@ -443,6 +519,8 @@ export class PreviewDesktopClient implements DesktopClient {
     this.#projects = projects;
     this.#messages = messages;
     this.#showBusinessFixture = showBusinessFixture;
+    this.#conversationActivityFixture = options.conversationActivityFixture === true;
+    if (options.theme) this.#settings = { ...this.#settings, theme: options.theme };
     this.#recovery = options.recovery
       ? {
           kind: 'prepared_outcome_unknown',
@@ -489,22 +567,48 @@ export class PreviewDesktopClient implements DesktopClient {
 
   async updateSettings(
     _renderer: RendererAuthority,
-    _input: Omit<NativeSettings, 'schemaVersion' | 'revision'> & { expectedRevision: number },
+    input: Omit<NativeSettings, 'schemaVersion' | 'revision'> & { expectedRevision: number },
   ): Promise<NativeSettings> {
-    return this.#notConfigured('updateSettings');
+    if (input.expectedRevision !== this.#settings.revision) {
+      throw new Error('settings_revision_conflict');
+    }
+    this.#settings = {
+      schemaVersion: this.#settings.schemaVersion,
+      revision: this.#settings.revision + 1,
+      locale: input.locale,
+      theme: input.theme,
+      reducedMotion: input.reducedMotion,
+      notificationsEnabled: input.notificationsEnabled,
+      navigationCompact: input.navigationCompact,
+      workLedgerOpen: input.workLedgerOpen,
+    };
+    return clone(this.#settings);
   }
 
   async listProjects(_renderer: RendererAuthority): Promise<ProjectSummary[]> {
     return clone(this.#projects);
   }
 
-  async forgetRecentProject(
+  async listArchivedProjects(_renderer: RendererAuthority): Promise<ProjectSummary[]> {
+    return clone(this.#archivedProjects);
+  }
+
+  async archiveProject(
     _renderer: RendererAuthority,
     projectId: string,
-  ): Promise<ProjectSummary[]> {
+  ): Promise<ProjectArchiveMutation> {
     const index = this.#projects.findIndex((project) => project.id === projectId);
-    if (index >= 0) this.#projects.splice(index, 1);
-    return clone(this.#projects);
+    if (index >= 0) this.#archivedProjects.push(...this.#projects.splice(index, 1));
+    return clone({ projects: this.#projects, archivedProjects: this.#archivedProjects });
+  }
+
+  async restoreArchivedProject(
+    _renderer: RendererAuthority,
+    projectId: string,
+  ): Promise<ProjectArchiveMutation> {
+    const index = this.#archivedProjects.findIndex((project) => project.id === projectId);
+    if (index >= 0) this.#projects.push(...this.#archivedProjects.splice(index, 1));
+    return clone({ projects: this.#projects, archivedProjects: this.#archivedProjects });
   }
 
   async recordLastWorkAgent(
@@ -514,7 +618,14 @@ export class PreviewDesktopClient implements DesktopClient {
     return this.#notConfigured('recordLastWorkAgent');
   }
 
-  async openProjectFolder(_renderer: RendererAuthority): Promise<ProjectSummary | null> {
+  async chooseProjectFolder(_renderer: RendererAuthority): Promise<import('../domain/models').ProjectFolderSelection | null> {
+    return this.#notConfigured('chooseProjectFolder');
+  }
+
+  async openProjectFolder(
+    _renderer: RendererAuthority,
+    _input: { selectionRef: string; projectName: string },
+  ): Promise<ProjectSummary> {
     return this.#notConfigured('openProjectFolder');
   }
 
@@ -547,6 +658,37 @@ export class PreviewDesktopClient implements DesktopClient {
   async readSnapshot(_authority: RuntimeAuthority): Promise<WorkspaceSnapshot> {
     if (!this.#snapshot) throw new Error('No project is active.');
     return clone(this.#snapshot);
+  }
+
+  async readComposerRuntimeOptions(_renderer: RendererAuthority) {
+    return {
+      models: [
+        {
+          id: 'gpt-5.6-sol',
+          displayName: 'GPT-5.6-Sol',
+          isDefault: true,
+          defaultReasoningEffort: 'xhigh',
+          supportedReasoningEfforts: [
+            { effort: 'low', description: 'Fast responses with light reasoning.' },
+            { effort: 'medium', description: 'Balanced reasoning.' },
+            { effort: 'high', description: 'Deep reasoning.' },
+            { effort: 'xhigh', description: 'Maximum practical reasoning.' },
+          ],
+          serviceTiers: [{ id: 'fast', name: 'Fast', description: '1.5x faster; uses more credits.' }],
+        },
+        {
+          id: 'gpt-5.6-terra',
+          displayName: 'GPT-5.6-Terra',
+          isDefault: false,
+          defaultReasoningEffort: 'high',
+          supportedReasoningEfforts: [
+            { effort: 'medium', description: 'Balanced reasoning.' },
+            { effort: 'high', description: 'Deep reasoning.' },
+          ],
+          serviceTiers: [{ id: 'fast', name: 'Fast', description: '1.5x faster; uses more credits.' }],
+        },
+      ],
+    };
   }
 
   async bootstrapProject(_authority: RuntimeAuthority): Promise<ProjectBootstrapResult> {
@@ -627,7 +769,9 @@ export class PreviewDesktopClient implements DesktopClient {
       projectionRevision: all.length,
       syncState: 'current',
       items,
-      activities: [],
+      activities: this.#conversationActivityFixture && targetAgentId === 'orchestrator'
+        ? clone(previewConversationActivities)
+        : [],
       olderCursor: candidates.length > items.length && oldest
         ? { beforeCreatedAt: oldest.createdAt, beforeMessageId: oldest.id }
         : null,
@@ -877,6 +1021,7 @@ export class PreviewDesktopClient implements DesktopClient {
 export function createPreviewDesktopClient(search = typeof window === 'undefined' ? '' : window.location.search): PreviewDesktopClient {
   const params = new URLSearchParams(search);
   const state = params.get('state');
+  const theme = params.get('theme');
   const organizationSize = Number(params.get('org'));
   const organizationLines = Number(params.get('lines'));
   const conversationMessageCount = Number(params.get('messages'));
@@ -891,5 +1036,7 @@ export function createPreviewDesktopClient(search = typeof window === 'undefined
     organizationLines: Number.isFinite(organizationLines) && organizationLines > 0 ? organizationLines : undefined,
     organizationLineSizes: organizationLineSizes.length > 0 ? organizationLineSizes : undefined,
     conversationMessageCount: Number.isFinite(conversationMessageCount) && conversationMessageCount >= 0 ? conversationMessageCount : undefined,
+    conversationActivityFixture: params.get('activity') === '1',
+    theme: theme === 'light' || theme === 'dark' || theme === 'system' ? theme : undefined,
   });
 }

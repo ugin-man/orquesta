@@ -3,7 +3,9 @@ import type {
   AttentionItem,
   BusinessSourceCursor,
   BusinessWorkOrderSummary,
+  ComposerAccessMode,
   ComposerAttachment,
+  ComposerServiceTier,
   ConversationActivity,
   ConversationActivityCursor,
   ConversationCursor,
@@ -18,6 +20,7 @@ import type {
   StarterCreationRecoverySummary,
   RendererAuthority,
   RuntimeAuthority,
+  RuntimeModelOption,
   RuntimeStatus,
   WorkflowCatalog,
   WorkspaceSnapshot,
@@ -57,6 +60,9 @@ export interface ApplicationState {
   phase: ApplicationPhase;
   route: WorkspaceRoute;
   projects: ProjectSummary[];
+  archivedProjects: ProjectSummary[];
+  archivedProjectsLoading: boolean;
+  projectArchiveMutationId: string | null;
   starterCreationRecoveries: StarterCreationRecoverySummary[];
   selectedProjectId: string | null;
   snapshot: WorkspaceSnapshot | null;
@@ -85,6 +91,12 @@ export interface ApplicationState {
   attentionHistory: AttentionItem[];
   projectedPendingRequests: ProjectedPendingRequest[];
   draft: string;
+  runtimeModels: RuntimeModelOption[];
+  runtimeModelsLoading: boolean;
+  composerModelId: string | null;
+  composerReasoningEffort: string | null;
+  composerAccessMode: ComposerAccessMode;
+  composerServiceTier: ComposerServiceTier;
   attachments: ComposerAttachment[];
   attachmentSelectionPending: boolean;
   attachmentRemovalPending: boolean;
@@ -125,6 +137,9 @@ export function createInitialApplicationState(): ApplicationState {
     phase: 'booting',
     route: 'work',
     projects: [],
+    archivedProjects: [],
+    archivedProjectsLoading: false,
+    projectArchiveMutationId: null,
     starterCreationRecoveries: [],
     selectedProjectId: null,
     snapshot: null,
@@ -153,6 +168,12 @@ export function createInitialApplicationState(): ApplicationState {
     attentionHistory: [],
     projectedPendingRequests: [],
     draft: '',
+    runtimeModels: [],
+    runtimeModelsLoading: false,
+    composerModelId: null,
+    composerReasoningEffort: null,
+    composerAccessMode: 'full_access',
+    composerServiceTier: 'standard',
     attachments: [],
     attachmentSelectionPending: false,
     attachmentRemovalPending: false,

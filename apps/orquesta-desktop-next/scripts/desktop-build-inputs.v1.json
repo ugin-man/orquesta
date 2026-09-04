@@ -48,7 +48,6 @@
     "packages/contracts/scripts",
     "packages/contracts/src",
     "packages/event-store/src",
-    "packages/execution-kernel/runtime",
     "packages/execution-kernel/src",
     "packages/local-core/src"
   ]

@@ -6,7 +6,23 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from 'react';
-import { CornerDownRight, FileText, FolderOpen, ImagePlus, LoaderCircle, Mic, Paperclip, Plus, Send, Square, X } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  FolderOpen,
+  ImagePlus,
+  LoaderCircle,
+  Mic,
+  Paperclip,
+  Plus,
+  Send,
+  ShieldAlert,
+  Square,
+  X,
+  Zap,
+} from 'lucide-react';
 import {
   projectLifecycleLocksConversation,
   selectCurrentProjectDispatchRecovery,
@@ -16,7 +32,7 @@ import {
 import type { ApplicationStore } from '../../application/store';
 import type { ApplicationState } from '../../application/state';
 import { UserMessageError, userMessage } from '../../application/user-message';
-import { executionPhaseCopy, userMessageCopy } from '../../presentation/user-copy';
+import { userMessageCopy } from '../../presentation/user-copy';
 import { VoiceCaptureController, type VoiceCaptureHandle } from './voice-capture';
 import {
   ATTACHMENT_PICKER_ACCEPT,
@@ -39,6 +55,18 @@ function voiceElapsed(seconds: number): string {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
+function compactModelLabel(displayName: string): string {
+  return displayName.replace(/^GPT-/iu, '').replaceAll('-', ' ');
+}
+
+function reasoningEffortLabel(effort: string | null, locale: 'ja' | 'en'): string {
+  if (!effort) return locale === 'ja' ? '既定' : 'Default';
+  const japanese: Record<string, string> = {
+    none: 'なし', minimal: '最小', low: '低', medium: '中', high: '高', xhigh: '極高', max: '最大', ultra: 'Ultra',
+  };
+  return locale === 'ja' ? japanese[effort] ?? effort : effort.replace(/^./u, (character) => character.toUpperCase());
+}
+
 export function Composer({
   state,
   store,
@@ -59,7 +87,11 @@ export function Composer({
   const [previewErrors, setPreviewErrors] = useState<Record<string, string>>({});
   const [voiceController] = useState(() => new VoiceCaptureController());
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [openComposerMenu, setOpenComposerMenu] = useState<'access' | 'runtime' | null>(null);
+  const [runtimeSubmenu, setRuntimeSubmenu] = useState<'model' | 'effort' | 'speed' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerControlsRef = useRef<HTMLDivElement>(null);
+  const runtimeSubmenuCloseTimerRef = useRef<number | null>(null);
   const voiceHandleRef = useRef<VoiceCaptureHandle | null>(null);
   const composingRef = useRef(false);
   const previewGeneration = useRef(0);
@@ -74,6 +106,8 @@ export function Composer({
     && ['accepted', 'working'].includes(activity.phase));
   const steerBlocked = steerMode && (activeTurnKey === state.turnMutationAcceptedTurnKey
     || activeTurnKey === state.turnMutationOutcomeUnknownTurnKey);
+  const stopPending = state.sending && state.conversationAction === 'stop';
+  const stopMode = stopPending || (steerMode && !state.draft.trim());
   const projectLifecycle = selectProjectLifecycle(state);
   const noProject = projectLifecycle === 'no_project';
   const registeredInactive = projectLifecycle === 'registered_inactive';
@@ -85,6 +119,8 @@ export function Composer({
   const transitionLocked = state.addingProject || projectLifecycleLocksConversation(projectLifecycle);
   const currentRecovery = selectCurrentProjectDispatchRecovery(state);
   const dispatchBlocked = Boolean(currentRecovery && currentRecovery.kind !== 'accepted');
+  const canStop = Boolean(stopMode && steerMode && state.runtimeAuthority && !state.sending
+    && !steerBlocked && !transitionLocked && !dispatchBlocked);
   const voiceSendIntentQueued = Boolean(
     state.voiceActiveOperationRef
     && state.voiceSendIntentOperationRef === state.voiceActiveOperationRef,
@@ -104,6 +140,54 @@ export function Composer({
   const canResumeProject = Boolean(registeredInactive && state.draft.trim() && onOpenProjects && !projectActionLocked);
   const attachmentBusy = state.sending || state.attachmentSelectionPending
     || state.attachmentRemovalPending || steerMode;
+  const composerSettingsLocked = transitionLocked || activeTurn || state.sending;
+  const selectedModel = state.runtimeModels.find((model) => model.id === state.composerModelId) ?? null;
+  const modelLabel = selectedModel
+    ? compactModelLabel(selectedModel.displayName)
+    : state.runtimeModelsLoading ? (locale === 'ja' ? '読込中' : 'Loading') : (locale === 'ja' ? 'モデル' : 'Model');
+  const effortLabel = reasoningEffortLabel(state.composerReasoningEffort, locale);
+  const cancelRuntimeSubmenuClose = () => {
+    if (runtimeSubmenuCloseTimerRef.current === null) return;
+    window.clearTimeout(runtimeSubmenuCloseTimerRef.current);
+    runtimeSubmenuCloseTimerRef.current = null;
+  };
+  const openRuntimeSubmenu = (submenu: 'model' | 'effort' | 'speed') => {
+    cancelRuntimeSubmenuClose();
+    setRuntimeSubmenu(submenu);
+  };
+  const scheduleRuntimeSubmenuClose = () => {
+    cancelRuntimeSubmenuClose();
+    runtimeSubmenuCloseTimerRef.current = window.setTimeout(() => {
+      runtimeSubmenuCloseTimerRef.current = null;
+      setRuntimeSubmenu(null);
+    }, 180);
+  };
+  useEffect(() => {
+    const closeComposerMenus = () => {
+      if (runtimeSubmenuCloseTimerRef.current !== null) {
+        window.clearTimeout(runtimeSubmenuCloseTimerRef.current);
+        runtimeSubmenuCloseTimerRef.current = null;
+      }
+      setRuntimeSubmenu(null);
+      setOpenComposerMenu(null);
+    };
+    const closeOnPointerDown = (event: PointerEvent) => {
+      if (!composerControlsRef.current?.contains(event.target as Node)) closeComposerMenus();
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') closeComposerMenus();
+    };
+    document.addEventListener('pointerdown', closeOnPointerDown);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnPointerDown);
+      document.removeEventListener('keydown', closeOnEscape);
+      if (runtimeSubmenuCloseTimerRef.current !== null) {
+        window.clearTimeout(runtimeSubmenuCloseTimerRef.current);
+        runtimeSubmenuCloseTimerRef.current = null;
+      }
+    };
+  }, []);
   useEffect(() => {
     const generation = previewGeneration.current + 1;
     previewGeneration.current = generation;
@@ -171,6 +255,10 @@ export function Composer({
     onDismissGuide?.();
   };
   const send = () => {
+    if (stopMode) {
+      if (canStop) void store.interruptActiveTurn();
+      return;
+    }
     if (canQueueVoiceSend && state.voiceActiveOperationRef) {
       const handle = voiceHandleRef.current;
       if (state.voiceCapturePhase === 'recording' && !handle) return;
@@ -310,6 +398,25 @@ export function Composer({
     && state.messages.length === 0
     && !guideDismissed,
   );
+  const primaryActionLabel = stopMode
+    ? (stopPending
+        ? (locale === 'ja' ? '停止中' : 'STOPPING')
+        : (locale === 'ja' ? '応答を停止' : 'STOP RESPONSE'))
+    : voiceSendIntentQueued
+      ? (locale === 'ja' ? '文字起こし後に送信します' : 'WILL SEND AFTER TRANSCRIPTION')
+      : canQueueVoiceSend
+        ? (locale === 'ja' ? '録音を終了して文字起こし後に送信' : 'STOP, TRANSCRIBE, THEN SEND')
+        : canStartProject
+          ? (locale === 'ja' ? '新しいプロジェクトを作成して続行' : 'CREATE PROJECT')
+          : canResumeProject
+            ? (locale === 'ja' ? '再開するプロジェクトを選択' : 'CHOOSE PROJECT')
+            : state.sending
+              ? (state.conversationAction === 'steer'
+                  ? (locale === 'ja' ? '送信中' : 'SENDING')
+                  : state.conversationAction === 'retry'
+                    ? (locale === 'ja' ? '再送中' : 'RETRYING')
+                    : (locale === 'ja' ? '送信中' : 'SENDING'))
+              : (locale === 'ja' ? '送信' : 'SEND');
   return (
     <section
       className={`composer plugin-surface light-surface${dropActive ? ' is-drop-active' : ''}`}
@@ -413,23 +520,102 @@ export function Composer({
           maxLength={MESSAGE_TEXT_MAX_LENGTH_HINT}
           disabled={transitionLocked}
         />
-        <div className="composer-action-row">
-          <span>{projectPreparing
-            ? (locale === 'ja' ? '準備完了後に入力できます' : 'AVAILABLE AFTER PROJECT PREPARATION')
-            : projectStopping
-              ? (locale === 'ja' ? '安全な停止処理が完了するまでお待ちください' : 'AVAILABLE AFTER SAFE SHUTDOWN')
-            : startMode
-            ? (locale === 'ja' ? '入力してから新規プロジェクトかフォルダを選択' : 'Write first, then choose a new project or folder')
-            : (locale === 'ja' ? 'Enterで送信 / Shift+Enterで改行' : 'Enter to send / Shift+Enter for newline')}</span>
-          <div className="composer-tools">
+        <div className="composer-action-row" ref={composerControlsRef}>
+          <div className="composer-control composer-access-control">
+            <button
+              type="button"
+              className={`composer-access-trigger is-${state.composerAccessMode}`}
+              disabled={composerSettingsLocked}
+              aria-haspopup="menu"
+              aria-expanded={openComposerMenu === 'access'}
+              onClick={() => setOpenComposerMenu((current) => current === 'access' ? null : 'access')}
+            >
+              <ShieldAlert aria-hidden="true" />
+              <span>{state.composerAccessMode === 'full_access'
+                ? (locale === 'ja' ? 'フルアクセス' : 'Full access')
+                : (locale === 'ja' ? '承認あり' : 'Ask approval')}</span>
+              <ChevronDown aria-hidden="true" />
+            </button>
+            {openComposerMenu === 'access' && <div className="composer-popover composer-access-menu" role="menu">
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={state.composerAccessMode === 'approval_required'}
+                onClick={() => { store.setComposerAccessMode('approval_required'); setOpenComposerMenu(null); }}
+              >
+                <span><b>{locale === 'ja' ? '承認あり' : 'Ask approval'}</b><small>{locale === 'ja' ? '必要な操作は実行前に確認' : 'Confirm sensitive actions before running'}</small></span>
+                {state.composerAccessMode === 'approval_required' && <Check aria-hidden="true" />}
+              </button>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={state.composerAccessMode === 'full_access'}
+                onClick={() => { store.setComposerAccessMode('full_access'); setOpenComposerMenu(null); }}
+              >
+                <span><b>{locale === 'ja' ? 'フルアクセス' : 'Full access'}</b><small>{locale === 'ja' ? '確認なしでPC内の操作を実行' : 'Run computer actions without confirmation'}</small></span>
+                {state.composerAccessMode === 'full_access' && <Check aria-hidden="true" />}
+              </button>
+            </div>}
+          </div>
           {voiceLive && <span className={`composer-voice-state phase-${state.voiceCapturePhase}`} role="status" aria-label={voiceLabel}>
             <span className="voice-waveform" aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6].map((bar) => <i key={bar} />)}</span>
             {state.voiceCapturePhase === 'recording' && <time>{voiceElapsed(recordingSeconds)}</time>}
             <span className="sr-only">{voiceLabel}</span>
           </span>}
+          <div className="composer-control composer-runtime-control">
+            <button
+              type="button"
+              className="composer-runtime-trigger"
+              disabled={composerSettingsLocked || !selectedModel}
+              aria-haspopup="menu"
+              aria-expanded={openComposerMenu === 'runtime'}
+              aria-label={`${locale === 'ja' ? 'モデルと実行設定' : 'Model and runtime settings'}: ${modelLabel} ${effortLabel}`}
+              onClick={() => setOpenComposerMenu((current) => current === 'runtime' ? null : 'runtime')}
+            >
+              {state.composerServiceTier === 'fast' && <Zap className="composer-fast-icon" aria-hidden="true" />}
+              <span>{modelLabel}</span>
+              <b>{effortLabel}</b>
+              <ChevronDown aria-hidden="true" />
+            </button>
+            {openComposerMenu === 'runtime' && <div className="composer-popover composer-runtime-menu" role="menu">
+              <button type="button" role="menuitem" onMouseEnter={() => openRuntimeSubmenu('model')} onMouseLeave={scheduleRuntimeSubmenuClose} onFocus={() => openRuntimeSubmenu('model')} onClick={() => openRuntimeSubmenu('model')}>
+                <span>{locale === 'ja' ? 'モデル' : 'Model'}</span><b>{modelLabel}</b><ChevronRight aria-hidden="true" />
+              </button>
+              <button type="button" role="menuitem" onMouseEnter={() => openRuntimeSubmenu('effort')} onMouseLeave={scheduleRuntimeSubmenuClose} onFocus={() => openRuntimeSubmenu('effort')} onClick={() => openRuntimeSubmenu('effort')}>
+                <span>{locale === 'ja' ? '推論レベル' : 'Reasoning'}</span><b>{effortLabel}</b><ChevronRight aria-hidden="true" />
+              </button>
+              <button type="button" role="menuitem" onMouseEnter={() => openRuntimeSubmenu('speed')} onMouseLeave={scheduleRuntimeSubmenuClose} onFocus={() => openRuntimeSubmenu('speed')} onClick={() => openRuntimeSubmenu('speed')}>
+                <span>{locale === 'ja' ? '速度' : 'Speed'}</span><b>{state.composerServiceTier === 'fast' ? (locale === 'ja' ? '高速' : 'Fast') : (locale === 'ja' ? '標準' : 'Standard')}</b><ChevronRight aria-hidden="true" />
+              </button>
+              {runtimeSubmenu && <div className="composer-popover composer-runtime-submenu" role="menu" onMouseEnter={cancelRuntimeSubmenuClose} onMouseLeave={scheduleRuntimeSubmenuClose}>
+                {runtimeSubmenu === 'model' && state.runtimeModels.map((model) => <button
+                  key={model.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={model.id === state.composerModelId}
+                  onClick={() => { store.selectComposerModel(model.id); setOpenComposerMenu(null); }}
+                ><span><b>{compactModelLabel(model.displayName)}</b></span>{model.id === state.composerModelId && <Check aria-hidden="true" />}</button>)}
+                {runtimeSubmenu === 'effort' && selectedModel?.supportedReasoningEfforts.map((effort) => <button
+                  key={effort.effort}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={effort.effort === state.composerReasoningEffort}
+                  onClick={() => { store.selectComposerReasoningEffort(effort.effort); setOpenComposerMenu(null); }}
+                ><span><b>{reasoningEffortLabel(effort.effort, locale)}</b>{effort.description && <small>{effort.description}</small>}</span>{effort.effort === state.composerReasoningEffort && <Check aria-hidden="true" />}</button>)}
+                {runtimeSubmenu === 'speed' && <>
+                  <button type="button" role="menuitemradio" aria-checked={state.composerServiceTier === 'standard'} onClick={() => { store.setComposerServiceTier('standard'); setOpenComposerMenu(null); }}>
+                    <span><b>{locale === 'ja' ? '標準' : 'Standard'}</b><small>{locale === 'ja' ? '標準速度' : 'Standard speed'}</small></span>{state.composerServiceTier === 'standard' && <Check aria-hidden="true" />}
+                  </button>
+                  <button type="button" role="menuitemradio" aria-checked={state.composerServiceTier === 'fast'} onClick={() => { store.setComposerServiceTier('fast'); setOpenComposerMenu(null); }}>
+                    <span><b>{locale === 'ja' ? '高速' : 'Fast'}</b><small>{locale === 'ja' ? '1.5倍速・使用量多め' : '1.5x speed · higher usage'}</small></span>{state.composerServiceTier === 'fast' && <Check aria-hidden="true" />}
+                  </button>
+                </>}
+              </div>}
+            </div>}
+          </div>
           <button
             type="button"
-            className={`attach-button${state.attachmentSelectionPending ? ' is-pending' : ''}`}
+            className={`composer-action-icon attach-button${state.attachmentSelectionPending ? ' is-pending' : ''}`}
             onClick={() => fileInputRef.current?.click()}
             disabled={!state.runtimeAuthority || state.sending || state.attachmentSelectionPending
               || state.attachmentRemovalPending
@@ -442,7 +628,7 @@ export function Composer({
           <button
             type="button"
             data-native-effect="voice-capture"
-            className={`voice-button is-${state.voiceCapturePhase}${voiceAssetFailure ? ' has-setup-error' : ''}${!state.voiceStatus?.requiredAssetsReady ? ' needs-setup' : ''}`}
+            className={`composer-action-icon voice-button is-${state.voiceCapturePhase}${voiceAssetFailure ? ' has-setup-error' : ''}${!state.voiceStatus?.requiredAssetsReady ? ' needs-setup' : ''}`}
             onClick={onVoiceAction}
             disabled={!state.rendererAuthority || transitionLocked || state.sending
               || state.voiceCapturePhase === 'stopping' || state.voiceCapturePhase === 'cancelling'
@@ -460,66 +646,30 @@ export function Composer({
                 : state.voiceCapturePhase === 'cancelling'
                   ? <LoaderCircle aria-hidden="true" />
                 : <Mic aria-hidden="true" />}</button>
-          </div>
           <button
             type="button"
-            className={`send-button${steerMode ? ' is-steer' : ''}`}
-            disabled={!canSend && !canStartProject && !canResumeProject && !canQueueVoiceSend}
+            className={`composer-action-icon send-button${stopMode ? ' is-stop' : ''}`}
+            disabled={stopMode
+              ? !canStop
+              : !canSend && !canStartProject && !canResumeProject && !canQueueVoiceSend}
             onClick={send}
-            aria-label={voiceSendIntentQueued
-              ? (locale === 'ja' ? '文字起こし後に送信します' : 'WILL SEND AFTER TRANSCRIPTION')
-              : canQueueVoiceSend
-                ? (locale === 'ja' ? '録音を終了して文字起こし後に送信' : 'STOP, TRANSCRIBE, THEN SEND')
-              : canStartProject
-              ? (locale === 'ja' ? '新しいプロジェクトを作成して続行' : 'Create a new project and continue')
-              : canResumeProject
-                ? (locale === 'ja' ? '再開するプロジェクトを選択' : 'Choose a project to resume')
-              : state.sending
-                ? (locale === 'ja' ? '送信中' : 'SENDING')
-                : steerMode ? (locale === 'ja' ? '軌道修正' : 'STEER') : (locale === 'ja' ? '送信' : 'SEND')}
+            aria-label={primaryActionLabel}
             title={canStartProject
               ? (locale === 'ja' ? '新しいプロジェクトを作成して続行' : 'Create a new project and continue')
               : canResumeProject
                 ? (locale === 'ja' ? '再開するプロジェクトを選択' : 'Choose a project to resume')
                 : undefined}
           >
-          <span className="sr-only">{voiceSendIntentQueued
-            ? (locale === 'ja' ? '文字起こし後に送信します' : 'WILL SEND AFTER TRANSCRIPTION')
-            : canQueueVoiceSend
-              ? (locale === 'ja' ? '録音を終了して文字起こし後に送信' : 'STOP, TRANSCRIBE, THEN SEND')
-            : state.sending
-            ? (state.conversationAction === 'steer'
-                ? (locale === 'ja' ? '軌道修正中' : 'STEERING')
-                : state.conversationAction === 'stop'
-                  ? (locale === 'ja' ? '停止中' : 'STOPPING')
-                : state.conversationAction === 'retry'
-                  ? (locale === 'ja' ? '再送中' : 'RETRYING')
-                  : (locale === 'ja' ? '送信中' : 'SENDING'))
-            : steerMode
-              ? (locale === 'ja' ? '軌道修正' : 'STEER')
-              : canStartProject
-                ? (locale === 'ja' ? '新しいプロジェクトを作成して続行' : 'CREATE PROJECT')
-                : canResumeProject
-                  ? (locale === 'ja' ? '再開するプロジェクトを選択' : 'CHOOSE PROJECT')
-                : (locale === 'ja' ? '送信' : 'SEND')}</span>
+          <span className="sr-only">{primaryActionLabel}</span>
           {voiceSendIntentQueued
             ? <LoaderCircle aria-hidden="true" />
-            : steerMode ? <CornerDownRight aria-hidden="true" /> : <Send aria-hidden="true" />}
+            : stopMode
+              ? stopPending ? <LoaderCircle aria-hidden="true" /> : <Square aria-hidden="true" />
+              : <Send aria-hidden="true" />}
         </button>
         </div>
       </div>
-      <div className="composer-foot">
-        <span>{state.attachmentSelectionPending
-          ? (locale === 'ja' ? 'ファイルを選択・安全に準備しています…' : 'CHOOSING AND PREPARING FILES SECURELY…')
-          : steerMode && state.attachments.length > 0
-          ? (locale === 'ja' ? `${state.attachments.length}件の添付は次の新規送信まで保持` : `${state.attachments.length} FILE(S) HELD FOR NEXT TURN`)
-          : locale === 'ja'
-            ? `${state.attachments.length}件のファイル`
-            : `${state.attachments.length} FILE(S)`}</span>
-        <span>{state.voiceError
-          ? userMessageCopy(state.voiceError, locale)
-          : activity ? executionPhaseCopy(activity.phase, locale) : (locale === 'ja' ? 'Enterで送信 / Shift+Enterで改行' : 'ENTER TO SEND / SHIFT+ENTER FOR NEW LINE')}</span>
-      </div>
+      {state.voiceError && <p className="composer-inline-error" role="alert">{userMessageCopy(state.voiceError, locale)}</p>}
       {steerBlocked && <p className="composer-steer-warning" role="alert">
         {locale === 'ja'
           ? '直前のターン操作が届いたか確認できないため、このターンへのStopと軌道修正を止めています。'

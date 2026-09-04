@@ -1,19 +1,28 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
+import {
+  Archive,
   ArrowRight,
   ArrowUpRight,
   BriefcaseBusiness,
+  ChevronRight,
   Circle,
-  CirclePause,
+  FolderKanban,
   FolderOpen,
   Gauge,
   History as HistoryIcon,
   Map as MapIcon,
   MessageCircle,
-  Octagon,
-  PanelRightClose,
-  PanelRightOpen,
   Plus,
+  RotateCcw,
   Search,
   Send,
   Settings,
@@ -35,6 +44,7 @@ import type {
   AgentSummary,
   AttentionItem,
   BusinessWorkOrderSummary,
+  ProjectFolderSelection,
   ProjectSummary,
   TaskSummary,
 } from '../../domain/models';
@@ -45,7 +55,7 @@ import {
   type OrquestaMapSessionState,
 } from '../../components/OrquestaMap';
 import { Composer } from '../conversation/Composer';
-import { loadOlderWithScrollAnchor, OrquestaThread } from '../thread/OrquestaThread';
+import { ChatSurfaceV2, loadOlderWithScrollAnchor } from '../thread/ChatSurfaceV2';
 import { WorkflowLab } from './WorkflowLab';
 import {
   agentStatusCopy,
@@ -56,7 +66,6 @@ import {
   attentionTypeCopy,
   evidenceLevelCopy,
   evidenceTypeCopy,
-  executionPhaseCopy,
   userMessageCopy,
   uiStateCopy,
   workflowBatchStatusCopy,
@@ -119,18 +128,16 @@ function compactTime(value: string | null, locale: 'ja' | 'en'): string {
   });
 }
 
-function deliveryProgress(workOrder: BusinessWorkOrderSummary | null): number | null {
-  if (!workOrder || workOrder.providerDelivery.total === 0) return null;
-  return Math.round((workOrder.providerDelivery.accepted / workOrder.providerDelivery.total) * 100);
-}
-
 function ProjectSidebar({
   state,
-  store,
   locale,
+  compact,
+  onNavigate,
   onOpenProjects,
   onOpenSettings,
-}: Pick<WorkspaceViewProps, 'state' | 'store' | 'locale'> & {
+}: Pick<WorkspaceViewProps, 'state' | 'locale'> & {
+  compact: boolean;
+  onNavigate(route: WorkspaceRoute): void;
   onOpenProjects(): void;
   onOpenSettings(): void;
 }) {
@@ -138,9 +145,6 @@ function ProjectSidebar({
     ?? state.projects.find((candidate) => candidate.id === state.selectedProjectId)
     ?? null;
   const projectLifecycle = selectProjectLifecycle(state);
-  const monogram = project
-    ? project.title.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.slice(0, 1)).join('').toUpperCase()
-    : '--';
   const projectTransitionLocked = state.addingProject
     || projectLifecycleIsTransitioning(projectLifecycle)
     || state.voiceCapturePhase !== 'idle';
@@ -148,18 +152,16 @@ function ProjectSidebar({
   const activeRoute = navigationReady ? state.route : 'work';
   return (
     <aside className="ledger-sidebar" aria-label={locale === 'ja' ? 'プロジェクトナビゲーション' : 'Project navigation'}>
-      <header className="ledger-brand">
-        <span className="ledger-brand-symbol" aria-hidden="true">
-          <img src="/brand/orquesta-symbol.png" alt="" />
-        </span>
-        <b>ORQUESTA</b>
-        <small>V5 PREVIEW</small>
+      <header className="ledger-brand" data-tauri-drag-region>
+        <span className="ledger-brand-symbol" data-tauri-drag-region aria-hidden="true"><img src="/brand/orquesta-symbol.png" alt="" data-tauri-drag-region /></span>
+        <b data-tauri-drag-region>ORQUESTA</b>
+        <small data-tauri-drag-region>V5 PREVIEW</small>
       </header>
 
       <section className="ledger-project-block" aria-labelledby="local-project-title">
         <h2 id="local-project-title">PROJECT</h2>
-        <button type="button" className={`ledger-project-card${project ? ' is-current' : ' is-empty'}`} onClick={onOpenProjects} disabled={projectTransitionLocked}>
-          <span className="ledger-project-monogram">{monogram}</span>
+        <button type="button" className={`ledger-project-card${project ? ' is-current' : ' is-empty'}`} onClick={onOpenProjects} disabled={projectTransitionLocked} title={compact ? project?.title : undefined} aria-label={compact ? (project?.title ?? (locale === 'ja' ? 'プロジェクトを開く' : 'Open projects')) : undefined}>
+          <span className="ledger-project-icon" aria-hidden="true"><FolderKanban /></span>
           <span><b>{project?.title ?? (locale === 'ja' ? 'プロジェクト未選択' : 'No project selected')}</b><small>{project?.rootPathLabel ?? (locale === 'ja' ? '必要なときに開く' : 'Open one when needed')}</small></span>
         </button>
       </section>
@@ -174,17 +176,17 @@ function ProjectSidebar({
 
       <nav className="ledger-navigation" aria-label={locale === 'ja' ? 'ワークスペース' : 'Workspace'}>
         {navigation.map(({ route, label, icon: Icon }) => (
-          <button key={route} type="button" className={activeRoute === route ? 'is-active' : ''} aria-current={activeRoute === route ? 'page' : undefined} disabled={!navigationReady && route !== 'work'} onClick={() => store.setRoute(route)}>
+          <button key={route} type="button" className={activeRoute === route ? 'is-active' : ''} aria-current={activeRoute === route ? 'page' : undefined} aria-label={compact ? label : undefined} disabled={!navigationReady && route !== 'work'} onClick={() => onNavigate(route)} title={compact ? label : undefined}>
             <Icon aria-hidden="true" /><span>{label}</span>
           </button>
         ))}
       </nav>
 
       <div className="sidebar-utilities">
-        <button type="button" onClick={onOpenSettings}><Settings aria-hidden="true" /><span>{locale === 'ja' ? '設定' : 'Settings'}</span></button>
+        <button type="button" onClick={onOpenSettings} aria-label={compact ? (locale === 'ja' ? '設定' : 'Settings') : undefined} title={compact ? (locale === 'ja' ? '設定' : 'Settings') : undefined}><Settings aria-hidden="true" /><span>{locale === 'ja' ? '設定' : 'Settings'}</span></button>
       </div>
 
-      <footer className="ledger-runtime-status">
+      <footer className="ledger-runtime-status" title={compact ? uiStateCopy(state.runtimeStatus?.lifecycle, locale) : undefined}>
         <span><Gauge aria-hidden="true" /><b>{locale === 'ja' ? '実行状態' : 'Runtime'}</b></span>
         <small><i aria-hidden="true" />{uiStateCopy(state.runtimeStatus?.lifecycle, locale)}</small>
       </footer>
@@ -217,10 +219,9 @@ function WorkLedger({
     .slice(0, 8);
   return (
     <aside className="work-ledger" aria-labelledby="work-ledger-title">
-      <header className="execution-ledger-head">
-        <span>PROJECT ACTIVITY</span>
-        <h2 id="work-ledger-title">Work</h2>
-        <FolderOpen aria-hidden="true" />
+      <header className="execution-ledger-head" data-tauri-drag-region>
+        <span data-tauri-drag-region>PROJECT ACTIVITY</span>
+        <h2 id="work-ledger-title" data-tauri-drag-region>Work</h2>
       </header>
 
       <section className="ledger-group work-order-group">
@@ -259,6 +260,209 @@ function WorkLedger({
   );
 }
 
+const NAVIGATION_RAIL_WIDTH = 56;
+const NAVIGATION_PANEL_DEFAULT_WIDTH = 184;
+const NAVIGATION_PANEL_MIN_WIDTH = 176;
+const NAVIGATION_PANEL_MAX_WIDTH = 320;
+const NAVIGATION_PANEL_CLOSE_THRESHOLD = 128;
+const WORK_LEDGER_DEFAULT_WIDTH = 260;
+const WORK_LEDGER_MIN_WIDTH = 220;
+const WORK_LEDGER_MAX_WIDTH = 420;
+const WORK_LEDGER_CLOSE_THRESHOLD = 160;
+
+function NavigationDivider({
+  expanded,
+  width,
+  showWorkHandle,
+  disabled,
+  locale,
+  onResize,
+  onCommit,
+  onDragStateChange,
+  onOpenWork,
+}: {
+  expanded: boolean;
+  width: number;
+  showWorkHandle: boolean;
+  disabled: boolean;
+  locale: 'ja' | 'en';
+  onResize(width: number): void;
+  onCommit(width: number): void;
+  onDragStateChange(active: boolean): void;
+  onOpenWork(): void;
+}) {
+  const dragRef = useRef<{ pointerId: number; startX: number; startWidth: number; lastX: number } | null>(null);
+  useEffect(() => () => {
+    document.documentElement.classList.remove('is-resizing-navigation');
+  }, []);
+  const nextWidth = (clientX: number) => {
+    const drag = dragRef.current;
+    if (!drag) return expanded ? width : NAVIGATION_RAIL_WIDTH;
+    return Math.max(0, Math.min(NAVIGATION_PANEL_MAX_WIDTH, drag.startWidth + clientX - drag.startX));
+  };
+  const finishDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
+    const committedWidth = nextWidth(event.clientX);
+    dragRef.current = null;
+    if (
+      typeof event.currentTarget.hasPointerCapture === 'function'
+      && event.currentTarget.hasPointerCapture(event.pointerId)
+    ) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    document.documentElement.classList.remove('is-resizing-navigation');
+    onCommit(committedWidth);
+    onDragStateChange(false);
+  };
+  const startDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (disabled || event.button !== 0) return;
+    event.preventDefault();
+    const startWidth = expanded ? width : NAVIGATION_RAIL_WIDTH;
+    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startWidth, lastX: event.clientX };
+    onResize(startWidth);
+    onDragStateChange(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    document.documentElement.classList.add('is-resizing-navigation');
+  };
+  const moveDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
+    dragRef.current.lastX = event.clientX;
+    onResize(nextWidth(event.clientX));
+  };
+  const loseCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const committedWidth = nextWidth(drag.lastX);
+    dragRef.current = null;
+    document.documentElement.classList.remove('is-resizing-navigation');
+    onCommit(committedWidth);
+    onDragStateChange(false);
+  };
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (disabled || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === 'Home'
+      ? NAVIGATION_RAIL_WIDTH
+      : event.key === 'End'
+        ? NAVIGATION_PANEL_DEFAULT_WIDTH
+        : expanded
+          ? Math.max(0, Math.min(NAVIGATION_PANEL_MAX_WIDTH, width + (event.key === 'ArrowLeft' ? -16 : 16)))
+          : NAVIGATION_PANEL_DEFAULT_WIDTH;
+    onResize(next);
+    onCommit(next);
+  };
+  const segment = (position: 'full' | 'upper' | 'lower', primary: boolean) => <div
+    className={`navigation-resize-segment is-${position}`}
+    role={primary ? 'separator' : undefined}
+    aria-hidden={primary ? undefined : true}
+    aria-label={primary ? (locale === 'ja' ? 'ナビゲーションの幅を変更' : 'Resize navigation panel') : undefined}
+    aria-orientation={primary ? 'vertical' : undefined}
+    aria-valuemin={primary ? NAVIGATION_RAIL_WIDTH : undefined}
+    aria-valuemax={primary ? NAVIGATION_PANEL_MAX_WIDTH : undefined}
+    aria-valuenow={primary ? Math.round(expanded ? width : NAVIGATION_RAIL_WIDTH) : undefined}
+    aria-disabled={primary ? disabled : undefined}
+    tabIndex={primary && !disabled ? 0 : undefined}
+    onDoubleClick={primary ? () => onCommit(expanded ? NAVIGATION_RAIL_WIDTH : NAVIGATION_PANEL_DEFAULT_WIDTH) : undefined}
+    onKeyDown={primary ? onKeyDown : undefined}
+    onPointerDown={startDrag}
+    onPointerMove={moveDrag}
+    onPointerUp={finishDrag}
+    onPointerCancel={finishDrag}
+    onLostPointerCapture={loseCapture}
+  />;
+  return <div className={`navigation-edge-control${showWorkHandle ? ' has-work-handle' : ''}`}>
+    {segment('full', true)}
+    {showWorkHandle &&
+      <button
+        type="button"
+        className="work-ledger-edge-handle"
+        onClick={onOpenWork}
+        disabled={disabled}
+        aria-label={locale === 'ja' ? 'Workパネルを開く' : 'Open Work panel'}
+        title={locale === 'ja' ? 'Workパネルを開く' : 'Open Work panel'}
+      ><span className="work-ledger-edge-glyph" aria-hidden="true"><ChevronRight preserveAspectRatio="none" /></span></button>}
+  </div>;
+}
+
+function WorkLedgerDivider({
+  width,
+  locale,
+  onResize,
+  onCommit,
+}: {
+  width: number;
+  locale: 'ja' | 'en';
+  onResize(width: number): void;
+  onCommit(width: number): void;
+}) {
+  const dragRef = useRef<{ pointerId: number; startX: number; startWidth: number; lastX: number } | null>(null);
+  useEffect(() => () => {
+    document.documentElement.classList.remove('is-resizing-work-ledger');
+  }, []);
+  const nextWidth = (clientX: number) => {
+    const drag = dragRef.current;
+    if (!drag) return width;
+    return Math.max(0, Math.min(WORK_LEDGER_MAX_WIDTH, drag.startWidth + clientX - drag.startX));
+  };
+  const finishDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
+    const committedWidth = nextWidth(event.clientX);
+    dragRef.current = null;
+    if (
+      typeof event.currentTarget.hasPointerCapture === 'function'
+      && event.currentTarget.hasPointerCapture(event.pointerId)
+    ) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    document.documentElement.classList.remove('is-resizing-work-ledger');
+    onCommit(committedWidth);
+  };
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'Enter'].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === 'Enter'
+      ? 0
+      : event.key === 'Home'
+      ? WORK_LEDGER_DEFAULT_WIDTH
+      : Math.max(WORK_LEDGER_MIN_WIDTH, Math.min(WORK_LEDGER_MAX_WIDTH, width + (event.key === 'ArrowLeft' ? -16 : 16)));
+    onResize(next);
+    onCommit(next);
+  };
+  return <div
+    className="work-ledger-divider"
+    role="separator"
+    aria-label={locale === 'ja' ? 'Workパネルの幅を変更。Enterで閉じる' : 'Resize Work panel. Press Enter to close'}
+    aria-orientation="vertical"
+    aria-valuemin={WORK_LEDGER_MIN_WIDTH}
+    aria-valuemax={WORK_LEDGER_MAX_WIDTH}
+    aria-valuenow={Math.round(width)}
+    tabIndex={0}
+    onDoubleClick={() => onCommit(WORK_LEDGER_DEFAULT_WIDTH)}
+    onKeyDown={onKeyDown}
+    onPointerDown={(event) => {
+      if (event.button !== 0) return;
+      dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: width, lastX: event.clientX };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      document.documentElement.classList.add('is-resizing-work-ledger');
+    }}
+    onPointerMove={(event) => {
+      if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
+      dragRef.current.lastX = event.clientX;
+      onResize(nextWidth(event.clientX));
+    }}
+    onPointerUp={finishDrag}
+    onPointerCancel={finishDrag}
+    onLostPointerCapture={(event) => {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      const committedWidth = nextWidth(drag.lastX);
+      dragRef.current = null;
+      document.documentElement.classList.remove('is-resizing-work-ledger');
+      onCommit(committedWidth);
+    }}
+  />;
+}
+
 function ApprovalPrompt({ item, state, store, locale }: { item: AttentionItem; state: ApplicationState; store: ApplicationStore; locale: 'ja' | 'en' }) {
   if (!item.runtimeApproval) return null;
   const copy = attentionPresentationCopy(item, locale);
@@ -292,161 +496,40 @@ function WorkSurface({
   store,
   locale,
   selectedAgent,
-  selectedTask,
   selectedAttention,
-  selectedWorkOrder,
-  detailsOpen,
-  onToggleDetails,
 }: Pick<WorkspaceViewProps, 'state' | 'store' | 'locale'> & {
   selectedAgent: AgentSummary;
-  selectedTask: TaskSummary | null;
   selectedAttention: AttentionItem | null;
-  selectedWorkOrder: BusinessWorkOrderSummary | null;
-  detailsOpen: boolean;
-  onToggleDetails(): void;
 }) {
-  const activity = state.executions[selectedAgent.id] ?? null;
-  const activeTurn = activity && ['queueing', 'accepted', 'working', 'stopping'].includes(activity.phase) ? activity : null;
-  const projectedTurn = activity?.source === 'projection'
-    && activity.threadId && activity.turnId
-    && ['accepted', 'working', 'stopping'].includes(activity.phase) ? activity : null;
-  const projectedTurnKey = projectedTurn?.threadId && projectedTurn.turnId
-    ? `${projectedTurn.threadId}:${projectedTurn.turnId}` : null;
-  const stopBlocked = !projectedTurn?.canInterrupt || state.sending
-    || projectedTurnKey === state.turnMutationAcceptedTurnKey
-    || projectedTurnKey === state.turnMutationOutcomeUnknownTurnKey;
-  const taskTitle = selectedWorkOrder?.title ?? selectedTask?.title ?? activeTurn?.summary ?? selectedAgent.currentTaskTitle ?? (locale === 'ja' ? '現在の実行なし' : 'No current execution');
-  const orderProgress = deliveryProgress(selectedWorkOrder);
-  const progress = orderProgress ?? selectedTask?.progressPercent ?? selectedAgent.progressPercent ?? 0;
   const staleRequests = state.projectedPendingRequests.filter((request) => request.recoveryState === 'stale'
     && (!request.agentId || request.agentId === selectedAgent.id));
   return (
     <>
-      <header className="selected-execution-head">
-        <span className="selected-agent-avatar">{selectedAgent.displayName.slice(0, 1).toUpperCase()}</span>
-        <div className="selected-execution-title">
-          <h1>{selectedAgent.displayName}</h1>
-          <i className={`status-${activeTurn ? 'working' : selectedAgent.status}`} aria-hidden="true" />
-          <small>{activity && activity.phase !== 'completed' ? executionPhaseCopy(activity.phase, locale) : agentStatusCopy(selectedAgent.status, locale)}</small>
-          <p>{taskTitle}</p>
-        </div>
-        <div className="execution-evidence-time"><span>Last evidence</span><b>{compactTime(selectedAgent.lastEvidenceAt, locale)}</b></div>
-        <button type="button" className="execution-control" onClick={onToggleDetails} aria-pressed={detailsOpen} title={locale === 'ja' ? '作業情報を開閉' : 'Toggle work details'}>{detailsOpen ? <PanelRightClose aria-hidden="true" /> : <PanelRightOpen aria-hidden="true" />}<span>Details</span></button>
-        <button type="button" className="execution-control" disabled title={locale === 'ja' ? '一時停止は未接続です' : 'Pause is not connected'}><CirclePause aria-hidden="true" /><span>Pause</span></button>
-        <button
-          type="button"
-          className="execution-control"
-          onClick={() => void store.interruptActiveTurn()}
-          disabled={stopBlocked}
-          title={projectedTurn
-            ? (locale === 'ja' ? 'この担当者の現在の実行を停止' : 'Stop this agent\'s active turn')
-            : (locale === 'ja' ? '停止できる実行はありません' : 'No active turn to stop')}
-        ><Octagon aria-hidden="true" /><span>{projectedTurn?.phase === 'stopping' ? (locale === 'ja' ? '停止中' : 'Stopping') : 'Stop'}</span></button>
-      </header>
-
-      <section className={`execution-progress${activeTurn ? ' is-live' : ''}`} aria-label={locale === 'ja' ? '現在の仕事' : 'Current work'}>
-        <span>{selectedWorkOrder ? 'WORK ORDER' : 'CURRENT EXECUTION'}</span><b>{taskTitle}</b>
-        {activeTurn
-          ? <progress max={100} aria-label={`${taskTitle}: ${executionPhaseCopy(activeTurn.phase, locale)}`} />
-          : <progress max={100} value={progress} aria-label={`${taskTitle}: ${progress}%`} />}
-        <em>{activeTurn ? executionPhaseCopy(activeTurn.phase, locale) : `${progress}%`}</em>
-      </section>
-
       <section className="execution-conversation" aria-label={locale === 'ja' ? '作業会話' : 'Work conversation'}>
-        <OrquestaThread
+        <ChatSurfaceV2
           state={state}
           store={store}
           locale={locale}
           agentLabel={selectedAgent.displayName}
           afterMessages={<>
-          {activity && ['queueing', 'accepted', 'working', 'stopping', 'interrupted', 'failed'].includes(activity.phase) && (
-            <div className={`execution-live-state phase-${activity.phase}`} role="status">
-              <i aria-hidden="true" />
-              <b>{executionPhaseCopy(activity.phase, locale)}</b>
-              <span>{activity.summary}</span>
-            </div>
-          )}
           {staleRequests.map((request) => (
-            <article key={request.requestKey} className="execution-approval" role="status">
+            <div key={request.requestKey} className="thread-stale-notice" role="status">
               <ShieldCheck aria-hidden="true" />
-              <div>
-                <h3>{request.requestKind === 'attention.user_input_requested'
+              <span>
+                <b>{request.requestKind === 'attention.user_input_requested'
                   ? (locale === 'ja' ? '期限切れの入力要求' : 'Expired input request')
-                  : (locale === 'ja' ? '期限切れの承認要求' : 'Expired approval request')}</h3>
-                <p>{request.requestKind === 'attention.user_input_requested'
+                  : (locale === 'ja' ? '期限切れの承認要求' : 'Expired approval request')}</b>
+                {' '}{request.requestKind === 'attention.user_input_requested'
                   ? request.prompt ?? (locale === 'ja' ? 'この入力要求は現在の作業では回答できません。' : 'This input request cannot be answered in the current run.')
-                  : (locale === 'ja' ? 'この承認要求は現在の作業では回答できません。' : 'This approval request cannot be answered in the current run.')}</p>
-                <small>{locale === 'ja' ? '必要なら、現在の会話からもう一度依頼してください。' : 'Ask again from the current conversation if it is still needed.'}</small>
-              </div>
-            </article>
+                  : (locale === 'ja' ? 'この承認要求は現在の作業では回答できません。' : 'This approval request cannot be answered in the current run.')}
+              </span>
+            </div>
           ))}
           {selectedAttention && <ApprovalPrompt item={selectedAttention} state={state} store={store} locale={locale} />}
           </>}
         />
       </section>
     </>
-  );
-}
-
-function DetailsRail({
-  state,
-  store,
-  locale,
-  selectedAgent,
-  selectedTask,
-  selectedAttention,
-  selectedWorkOrder,
-  onClose,
-}: Pick<WorkspaceViewProps, 'state' | 'store' | 'locale'> & {
-  selectedAgent: AgentSummary;
-  selectedTask: TaskSummary | null;
-  selectedAttention: AttentionItem | null;
-  selectedWorkOrder: BusinessWorkOrderSummary | null;
-  onClose(): void;
-}) {
-  const snapshot = state.snapshot!;
-  const openAttention = selectOpenAttention(state);
-  const active = snapshot.agents.filter((agent) => agent.status === 'working').length;
-  return (
-    <aside className="ledger-details" aria-label={locale === 'ja' ? '選択中の作業情報' : 'Selected work details'}>
-      <header className="details-rail-head"><span>{locale === 'ja' ? '作業情報' : 'WORK CONTEXT'}</span><button type="button" onClick={onClose} aria-label={locale === 'ja' ? '作業情報を閉じる' : 'Close details'}><X aria-hidden="true" /></button></header>
-      <section>
-        <h2>PROJECT STATE</h2>
-        <p className="details-state"><i aria-hidden="true" />{uiStateCopy(snapshot.project.status, locale)}</p>
-        <p>{snapshot.project.summary}</p>
-        <dl>
-          <div><dt>Agents</dt><dd>{snapshot.agents.length}</dd></div>
-          <div><dt>Running</dt><dd>{active}</dd></div>
-          <div><dt>Attention</dt><dd>{openAttention.length}</dd></div>
-        </dl>
-      </section>
-      {selectedWorkOrder && <section>
-        <h2>WORK ORDER</h2>
-        <header><b>{selectedWorkOrder.title}</b><span>R{selectedWorkOrder.revision}</span></header>
-        <p className="details-state"><i aria-hidden="true" />{uiStateCopy(selectedWorkOrder.status, locale)}</p>
-        <dl>
-          <div><dt>Branches</dt><dd>{selectedWorkOrder.branchCounts.total}</dd></div>
-          <div><dt>Delivery</dt><dd>{selectedWorkOrder.providerDelivery.accepted}/{selectedWorkOrder.providerDelivery.total}</dd></div>
-          <div><dt>Acceptance</dt><dd>{uiStateCopy(selectedWorkOrder.acceptance.decision ?? 'pending', locale)}</dd></div>
-        </dl>
-      </section>}
-      <section>
-        <h2>SELECTED EXECUTION</h2>
-        <header><b>{selectedAgent.displayName}</b></header>
-        <p className={`details-state status-${selectedAgent.status}`}><i aria-hidden="true" />{selectedAttention ? attentionPresentationCopy(selectedAttention, locale).title : agentStatusCopy(selectedAgent.status, locale)}</p>
-        <p>{selectedTask?.title ?? selectedAgent.currentTaskTitle ?? (locale === 'ja' ? '現在の担当なし' : 'No current assignment')}</p>
-        <progress max={100} value={selectedTask?.progressPercent ?? selectedAgent.progressPercent ?? 0} />
-      </section>
-      <section>
-        <h2>EVIDENCE SUMMARY</h2>
-        <dl>
-          <div><dt>Conversation evidence</dt><dd>{state.messages.filter((message) => message.evidenceLabel).length}</dd></div>
-          <div><dt>Project tasks</dt><dd>{snapshot.tasks.length}</dd></div>
-          <div><dt>Inspection sources</dt><dd>{snapshot.inspectionRuns.reduce((sum, run) => sum + run.sourceCount, 0)}</dd></div>
-        </dl>
-        <button type="button" onClick={() => store.setRoute('history')}>Open project history <ArrowRight aria-hidden="true" /></button>
-      </section>
-    </aside>
   );
 }
 
@@ -719,9 +802,10 @@ function WorkspaceInactiveState({
   );
 }
 
-function ProjectDialog({ projects, currentId, adding, onAdd, onNew, onSelect, onForget, onClose, locale }: { projects: ProjectSummary[]; currentId: string | null; adding: boolean; onAdd(): Promise<boolean>; onNew(): void; onSelect(id: string): Promise<boolean>; onForget(id: string): Promise<boolean>; onClose(): void; locale: 'ja' | 'en' }) {
+function ProjectDialog({ projects, currentId, adding, onAdd, onFolderSelected, onNew, onSelect, onArchive, onClose, locale }: { projects: ProjectSummary[]; currentId: string | null; adding: boolean; onAdd(): Promise<ProjectFolderSelection | null>; onFolderSelected(selection: ProjectFolderSelection): void; onNew(): void; onSelect(id: string): Promise<boolean>; onArchive(id: string): Promise<boolean>; onClose(): void; locale: 'ja' | 'en' }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [forgettingProjectId, setForgettingProjectId] = useState<string | null>(null);
+  const [archiveCandidate, setArchiveCandidate] = useState<ProjectSummary | null>(null);
+  const [archivingProjectId, setArchivingProjectId] = useState<string | null>(null);
   useEffect(() => {
     if (typeof ref.current?.showModal === 'function') ref.current.showModal();
     else ref.current?.setAttribute('open', '');
@@ -731,30 +815,48 @@ function ProjectDialog({ projects, currentId, adding, onAdd, onNew, onSelect, on
     else onClose();
   };
   const startFromFolder = async () => {
-    if (await onAdd()) close();
+    const selection = await onAdd();
+    if (selection) onFolderSelected(selection);
   };
   const selectRecent = async (projectId: string) => {
     if (await onSelect(projectId)) close();
   };
-  const forgetRecent = async (projectId: string) => {
-    setForgettingProjectId(projectId);
+  const archiveProject = async (projectId: string) => {
+    setArchivingProjectId(projectId);
     try {
-      await onForget(projectId);
+      if (await onArchive(projectId)) setArchiveCandidate(null);
     } finally {
-      setForgettingProjectId(null);
+      setArchivingProjectId(null);
     }
   };
   return (
-    <dialog ref={ref} className="project-dialog" onClose={onClose} onCancel={onClose}>
-      <header><span>PROJECT SWITCHER</span><button type="button" onClick={close} aria-label={locale === 'ja' ? '閉じる' : 'Close'}><X aria-hidden="true" /></button></header>
-      <h2>{locale === 'ja' ? 'プロジェクトを開く' : 'Open a project'}</h2>
-      <div className="project-dialog-list">{projects.length === 0
-        ? <p className="project-dialog-empty">{locale === 'ja' ? '登録されているプロジェクトはありません。必要になったときにフォルダを追加できます。' : 'No projects are registered. Add a folder whenever you need one.'}</p>
-        : projects.map((project) => <div className="project-dialog-item" key={project.id}>
-          <button className="project-dialog-open" type="button" disabled={project.id === currentId || adding || forgettingProjectId !== null} onClick={() => void selectRecent(project.id)}><span><b>{project.title}</b><small>{project.rootPathLabel}</small></span><span>{project.id === currentId ? 'CURRENT' : <><span>OPEN</span><ArrowUpRight aria-hidden="true" /></>}</span></button>
-          {project.id !== currentId && <button className="project-dialog-forget" type="button" disabled={adding || forgettingProjectId !== null} aria-label={locale === 'ja' ? `「${project.title}」を一覧から外す` : `Remove ${project.title} from the list`} onClick={() => void forgetRecent(project.id)}>{forgettingProjectId === project.id ? (locale === 'ja' ? '処理中…' : 'REMOVING…') : (locale === 'ja' ? '一覧から外す' : 'REMOVE FROM LIST')}</button>}
-        </div>)}</div>
-      <footer><button type="button" className="is-secondary" disabled={adding} onClick={() => void startFromFolder()}><FolderOpen aria-hidden="true" />{adding ? (locale === 'ja' ? '選択中…' : 'CHOOSING…') : (locale === 'ja' ? 'フォルダから始める' : 'START FROM FOLDER')}</button><button type="button" disabled={adding} onClick={onNew}><Plus aria-hidden="true" />{locale === 'ja' ? '新しいプロジェクト' : 'NEW PROJECT'}</button></footer>
+    <dialog ref={ref} className="project-dialog" onClose={onClose} onCancel={(event) => {
+      if (!archiveCandidate) return onClose();
+      event.preventDefault();
+      if (!archivingProjectId) setArchiveCandidate(null);
+    }}>
+      <header><span>{archiveCandidate ? 'ARCHIVE PROJECT' : 'PROJECT SWITCHER'}</span><button type="button" onClick={close} aria-label={locale === 'ja' ? '閉じる' : 'Close'}><X aria-hidden="true" /></button></header>
+      {archiveCandidate ? <>
+        <section className="project-archive-confirmation" aria-labelledby="project-archive-title">
+          <Archive aria-hidden="true" />
+          <div>
+            <h2 id="project-archive-title">{locale === 'ja' ? 'このプロジェクトをアーカイブしますか？' : 'Archive this project?'}</h2>
+            <p>{locale === 'ja' ? '一覧からは隠れますが、ファイルや履歴は削除されません。設定の「アーカイブ」からいつでも復元できます。' : 'It will leave the project list, but its files and history will not be deleted. You can restore it from Archive in Settings.'}</p>
+            <strong>{archiveCandidate.title}</strong>
+            <small>{archiveCandidate.rootPathLabel}</small>
+          </div>
+        </section>
+        <footer className="project-archive-actions"><button type="button" className="is-secondary" disabled={archivingProjectId !== null} onClick={() => setArchiveCandidate(null)}>{locale === 'ja' ? 'キャンセル' : 'CANCEL'}</button><button type="button" disabled={archivingProjectId !== null} onClick={() => void archiveProject(archiveCandidate.id)}><Archive aria-hidden="true" />{archivingProjectId ? (locale === 'ja' ? 'アーカイブ中…' : 'ARCHIVING…') : (locale === 'ja' ? 'アーカイブする' : 'ARCHIVE PROJECT')}</button></footer>
+      </> : <>
+        <h2>{locale === 'ja' ? 'プロジェクトを開く' : 'Open a project'}</h2>
+        <div className="project-dialog-list">{projects.length === 0
+          ? <p className="project-dialog-empty">{locale === 'ja' ? '登録されているプロジェクトはありません。必要になったときにフォルダを追加できます。' : 'No projects are registered. Add a folder whenever you need one.'}</p>
+          : projects.map((project) => <div className="project-dialog-item" key={project.id}>
+            <button className="project-dialog-open" type="button" disabled={project.id === currentId || adding || archivingProjectId !== null} onClick={() => void selectRecent(project.id)}><span><b>{project.title}</b><small>{project.rootPathLabel}</small></span><span>{project.id === currentId ? 'CURRENT' : <><span>OPEN</span><ArrowUpRight aria-hidden="true" /></>}</span></button>
+            {project.id !== currentId && <button className="project-dialog-archive" type="button" disabled={adding || archivingProjectId !== null} aria-label={locale === 'ja' ? `「${project.title}」をアーカイブ` : `Archive ${project.title}`} onClick={() => setArchiveCandidate(project)}><Archive aria-hidden="true" /><span>{locale === 'ja' ? 'アーカイブ' : 'ARCHIVE'}</span></button>}
+          </div>)}</div>
+        <footer><button type="button" className="is-secondary" disabled={adding} onClick={() => void startFromFolder()}><FolderOpen aria-hidden="true" />{adding ? (locale === 'ja' ? '選択中…' : 'CHOOSING…') : (locale === 'ja' ? 'フォルダから始める' : 'START FROM FOLDER')}</button><button type="button" disabled={adding} onClick={onNew}><Plus aria-hidden="true" />{locale === 'ja' ? '新しいプロジェクト' : 'NEW PROJECT'}</button></footer>
+      </>}
     </dialog>
   );
 }
@@ -778,10 +880,39 @@ function NewProjectDialog({ adding, locale, onStart, onClose }: { adding: boolea
       <header><span>NEW PROJECT</span><button type="button" onClick={close} aria-label={locale === 'ja' ? '閉じる' : 'Close'}><X aria-hidden="true" /></button></header>
       <form onSubmit={(event) => { event.preventDefault(); const value = name.trim(); if (!value) return; void start(value); }}>
         <h2>{locale === 'ja' ? '新しいプロジェクトを始める' : 'Start a new project'}</h2>
-        <p>{locale === 'ja' ? '名前を決め、保存先の親フォルダを選びます。' : 'Choose a name, then select the parent folder where it will be saved.'}</p>
+        <p>{locale === 'ja' ? '名前を入力すると、ドキュメント内の Orquesta / Projects に作成します。' : 'Enter a name to create it in Orquesta / Projects under Documents.'}</p>
         <label htmlFor="new-project-name">{locale === 'ja' ? 'プロジェクト名' : 'Project name'}</label>
         <input id="new-project-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={160} placeholder={locale === 'ja' ? '例：新しいサービス' : 'Example: New service'} />
-        <button type="submit" disabled={!name.trim() || adding}><FolderOpen aria-hidden="true" />{adding ? (locale === 'ja' ? '選択中…' : 'CHOOSING…') : (locale === 'ja' ? 'フォルダを選んで始める' : 'CHOOSE FOLDER AND START')}</button>
+        <button className="new-project-submit" type="submit" disabled={!name.trim() || adding}><Plus aria-hidden="true" />{adding ? (locale === 'ja' ? '作成中…' : 'CREATING…') : (locale === 'ja' ? '作成して始める' : 'CREATE AND START')}</button>
+      </form>
+    </dialog>
+  );
+}
+
+function FolderProjectDialog({ selection, adding, locale, onStart, onClose }: { selection: ProjectFolderSelection; adding: boolean; locale: 'ja' | 'en'; onStart(name: string): Promise<boolean>; onClose(): void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [name, setName] = useState(selection.suggestedName);
+  useEffect(() => {
+    if (typeof ref.current?.showModal === 'function') ref.current.showModal();
+    else ref.current?.setAttribute('open', '');
+  }, []);
+  const close = () => {
+    if (typeof ref.current?.close === 'function') ref.current.close();
+    else onClose();
+  };
+  const start = async (value: string) => {
+    if (await onStart(value)) close();
+  };
+  return (
+    <dialog ref={ref} className="new-project-dialog folder-project-dialog" onClose={onClose} onCancel={onClose}>
+      <header><span>OPEN FOLDER</span><button type="button" onClick={close} aria-label={locale === 'ja' ? '閉じる' : 'Close'}><X aria-hidden="true" /></button></header>
+      <form onSubmit={(event) => { event.preventDefault(); const value = name.trim(); if (!value) return; void start(value); }}>
+        <h2>{locale === 'ja' ? 'プロジェクト名を決める' : 'Name this project'}</h2>
+        <p>{locale === 'ja' ? '選んだフォルダは移動せず、この名前でOrquestaに登録します。' : 'The selected folder stays where it is and is registered in Orquesta with this name.'}</p>
+        <small className="selected-folder-path">{selection.rootPath}</small>
+        <label htmlFor="folder-project-name">{locale === 'ja' ? 'プロジェクト名' : 'Project name'}</label>
+        <input id="folder-project-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={160} />
+        <button type="submit" disabled={!name.trim() || adding}><FolderOpen aria-hidden="true" />{adding ? (locale === 'ja' ? '開始中…' : 'OPENING…') : (locale === 'ja' ? 'この名前で始める' : 'START WITH THIS NAME')}</button>
       </form>
     </dialog>
   );
@@ -825,7 +956,8 @@ function SettingsDialog({ state, store, locale, onLocaleChange, onNotificationsC
   useEffect(() => {
     if (typeof ref.current?.showModal === 'function') ref.current.showModal();
     else ref.current?.setAttribute('open', '');
-  }, []);
+    void store.refreshArchivedProjects();
+  }, [store]);
   const close = () => {
     if (typeof ref.current?.close === 'function') ref.current.close();
     else onClose();
@@ -837,6 +969,8 @@ function SettingsDialog({ state, store, locale, onLocaleChange, onNotificationsC
       theme: patch.theme ?? settings.theme,
       reducedMotion: patch.reducedMotion ?? settings.reducedMotion,
       notificationsEnabled: settings.notificationsEnabled,
+      navigationCompact: settings.navigationCompact,
+      workLedgerOpen: settings.workLedgerOpen,
     });
   };
   const changeNotifications = async () => {
@@ -855,6 +989,16 @@ function SettingsDialog({ state, store, locale, onLocaleChange, onNotificationsC
       <section className="settings-section"><div><h3>{locale === 'ja' ? '外観' : 'Appearance'}</h3><p>{locale === 'ja' ? '明るさをOSに合わせるか、固定します。' : 'Follow the OS appearance or choose one.'}</p></div><div className="settings-options"><button type="button" disabled={!settings || updating} className={settings?.theme === 'system' ? 'is-selected' : ''} aria-pressed={settings?.theme === 'system'} onClick={() => save({ theme: 'system' })}>{locale === 'ja' ? '自動' : 'System'}</button><button type="button" disabled={!settings || updating} className={settings?.theme === 'light' ? 'is-selected' : ''} aria-pressed={settings?.theme === 'light'} onClick={() => save({ theme: 'light' })}>{locale === 'ja' ? 'ライト' : 'Light'}</button><button type="button" disabled={!settings || updating} className={settings?.theme === 'dark' ? 'is-selected' : ''} aria-pressed={settings?.theme === 'dark'} onClick={() => save({ theme: 'dark' })}>{locale === 'ja' ? 'ダーク' : 'Dark'}</button></div></section>
       <section className="settings-section"><div><h3>{locale === 'ja' ? '動きを減らす' : 'Reduce motion'}</h3><p>{locale === 'ja' ? '画面の移動や点滅する演出を止めます。OS設定が有効な場合も自動で止まります。' : 'Stops moving and pulsing effects. The OS preference is also respected.'}</p></div><button type="button" className={`settings-toggle${settings?.reducedMotion ? ' is-selected' : ''}`} disabled={!settings || updating} aria-label={`${locale === 'ja' ? '動きを減らす' : 'Reduce motion'}: ${settings?.reducedMotion ? (locale === 'ja' ? 'オン' : 'On') : (locale === 'ja' ? 'オフ' : 'Off')}`} aria-pressed={settings?.reducedMotion ?? false} onClick={() => save({ reducedMotion: !settings?.reducedMotion })}>{settings?.reducedMotion ? (locale === 'ja' ? 'オン' : 'On') : (locale === 'ja' ? 'オフ' : 'Off')}</button></section>
       <section className="settings-section"><div><h3>{locale === 'ja' ? 'OS通知' : 'Desktop notifications'}</h3><p>{locale === 'ja' ? '返信、質問、確認、失敗を、Orquestaを見ていないときだけ知らせます。' : 'Get notified about replies, questions, reviews, and failures while you are away.'}</p>{notificationDenied && <small role="status">{locale === 'ja' ? 'OS通知が許可されていません。Windowsの設定を確認してください。' : 'Desktop notifications were not allowed. Check Windows settings.'}</small>}</div><button type="button" data-native-effect="notifications" className={`settings-toggle${settings?.notificationsEnabled ? ' is-selected' : ''}`} disabled={!settings || updating || notificationPending} aria-label={`${locale === 'ja' ? 'OS通知' : 'Desktop notifications'}: ${notificationPending ? (locale === 'ja' ? '確認中' : 'Checking') : settings?.notificationsEnabled ? (locale === 'ja' ? 'オン' : 'On') : (locale === 'ja' ? 'オフ' : 'Off')}`} aria-busy={notificationPending} aria-pressed={settings?.notificationsEnabled ?? false} onClick={() => void changeNotifications()}>{notificationPending ? (locale === 'ja' ? '確認中…' : 'Checking…') : settings?.notificationsEnabled ? (locale === 'ja' ? 'オン' : 'On') : (locale === 'ja' ? 'オフ' : 'Off')}</button></section>
+      <section className="settings-section settings-archive-section" aria-labelledby="settings-archive-title">
+        <div className="settings-archive-heading"><Archive aria-hidden="true" /><div><h3 id="settings-archive-title">{locale === 'ja' ? 'アーカイブ' : 'Archive'}</h3><p>{locale === 'ja' ? '一覧から退避したプロジェクトです。復元しても自動では開きません。' : 'Projects moved out of the main list. Restoring one does not open it automatically.'}</p></div></div>
+        <div className="settings-archive-list" aria-live="polite" aria-busy={state.archivedProjectsLoading}>
+          {state.archivedProjectsLoading
+            ? <p className="settings-archive-empty">{locale === 'ja' ? '読み込み中…' : 'Loading archived projects…'}</p>
+            : state.archivedProjects.length === 0
+              ? <p className="settings-archive-empty">{locale === 'ja' ? 'アーカイブ済みのプロジェクトはありません。' : 'No archived projects.'}</p>
+              : state.archivedProjects.map((project) => <div className="settings-archive-item" key={project.id}><span><b>{project.title}</b><small>{project.rootPathLabel}</small></span><button type="button" disabled={state.projectArchiveMutationId !== null} aria-label={locale === 'ja' ? `「${project.title}」を復元` : `Restore ${project.title}`} onClick={() => void store.restoreArchivedProject(project.id)}><RotateCcw aria-hidden="true" />{state.projectArchiveMutationId === project.id ? (locale === 'ja' ? '復元中…' : 'RESTORING…') : (locale === 'ja' ? '復元' : 'RESTORE')}</button></div>)}
+        </div>
+      </section>
       <section className="settings-section settings-status-section"><div><h3>{locale === 'ja' ? 'システムの状態' : 'System status'}</h3><p>{locale === 'ja' ? '保存する希望値ではなく、現在読み取れている状態です。' : 'Read-only facts observed from the current system, not saved preferences.'}</p><dl className="settings-status-list"><div><dt>Runtime</dt><dd>{runtimeStatus}</dd></div><div><dt>Model</dt><dd>{modelStatus}</dd></div><div><dt>Voice</dt><dd>{voiceStatusText}</dd></div><div><dt>Storage</dt><dd>{storageStatus}</dd></div><div><dt>Diagnostic</dt><dd>{`Runtime r${state.runtimeStatus?.statusRevision ?? 0} · Settings r${settings?.revision ?? 0} · Voice r${voiceStatus?.revision ?? 0}`}</dd></div></dl></div></section>
       <footer><span>ORQUESTA DESKTOP NEXT</span><small>V5 PREVIEW</small></footer>
     </dialog>
@@ -864,10 +1008,18 @@ function SettingsDialog({ state, store, locale, onLocaleChange, onNotificationsC
 export function WorkspaceView({ state, store, locale, onLocaleChange, onNotificationsChange, browserPreview = false }: WorkspaceViewProps) {
   const [projectDialog, setProjectDialog] = useState(false);
   const [newProjectDialog, setNewProjectDialog] = useState(false);
+  const [folderProjectSelection, setFolderProjectSelection] = useState<ProjectFolderSelection | null>(null);
   const [newProjectOriginId, setNewProjectOriginId] = useState<string | null>(null);
   const [projectEntrySendDraft, setProjectEntrySendDraft] = useState(false);
   const [settingsDialog, setSettingsDialog] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [workLedgerWidth, setWorkLedgerWidth] = useState(WORK_LEDGER_DEFAULT_WIDTH);
+  const [navigationPanelWidth, setNavigationPanelWidth] = useState(NAVIGATION_PANEL_DEFAULT_WIDTH);
+  const [navigationResizeActive, setNavigationResizeActive] = useState(false);
+  const [navigationExpandedIntent, setNavigationExpandedIntent] = useState<boolean | null>(null);
+  const [workLedgerOpenIntent, setWorkLedgerOpenIntent] = useState<boolean | null>(null);
+  const [workLedgerOpening, setWorkLedgerOpening] = useState(false);
+  const lastNavigationPanelWidthRef = useRef(NAVIGATION_PANEL_DEFAULT_WIDTH);
+  const lastWorkLedgerWidthRef = useRef(WORK_LEDGER_DEFAULT_WIDTH);
   const [previewEffectNotice, setPreviewEffectNotice] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedWorkOrderKey, setSelectedWorkOrderKey] = useState<string | null>(null);
@@ -885,8 +1037,10 @@ export function WorkspaceView({ state, store, locale, onLocaleChange, onNotifica
   }, [snapshot, selectedAgent, selectedTaskId, store]);
 
   useEffect(() => {
-    if (state.route !== 'work') setDetailsOpen(false);
-  }, [state.route]);
+    if (!workLedgerOpening) return;
+    const finishOpening = window.setTimeout(() => setWorkLedgerOpening(false), 260);
+    return () => window.clearTimeout(finishOpening);
+  }, [workLedgerOpening]);
 
   useEffect(() => {
     if (!newProjectDialog || !state.selectedProjectId || state.selectedProjectId === newProjectOriginId) return;
@@ -898,8 +1052,19 @@ export function WorkspaceView({ state, store, locale, onLocaleChange, onNotifica
   const projectSurface = selectProjectSurface(projectLifecycle);
   const inactive = projectSurface !== 'ready' || !snapshot || !selectedAgent;
   const renderedRoute = inactive ? 'work' : state.route;
+  const storedNavigationCompact = state.settings?.navigationCompact ?? true;
+  const navigationExpandedPreference = navigationExpandedIntent ?? !storedNavigationCompact;
+  const navigationExpanded = !inactive && (navigationResizeActive || navigationExpandedPreference);
+  const workLedgerOpenPreference = workLedgerOpenIntent ?? (state.settings?.workLedgerOpen ?? true);
+  const workLedgerOpen = !inactive && renderedRoute === 'work' && workLedgerOpenPreference;
+  const workLedgerVisible = workLedgerOpen && !navigationExpanded;
+  const dockMode = navigationExpanded ? 'navigation' : workLedgerVisible ? 'work' : 'collapsed';
+  const showWorkHandle = !inactive
+    && storedNavigationCompact
+    && navigationExpandedIntent !== true
+    && renderedRoute === 'work'
+    && !workLedgerOpenPreference;
   const selectedTask = snapshot?.tasks.find((task) => task.id === selectedTaskId) ?? null;
-  const selectedWorkOrder = state.businessWorkOrders.find((item) => item.key === selectedWorkOrderKey) ?? null;
   const openAttentionItems = selectOpenAttention(state);
   const selectedAttention = openAttentionItems.find((item) => item.taskId === selectedTask?.id)
     ?? openAttentionItems.find((item) => item.sourceAgentId === selectedAgent?.id)
@@ -928,6 +1093,73 @@ export function WorkspaceView({ state, store, locale, onLocaleChange, onNotifica
     setNewProjectOriginId(state.selectedProjectId);
     setNewProjectDialog(true);
   };
+  const updateWorkspaceLayout = async (patch: Partial<Pick<NonNullable<ApplicationState['settings']>, 'navigationCompact' | 'workLedgerOpen'>>) => {
+    const settings = state.settings;
+    if (!settings || state.settingsUpdating) return false;
+    return await store.updateSettings({
+      locale: settings.locale ?? locale,
+      theme: settings.theme,
+      reducedMotion: settings.reducedMotion,
+      notificationsEnabled: settings.notificationsEnabled,
+      navigationCompact: patch.navigationCompact ?? settings.navigationCompact,
+      workLedgerOpen: patch.workLedgerOpen ?? settings.workLedgerOpen,
+    });
+  };
+  const chooseFolderProject = async (sendDraft = false) => {
+    setProjectEntrySendDraft(sendDraft);
+    const selection = await store.chooseProjectFolder();
+    if (!selection) return;
+    setProjectDialog(false);
+    setFolderProjectSelection(selection);
+  };
+  const commitWorkLedgerWidth = (nextWidth: number) => {
+    if (nextWidth < WORK_LEDGER_CLOSE_THRESHOLD) {
+      setWorkLedgerWidth(lastWorkLedgerWidthRef.current);
+      setWorkLedgerOpening(false);
+      setWorkLedgerOpenIntent(false);
+      void updateWorkspaceLayout({ workLedgerOpen: false }).finally(() => setWorkLedgerOpenIntent(null));
+      return;
+    }
+    const committed = Math.max(WORK_LEDGER_MIN_WIDTH, Math.min(WORK_LEDGER_MAX_WIDTH, nextWidth));
+    lastWorkLedgerWidthRef.current = committed;
+    setWorkLedgerWidth(committed);
+  };
+  const openWorkLedger = () => {
+    setWorkLedgerWidth(lastWorkLedgerWidthRef.current);
+    setWorkLedgerOpening(true);
+    setWorkLedgerOpenIntent(true);
+    void updateWorkspaceLayout({ workLedgerOpen: true }).finally(() => setWorkLedgerOpenIntent(null));
+  };
+  const commitNavigationPanelWidth = (nextWidth: number) => {
+    if (nextWidth < NAVIGATION_PANEL_CLOSE_THRESHOLD) {
+      setNavigationPanelWidth(lastNavigationPanelWidthRef.current);
+      setNavigationExpandedIntent(false);
+      void updateWorkspaceLayout({ navigationCompact: true }).finally(() => setNavigationExpandedIntent(null));
+      return;
+    }
+    const committed = Math.max(NAVIGATION_PANEL_MIN_WIDTH, Math.min(NAVIGATION_PANEL_MAX_WIDTH, nextWidth));
+    lastNavigationPanelWidthRef.current = committed;
+    setNavigationPanelWidth(committed);
+    setNavigationExpandedIntent(true);
+    void updateWorkspaceLayout({ navigationCompact: false }).finally(() => setNavigationExpandedIntent(null));
+  };
+  const navigateWorkspace = (route: WorkspaceRoute) => {
+    store.setRoute(route);
+    if (!navigationExpanded) return;
+    setNavigationExpandedIntent(false);
+    void updateWorkspaceLayout({ navigationCompact: true }).finally(() => setNavigationExpandedIntent(null));
+  };
+
+  useEffect(() => {
+    if (!navigationExpanded || navigationResizeActive) return;
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setNavigationExpandedIntent(false);
+      void updateWorkspaceLayout({ navigationCompact: true }).finally(() => setNavigationExpandedIntent(null));
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [navigationExpanded, navigationResizeActive, state.settings, state.settingsUpdating]);
 
   const selectAgent = (agentId: string) => {
     if (!agentId) return;
@@ -995,10 +1227,36 @@ export function WorkspaceView({ state, store, locale, onLocaleChange, onNotifica
     else setPreviewEffectNotice(null);
   };
   return (
-    <div className={`workspace-shell v5-workspace-shell route-${renderedRoute}${inactive ? ' is-inactive' : ''}`} onClickCapture={blockNativeEffectInPreview}>
+    <div
+      className={`workspace-shell v5-workspace-shell route-${renderedRoute}${inactive ? ' is-inactive' : navigationExpanded ? ' is-navigation-overlay-open' : ' is-nav-compact'}${!inactive && renderedRoute === 'work' && !workLedgerVisible ? ' is-work-ledger-closed' : ''}${workLedgerOpening && workLedgerVisible ? ' is-work-ledger-opening' : ''}`}
+      data-dock-mode={dockMode}
+      style={{
+        '--work-ledger-width': `${workLedgerWidth}px`,
+        '--navigation-panel-width': `${navigationPanelWidth}px`,
+      } as CSSProperties}
+      onClickCapture={blockNativeEffectInPreview}
+    >
       <a href="#main-content" className="skip-link">{locale === 'ja' ? 'メインへ移動' : 'Skip to main content'}</a>
       <ScreenReaderAnnouncer state={state} locale={locale} />
-      <ProjectSidebar state={state} store={store} locale={locale} onOpenProjects={() => openProjectDialog(false)} onOpenSettings={() => setSettingsDialog(true)} />
+      <ProjectSidebar
+        state={state}
+        locale={locale}
+        compact={!inactive && !navigationExpanded}
+        onNavigate={navigateWorkspace}
+        onOpenProjects={() => openProjectDialog(false)}
+        onOpenSettings={() => setSettingsDialog(true)}
+      />
+      {!inactive && <NavigationDivider
+        expanded={navigationExpanded}
+        width={navigationPanelWidth}
+        showWorkHandle={showWorkHandle}
+        disabled={state.settingsUpdating}
+        locale={locale}
+        onResize={setNavigationPanelWidth}
+        onCommit={commitNavigationPanelWidth}
+        onDragStateChange={setNavigationResizeActive}
+        onOpenWork={openWorkLedger}
+      />}
       <LucaAccess state={state} store={store} locale={locale} />
       {inactive ? <main id="main-content" className="execution-workspace is-empty route-enter">
         <WorkspaceInactiveState state={state} store={store} locale={locale} />
@@ -1008,17 +1266,17 @@ export function WorkspaceView({ state, store, locale, onLocaleChange, onNotifica
           locale={locale}
           onOpenProjects={openProjectDialog}
           onNewProject={openNewProjectDialog}
-          onStartFromFolder={(sendDraft = false) => void store.openProjectFolder({ sendDraft })}
+          onStartFromFolder={(sendDraft = false) => void chooseFolderProject(sendDraft)}
           guideDismissed={guideDismissed}
           onDismissGuide={dismissProjectGuide}
         /></div>
       </main>
         : renderedRoute === 'work' ? <>
-        <WorkLedger state={state} selectedAgentId={selectedAgent.id} selectedWorkOrderKey={selectedWorkOrderKey} onSelectAgent={selectAgent} onSelectWorkOrder={selectWorkOrder} onViewHistory={() => store.setRoute('history')} locale={locale} />
+        {workLedgerVisible && <WorkLedger state={state} selectedAgentId={selectedAgent.id} selectedWorkOrderKey={selectedWorkOrderKey} onSelectAgent={selectAgent} onSelectWorkOrder={selectWorkOrder} onViewHistory={() => store.setRoute('history')} locale={locale} />}
+        {workLedgerVisible && <WorkLedgerDivider width={workLedgerWidth} locale={locale} onResize={setWorkLedgerWidth} onCommit={commitWorkLedgerWidth} />}
         <main id="main-content" className="execution-workspace route-enter">
-          <WorkSurface state={state} store={store} locale={locale} selectedAgent={selectedAgent} selectedTask={selectedTask} selectedAttention={selectedAttention} selectedWorkOrder={selectedWorkOrder} detailsOpen={detailsOpen} onToggleDetails={() => setDetailsOpen((open) => !open)} />
+          <WorkSurface state={state} store={store} locale={locale} selectedAgent={selectedAgent} selectedAttention={selectedAttention} />
           <div className="ledger-composer-slot"><Composer state={state} store={store} locale={locale} guideDismissed={guideDismissed} onDismissGuide={dismissProjectGuide} /></div>
-          {detailsOpen && <DetailsRail state={state} store={store} locale={locale} selectedAgent={selectedAgent} selectedTask={selectedTask} selectedAttention={selectedAttention} selectedWorkOrder={selectedWorkOrder} onClose={() => setDetailsOpen(false)} />}
         </main>
       </> : <main id="main-content" className="route-workspace">
         {renderedRoute === 'map' && snapshot && <MapView
@@ -1032,8 +1290,9 @@ export function WorkspaceView({ state, store, locale, onLocaleChange, onNotifica
         {renderedRoute === 'workflows' && <WorkflowsView state={state} store={store} locale={locale} />}
         {renderedRoute === 'history' && <HistoryView state={state} store={store} locale={locale} />}
       </main>}
-      {projectDialog && <ProjectDialog projects={state.projects} currentId={state.runtimeAuthority?.projectId ?? null} adding={state.addingProject} locale={locale} onAdd={() => store.openProjectFolder({ sendDraft: projectEntrySendDraft })} onNew={() => { store.retireProjectEntryIntent(); setProjectDialog(false); setNewProjectOriginId(state.selectedProjectId); setNewProjectDialog(true); }} onClose={() => { store.retireProjectEntryIntent(); setProjectDialog(false); }} onSelect={(projectId) => store.selectProject(projectId, { sendDraft: projectEntrySendDraft })} onForget={(projectId) => store.forgetRecentProject(projectId)} />}
+      {projectDialog && <ProjectDialog projects={state.projects} currentId={state.runtimeAuthority?.projectId ?? null} adding={state.addingProject} locale={locale} onAdd={() => store.chooseProjectFolder()} onFolderSelected={(selection) => { setProjectDialog(false); setFolderProjectSelection(selection); }} onNew={() => { store.retireProjectEntryIntent(); setProjectDialog(false); setNewProjectOriginId(state.selectedProjectId); setNewProjectDialog(true); }} onClose={() => { store.retireProjectEntryIntent(); setProjectDialog(false); }} onSelect={(projectId) => store.selectProject(projectId, { sendDraft: projectEntrySendDraft })} onArchive={(projectId) => store.archiveProject(projectId)} />}
       {newProjectDialog && <NewProjectDialog adding={state.addingProject} locale={locale} onStart={(name) => store.createStarterProject(name, { sendDraft: projectEntrySendDraft })} onClose={() => { store.retireProjectEntryIntent(); setNewProjectDialog(false); setNewProjectOriginId(null); }} />}
+      {folderProjectSelection && <FolderProjectDialog selection={folderProjectSelection} adding={state.addingProject} locale={locale} onStart={(name) => store.openProjectFolder(folderProjectSelection, name, { sendDraft: projectEntrySendDraft })} onClose={() => { store.retireProjectEntryIntent(); setFolderProjectSelection(null); }} />}
       {settingsDialog && <SettingsDialog state={state} store={store} locale={locale} onLocaleChange={onLocaleChange} onNotificationsChange={onNotificationsChange} onClose={() => setSettingsDialog(false)} />}
       {toastMessage && <div className={`toast ${state.error ? 'toast-error' : 'toast-notice'}`} role={state.error ? 'alert' : 'status'}><span>{toastMessage}</span>{actionableRecovery && recoveryActionLabel && !state.error && !state.notice && <button className="toast-action" type="button" disabled={state.recoveryPending} onClick={() => void store.reconcileDispatchRecovery()}>{recoveryActionLabel}</button>}{(!actionableRecovery || state.error || state.notice) && <button type="button" onClick={dismissToast} aria-label={locale === 'ja' ? '通知を閉じる' : 'Dismiss notification'}><X aria-hidden="true" /></button>}</div>}
     </div>

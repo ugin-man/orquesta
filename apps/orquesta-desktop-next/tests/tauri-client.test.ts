@@ -251,7 +251,11 @@ class FakeTransport implements TauriTransport {
       if (this.bootstrapOverride) return clone(this.bootstrapOverride) as T;
       return bootstrapResponse(this.openedRendererSessionId ?? SESSION_ID) as T;
     }
+    if (command === NATIVE_COMMANDS.chooseProjectFolder) return commandResponse('chooseProjectFolder') as T;
     if (command === NATIVE_COMMANDS.openProjectFolder) return commandResponse('openProjectFolder') as T;
+    if (command === NATIVE_COMMANDS.listArchivedProjects) return commandResponse('listArchivedProjects') as T;
+    if (command === NATIVE_COMMANDS.archiveProject) return commandResponse('archiveProject') as T;
+    if (command === NATIVE_COMMANDS.restoreArchivedProject) return commandResponse('restoreArchivedProject') as T;
     if (command === NATIVE_COMMANDS.forgetRecentProject) return commandResponse('forgetRecentProject') as T;
     if (command === NATIVE_COMMANDS.createStarterProject) return commandResponse('createStarterProject') as T;
     if (command === NATIVE_COMMANDS.activateProject) {
@@ -299,6 +303,9 @@ class FakeTransport implements TauriTransport {
     }
     if (command === NATIVE_COMMANDS.interruptTurn) return commandResponse('interruptTurn') as T;
     if (command === NATIVE_COMMANDS.steerTurn) return commandResponse('steerTurn') as T;
+    if (command === NATIVE_COMMANDS.readComposerRuntimeOptions) {
+      return commandResponse('readComposerRuntimeOptions') as T;
+    }
     if (command === NATIVE_COMMANDS.runtimeCall) {
       if (this.runtimeCallResponse) return await this.runtimeCallResponse as T;
       return commandResponse('runtimeCall') as T;
@@ -451,29 +458,60 @@ describe('TauriDesktopClient native bridge and lifecycle fences', () => {
     await client.dispose();
   });
 
-  test('opens a native project folder with the exact renderer authority envelope', async () => {
+  test('chooses then opens a native project folder with the exact renderer authority envelopes', async () => {
     const transport = new FakeTransport();
     const client = new TauriDesktopClient(transport, { current: SESSION_ID, previous: PREVIOUS_SESSION_ID });
     const bootstrap = await client.bootstrap();
-    const project = await client.openProjectFolder(bootstrap.renderer);
+    const selection = await client.chooseProjectFolder(bootstrap.renderer);
+    expect(selection).toEqual({
+      selectionRef: '44444444-4444-4444-8444-444444444444',
+      rootPath: '/workspace/project-1',
+      suggestedName: 'Project One',
+    });
+    expect(transport.calls.at(-1)).toEqual({
+      command: NATIVE_COMMANDS.chooseProjectFolder,
+      args: { input: { schemaVersion: 1, rendererSessionId: SESSION_ID, rendererGeneration: RENDERER_GENERATION } },
+    });
+    const project = await client.openProjectFolder(bootstrap.renderer, {
+      selectionRef: selection!.selectionRef,
+      projectName: 'Named workspace',
+    });
     expect(project).toMatchObject({ id: PROJECT_ID, rootPath: '/workspace/project-1' });
     expect(transport.calls.at(-1)).toEqual({
       command: NATIVE_COMMANDS.openProjectFolder,
-      args: { input: { schemaVersion: 1, rendererSessionId: SESSION_ID, rendererGeneration: RENDERER_GENERATION } },
+      args: { input: {
+        schemaVersion: 1,
+        rendererSessionId: SESSION_ID,
+        rendererGeneration: RENDERER_GENERATION,
+        selectionRef: '44444444-4444-4444-8444-444444444444',
+        projectName: 'Named workspace',
+      } },
     });
     await client.dispose();
   });
 
-  test('forgets an inactive recent project through the exact renderer authority envelope', async () => {
+  test('archives, lists, and restores a project through exact renderer authority envelopes', async () => {
     const transport = new FakeTransport();
     const client = new TauriDesktopClient(transport, { current: SESSION_ID, previous: PREVIOUS_SESSION_ID });
     const bootstrap = await client.bootstrap();
 
-    await expect(client.forgetRecentProject(bootstrap.renderer, 'project-2')).resolves.toEqual([
-      expect.objectContaining({ id: PROJECT_ID, rootPath: '/workspace/project-1' }),
+    await expect(client.listArchivedProjects(bootstrap.renderer)).resolves.toEqual([
+      expect.objectContaining({ id: 'project-2', rootPath: '/workspace/project-2' }),
     ]);
     expect(transport.calls.at(-1)).toEqual({
-      command: NATIVE_COMMANDS.forgetRecentProject,
+      command: NATIVE_COMMANDS.listArchivedProjects,
+      args: { input: {
+        schemaVersion: 1,
+        rendererSessionId: SESSION_ID,
+        rendererGeneration: RENDERER_GENERATION,
+      } },
+    });
+    await expect(client.archiveProject(bootstrap.renderer, 'project-2')).resolves.toMatchObject({
+      projects: [expect.objectContaining({ id: PROJECT_ID })],
+      archivedProjects: [expect.objectContaining({ id: 'project-2' })],
+    });
+    expect(transport.calls.at(-1)).toEqual({
+      command: NATIVE_COMMANDS.archiveProject,
       args: { input: {
         schemaVersion: 1,
         rendererSessionId: SESSION_ID,
@@ -481,6 +519,11 @@ describe('TauriDesktopClient native bridge and lifecycle fences', () => {
         projectId: 'project-2',
       } },
     });
+    await expect(client.restoreArchivedProject(bootstrap.renderer, 'project-2')).resolves.toMatchObject({
+      projects: [expect.objectContaining({ id: PROJECT_ID }), expect.objectContaining({ id: 'project-2' })],
+      archivedProjects: [],
+    });
+    expect(transport.calls.at(-1)?.command).toBe(NATIVE_COMMANDS.restoreArchivedProject);
     await client.dispose();
   });
 
@@ -499,6 +542,28 @@ describe('TauriDesktopClient native bridge and lifecycle fences', () => {
     expect(inputOf(transport.calls.at(-1)?.args)).toMatchObject({
       projectId: PROJECT_ID, activationToken: ACTIVATION_TOKEN, runtimeGeneration: RUNTIME_GENERATION,
       method: 'project.bootstrap', params: {},
+    });
+    await client.dispose();
+  });
+
+  test('reads the live composer model catalog without project runtime authority', async () => {
+    const transport = new FakeTransport();
+    const client = new TauriDesktopClient(transport, { current: SESSION_ID, previous: PREVIOUS_SESSION_ID });
+    const bootstrap = await client.bootstrap();
+
+    await expect(client.readComposerRuntimeOptions(bootstrap.renderer)).resolves.toEqual({
+      models: [{
+        id: 'gpt-5.6-sol', displayName: 'GPT-5.6-Sol', isDefault: true,
+        defaultReasoningEffort: 'xhigh',
+        supportedReasoningEfforts: [{ effort: 'xhigh', description: 'Maximum practical reasoning.' }],
+        serviceTiers: [{ id: 'fast', name: 'Fast', description: '1.5x faster; uses more credits.' }],
+      }],
+    });
+    expect(transport.calls.at(-1)).toMatchObject({
+      command: NATIVE_COMMANDS.readComposerRuntimeOptions,
+      args: { input: {
+        schemaVersion: 1, rendererSessionId: SESSION_ID, rendererGeneration: RENDERER_GENERATION,
+      } },
     });
     await client.dispose();
   });
@@ -689,7 +754,10 @@ describe('TauriDesktopClient native bridge and lifecycle fences', () => {
       projectId: PROJECT_ID, activationToken: ACTIVATION_TOKEN,
       rendererSessionId: SESSION_ID, rendererGeneration: RENDERER_GENERATION,
     };
-    const result = await client.sendMessage(authority, { targetAgentId: 'agent-root', text: 'hello', attachmentRefs: [] });
+    const result = await client.sendMessage(authority, {
+      targetAgentId: 'agent-root', text: 'hello', attachmentRefs: [],
+      model: 'gpt-5.6-sol', effort: 'xhigh', accessMode: 'full_access', serviceTier: 'fast',
+    });
     const send = transport.calls.find((call) => call.command === NATIVE_COMMANDS.runtimeSend)!;
     expect(result.receipt.dispatchId).toBe(inputOf(send.args).messageId);
     expect(result.receipt.dispatchId).toMatch(/^[0-9a-f-]{36}$/u);
@@ -697,6 +765,10 @@ describe('TauriDesktopClient native bridge and lifecycle fences', () => {
       schemaVersion: 1,
       runtimeGeneration: RUNTIME_GENERATION,
       expectedStatusRevision: BASE_REVISION,
+      additionalParams: {
+        requestedModel: 'gpt-5.6-sol', effort: 'xhigh', sandbox: 'danger-full-access',
+        approvalPolicy: 'never', serviceTier: 'fast', recommendedModel: null,
+      },
     });
     expect(transport.calls.some((call) => call.command === NATIVE_COMMANDS.runtimeCall
       && inputOf(call.args).method === 'runtime.send')).toBe(false);
@@ -722,6 +794,7 @@ describe('TauriDesktopClient native bridge and lifecycle fences', () => {
 
     await expect(client.sendMessage(authority, {
       targetAgentId: 'agent-root', text: 'hello', attachmentRefs: [],
+      model: null, effort: null, accessMode: 'full_access', serviceTier: 'standard',
     })).rejects.toThrow('Dispatch receipt is invalid.');
     await client.dispose();
   });
@@ -937,8 +1010,14 @@ describe('TauriDesktopClient native bridge and lifecycle fences', () => {
       rendererSessionId: SESSION_ID, rendererGeneration: RENDERER_GENERATION,
     };
 
-    const first = await client.sendMessage(authority, { targetAgentId: 'agent-root', text: 'first', attachmentRefs: [] });
-    const second = await client.sendMessage(authority, { targetAgentId: 'agent-root', text: 'second', attachmentRefs: [] });
+    const first = await client.sendMessage(authority, {
+      targetAgentId: 'agent-root', text: 'first', attachmentRefs: [],
+      model: null, effort: null, accessMode: 'full_access', serviceTier: 'standard',
+    });
+    const second = await client.sendMessage(authority, {
+      targetAgentId: 'agent-root', text: 'second', attachmentRefs: [],
+      model: null, effort: null, accessMode: 'full_access', serviceTier: 'standard',
+    });
     expect(first.receipt.dispatchId).not.toBe(second.receipt.dispatchId);
     expect(first.dispatchRecovery).toMatchObject({ kind: 'accepted', dispatchId: first.receipt.dispatchId });
     expect(second.dispatchRecovery).toMatchObject({ kind: 'accepted', dispatchId: second.receipt.dispatchId });
@@ -958,7 +1037,10 @@ describe('TauriDesktopClient native bridge and lifecycle fences', () => {
       rendererSessionId: SESSION_ID, rendererGeneration: RENDERER_GENERATION,
     };
 
-    const result = await client.sendMessage(authority, { targetAgentId: 'agent-root', text: 'accepted', attachmentRefs: [] });
+    const result = await client.sendMessage(authority, {
+      targetAgentId: 'agent-root', text: 'accepted', attachmentRefs: [],
+      model: null, effort: null, accessMode: 'full_access', serviceTier: 'standard',
+    });
 
     expect(result.receipt.dispatchId).toMatch(/^[0-9a-f-]{36}$/u);
     expect(result.dispatchRecovery).toMatchObject({ kind: 'accepted', dispatchId: result.receipt.dispatchId });

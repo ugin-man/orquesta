@@ -19,7 +19,7 @@ const USER_MESSAGE_COPY: Readonly<Record<SimpleUserMessageId, LocalizedCopy>> = 
   generic_failure: { ja: '処理を完了できませんでした。状態を更新して、もう一度お試しください。', en: 'The operation could not be completed. Refresh the project and try again.' },
   project_name_invalid: { ja: 'このプロジェクト名は使えません。別の名前を入力してください。', en: 'That project name cannot be used. Choose another name.' },
   project_metadata_directory_selected: { ja: '「.orquesta」は管理用フォルダです。一つ上のプロジェクトフォルダを選んでください。', en: '“.orquesta” is a metadata folder. Select its parent project folder.' },
-  project_recent_forget_active: { ja: '使用中のプロジェクトは一覧から外せません。先にプロジェクトを停止してください。', en: 'The active project cannot be removed from the list. Stop it first.' },
+  project_recent_forget_active: { ja: '使用中のプロジェクトはアーカイブできません。先にプロジェクトを停止してください。', en: 'The active project cannot be archived. Stop it first.' },
   dispatch_state_unknown: { ja: '前回の送信状態を確認できませんでした。プロジェクトを開き直してください。', en: 'The previous send state could not be confirmed. Reopen the project.' },
   runtime_changed: { ja: 'プロジェクトの接続状態が変わりました。プロジェクトを開き直してください。', en: 'The project connection changed. Reopen the project.' },
   voice_failed: { ja: '音声入力を完了できませんでした。マイクからもう一度お試しください。', en: 'Voice input could not be completed. Try the microphone again.' },

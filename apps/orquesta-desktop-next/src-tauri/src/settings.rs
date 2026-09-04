@@ -11,6 +11,10 @@ use crate::storage::{
 
 const SETTINGS_SCHEMA_VERSION: u32 = 2;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NativeSettings {
@@ -20,6 +24,10 @@ pub struct NativeSettings {
     pub theme: String,
     pub reduced_motion: bool,
     pub notifications_enabled: bool,
+    #[serde(default = "default_true")]
+    pub navigation_compact: bool,
+    #[serde(default = "default_true")]
+    pub work_ledger_open: bool,
 }
 
 impl Default for NativeSettings {
@@ -31,6 +39,8 @@ impl Default for NativeSettings {
             theme: "system".into(),
             reduced_motion: false,
             notifications_enabled: false,
+            navigation_compact: true,
+            work_ledger_open: true,
         }
     }
 }
@@ -54,6 +64,8 @@ pub struct SettingsUpdate {
     pub theme: String,
     pub reduced_motion: bool,
     pub notifications_enabled: bool,
+    pub navigation_compact: bool,
+    pub work_ledger_open: bool,
 }
 
 pub struct SettingsStore {
@@ -126,6 +138,8 @@ impl SettingsStore {
             theme: update.theme,
             reduced_motion: update.reduced_motion,
             notifications_enabled: update.notifications_enabled,
+            navigation_compact: update.navigation_compact,
+            work_ledger_open: update.work_ledger_open,
         };
         if let Some(saved) = self.reconcile_poisoned_authority(&next)? {
             return Ok(saved);
@@ -234,6 +248,8 @@ fn decode_settings(value: Value) -> AppResult<(NativeSettings, bool)> {
                     theme: legacy.theme,
                     reduced_motion: legacy.reduced_motion,
                     notifications_enabled: false,
+                    navigation_compact: true,
+                    work_ledger_open: true,
                 },
                 true,
             ))
@@ -381,6 +397,8 @@ mod tests {
                 theme: "dark".into(),
                 reduced_motion: true,
                 notifications_enabled: false,
+                navigation_compact: true,
+                work_ledger_open: true,
             }
         );
         let persisted: Value = read_json(&path)
@@ -388,6 +406,28 @@ mod tests {
             .expect("settings exist");
         assert!(persisted.get("providerId").is_none());
         assert!(persisted.get("modelId").is_none());
+        fs::remove_dir_all(path.parent().expect("parent")).expect("cleanup");
+    }
+
+    #[test]
+    fn opens_existing_v2_settings_with_safe_layout_defaults() {
+        let path = test_path("v2-layout-defaults");
+        atomic_write_json(
+            &path,
+            &serde_json::json!({
+                "schemaVersion": 2,
+                "revision": 8,
+                "locale": "ja",
+                "theme": "system",
+                "reducedMotion": false,
+                "notificationsEnabled": true
+            }),
+        )
+        .expect("write existing settings");
+        let store = SettingsStore::open(path.clone()).expect("open existing settings");
+        assert!(store.current().navigation_compact);
+        assert!(store.current().work_ledger_open);
+        assert_eq!(store.current().revision, 8);
         fs::remove_dir_all(path.parent().expect("parent")).expect("cleanup");
     }
 
@@ -402,6 +442,8 @@ mod tests {
                 theme: "system".into(),
                 reduced_motion: true,
                 notifications_enabled: true,
+                navigation_compact: false,
+                work_ledger_open: false,
             })
             .expect("save settings");
         assert_eq!(saved.revision, 1);
@@ -419,6 +461,8 @@ mod tests {
                     theme: "light".into(),
                     reduced_motion: false,
                     notifications_enabled: false,
+                    navigation_compact: true,
+                    work_ledger_open: true,
                 })
                 .expect_err("stale revision must fail")
                 .code,
@@ -467,6 +511,8 @@ mod tests {
                 theme: "dark".into(),
                 reduced_motion: true,
                 notifications_enabled: false,
+                navigation_compact: true,
+                work_ledger_open: true,
             })
             .expect("exact primary proves commit");
         crate::storage::set_atomic_write_failpoint(None);
@@ -493,6 +539,8 @@ mod tests {
                 theme: "light".into(),
                 reduced_motion: false,
                 notifications_enabled: false,
+                navigation_compact: true,
+                work_ledger_open: true,
             })
             .expect("fresh open proves the exact commit");
         set_settings_readback_failpoint(None);
@@ -511,6 +559,8 @@ mod tests {
             theme: "dark".into(),
             reduced_motion: true,
             notifications_enabled: true,
+            navigation_compact: false,
+            work_ledger_open: false,
         };
         set_settings_readback_failpoint(Some("fresh_open_error"));
         let error = store
@@ -537,6 +587,8 @@ mod tests {
             theme: "light".into(),
             reduced_motion: false,
             notifications_enabled: true,
+            navigation_compact: true,
+            work_ledger_open: true,
         };
         crate::storage::set_atomic_write_failpoint(Some("before_replace"));
         set_settings_readback_failpoint(Some("fresh_open_error"));
@@ -566,6 +618,8 @@ mod tests {
                 theme: "dark".into(),
                 reduced_motion: true,
                 notifications_enabled: true,
+                navigation_compact: false,
+                work_ledger_open: false,
             })
             .expect_err("unprovable authority must fail closed");
         set_settings_readback_failpoint(None);
@@ -576,6 +630,8 @@ mod tests {
                 theme: "system".into(),
                 reduced_motion: false,
                 notifications_enabled: false,
+                navigation_compact: true,
+                work_ledger_open: true,
             })
             .expect_err("a different retry must not overwrite the committed value");
         assert_eq!(conflict.code, "settings_revision_conflict");

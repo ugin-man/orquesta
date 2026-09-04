@@ -7,6 +7,7 @@ import type {
   DesktopEvent,
   DispatchRecovery,
   NativeSettings,
+  ProjectFolderSelection,
   ProjectSummary,
   ProjectedPendingRequest,
   RendererAuthority,
@@ -415,8 +416,8 @@ export class ApplicationStore {
           : null,
         voiceStatus: bootstrap.voiceStatus,
         phase: runtimeAuthority ? 'workspace'
-          : bootstrap.status.lifecycle === 'Starting' || bootstrap.status.lifecycle === 'Stopping' ? 'booting'
-            : bootstrap.status.lifecycle === 'Failed' ? 'failed' : 'launcher',
+          : bootstrap.status.lifecycle === 'Failed' ? 'failed' : 'booting',
+        runtimeModelsLoading: true,
       };
       this.#snapshotTicket += 1;
       this.#notify();
@@ -427,8 +428,19 @@ export class ApplicationStore {
         const guard = this.#runtimeGuard();
         if (guard) {
           const outcome = await this.#prepareSelectedProject(guard);
+          await this.#loadComposerRuntimeOptions(bootstrap.renderer, this.#rendererEpoch);
           if (outcome !== 'ready' || !this.#guardCurrent(guard)) return;
         }
+      } else {
+        await this.#loadComposerRuntimeOptions(bootstrap.renderer, this.#rendererEpoch);
+        if (this.#disposed) return;
+        const initializedAuthority = this.#state.runtimeAuthority;
+        const initializedStatus = this.#state.runtimeStatus;
+        this.#set({
+          phase: initializedAuthority ? 'workspace'
+            : initializedStatus?.lifecycle === 'Starting' || initializedStatus?.lifecycle === 'Stopping' ? 'booting'
+              : initializedStatus?.lifecycle === 'Failed' ? 'failed' : 'launcher',
+        });
       }
     } catch (error) {
       if (this.#disposed || isAbortError(error)) return;
@@ -488,43 +500,109 @@ export class ApplicationStore {
     }
   }
 
-  async forgetRecentProject(projectId: string): Promise<boolean> {
+  async refreshArchivedProjects(): Promise<void> {
+    const renderer = this.#state.rendererAuthority;
+    if (!renderer || this.#state.archivedProjectsLoading) return;
+    const epoch = this.#rendererEpoch;
+    this.#set({ archivedProjectsLoading: true });
+    try {
+      const archivedProjects = await this.#client.listArchivedProjects(renderer);
+      if (!this.#rendererGuardCurrent(renderer, epoch)) return;
+      this.#set({ archivedProjects, archivedProjectsLoading: false });
+    } catch (error) {
+      if (this.#rendererGuardCurrent(renderer, epoch)) {
+        this.#set({ archivedProjectsLoading: false, error: displayError(error) });
+      }
+    }
+  }
+
+  async archiveProject(projectId: string): Promise<boolean> {
     const renderer = this.#state.rendererAuthority;
     const project = this.#state.projects.find((candidate) => candidate.id === projectId);
     if (!renderer || !project || this.#state.runtimeAuthority?.projectId === projectId
-      || this.#state.addingProject) return false;
+      || this.#state.addingProject || this.#state.projectArchiveMutationId !== null) return false;
     const epoch = this.#rendererEpoch;
+    this.#set({ projectArchiveMutationId: projectId, error: null });
     try {
-      const projects = await this.#client.forgetRecentProject(renderer, projectId);
+      const result = await this.#client.archiveProject(renderer, projectId);
       if (!this.#rendererGuardCurrent(renderer, epoch)) return false;
       this.#set({
-        projects,
+        projects: result.projects,
+        archivedProjects: result.archivedProjects,
         selectedProjectId: this.#state.selectedProjectId === projectId ? null : this.#state.selectedProjectId,
+        projectArchiveMutationId: null,
         error: null,
       });
       return true;
     } catch (error) {
-      if (this.#rendererGuardCurrent(renderer, epoch)) this.#set({ error: displayError(error) });
+      if (this.#rendererGuardCurrent(renderer, epoch)) {
+        this.#set({ projectArchiveMutationId: null, error: displayError(error) });
+      }
       return false;
     }
   }
 
-  async openProjectFolder(options: ProjectEntryOptions = {}): Promise<boolean> {
+  async restoreArchivedProject(projectId: string): Promise<boolean> {
+    const renderer = this.#state.rendererAuthority;
+    const project = this.#state.archivedProjects.find((candidate) => candidate.id === projectId);
+    if (!renderer || !project || this.#state.projectArchiveMutationId !== null) return false;
+    const epoch = this.#rendererEpoch;
+    this.#set({ projectArchiveMutationId: projectId, error: null });
+    try {
+      const result = await this.#client.restoreArchivedProject(renderer, projectId);
+      if (!this.#rendererGuardCurrent(renderer, epoch)) return false;
+      this.#set({
+        projects: result.projects,
+        archivedProjects: result.archivedProjects,
+        projectArchiveMutationId: null,
+        error: null,
+      });
+      return true;
+    } catch (error) {
+      if (this.#rendererGuardCurrent(renderer, epoch)) {
+        this.#set({ projectArchiveMutationId: null, error: displayError(error) });
+      }
+      return false;
+    }
+  }
+
+  async chooseProjectFolder(): Promise<ProjectFolderSelection | null> {
     const renderer = this.#state.rendererAuthority;
     if (!renderer || this.#state.addingProject
       || projectLifecycleIsTransitioning(selectProjectLifecycle(this.#state))
-      || this.#state.voiceCapturePhase !== 'idle') return false;
-    const intent = this.#beginProjectEntryIntent('open_existing', options.sendDraft === true, null);
+      || this.#state.voiceCapturePhase !== 'idle') return null;
     const epoch = this.#rendererEpoch;
     this.#set({ addingProject: true, error: null });
     try {
-      const project = await this.#client.openProjectFolder(renderer);
+      const selection = await this.#client.chooseProjectFolder(renderer);
+      if (!this.#rendererGuardCurrent(renderer, epoch)) return null;
+      this.#set({ addingProject: false });
+      return selection;
+    } catch (error) {
+      if (this.#rendererGuardCurrent(renderer, epoch)) this.#set({ addingProject: false, error: displayError(error) });
+      return null;
+    }
+  }
+
+  async openProjectFolder(
+    selection: ProjectFolderSelection,
+    projectName: string,
+    options: ProjectEntryOptions = {},
+  ): Promise<boolean> {
+    const renderer = this.#state.rendererAuthority;
+    const normalizedName = projectName.trim();
+    if (!renderer || !selection.rootPath || !normalizedName || this.#state.addingProject
+      || projectLifecycleIsTransitioning(selectProjectLifecycle(this.#state))
+      || this.#state.voiceCapturePhase !== 'idle') return false;
+    const intent = this.#beginProjectEntryIntent('open_existing', options.sendDraft === true, normalizedName);
+    const epoch = this.#rendererEpoch;
+    this.#set({ addingProject: true, error: null });
+    try {
+      const project = await this.#client.openProjectFolder(renderer, {
+        selectionRef: selection.selectionRef,
+        projectName: normalizedName,
+      });
       if (!this.#rendererGuardCurrent(renderer, epoch)) return false;
-      if (!project) {
-        this.retireProjectEntryIntent(intent.entryIntentRef);
-        this.#set({ addingProject: false });
-        return false;
-      }
       const projects = [project, ...this.#state.projects.filter((candidate) => candidate.id !== project.id)];
       this.#set({ projects, addingProject: false });
       return await this.selectProject(project.id, options, intent);
@@ -982,6 +1060,36 @@ export class ApplicationStore {
       this.#consumeEditedVoiceClaims(null, null, previousRevision, this.#launcherDraftRevision);
     }
     this.#set({ draft });
+  }
+
+  setComposerAccessMode(accessMode: ApplicationState['composerAccessMode']): void {
+    if (!['approval_required', 'full_access'].includes(accessMode)) return;
+    this.#set({ composerAccessMode: accessMode });
+  }
+
+  setComposerServiceTier(serviceTier: ApplicationState['composerServiceTier']): void {
+    if (!['standard', 'fast'].includes(serviceTier)) return;
+    this.#set({ composerServiceTier: serviceTier });
+  }
+
+  selectComposerModel(modelId: string): void {
+    const model = this.#state.runtimeModels.find((candidate) => candidate.id === modelId);
+    if (!model) return;
+    const currentEffortSupported = model.supportedReasoningEfforts
+      .some((candidate) => candidate.effort === this.#state.composerReasoningEffort);
+    this.#set({
+      composerModelId: model.id,
+      composerReasoningEffort: currentEffortSupported
+        ? this.#state.composerReasoningEffort
+        : model.defaultReasoningEffort ?? model.supportedReasoningEfforts[0]?.effort ?? null,
+      composerServiceTier: this.#state.composerServiceTier,
+    });
+  }
+
+  selectComposerReasoningEffort(effort: string): void {
+    const model = this.#state.runtimeModels.find((candidate) => candidate.id === this.#state.composerModelId);
+    if (!model?.supportedReasoningEfforts.some((candidate) => candidate.effort === effort)) return;
+    this.#set({ composerReasoningEffort: effort });
   }
 
   captureComposerDraft(): ComposerDraftCapture | null {
@@ -1927,6 +2035,10 @@ export class ApplicationStore {
           selectionId: attachment.selectionId,
           publicId: attachment.id,
         })),
+        model: this.#state.composerModelId,
+        effort: this.#state.composerReasoningEffort,
+        accessMode: this.#state.composerAccessMode,
+        serviceTier: this.#state.composerServiceTier,
       });
       if (!this.#guardCurrent(guard)) return;
       const clearSubmittedDraft = !supportSurface && draftAtSubmit !== null
@@ -2475,6 +2587,30 @@ export class ApplicationStore {
     if (agentId) void this.loadConversation(agentId);
     else this.#markUserSignalBaselinePart('conversation');
     void this.loadHistoryIndex(null, true, this.#state.route !== 'history');
+  }
+
+  async #loadComposerRuntimeOptions(renderer: RendererAuthority, rendererEpoch: number): Promise<void> {
+    if (!this.#rendererGuardCurrent(renderer, rendererEpoch)) return;
+    this.#set({ runtimeModelsLoading: true });
+    try {
+      const catalog = await this.#client.readComposerRuntimeOptions(renderer);
+      if (!this.#rendererGuardCurrent(renderer, rendererEpoch)) return;
+      const current = catalog.models.find((model) => model.id === this.#state.composerModelId) ?? null;
+      const selected = current ?? catalog.models.find((model) => model.isDefault) ?? catalog.models[0] ?? null;
+      const currentEffortSupported = selected?.supportedReasoningEfforts
+        .some((effort) => effort.effort === this.#state.composerReasoningEffort) ?? false;
+      this.#set({
+        runtimeModels: catalog.models,
+        runtimeModelsLoading: false,
+        composerModelId: selected?.id ?? null,
+        composerReasoningEffort: currentEffortSupported
+          ? this.#state.composerReasoningEffort
+          : selected?.defaultReasoningEffort ?? selected?.supportedReasoningEfforts[0]?.effort ?? null,
+        composerServiceTier: this.#state.composerServiceTier,
+      });
+    } catch {
+      if (this.#rendererGuardCurrent(renderer, rendererEpoch)) this.#set({ runtimeModelsLoading: false });
+    }
   }
 
   #onClientEvent(event: DesktopEvent): void {

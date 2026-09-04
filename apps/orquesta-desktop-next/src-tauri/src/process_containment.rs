@@ -9,6 +9,9 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::Mutex;
 
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+
 use crate::error::{AppError, AppResult};
 
 const LAUNCHER_FLAG: &str = "--orquesta-contained-launcher-v1";
@@ -24,6 +27,22 @@ const CANARY_QUERY_FLAG: &str = "--orquesta-containment-canary-query-v1";
 
 #[cfg(all(test, windows))]
 static TEST_WINDOWS_LAUNCHER_EXECUTABLE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+#[cfg(windows)]
+fn windows_background_command(program: impl AsRef<OsStr>) -> Command {
+    let mut command = Command::new(program);
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
+
+#[cfg(windows)]
+fn windows_background_std_command(program: impl AsRef<OsStr>) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+
+    let mut command = std::process::Command::new(program);
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
 
 #[cfg(all(test, windows))]
 pub(crate) fn set_test_windows_launcher_once(executable: PathBuf) -> AppResult<PathBuf> {
@@ -621,7 +640,7 @@ async fn spawn_windows(
         AppError::io("resolve contained launcher executable", error)
             .with_details(serde_json::json!({ "terminationConfirmed": true }))
     })?;
-    let mut command = Command::new(executable);
+    let mut command = windows_background_command(executable);
     command
         .arg(LAUNCHER_FLAG)
         .arg(&token)
@@ -784,7 +803,7 @@ fn run_windows_launcher(token: &str) -> std::io::Result<i32> {
         ));
     }
 
-    let mut command = std::process::Command::new(&spec.program);
+    let mut command = windows_background_std_command(&spec.program);
     command
         .args(&spec.args)
         .env_remove(LAUNCHER_SPEC_ENV)
@@ -1119,6 +1138,62 @@ impl Drop for WindowsJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    const WINDOWS_CONSOLE_PROBE_SCRIPT: &str = concat!(
+        "Add-Type -Namespace Orquesta -Name ConsoleProbe -MemberDefinition '",
+        "[DllImport(\"kernel32.dll\")] public static extern IntPtr GetConsoleWindow();';",
+        "[Console]::Out.Write([Orquesta.ConsoleProbe]::GetConsoleWindow().ToInt64())"
+    );
+
+    #[cfg(windows)]
+    fn assert_console_probe_is_hidden(output: std::process::Output) {
+        assert!(
+            output.status.success(),
+            "console probe failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "0");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn contained_target_process_does_not_allocate_a_windows_console() {
+        let mut command = windows_background_std_command("powershell.exe");
+        command
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                WINDOWS_CONSOLE_PROBE_SCRIPT,
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        assert_console_probe_is_hidden(command.output().expect("run contained target probe"));
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn contained_launcher_process_does_not_allocate_a_windows_console() {
+        let mut command = windows_background_command("powershell.exe");
+        command
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                WINDOWS_CONSOLE_PROBE_SCRIPT,
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        assert_console_probe_is_hidden(
+            command
+                .output()
+                .await
+                .expect("run contained launcher probe"),
+        );
+    }
 
     #[test]
     fn rejects_unbounded_or_ambiguous_containment_identity() {

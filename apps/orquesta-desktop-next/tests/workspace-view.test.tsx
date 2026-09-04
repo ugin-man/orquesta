@@ -3,8 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../src/App';
 import type { ConversationActivityCursor, ConversationCursor, ConversationReadCheckpoint, DesktopEvent, HistoryConversationPage, NativeSettings, ProjectBootstrapResult, ProjectSummary, RendererAuthority, RuntimeAuthority, VoiceStatus, WorkflowCatalog, WorkspaceSnapshot } from '../src/domain/models';
-import { conversationMessageToThreadMessage, loadOlderWithScrollAnchor } from '../src/features/thread/OrquestaThread';
+import {
+  conversationMessageToThreadMessage,
+  loadOlderWithScrollAnchor,
+} from '../src/features/thread/ChatSurfaceV2';
 import { VoiceCaptureController, type VoiceCaptureHandle } from '../src/features/conversation/voice-capture';
+import { Composer } from '../src/features/conversation/Composer';
 import { WorkspaceView } from '../src/features/workspace/WorkspaceView';
 import { PreviewDesktopClient, previewSnapshot } from '../src/testing/preview-client';
 import type { NotificationGateway } from '../src/application/notification-coordinator';
@@ -20,25 +24,145 @@ test('renders the supplied Orquesta symbol in the workspace brand', async () => 
   expect(image).toHaveAttribute('src', '/brand/orquesta-symbol.png');
   expect(image).toHaveAttribute('alt', '');
   expect(header!.querySelector('.ledger-brand-mark')).toBeNull();
+  expect(header).toHaveAttribute('data-tauri-drag-region');
 });
 
-test('removes an inactive project from the recent list without offering removal for the active project', async () => {
+test('shows the integrated chrome only when Browser Preview explicitly requests the native frame', async () => {
+  window.history.replaceState({}, '', '/?preview=1&windowChrome=1');
+  const view = render(<App client={new PreviewDesktopClient()} browserPreview />);
+
+  await screen.findByText('ORQUESTA');
+  expect(view.container.querySelector('.application-root')).toHaveAttribute('data-native-window', 'true');
+  expect(screen.getByRole('button', { name: /Minimize|最小化/ })).toBeInTheDocument();
+  expect(screen.queryByText('Orquesta Next')).toBeNull();
+});
+
+test('uses one dedicated project icon instead of deriving an avatar from the project name', async () => {
+  const view = render(<App client={new PreviewDesktopClient()} />);
+  await screen.findByText('ORQUESTA');
+  const projectCard = view.container.querySelector('.ledger-project-card');
+  expect(projectCard?.querySelector('.ledger-project-icon .lucide-folder-kanban')).not.toBeNull();
+  expect(projectCard?.querySelector('.ledger-project-monogram')).toBeNull();
+});
+
+test('replaces tiny composer hints with access and model controls', async () => {
+  const user = userEvent.setup();
+  const state: ApplicationState = {
+    ...createInitialApplicationState(),
+    phase: 'launcher',
+    runtimeStatus: {
+      lifecycle: 'Ready', projectId: null, activationToken: null,
+      rendererSessionId: null, rendererGeneration: null,
+      runtimeGeneration: 'composer-test-runtime', statusRevision: 1, failureReason: null,
+    },
+    rendererAuthority: { rendererSessionId: 'composer-test-renderer', rendererGeneration: 1 },
+    runtimeModels: [{
+      id: 'gpt-5.6-sol', displayName: 'GPT-5.6-Sol', isDefault: true,
+      defaultReasoningEffort: 'xhigh',
+      supportedReasoningEfforts: [{ effort: 'xhigh', description: 'Maximum practical reasoning.' }],
+      serviceTiers: [],
+    }],
+    composerModelId: 'gpt-5.6-sol',
+    composerReasoningEffort: 'xhigh',
+    composerAccessMode: 'full_access',
+    composerServiceTier: 'fast',
+  };
+  const store = {
+    setDraft: vi.fn(),
+    setComposerAccessMode: vi.fn(),
+    setComposerServiceTier: vi.fn(),
+    selectComposerModel: vi.fn(),
+    selectComposerReasoningEffort: vi.fn(),
+  } as unknown as ApplicationStore;
+  render(<Composer state={state} store={store} locale="en" />);
+
+  const access = await screen.findByRole('button', { name: /Full access/i });
+  expect(access.querySelector('.lucide-shield-alert')).not.toBeNull();
+  expect(access.querySelector('.lucide-shield-check')).toBeNull();
+  expect(screen.queryByText(/Enter to send/i)).toBeNull();
+  expect(screen.queryByText(/Shift\+Enter/i)).toBeNull();
+
+  await user.click(access);
+  const accessMenu = await screen.findByRole('menu');
+  expect(within(accessMenu).getByRole('menuitemradio', { name: /Ask approval/i })).toBeInTheDocument();
+  await user.click(access);
+
+  const runtime = await screen.findByRole('button', { name: /Model and runtime settings/i });
+  expect(access).toBeEnabled();
+  expect(runtime).toBeEnabled();
+  const attach = screen.getByRole('button', { name: /Attach files/i });
+  const voice = screen.getByRole('button', { name: /Voice/i });
+  const send = screen.getByRole('button', { name: /Send|Create a new project/i });
+  const topLevelButtons = Array.from(runtime.closest('.composer-action-row')!.children)
+    .flatMap((element) => element.matches('button')
+      ? [element]
+      : element.querySelector(':scope > button') ? [element.querySelector(':scope > button')!] : []);
+  expect(topLevelButtons).toEqual([access, runtime, attach, voice, send]);
+  expect(attach).toBeDisabled();
+  expect([attach, voice, send].every((button) => button.classList.contains('composer-action-icon'))).toBe(true);
+  await user.click(runtime);
+  expect(screen.queryByRole('menuitemradio', { name: /5\.6 Sol/i })).not.toBeInTheDocument();
+  const modelMenuItem = screen.getByRole('menuitem', { name: /^Model/i });
+  await user.hover(modelMenuItem);
+  const modelChoice = screen.getByRole('menuitemradio', { name: /5\.6 Sol/i });
+  const modelSubmenu = modelChoice.closest<HTMLElement>('.composer-runtime-submenu');
+  expect(modelSubmenu).not.toBeNull();
+  fireEvent.mouseLeave(modelMenuItem);
+  fireEvent.mouseEnter(modelSubmenu!);
+  await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 220)); });
+  expect(modelChoice).toBeInTheDocument();
+  fireEvent.mouseLeave(modelSubmenu!);
+  await waitFor(() => expect(screen.queryByRole('menuitemradio', { name: /5\.6 Sol/i })).not.toBeInTheDocument());
+  await user.click(screen.getByRole('menuitem', { name: /Speed/i }));
+  const fast = screen.getByRole('menuitemradio', { name: /^Fast/i });
+  expect(fast).toBeEnabled();
+  await user.click(fast);
+  expect(store.setComposerServiceTier).toHaveBeenCalledWith('fast');
+
+  expect(runtime.querySelector('.composer-fast-icon')).not.toBeNull();
+  expect(runtime.querySelector('.composer-fast-icon')).not.toHaveAttribute('title');
+  expect(runtime).not.toHaveTextContent(/Fast|Standard speed/i);
+});
+
+test('confirms project archiving and restores it from Settings without offering archive for the active project', async () => {
   const client = new PreviewDesktopClient();
-  const forget = vi.spyOn(client, 'forgetRecentProject');
+  const archive = vi.spyOn(client, 'archiveProject');
+  const restore = vi.spyOn(client, 'restoreArchivedProject');
   render(<App client={client} />);
 
   const sidebar = await screen.findByRole('complementary', { name: 'Project navigation' });
   fireEvent.click(within(sidebar).getByRole('button', { name: /Orquesta Desktop Next/ }));
-  const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).queryByRole('button', { name: /Remove Orquesta Desktop Next from the list/ })).toBeNull();
+  let dialog = await screen.findByRole('dialog');
+  expect(within(dialog).queryByRole('button', { name: /Archive Orquesta Desktop Next/ })).toBeNull();
+  expect(within(dialog).queryByText(/REMOVE FROM LIST/i)).toBeNull();
 
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Research Operations from the list' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Archive Research Operations' }));
+  expect(within(dialog).getByRole('heading', { name: 'Archive this project?' })).toBeInTheDocument();
+  expect(archive).not.toHaveBeenCalled();
+  expect(within(dialog).getByText(/files and history will not be deleted/i)).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'ARCHIVE PROJECT' }));
   await waitFor(() => expect(within(dialog).queryByText('Research Operations')).toBeNull());
-  expect(forget).toHaveBeenCalledWith(
+  expect(archive).toHaveBeenCalledWith(
     expect.objectContaining({ rendererSessionId: 'preview-renderer', rendererGeneration: 1 }),
     'research-ops',
   );
   expect(within(dialog).getByText('Orquesta Desktop Next')).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+
+  fireEvent.click(within(sidebar).getByRole('button', { name: 'Settings' }));
+  dialog = await screen.findByRole('dialog');
+  expect(await within(dialog).findByText('Research Operations')).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Restore Research Operations' }));
+  await waitFor(() => expect(within(dialog).queryByText('Research Operations')).toBeNull());
+  expect(restore).toHaveBeenCalledWith(
+    expect.objectContaining({ rendererSessionId: 'preview-renderer', rendererGeneration: 1 }),
+    'research-ops',
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+
+  fireEvent.click(within(sidebar).getByRole('button', { name: /Orquesta Desktop Next/ }));
+  dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText('Research Operations')).toBeInTheDocument();
 });
 
 function deferred<T>() {
@@ -71,6 +195,8 @@ function installSettingsWriter(client: PreviewDesktopClient) {
     theme: input.theme,
     reducedMotion: input.reducedMotion,
     notificationsEnabled: input.notificationsEnabled,
+    navigationCompact: input.navigationCompact,
+    workLedgerOpen: input.workLedgerOpen,
   }));
 }
 
@@ -454,6 +580,120 @@ afterEach(() => {
 });
 
 describe('Desktop Next work-first shell', () => {
+  test('opens navigation by dragging its edge and removes every retired panel button', async () => {
+    const client = new PreviewDesktopClient();
+    const updateSettings = installSettingsWriter(client);
+    const view = render(<App client={client} />);
+
+    expect(await screen.findByRole('region', { name: 'Work conversation' })).toBeInTheDocument();
+    const shell = screen.getByRole('main').closest('.v5-workspace-shell') as HTMLElement;
+    expect(shell).toHaveClass('is-nav-compact');
+    expect(shell).toHaveAttribute('data-dock-mode', 'work');
+    expect(screen.getByRole('complementary', { name: 'Project navigation' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Work' })).toBeInTheDocument();
+    expect(view.container.querySelector('.ledger-brand-symbol')?.tagName).toBe('SPAN');
+    expect(view.container.querySelector('.global-navigation-open')).toBeNull();
+    expect(view.container.querySelector('.global-navigation-close')).toBeNull();
+    expect(view.container.querySelector('.navigation-overlay-dismiss')).toBeNull();
+    expect(view.container.querySelector('.work-ledger-close')).toBeNull();
+    expect(view.container.querySelector('.work-ledger-restore')).toBeNull();
+
+    const divider = screen.getByRole('separator', { name: 'Resize navigation panel' });
+    expect(divider).toHaveClass('navigation-resize-segment', 'is-full');
+    Object.defineProperty(divider, 'setPointerCapture', { configurable: true, value: vi.fn() });
+    class NavigationPointerEvent extends MouseEvent {
+      readonly pointerId: number;
+      constructor(type: string, init: MouseEventInit & { pointerId: number }) {
+        super(type, init);
+        this.pointerId = init.pointerId;
+      }
+    }
+    const pointer = (type: string, init: MouseEventInit & { pointerId: number }) => fireEvent(divider, new NavigationPointerEvent(type, { bubbles: true, ...init }));
+    pointer('pointerdown', { button: 0, pointerId: 4, clientX: 56 });
+    pointer('pointermove', { pointerId: 4, clientX: 232 });
+    expect(shell.style.getPropertyValue('--navigation-panel-width')).toBe('232px');
+    pointer('pointerup', { pointerId: 4, clientX: 232 });
+
+    await waitFor(() => expect(shell).toHaveClass('is-navigation-overlay-open'));
+    expect(shell).toHaveAttribute('data-dock-mode', 'navigation');
+    expect(screen.queryByRole('complementary', { name: 'Work' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open Work panel' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close navigation' })).not.toBeInTheDocument();
+    expect(shell).toHaveClass('is-navigation-overlay-open');
+    expect(updateSettings).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      navigationCompact: false,
+      workLedgerOpen: true,
+    }));
+
+    const closeDivider = await screen.findByRole('separator', { name: 'Resize navigation panel' });
+    await waitFor(() => expect(closeDivider).toHaveAttribute('aria-disabled', 'false'));
+    Object.defineProperty(closeDivider, 'setPointerCapture', { configurable: true, value: vi.fn() });
+    const closePointer = (type: string, init: MouseEventInit & { pointerId: number }) => fireEvent(closeDivider, new NavigationPointerEvent(type, { bubbles: true, ...init }));
+    closePointer('pointerdown', { button: 0, pointerId: 5, clientX: 232 });
+    closePointer('pointermove', { pointerId: 5, clientX: 80 });
+    closePointer('pointerup', { pointerId: 5, clientX: 80 });
+
+    await waitFor(() => expect(shell).toHaveClass('is-nav-compact'));
+    expect(shell).toHaveAttribute('data-dock-mode', 'work');
+    expect(screen.getByRole('complementary', { name: 'Work' })).toBeInTheDocument();
+    expect(updateSettings).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      navigationCompact: true,
+      workLedgerOpen: true,
+    }));
+  });
+
+  test('snaps Work closed from its divider and restores it from a click-only gap in the navigation edge', async () => {
+    const user = userEvent.setup();
+    const client = new PreviewDesktopClient();
+    const updateSettings = installSettingsWriter(client);
+    const view = render(<App client={client} />);
+
+    expect(await screen.findByRole('region', { name: 'Work conversation' })).toBeInTheDocument();
+    const shell = screen.getByRole('main').closest('.v5-workspace-shell') as HTMLElement;
+    const divider = screen.getByRole('separator', { name: /Resize Work panel/ });
+    Object.defineProperty(divider, 'setPointerCapture', { configurable: true, value: vi.fn() });
+    Object.defineProperty(divider, 'releasePointerCapture', { configurable: true, value: vi.fn() });
+    class WorkspacePointerEvent extends MouseEvent {
+      readonly pointerId: number;
+      constructor(type: string, init: MouseEventInit & { pointerId: number }) {
+        super(type, init);
+        this.pointerId = init.pointerId;
+      }
+    }
+    const pointer = (type: string, init: MouseEventInit & { pointerId: number }) => fireEvent(divider, new WorkspacePointerEvent(type, { bubbles: true, ...init }));
+
+    pointer('pointerdown', { button: 0, pointerId: 7, clientX: 320 });
+    pointer('pointermove', { pointerId: 7, clientX: 390 });
+    expect(shell.style.getPropertyValue('--work-ledger-width')).toBe('330px');
+    pointer('pointerup', { pointerId: 7, clientX: 390 });
+    expect(divider).toHaveAttribute('aria-valuenow', '330');
+
+    pointer('pointerdown', { button: 0, pointerId: 8, clientX: 390 });
+    pointer('pointermove', { pointerId: 8, clientX: 100 });
+    pointer('pointerup', { pointerId: 8, clientX: 100 });
+
+    await waitFor(() => expect(shell).toHaveClass('is-work-ledger-closed'));
+    expect(updateSettings).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ workLedgerOpen: false }));
+    expect(shell).toHaveAttribute('data-dock-mode', 'collapsed');
+    expect(screen.queryByRole('separator', { name: /Resize Work panel/ })).not.toBeInTheDocument();
+    const openWork = screen.getByRole('button', { name: 'Open Work panel' });
+    expect(openWork).toHaveClass('work-ledger-edge-handle');
+    expect(openWork.closest('.navigation-resize-segment')).toBeNull();
+    const edge = openWork.closest('.navigation-edge-control');
+    expect(edge?.querySelectorAll('.navigation-resize-segment')).toHaveLength(1);
+    expect(edge?.children[1]).toBe(openWork);
+    expect(openWork.querySelectorAll('.work-ledger-edge-glyph svg')).toHaveLength(1);
+    expect(openWork.querySelector('.work-ledger-edge-glyph svg')).toHaveAttribute('preserveAspectRatio', 'none');
+    expect(view.container.querySelector('.work-ledger-close')).toBeNull();
+    expect(view.container.querySelector('.work-ledger-restore')).toBeNull();
+
+    await user.click(openWork);
+    await waitFor(() => expect(shell).toHaveAttribute('data-dock-mode', 'work'));
+    expect(screen.getByRole('complementary', { name: 'Work' })).toBeInTheDocument();
+    expect(screen.getByRole('separator', { name: /Resize Work panel/ })).toHaveAttribute('aria-valuenow', '330');
+    expect(screen.queryByRole('button', { name: 'Open Work panel' })).not.toBeInTheDocument();
+  });
+
   test('maps only a non-empty projected agent delta to one running assistant message', () => {
     expect(conversationMessageToThreadMessage({
       id: 'stream-1', role: 'agent', targetAgentId: 'orchestrator', authorLabel: 'Orchestrator',
@@ -465,18 +705,28 @@ describe('Desktop Next work-first shell', () => {
     });
   });
 
-  test('enables Stop only for the selected agent projection-owned active turn', async () => {
+  test('uses the composer action as Stop while an active turn has no draft', async () => {
     const user = userEvent.setup();
     const { client, interrupt } = activeTurnScenario();
-    render(<App client={client} />);
+    const view = render(<App client={client} />);
 
-    const stop = await screen.findByRole('button', { name: 'Stop' });
+    const stop = await screen.findByRole('button', { name: 'STOP RESPONSE' });
     await waitFor(() => expect(stop).toBeEnabled());
-    await user.click(stop);
+    expect(stop).toHaveClass('is-stop');
+    expect(view.container.querySelector('.selected-execution-head')).toBeNull();
+    expect(view.container.querySelector('.execution-progress')).toBeNull();
+
+    const draft = screen.getByLabelText('Instruction to agent');
+    await user.type(draft, 'x');
+    expect(screen.queryByRole('button', { name: 'STOP RESPONSE' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'SEND' })).toBeEnabled();
+
+    await user.clear(draft);
+    const restoredStop = screen.getByRole('button', { name: 'STOP RESPONSE' });
+    await waitFor(() => expect(restoredStop).toBeEnabled());
+    await user.click(restoredStop);
 
     expect(interrupt).toHaveBeenCalledTimes(1);
-    expect(stop).toBeDisabled();
-    expect(stop).toHaveTextContent(/停止中|Stopping/);
   });
 
   test('switches the fixed composer to exact-turn Steer while an answer is active', async () => {
@@ -484,9 +734,11 @@ describe('Desktop Next work-first shell', () => {
     const { client, steer } = activeTurnScenario();
     render(<App client={client} />);
 
-    const steerButton = await screen.findByRole('button', { name: 'STEER' });
-    await user.type(screen.getByLabelText('Instruction to agent'), 'Check the root cause first');
-    await user.click(steerButton);
+    await screen.findByRole('button', { name: 'STOP RESPONSE' });
+    const draft = screen.getByLabelText('Instruction to agent');
+    await user.type(draft, 'Check the root cause first');
+    const sendButton = screen.getByRole('button', { name: 'SEND' });
+    await user.click(sendButton);
 
     expect(steer).toHaveBeenCalledTimes(1);
     expect(steer.mock.calls[0]?.[1]).toMatchObject({
@@ -562,9 +814,8 @@ describe('Desktop Next work-first shell', () => {
     const send = vi.spyOn(client, 'sendMessage');
     render(<App client={client} />);
 
-    const steerButton = await screen.findByRole('button', { name: 'STEER' });
+    await screen.findByRole('button', { name: 'STOP RESPONSE' });
     const draft = screen.getByLabelText('Instruction to agent');
-    await waitFor(() => expect(draft).toBeEnabled());
     act(() => client.emitScenarioEvent({
       type: 'dispatch_recovery',
       projectId: accepted.projectId,
@@ -580,8 +831,9 @@ describe('Desktop Next work-first shell', () => {
     const text = 'Check the root cause before continuing this response';
     await user.type(draft, text);
     expect(draft).toHaveValue(text);
-    await waitFor(() => expect(steerButton).toBeEnabled());
-    await user.click(steerButton);
+    const sendButton = screen.getByRole('button', { name: 'SEND' });
+    await waitFor(() => expect(sendButton).toBeEnabled());
+    await user.click(sendButton);
 
     expect(steer).toHaveBeenCalledTimes(1);
     expect(steer).toHaveBeenCalledWith(expect.objectContaining({ projectId: accepted.projectId }), {
@@ -677,15 +929,60 @@ describe('Desktop Next work-first shell', () => {
     expect(screen.getByRole('button', { name: /No project selected/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'NEW' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'OPEN FOLDER' })).toBeInTheDocument();
+    const sidebar = screen.getByRole('complementary', { name: 'Project navigation' });
+    const settings = sidebar.querySelector('.sidebar-utilities');
+    const runtime = sidebar.querySelector('.ledger-runtime-status');
+    expect(settings).not.toBeNull();
+    expect(settings?.nextElementSibling).toBe(runtime);
     const draft = screen.getByLabelText('Instruction to agent');
     expect(draft).toBeEnabled();
     expect(screen.getByRole('button', { name: 'VOICE INPUT' })).toBeEnabled();
     expect(screen.queryByText('The shell stays available')).not.toBeInTheDocument();
 
     await user.type(draft, 'Build a small customer workspace');
-    await user.click(screen.getByRole('button', { name: 'Create a new project and continue' }));
+    await user.click(screen.getByRole('button', { name: 'CREATE PROJECT' }));
     expect(screen.getByRole('dialog')).toHaveTextContent('Start a new project');
-    expect(screen.getByRole('button', { name: 'CHOOSE FOLDER AND START' })).toBeDisabled();
+    const createAndStart = screen.getByRole('button', { name: 'CREATE AND START' });
+    expect(createAndStart).toBeDisabled();
+    expect(createAndStart).toHaveClass('new-project-submit');
+  });
+
+  test('asks for an independent project name after choosing an existing folder', async () => {
+    const user = userEvent.setup();
+    const client = new PreviewDesktopClient({ state: 'empty' });
+    const selection = {
+      selectionRef: '44444444-4444-4444-8444-444444444444',
+      rootPath: 'C:\\Existing\\source-folder',
+      suggestedName: 'source-folder',
+    };
+    const project: ProjectSummary = {
+      id: 'source-folder', title: 'Customer control',
+      rootPath: selection.rootPath, rootPathLabel: selection.rootPath,
+      status: 'ready', connectionLabel: 'LOCAL', lastOpenedAt: null, lastWorkAgentId: null,
+      creationOperationRef: null,
+    };
+    const choose = vi.spyOn(client, 'chooseProjectFolder').mockResolvedValue(selection);
+    const open = vi.spyOn(client, 'openProjectFolder').mockResolvedValue(project);
+    render(<App client={client} />);
+
+    await user.click(await screen.findByRole('button', { name: 'OPEN FOLDER' }));
+
+    expect(choose).toHaveBeenCalledOnce();
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: 'Name this project' })).toBeInTheDocument();
+    expect(within(dialog).getByText(selection.rootPath)).toBeInTheDocument();
+    const name = within(dialog).getByLabelText('Project name');
+    expect(name).toHaveValue(selection.suggestedName);
+    expect(open).not.toHaveBeenCalled();
+
+    await user.clear(name);
+    await user.type(name, 'Customer control');
+    await user.click(within(dialog).getByRole('button', { name: 'START WITH THIS NAME' }));
+
+    await waitFor(() => expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({ rendererSessionId: 'preview-renderer' }),
+      { selectionRef: selection.selectionRef, projectName: 'Customer control' },
+    ));
   });
 
   test('renders inactive state as WORK even when a stale non-WORK route remains', () => {
@@ -735,14 +1032,14 @@ describe('Desktop Next work-first shell', () => {
 
     await user.click(await screen.findByRole('button', { name: 'NEW' }));
     await user.type(screen.getByLabelText('Project name'), project.title);
-    await user.click(screen.getByRole('button', { name: 'CHOOSE FOLDER AND START' }));
+    await user.click(screen.getByRole('button', { name: 'CREATE AND START' }));
 
     await waitFor(() => expect(bootstrapProject).toHaveBeenCalledOnce());
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByText('Preparing the orchestrator and foundation agents…')).toBeInTheDocument();
 
     preparation.resolve({ status: 'ready', noWrite: true, reason: null });
-    expect(await screen.findByRole('heading', { level: 1, name: 'Orchestrator' })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Work conversation' })).toBeInTheDocument();
   });
 
   test('keeps all durable Starter recoveries visible across routes without a dismiss action', async () => {
@@ -848,7 +1145,7 @@ describe('Desktop Next work-first shell', () => {
     expect(screen.queryByText('Preparing the orchestrator and foundation agents…')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'TRY AGAIN' }));
 
-    expect(await screen.findByRole('heading', { name: 'Orchestrator', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Work conversation' })).toBeInTheDocument();
     expect(snapshotReads.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -859,7 +1156,7 @@ describe('Desktop Next work-first shell', () => {
     })} />);
 
     expect(await screen.findByText('DATA PRESERVED / MIGRATION PENDING')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { level: 1, name: 'Orchestrator' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Work conversation' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Instruction to agent')).toBeDisabled();
   });
 
@@ -880,7 +1177,7 @@ describe('Desktop Next work-first shell', () => {
     window.localStorage.setItem(retiredGuideKey, 'dismissed');
     render(<App client={projectPreparationScenario({ status: 'ready', noWrite: false, reason: null }, { state: 'uninitialized' })} />);
 
-    expect(await screen.findByRole('heading', { name: 'Orchestrator', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Work conversation' })).toBeInTheDocument();
     expect(screen.getByLabelText('Project start tip')).toHaveTextContent('Tell the orchestrator about this project');
     expect(screen.queryByText('START SETUP')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Dismiss tip' }));
@@ -962,9 +1259,8 @@ describe('Desktop Next work-first shell', () => {
     const user = userEvent.setup();
     render(<App client={new PreviewDesktopClient()} />);
 
-    expect(await screen.findByRole('heading', { name: 'Orchestrator', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Work conversation' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'WORK' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('region', { name: 'Work conversation' })).toBeInTheDocument();
     expect(within(screen.getByRole('complementary', { name: 'Work' })).queryByRole('button', { name: /Luca/ })).not.toBeInTheDocument();
     expect(within(screen.getByRole('complementary', { name: 'Work' })).queryByRole('button', { name: /User support/ })).not.toBeInTheDocument();
 
@@ -1003,7 +1299,7 @@ describe('Desktop Next work-first shell', () => {
     });
     const { container } = render(<App client={client} />);
 
-    expect(await screen.findByRole('heading', { name: 'Orchestrator', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Work conversation' })).toBeInTheDocument();
     await waitFor(() => {
       expect(conversationRead).toHaveBeenCalled();
       expect(historyRead).toHaveBeenCalled();
@@ -1223,7 +1519,8 @@ describe('Desktop Next work-first shell', () => {
     );
     render(<App client={client} />);
 
-    expect(await screen.findByRole('heading', { name: 'Review', level: 1 })).toBeInTheDocument();
+    const workLedger = await screen.findByRole('complementary', { name: 'Work' });
+    expect(within(workLedger).getByRole('button', { name: /^Review / })).toHaveClass('is-selected');
     await waitFor(() => expect(recordLastWorkAgent).not.toHaveBeenCalled());
     const sidebar = screen.getByRole('complementary', { name: 'Project navigation' });
     expect(within(sidebar).queryByText('RECENT PROJECTS')).not.toBeInTheDocument();
@@ -1232,22 +1529,25 @@ describe('Desktop Next work-first shell', () => {
     expect(settings.compareDocumentPosition(runtime) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
-  test('opens a work order in WORK and shows its context only on request', async () => {
+  test('keeps work-order selection out of the removed execution chrome', async () => {
     const user = userEvent.setup();
-    render(<App client={new PreviewDesktopClient()} />);
+    const view = render(<App client={new PreviewDesktopClient()} />);
     const order = await screen.findByRole('button', { name: /Desktop Next を統合する/ });
     await user.click(order);
-    await user.click(screen.getByRole('button', { name: 'Details' }));
 
-    expect(screen.getByRole('complementary', { name: 'Selected work details' })).toHaveTextContent('WORK ORDER');
-    expect(screen.getByRole('complementary', { name: 'Selected work details' })).toHaveTextContent('4/5');
+    expect(screen.queryByRole('button', { name: 'Details' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Last evidence')).not.toBeInTheDocument();
+    expect(screen.queryByText('CURRENT EXECUTION')).not.toBeInTheDocument();
+    expect(view.container.querySelector('.selected-execution-head')).toBeNull();
+    expect(view.container.querySelector('.execution-progress')).toBeNull();
+    expect(view.container.querySelector('.thread-runtime-state')).toBeNull();
   });
 
   test('does not duplicate decision agents and keeps durable history separate from conversation', async () => {
     const user = userEvent.setup();
     render(<App client={new PreviewDesktopClient()} />);
 
-    expect(await screen.findByRole('heading', { name: 'Orchestrator', level: 1 })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: 'Work conversation' })).toBeInTheDocument();
     expect(screen.queryByText('NEEDS ATTENTION')).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /Release/ })).toHaveLength(1);
 
@@ -1378,7 +1678,7 @@ describe('Desktop Next work-first shell', () => {
   test('shares the anchored Older behavior with History and cancels adjustment after identity change', async () => {
     const user = userEvent.setup();
     render(<App client={new PreviewDesktopClient({ conversationMessageCount: 65 })} />);
-    await screen.findByRole('heading', { name: 'Orchestrator', level: 1 });
+    await screen.findByRole('region', { name: 'Work conversation' });
     await user.click(within(screen.getByRole('navigation', { name: 'Workspace' })).getByRole('button', { name: 'HISTORY' }));
     await user.click(await screen.findByRole('button', { name: 'CONVERSATIONS' }));
     await user.click(within(await screen.findByRole('navigation', { name: 'Conversation target' }))
@@ -1431,7 +1731,7 @@ describe('Desktop Next work-first shell', () => {
       };
     });
     render(<App client={client} />);
-    await screen.findByRole('heading', { name: 'Orchestrator', level: 1 });
+    await screen.findByRole('region', { name: 'Work conversation' });
     await user.click(within(screen.getByRole('navigation', { name: 'Workspace' })).getByRole('button', { name: 'HISTORY' }));
     await user.click(await screen.findByRole('button', { name: 'CONVERSATIONS' }));
     await user.click(within(await screen.findByRole('navigation', { name: 'Conversation target' }))
@@ -1446,7 +1746,7 @@ describe('Desktop Next work-first shell', () => {
     expect(screen.queryByRole('button', { name: 'Older' })).not.toBeInTheDocument();
   });
 
-  test('exposes Copy and honest new-turn Retry on projected user messages', async () => {
+  test('keeps Copy and honest new-turn Retry available without permanently cluttering the message', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
@@ -1457,58 +1757,85 @@ describe('Desktop Next work-first shell', () => {
     });
     render(<App client={client} />);
 
-    const copyButtons = await screen.findAllByRole('button', { name: 'Copy message' });
-    await user.click(copyButtons[0]);
+    const userMessage = (await screen.findByText('Preview user message 05')).closest<HTMLElement>('.orquesta-thread-message');
+    expect(userMessage).not.toBeNull();
+    const actionToggle = within(userMessage!).getByRole('button', { name: 'Open message actions' });
+    const actionMenu = actionToggle.closest('details');
+    expect(actionMenu).not.toHaveAttribute('open');
+    await user.click(actionToggle);
+    expect(actionMenu).toHaveAttribute('open');
+    await user.click(within(userMessage!).getByRole('menuitem', { name: 'Copy' }));
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('COPIED')).toBeInTheDocument();
+    expect(within(userMessage!).getByText('Copied')).toBeInTheDocument();
 
-    const retryButtons = screen.getAllByRole('button', { name: 'Retry as a new turn' });
-    await user.click(retryButtons[0]);
+    await user.click(within(userMessage!).getByRole('menuitem', { name: 'Retry' }));
     expect(await screen.findByText('The same message was retried as a new turn.')).toBeInTheDocument();
   });
 
-  test('renders safe structured activity cards and pages them independently from messages', async () => {
+  test('collapses safe activity into one turn summary and reveals bounded details on demand', async () => {
     const user = userEvent.setup();
     render(<App client={activityScenario('paged').client} />);
 
-    expect(await screen.findByRole('article', { name: 'Plan updated, UPDATED' })).toBeInTheDocument();
+    const initialGroup = await screen.findByRole('article', { name: 'Worked · Updated plan' });
+    expect(initialGroup).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Worked · Updated plan/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Connect the safe activity projection')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Worked · Updated plan/ }));
+    expect(screen.getByRole('region', { name: 'Work details' })).toHaveAttribute('tabindex', '0');
     expect(screen.getByText('Connect the safe activity projection')).toBeInTheDocument();
     expect(screen.getByText('In progress')).toBeInTheDocument();
     expect(screen.queryByText('inProgress')).not.toBeInTheDocument();
-    expect(screen.getByText('Raw arguments, results, and unbounded logs are not stored')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'SHOW EARLIER MESSAGES' }));
 
-    expect(await screen.findByRole('article', { name: 'Run powershell.exe, COMPLETE' })).toBeInTheDocument();
+    expect(await screen.findByRole('article', { name: 'Worked · Ran 1 command · Updated plan' })).toBeInTheDocument();
+    expect(document.querySelectorAll('.orquesta-thread-activity')).toHaveLength(1);
     expect(screen.getByText('powershell.exe')).toBeInTheDocument();
-    expect(screen.getByText('125 ms')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'EXPAND' })).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText(/safe output line/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'EXPAND' }));
+    expect(screen.queryByText('125 ms')).not.toBeInTheDocument();
+    const showOutput = screen.getByRole('button', { name: 'Show output' });
+    expect(showOutput.closest('details')).not.toHaveAttribute('open');
+    await user.click(showOutput);
+    expect(showOutput.closest('details')).toHaveAttribute('open');
     expect(screen.getByText(/safe output line/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Copy safe output excerpt' }));
+    await user.click(screen.getByRole('button', { name: 'Copy output' }));
     expect(screen.getByText('COPIED')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'SHOW EARLIER MESSAGES' })).not.toBeInTheDocument();
   });
 
-  test('renders a ThreadItem plan body and updates the same card from running to completed', async () => {
+  test('compresses a dense turn into scrollable rows and omits a redundant turn diff', async () => {
+    const user = userEvent.setup();
+    render(<App client={new PreviewDesktopClient({ conversationActivityFixture: true, theme: 'light' })} />);
+
+    const summary = await screen.findByRole('button', { name: 'Worked · Edited 3 files · Ran 4 commands' });
+    await user.click(summary);
+
+    expect(screen.getByRole('region', { name: 'Work details' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getAllByText('pwsh.exe')).toHaveLength(4);
+    expect(screen.getByText('Edited 3 files')).toBeInTheDocument();
+    expect(screen.getByText('~/Projects/test1/auto-test-1/numbers.txt')).toBeInTheDocument();
+    expect(screen.queryByText('Turn diff')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Show output' })).toHaveLength(4);
+  });
+
+  test('updates the same compact activity group from running to completed', async () => {
     const scenario = activityScenario('lifecycle');
     const client = scenario.client;
     render(<App client={client} />);
 
-    expect(await screen.findByRole('article', { name: 'Plan, RUNNING' })).toBeInTheDocument();
+    expect(await screen.findByRole('article', { name: 'Working · Updated plan' })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: /Working · Updated plan/ }));
     expect(screen.getByText('Inspect the provider contract, then implement the bounded card.')).toBeInTheDocument();
 
     scenario.complete();
 
-    expect(await screen.findByRole('article', { name: 'Plan, COMPLETE' })).toBeInTheDocument();
-    expect(screen.queryByRole('article', { name: 'Plan, RUNNING' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('article', { name: 'Worked · Updated plan' })).toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: 'Working · Updated plan' })).not.toBeInTheDocument();
     expect(screen.getAllByText('Inspect the provider contract, then implement the bounded card.')).toHaveLength(1);
   });
 
   test('shows an unknown activity result without presenting it as success', async () => {
     render(<App client={activityScenario('unknown').client} />);
-    expect(await screen.findByRole('article', { name: 'Plan updated, UNKNOWN' })).toBeInTheDocument();
-    expect(screen.queryByRole('article', { name: 'Plan updated, COMPLETE' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('article', { name: 'Work status unknown · Updated plan' })).toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: 'Worked · Updated plan' })).not.toBeInTheDocument();
   });
 
   test('routes the HTML picker and file drop through one attachment import path and keeps text drops native', async () => {
@@ -1693,7 +2020,7 @@ describe('Desktop Next work-first shell', () => {
     scrollHeight = 500;
     const workLedger = screen.getByRole('complementary', { name: 'Work' });
     await user.click(within(workLedger).getByRole('button', { name: /Release/ }));
-    expect(await screen.findByRole('heading', { name: 'Release', level: 1 })).toBeInTheDocument();
+    await waitFor(() => expect(within(workLedger).getByRole('button', { name: /Release/ })).toHaveClass('is-selected'));
     await waitFor(() => expect(viewport!.scrollTop).toBe(500));
 
     olderGate.resolve();
@@ -1706,7 +2033,7 @@ describe('Desktop Next work-first shell', () => {
     const user = userEvent.setup();
     render(<App client={new PreviewDesktopClient()} />);
 
-    await screen.findByRole('heading', { name: 'Orchestrator', level: 1 });
+    await screen.findByRole('region', { name: 'Work conversation' });
     await user.click(screen.getByRole('button', { name: 'MAP' }));
     expect(screen.queryByRole('complementary', { name: 'Agent details' })).not.toBeInTheDocument();
 
@@ -1723,7 +2050,7 @@ describe('Desktop Next work-first shell', () => {
     const user = userEvent.setup();
     const { container } = render(<App client={new PreviewDesktopClient()} />);
 
-    await screen.findByRole('heading', { name: 'Orchestrator', level: 1 });
+    await screen.findByRole('region', { name: 'Work conversation' });
     await user.click(screen.getByRole('button', { name: 'MAP' }));
     await user.click(screen.getByRole('button', { name: 'Radial layout' }));
     const stage = container.querySelector('.map-network-stage')!;

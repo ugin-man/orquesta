@@ -33,6 +33,16 @@ function adapterApprovalId(hexCharacter = 'a'): string {
   return `adapter-approval-${hexCharacter.repeat(64)}`;
 }
 
+function runtimeModelIdentity(modelId: string): string {
+  return [
+    '<orquesta_runtime_identity version="1">',
+    `The provider-confirmed applied model ID for this thread is "${modelId}".`,
+    'When asked which model is selected or which model you are using, answer with this exact full ID. Do not shorten it to GPT-5 or invent a different variant.',
+    'This identifies the provider-applied model setting; it is not independent actual-model telemetry.',
+    '</orquesta_runtime_identity>'
+  ].join('\n');
+}
+
 function approvalEvent(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     type: 'approval_requested',
@@ -435,6 +445,7 @@ describe('DesktopCodexService', () => {
       params: {
         ...expectedProjectThreadBoundary(),
         model: 'requested-model',
+        developerInstructions: runtimeModelIdentity('requested-model'),
         threadSource: expect.stringMatching(/^orquesta:[a-f0-9]{64}$/u),
         dynamicTools: [expect.objectContaining({ name: 'orquesta_attachment_read', type: 'function' })]
       }
@@ -451,7 +462,7 @@ describe('DesktopCodexService', () => {
         { type: 'text', text: '<orquesta_target agent_id="implementation-002">\nImplement the accepted slice.\n</orquesta_target>', text_elements: [] },
         { type: 'localImage', path: imagePath }
       ],
-      params: { clientUserMessageId: 'corr-send', effort: 'medium' },
+      params: { clientUserMessageId: 'corr-send', effort: 'medium', model: 'requested-model' },
       dynamicToolHandlerFactory: null
     });
     const serializedCalls = JSON.stringify([
@@ -473,6 +484,99 @@ describe('DesktopCodexService', () => {
       }
     });
     await rm(temporaryDirectory, { recursive: true, force: true });
+  });
+
+  test('applies full-access, model, reasoning, and fast mode to the admitted thread and turn', async () => {
+    const double = createAdapterDouble();
+    const service = new DesktopCodexService({ adapter: double.adapter });
+
+    await service.sendMessage({
+      correlationId: 'corr-runtime-options',
+      projectId: 'repo-1',
+      rootPath: 'C:\\repo',
+      threadId: null,
+      targetAgentId: 'orchestrator',
+      text: 'Use the selected runtime options.',
+      attachments: [],
+      recommendedModel: null,
+      requestedModel: 'gpt-5.6-sol',
+      effort: 'xhigh',
+      sandbox: 'danger-full-access',
+      approvalPolicy: 'never',
+      serviceTier: 'fast',
+    });
+
+    expect(double.adapter.createThread).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({
+        model: 'gpt-5.6-sol',
+        developerInstructions: runtimeModelIdentity('gpt-5.6-sol'),
+        sandbox: 'danger-full-access',
+        approvalPolicy: 'never',
+        serviceTier: 'fast',
+      }),
+    }));
+    expect(double.adapter.startTurn).toHaveBeenCalledWith(expect.objectContaining({
+      params: expect.objectContaining({
+        model: 'gpt-5.6-sol',
+        effort: 'xhigh',
+        approvalPolicy: 'never',
+        sandboxPolicy: { type: 'dangerFullAccess' },
+        serviceTier: 'fast',
+      }),
+    }));
+  });
+
+  test('refreshes the provider-confirmed model identity when an existing thread changes model', async () => {
+    const double = createAdapterDouble();
+    const service = new DesktopCodexService({ adapter: double.adapter });
+    const base = {
+      projectId: 'repo-1', rootPath: 'C:\\repo', threadId: 'thread-saved',
+      targetAgentId: 'orchestrator', attachments: [], recommendedModel: null
+    };
+
+    await service.sendMessage({
+      ...base, correlationId: 'corr-luna', text: 'Use Luna.', requestedModel: 'gpt-5.6-luna'
+    });
+    await service.sendMessage({
+      ...base, correlationId: 'corr-sol', text: 'Use Sol.', requestedModel: 'gpt-5.6-sol'
+    });
+
+    expect(double.adapter.resumeThread).toHaveBeenCalledTimes(2);
+    expect(double.adapter.resumeThread.mock.calls[0][0].params).toMatchObject({
+      model: 'gpt-5.6-luna',
+      developerInstructions: runtimeModelIdentity('gpt-5.6-luna')
+    });
+    expect(double.adapter.resumeThread.mock.calls[1][0].params).toMatchObject({
+      model: 'gpt-5.6-sol',
+      developerInstructions: runtimeModelIdentity('gpt-5.6-sol')
+    });
+    expect(double.adapter.resumeThread.mock.calls[1][0].params.developerInstructions).not.toContain('gpt-5.6-luna');
+  });
+
+  test('does not start a turn when the Provider applies a different model identity', async () => {
+    const double = createAdapterDouble();
+    double.adapter.createThread.mockResolvedValue({
+      ok: true,
+      thread_id: 'thread-mismatch',
+      runtime_profile: {
+        cwd: 'C:\\repo', runtime_workspace_roots: ['C:\\repo'], instruction_sources: [],
+        sandbox: 'workspace-write', approval_policy: 'on-request', requested_web_search_mode: null
+      },
+      model_evidence: {
+        recommended_model: null,
+        requested_model: 'gpt-5.6-sol',
+        applied_model: 'gpt-5.4',
+        actual_model: null
+      }
+    });
+    const service = new DesktopCodexService({ adapter: double.adapter });
+
+    await expect(service.sendMessage({
+      correlationId: 'corr-model-mismatch', projectId: 'repo-1', rootPath: 'C:\\repo', threadId: null,
+      targetAgentId: 'orchestrator', text: 'Which model are you?', attachments: [],
+      recommendedModel: null, requestedModel: 'gpt-5.6-sol'
+    })).rejects.toThrow('provider_applied_model_mismatch');
+    expect(double.adapter.startTurn).not.toHaveBeenCalled();
   });
 
   test('rejects a Provider project-root mismatch before starting a normal turn', async () => {
@@ -952,6 +1056,49 @@ describe('DesktopCodexService', () => {
     expect(double.adapter.createThread).not.toHaveBeenCalled();
     expect(double.adapter.startTurn).not.toHaveBeenCalled();
     expect(record).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['queued', null],
+    ['thread_ready', 'thread-created-before-recovery']
+  ] as const)('reconciles a durable %s dispatch as a terminal pre-turn failure', async (state, threadId) => {
+    const double = createAdapterDouble();
+    const actionFingerprint = 'a'.repeat(64);
+    const service = new DesktopCodexService({
+      adapter: double.adapter,
+      messageLedger: {
+        record: vi.fn(async () => true),
+        read: vi.fn(async () => ({
+          schema_version: 3 as const,
+          message_id: 'message-pre-turn',
+          action_fingerprint: actionFingerprint,
+          correlation_id: 'correlation-pre-turn',
+          project_id: 'repo-1',
+          target_agent_id: 'implementation-002',
+          thread_id: threadId,
+          turn_id: null,
+          state,
+          observed_at: '2026-09-02T08:51:15.494Z',
+          error_code: null
+        }))
+      },
+      attachmentToolState: 'supported'
+    });
+
+    await expect(service.reconcileDispatch({
+      projectId: 'repo-1',
+      rootPath: 'C:\\repo',
+      messageId: 'message-pre-turn',
+      actionFingerprint
+    })).rejects.toMatchObject({
+      code: 'dispatch_not_started',
+      details: {
+        terminalOutcome: 'failed',
+        messageId: 'message-pre-turn',
+        actionFingerprint
+      }
+    });
+    expect(double.adapter.startTurn).not.toHaveBeenCalled();
   });
 
   test('resumes one schema-v3 thread_ready dispatch without creating a second thread', async () => {

@@ -64,6 +64,16 @@ export interface RuntimeInfoUi {
   userAgent: string | null;
   providerConnectionId: string | null;
   integrity: 'verified' | 'unverified' | 'failed';
+  models: RuntimeModelUi[];
+}
+
+export interface RuntimeModelUi {
+  id: string;
+  displayName: string;
+  isDefault: boolean;
+  defaultReasoningEffort: string | null;
+  supportedReasoningEfforts: Array<{ effort: string; description: string | null }>;
+  serviceTiers: Array<{ id: string; name: string; description: string }>;
 }
 
 export interface StartInspectionUiInput {

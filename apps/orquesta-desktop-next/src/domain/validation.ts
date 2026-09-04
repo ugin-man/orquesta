@@ -11,12 +11,15 @@ import type {
   DispatchRecoveryResult,
   InspectionRun,
   NativeSettings,
+  ProjectArchiveMutation,
+  ProjectFolderSelection,
   ProjectSummary,
   RendererAuthority,
   RuntimeStatus,
   WorkspaceSnapshot,
   BusinessWorkOrderSummary,
   BusinessWorkOrdersResult,
+  ComposerRuntimeOptions,
   WorkflowAttempt,
   WorkflowBatch,
   WorkflowBatchMetrics,
@@ -148,6 +151,68 @@ export function parseRuntimeStatus(value: unknown): RuntimeStatus {
   return status;
 }
 
+export function parseComposerRuntimeOptions(value: unknown): ComposerRuntimeOptions {
+  if (!isRecord(value) || !Array.isArray(value.models) || value.models.length > 128) {
+    throw new Error('Runtime model catalog is invalid.');
+  }
+  const models = value.models.map((candidate) => {
+    if (!isRecord(candidate)
+      || !nonEmptyText(candidate.id, 256)
+      || !nonEmptyText(candidate.displayName, 512)
+      || typeof candidate.isDefault !== 'boolean'
+      || !nullableNonEmptyText(candidate.defaultReasoningEffort, 128)
+      || !Array.isArray(candidate.supportedReasoningEfforts)
+      || candidate.supportedReasoningEfforts.length > 32
+      || !Array.isArray(candidate.serviceTiers)
+      || candidate.serviceTiers.length > 16) {
+      throw new Error('Runtime model catalog entry is invalid.');
+    }
+    const supportedReasoningEfforts = candidate.supportedReasoningEfforts.map((entry) => {
+      if (!isRecord(entry)
+        || !nonEmptyText(entry.effort, 128)
+        || !nullableText(entry.description, 1_024)) {
+        throw new Error('Runtime reasoning effort entry is invalid.');
+      }
+      return { effort: entry.effort, description: entry.description };
+    });
+    const serviceTiers = candidate.serviceTiers.map((entry) => {
+      if (!isRecord(entry)
+        || !nonEmptyText(entry.id, 128)
+        || !nonEmptyText(entry.name, 256)
+        || !text(entry.description, 1_024)) {
+        throw new Error('Runtime service tier entry is invalid.');
+      }
+      return { id: entry.id, name: entry.name, description: entry.description };
+    });
+    return {
+      id: candidate.id,
+      displayName: candidate.displayName,
+      isDefault: candidate.isDefault,
+      defaultReasoningEffort: candidate.defaultReasoningEffort,
+      supportedReasoningEfforts,
+      serviceTiers,
+    };
+  });
+  if (new Set(models.map((model) => model.id)).size !== models.length) {
+    throw new Error('Runtime model catalog contains duplicate model IDs.');
+  }
+  return { models };
+}
+
+export function parseProjectFolderSelection(value: unknown): ProjectFolderSelection {
+  if (!isRecord(value)
+    || !nonEmptyText(value.selectionRef, 128)
+    || !nonEmptyText(value.rootPath, 32_768)
+    || !nonEmptyText(value.suggestedName, 1_024)) {
+    throw new Error('Native project-folder selection is invalid.');
+  }
+  return {
+    selectionRef: value.selectionRef,
+    rootPath: value.rootPath,
+    suggestedName: value.suggestedName,
+  };
+}
+
 /** Native registry records are deliberately normalized only at this boundary. */
 export function parseNativeProjectSummary(value: unknown): ProjectSummary {
   if (!isRecord(value)
@@ -173,6 +238,16 @@ export function parseNativeProjectSummary(value: unknown): ProjectSummary {
     ...(typeof value.creationRequestSha256 === 'string'
       ? { creationRequestSha256: value.creationRequestSha256 }
       : {}),
+  };
+}
+
+export function parseProjectArchiveMutation(value: unknown): ProjectArchiveMutation {
+  if (!isRecord(value) || !Array.isArray(value.projects) || !Array.isArray(value.archivedProjects)) {
+    throw new Error('Native project archive mutation is invalid.');
+  }
+  return {
+    projects: value.projects.slice(0, 1_024).map(parseNativeProjectSummary),
+    archivedProjects: value.archivedProjects.slice(0, 1_024).map(parseNativeProjectSummary),
   };
 }
 
@@ -1201,13 +1276,15 @@ export function parseConversationSnapshot(value: unknown): ConversationSnapshot 
 
 export function parseNativeSettings(value: unknown): NativeSettings {
   if (!isRecord(value)
-    || Object.keys(value).sort().join(',') !== 'locale,notificationsEnabled,reducedMotion,revision,schemaVersion,theme'
+    || Object.keys(value).sort().join(',') !== 'locale,navigationCompact,notificationsEnabled,reducedMotion,revision,schemaVersion,theme,workLedgerOpen'
     || value.schemaVersion !== 2
     || !nonNegativeInteger(value.revision)
     || ![null, 'ja', 'en'].includes(value.locale as null | string)
     || !['system', 'light', 'dark'].includes(String(value.theme))
     || typeof value.reducedMotion !== 'boolean'
-    || typeof value.notificationsEnabled !== 'boolean') {
+    || typeof value.notificationsEnabled !== 'boolean'
+    || typeof value.navigationCompact !== 'boolean'
+    || typeof value.workLedgerOpen !== 'boolean') {
     throw new Error('Native settings payload is invalid.');
   }
   return {
@@ -1217,6 +1294,8 @@ export function parseNativeSettings(value: unknown): NativeSettings {
     theme: value.theme as 'system' | 'light' | 'dark',
     reducedMotion: value.reducedMotion,
     notificationsEnabled: value.notificationsEnabled,
+    navigationCompact: value.navigationCompact,
+    workLedgerOpen: value.workLedgerOpen,
   };
 }
 

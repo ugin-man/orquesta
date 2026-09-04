@@ -72,7 +72,10 @@ export interface RuntimeSendRequest {
   selectedContextIds?: string[];
   recommendedModel?: string | null;
   requestedModel?: string | null;
-  effort?: 'low' | 'medium' | 'high' | null;
+  effort?: string | null;
+  sandbox?: 'workspace-write' | 'danger-full-access' | null;
+  approvalPolicy?: 'on-request' | 'never' | null;
+  serviceTier?: 'fast' | null;
 }
 
 export interface RuntimeDispatchReconcileRequest {
@@ -528,7 +531,24 @@ function isRuntimeInfo(value: unknown): value is RuntimeInfoUi {
     && isNullableBoundedText(value.platformOs, 128)
     && isNullableBoundedText(value.userAgent, 512)
     && isNullableBoundedText(value.providerConnectionId, 1_024)
-    && ['verified', 'unverified', 'failed'].includes(String(value.integrity));
+    && ['verified', 'unverified', 'failed'].includes(String(value.integrity))
+    && Array.isArray(value.models) && value.models.length <= 128
+    && value.models.every((model) => isRecord(model)
+      && isBoundedText(model.id, 256)
+      && isBoundedText(model.displayName, 512)
+      && typeof model.isDefault === 'boolean'
+      && isNullableBoundedText(model.defaultReasoningEffort, 128)
+      && Array.isArray(model.supportedReasoningEfforts)
+      && model.supportedReasoningEfforts.length <= 32
+      && model.supportedReasoningEfforts.every((entry) => isRecord(entry)
+        && isBoundedText(entry.effort, 128)
+        && isNullableBoundedText(entry.description, 1_024))
+      && Array.isArray(model.serviceTiers)
+      && model.serviceTiers.length <= 16
+      && model.serviceTiers.every((entry) => isRecord(entry)
+        && isBoundedText(entry.id, 128)
+        && isBoundedText(entry.name, 256)
+        && isBoundedText(entry.description, 1_024)));
 }
 
 function isRepositorySnapshot(value: unknown): value is OrquestaUiSnapshot {
@@ -599,7 +619,12 @@ export function isCoreRequest(value: unknown): value is CoreRequest {
       && new Set(value.attachments.map((attachment) => attachment.attachmentStoreHandle)).size === value.attachments.length
       && value.attachments.filter((attachment) => attachment.kind === 'text')
         .reduce((total, attachment) => total + attachment.sizeBytes, 0) <= ATTACHMENT_SOURCE_BYTES_PER_TURN
-      && (value.effort === undefined || value.effort === null || ['low', 'medium', 'high'].includes(String(value.effort)));
+      && (value.effort === undefined || value.effort === null || isBoundedText(value.effort, 128))
+      && (value.sandbox === undefined || value.sandbox === null
+        || ['workspace-write', 'danger-full-access'].includes(String(value.sandbox)))
+      && (value.approvalPolicy === undefined || value.approvalPolicy === null
+        || ['on-request', 'never'].includes(String(value.approvalPolicy)))
+      && (value.serviceTier === undefined || value.serviceTier === null || value.serviceTier === 'fast');
   }
   if (value.type === 'runtime.dispatch.reconcile') {
     return isCorrelationId(value.correlationId) && isSafeId(value.projectId) && isBoundedText(value.rootPath, 32_768)

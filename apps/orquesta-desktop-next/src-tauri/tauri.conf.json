@@ -10,7 +10,7 @@
     "frontendDist": "../.frontend-generation-not-selected"
   },
   "app": {
-    "windows": [{ "label": "main", "title": "Orquesta Next", "width": 1440, "height": 940, "minWidth": 960, "minHeight": 560, "dragDropEnabled": false }],
+    "windows": [{ "label": "main", "title": "Orquesta Next", "width": 1440, "height": 940, "minWidth": 960, "minHeight": 560, "decorations": false, "shadow": true, "dragDropEnabled": false }],
     "security": { "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" }
   },
   "bundle": {

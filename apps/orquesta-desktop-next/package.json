@@ -8,7 +8,7 @@
     "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
   "scripts": {
-    "dev": "node scripts/build-frontend-generation.mjs --dev-browser",
+    "dev": "vite",
     "generate:desktop-bindings": "node scripts/run-desktop-lifecycle.mjs generate:desktop-bindings",
     "check:desktop-bindings": "node scripts/run-desktop-lifecycle.mjs check:desktop-bindings",
     "build": "node scripts/build-frontend-generation.mjs",
@@ -22,8 +22,7 @@
     "dev:desktop": "node scripts/build-frontend-generation.mjs --dev-desktop",
     "build:desktop": "node scripts/build-frontend-generation.mjs --desktop",
     "test:native-contract": "node scripts/run-desktop-lifecycle.mjs test:native-contract",
-    "clean:native": "node scripts/run-desktop-lifecycle.mjs clean:native",
-    "lifecycle:retire-generation": "node scripts/run-desktop-lifecycle.mjs retire-generation"
+    "clean:native": "node scripts/run-desktop-lifecycle.mjs clean:native"
   },
   "dependencies": {
     "@assistant-ui/react": "0.15.1",

@@ -15,6 +15,7 @@ import {
   generationPaths,
   materializeExternalDesktopRelease,
   preflightExternalDesktopReleaseMaterialization,
+  pruneObsoleteDesktopBuildHistory,
   promoteDesktopRelease,
   productRoot,
   readAndVerifyReceipt,
@@ -36,6 +37,7 @@ import {
 } from './desktop-lifecycle-lock.mjs';
 import {
   desktopLifecycleCommandPlan,
+  desktopLifecycleOperationNeedsLock,
   parseDesktopLifecycleArguments,
   retireDesktopGeneration,
   verifyCanonicalReleaseAuthority,
@@ -981,7 +983,7 @@ test('unpromoted cleanup refuses a reparse-owned staging path and preserves the 
   });
 });
 
-test('global Desktop lifecycle lock admits one coordinator and never guesses through a crash lock', async () => {
+test('release lifecycle lock admits one coordinator and recovers a dead owner', async () => {
   await withTemporaryDirectory(async (fakeProductRoot) => {
     const stagingRoot = join(fakeProductRoot, '.build-generations');
     await ensureBuildRoots(stagingRoot, fakeProductRoot);
@@ -1018,10 +1020,27 @@ test('global Desktop lifecycle lock admits one coordinator and never guesses thr
       /desktop_lifecycle_maintenance_required:lock_exists/u,
     );
     assert.equal((await stat(crashLockPath)).isFile(), true);
+    await rm(crashLockPath);
+
+    await writeFile(crashLockPath, `${JSON.stringify({
+      schemaVersion: 1,
+      operation: 'build:desktop',
+      ownerId: testIds[2],
+      pid: 2_147_483_647,
+      acquiredAt: new Date(0).toISOString(),
+    })}\n`, { flag: 'wx' });
+    const recovered = await acquireDesktopLifecycleLock({
+      root: fakeProductRoot,
+      stagingRoot,
+      operation: 'build',
+      ownerId: testIds[3],
+    });
+    await releaseDesktopLifecycleLock(recovered);
+    await assert.rejects(stat(crashLockPath), { code: 'ENOENT' });
   });
 });
 
-test('lifecycle command routing keeps checks and retirement on one lock without generic execution', () => {
+test('lifecycle command routing locks mutations but leaves development checks concurrent', () => {
   assert.deepEqual(parseDesktopLifecycleArguments(['check:desktop-bindings']), {
     operation: 'check:desktop-bindings',
     kind: 'fixed-operation',
@@ -1059,6 +1078,52 @@ test('lifecycle command routing keeps checks and retirement on one lock without 
     () => parseDesktopLifecycleArguments(['retire-generation', '../generation']),
     /requires_build_id/u,
   );
+  assert.equal(desktopLifecycleOperationNeedsLock('generate:desktop-bindings'), true);
+  assert.equal(desktopLifecycleOperationNeedsLock('clean:native'), true);
+  assert.equal(desktopLifecycleOperationNeedsLock('retire-generation'), true);
+  assert.equal(desktopLifecycleOperationNeedsLock('check:desktop-bindings'), false);
+  assert.equal(desktopLifecycleOperationNeedsLock('typecheck'), false);
+  assert.equal(desktopLifecycleOperationNeedsLock('test'), false);
+  assert.equal(desktopLifecycleOperationNeedsLock('test:focused'), false);
+});
+
+test('release preflight automatically removes noncurrent and retired build history', async () => {
+  await withTemporaryDirectory(async (fakeProductRoot) => {
+    const stagingRoot = join(fakeProductRoot, '.build-generations');
+    await ensureBuildRoots(stagingRoot, fakeProductRoot);
+    const currentId = testIds[0];
+    const obsoleteId = testIds[1];
+    const retiredId = testIds[2];
+    for (const buildId of [currentId, obsoleteId]) {
+      await mkdir(join(stagingRoot, 'generations', buildId));
+      await writeFile(join(stagingRoot, 'generations', buildId, 'artifact.txt'), buildId);
+      await writeFile(join(stagingRoot, 'receipts', `${buildId}.json`), '{}\n');
+      await mkdir(join(stagingRoot, 'releases', buildId));
+      await writeFile(join(stagingRoot, 'releases', buildId, 'artifact.txt'), buildId);
+    }
+    await writeFile(join(stagingRoot, 'current-release.json'), `${JSON.stringify({
+      schemaVersion: 1,
+      kind: 'orquesta-desktop-current-release-pointer',
+      buildId: currentId,
+      promotion: {},
+    })}\n`);
+    for (const directory of ['generations', 'receipts', 'releases']) {
+      await mkdir(join(stagingRoot, 'retired', directory), { recursive: true });
+    }
+    await mkdir(join(stagingRoot, 'retired', 'generations', retiredId));
+    await writeFile(join(stagingRoot, 'retired', 'generations', retiredId, 'artifact.txt'), retiredId);
+    await writeFile(join(stagingRoot, 'retired', 'receipts', `${retiredId}.json`), '{}\n');
+    await mkdir(join(stagingRoot, 'retired', 'releases', retiredId));
+    await writeFile(join(stagingRoot, 'retired', 'releases', retiredId, 'artifact.txt'), retiredId);
+
+    const result = await pruneObsoleteDesktopBuildHistory({ stagingRoot, root: fakeProductRoot });
+    assert.equal(result.protectedBuildId, currentId);
+    assert.deepEqual(result.removedBuildIds, [obsoleteId]);
+    assert.deepEqual(result.removedRetiredBuildIds, [retiredId]);
+    assert.equal((await stat(join(stagingRoot, 'generations', currentId))).isDirectory(), true);
+    await assert.rejects(stat(join(stagingRoot, 'generations', obsoleteId)), { code: 'ENOENT' });
+    await assert.rejects(stat(join(stagingRoot, 'retired', 'generations', retiredId)), { code: 'ENOENT' });
+  });
 });
 
 test('fixed lifecycle plans invoke only bounded tool entrypoints', async () => {
@@ -1324,13 +1389,13 @@ test('build root rejects a symlink or junction instead of writing through it', a
   });
 });
 
-test('package and Tauri defaults expose only the bounded generation coordinator', async () => {
+test('package scripts keep development direct and release packaging coordinated', async () => {
   const packageJson = JSON.parse(await readFile(join(productRoot, 'package.json'), 'utf8'));
   const expectedScripts = {
     build: 'node scripts/build-frontend-generation.mjs',
     'build:desktop': 'node scripts/build-frontend-generation.mjs --desktop',
     'build:runtime': 'node scripts/build-frontend-generation.mjs --runtime-only',
-    dev: 'node scripts/build-frontend-generation.mjs --dev-browser',
+    dev: 'vite',
     'dev:desktop': 'node scripts/build-frontend-generation.mjs --dev-desktop',
     'generate:desktop-bindings': 'node scripts/run-desktop-lifecycle.mjs generate:desktop-bindings',
     'check:desktop-bindings': 'node scripts/run-desktop-lifecycle.mjs check:desktop-bindings',
@@ -1340,13 +1405,13 @@ test('package and Tauri defaults expose only the bounded generation coordinator'
     'test:load': 'node scripts/run-desktop-lifecycle.mjs test:load',
     'test:native-contract': 'node scripts/run-desktop-lifecycle.mjs test:native-contract',
     'clean:native': 'node scripts/run-desktop-lifecycle.mjs clean:native',
-    'lifecycle:retire-generation': 'node scripts/run-desktop-lifecycle.mjs retire-generation',
   };
   for (const [name, command] of Object.entries(expectedScripts)) {
     assert.equal(packageJson.scripts[name], command);
   }
   assert.equal(packageJson.scripts['lifecycle:install-release'], undefined);
   assert.equal(packageJson.scripts['lifecycle:exec'], undefined);
+  assert.equal(packageJson.scripts['lifecycle:retire-generation'], undefined);
   assert.deepEqual(Object.keys(packageJson.scripts).filter((name) => name.endsWith(':unlocked')), []);
 
   const tauriConfig = JSON.parse(await readFile(join(productRoot, 'src-tauri', 'tauri.conf.json'), 'utf8'));

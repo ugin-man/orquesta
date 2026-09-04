@@ -11,6 +11,8 @@ import { selectApplicationSurface } from './application/selectors';
 import { userMessageCopy } from './presentation/user-copy';
 import { NotificationCoordinator, type NotificationGateway } from './application/notification-coordinator';
 import { TauriNotificationGateway } from './adapters/tauri-notification-gateway';
+import { isTauri } from '@tauri-apps/api/core';
+import { WindowChrome } from './features/window/WindowChrome';
 
 function queryLocale(): 'ja' | 'en' | null {
   try {
@@ -36,6 +38,15 @@ function navigatorLocale(): 'ja' | 'en' {
 
 function initialLocale(browserPreview: boolean): 'ja' | 'en' {
   return (browserPreview ? queryLocale() : null) ?? storedLocale() ?? navigatorLocale();
+}
+
+function previewWindowChrome(browserPreview: boolean): boolean {
+  if (!browserPreview) return false;
+  try {
+    return new URLSearchParams(window.location.search).get('windowChrome') === '1';
+  } catch {
+    return false;
+  }
 }
 
 function useMediaPreference(query: string): boolean {
@@ -67,6 +78,8 @@ export function App({
     [notificationGateway],
   );
   const notificationCoordinator = useMemo(() => new NotificationCoordinator(gateway), [gateway]);
+  const nativeWindow = isTauri();
+  const windowChromeVisible = nativeWindow || previewWindowChrome(browserPreview);
   const state = useApplicationStore(store);
   const previewLocale = useMemo(() => browserPreview ? queryLocale() : null, [browserPreview]);
   const [locale, setLocaleState] = useState<'ja' | 'en'>(() => initialLocale(browserPreview));
@@ -95,6 +108,8 @@ export function App({
       theme: settings.theme,
       reducedMotion: settings.reducedMotion,
       notificationsEnabled: settings.notificationsEnabled,
+      navigationCompact: settings.navigationCompact,
+      workLedgerOpen: settings.workLedgerOpen,
     });
   }, [state.settings, state.settingsUpdating, store]);
   const setLocale = (next: 'ja' | 'en') => {
@@ -105,6 +120,8 @@ export function App({
       theme: settings.theme,
       reducedMotion: settings.reducedMotion,
       notificationsEnabled: settings.notificationsEnabled,
+      navigationCompact: settings.navigationCompact,
+      workLedgerOpen: settings.workLedgerOpen,
     }).then((saved) => { if (saved) setLocaleState(next); });
   };
   const theme = state.settings?.theme ?? 'system';
@@ -133,6 +150,8 @@ export function App({
       theme: current.theme,
       reducedMotion: current.reducedMotion,
       notificationsEnabled: enabled,
+      navigationCompact: current.navigationCompact,
+      workLedgerOpen: current.workLedgerOpen,
     });
     return saved ? 'saved' : 'save_failed';
   };
@@ -143,7 +162,9 @@ export function App({
       lang={locale}
       data-theme={resolvedTheme}
       data-reduced-motion={reducedMotion ? 'true' : 'false'}
+      data-native-window={windowChromeVisible ? 'true' : 'false'}
     >
+      {windowChromeVisible && <WindowChrome locale={locale} interactive={nativeWindow} />}
       <div className="application-content">
         {surface === 'startup' && (
           <main className="startup-screen" aria-live="polite">

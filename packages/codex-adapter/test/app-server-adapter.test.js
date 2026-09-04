@@ -122,6 +122,27 @@ function attachSuccessfulServer(process) {
           nextCursor: null
         }
       });
+    } else if (message.method === "model/list") {
+      process.send({
+        id: message.id,
+        result: {
+          data: [{
+            id: "gpt-5.6-sol",
+            model: "gpt-5.6-sol",
+            displayName: "GPT-5.6-Sol",
+            description: "Frontier agentic coding model.",
+            hidden: false,
+            isDefault: true,
+            defaultReasoningEffort: "xhigh",
+            supportedReasoningEfforts: [
+              { reasoningEffort: "high", description: "Deep reasoning." },
+              { reasoningEffort: "xhigh", description: "Maximum practical reasoning." }
+            ],
+            serviceTiers: [{ id: "fast", name: "Fast", description: "1.5x faster; uses more credits." }]
+          }],
+          nextCursor: null
+        }
+      });
     } else if (message.method === "thread/read") {
       process.send({
         id: message.id,
@@ -500,6 +521,7 @@ test("reports non-secret pinned runtime metadata without probing unless explicit
   assert.equal(unprobed.platform_os, null);
   assert.equal(unprobed.user_agent, null);
   assert.equal(unprobed.provider_connection_id, null);
+  assert.deepEqual(unprobed.models, []);
   assert.equal(spawnCalls.length, 0);
   assert.equal(JSON.stringify(unprobed).includes("executable_path"), false);
   assert.equal(JSON.stringify(unprobed).includes("codexHome"), false);
@@ -510,6 +532,11 @@ test("reports non-secret pinned runtime metadata without probing unless explicit
   assert.equal(probed.platform_os, "windows");
   assert.equal(probed.user_agent, "codex-cli/0.144.5");
   assert.match(probed.provider_connection_id, /^provider_/u);
+  assert.equal(probed.models[0].id, "gpt-5.6-sol");
+  assert.deepEqual(probed.models[0].supportedReasoningEfforts, [
+    { effort: "high", description: "Deep reasoning." },
+    { effort: "xhigh", description: "Maximum practical reasoning." }
+  ]);
   assert.equal(JSON.stringify(probed).includes("C:\\codex-home"), false);
 });
 

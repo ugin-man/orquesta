@@ -22,6 +22,33 @@ export interface RuntimeStatus {
   failureReason: string | null;
 }
 
+export type ComposerAccessMode = 'approval_required' | 'full_access';
+export type ComposerServiceTier = 'standard' | 'fast';
+
+export interface RuntimeReasoningEffortOption {
+  effort: string;
+  description: string | null;
+}
+
+export interface RuntimeServiceTierOption {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface RuntimeModelOption {
+  id: string;
+  displayName: string;
+  isDefault: boolean;
+  defaultReasoningEffort: string | null;
+  supportedReasoningEfforts: RuntimeReasoningEffortOption[];
+  serviceTiers: RuntimeServiceTierOption[];
+}
+
+export interface ComposerRuntimeOptions {
+  models: RuntimeModelOption[];
+}
+
 export interface ProjectSummary {
   id: string;
   title: string;
@@ -33,6 +60,17 @@ export interface ProjectSummary {
   lastWorkAgentId: string | null;
   creationOperationRef?: string | null;
   creationRequestSha256?: string | null;
+}
+
+export interface ProjectArchiveMutation {
+  projects: ProjectSummary[];
+  archivedProjects: ProjectSummary[];
+}
+
+export interface ProjectFolderSelection {
+  selectionRef: string;
+  rootPath: string;
+  suggestedName: string;
 }
 
 export interface StarterCreationRecoverySummary {
@@ -552,6 +590,8 @@ export interface NativeSettings {
   theme: 'system' | 'light' | 'dark';
   reducedMotion: boolean;
   notificationsEnabled: boolean;
+  navigationCompact: boolean;
+  workLedgerOpen: boolean;
 }
 
 export type VoiceAssetPhase =

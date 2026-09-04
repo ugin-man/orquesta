@@ -2362,6 +2362,9 @@ mod dispatch_settlement_tests {
                     effort: None,
                     recommended_model: None,
                     requested_model: None,
+                    sandbox: None,
+                    approval_policy: None,
+                    service_tier: None,
                 },
                 vec![],
             )
@@ -2457,6 +2460,9 @@ mod dispatch_settlement_tests {
             effort: None,
             recommended_model: None,
             requested_model: None,
+            sandbox: None,
+            approval_policy: None,
+            service_tier: None,
         };
         recovery
             .prepare("message-terminal-race", "project-a", &fingerprint, vec![])
@@ -2557,6 +2563,9 @@ mod dispatch_settlement_tests {
                     effort: None,
                     recommended_model: None,
                     requested_model: None,
+                    sandbox: None,
+                    approval_policy: None,
+                    service_tier: None,
                 },
                 vec!["55555555-5555-4555-8555-555555555555".to_owned()],
             )

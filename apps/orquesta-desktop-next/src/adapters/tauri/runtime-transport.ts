@@ -44,7 +44,14 @@ export async function dispatchMessageNative(
     threadTitle: null,
     attachmentRefs: input.attachmentRefs,
     selectedContextIds: [],
-    additionalParams: { effort: null, recommendedModel: null, requestedModel: null },
+    additionalParams: {
+      effort: input.effort,
+      recommendedModel: null,
+      requestedModel: input.model,
+      sandbox: input.accessMode === 'full_access' ? 'danger-full-access' : 'workspace-write',
+      approvalPolicy: input.accessMode === 'full_access' ? 'never' : 'on-request',
+      serviceTier: input.serviceTier === 'fast' ? 'fast' : null,
+    },
   });
   const result = unwrapResult(raw);
   if (!isRecord(result)) throw new Error('Native dispatch response is invalid.');

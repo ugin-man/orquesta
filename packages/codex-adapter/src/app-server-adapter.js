@@ -143,6 +143,8 @@ function createAppServerAdapter({
   let initializeResult = null;
   let resolvedRuntime = null;
   let providerRetirementPromise = null;
+  let modelCatalog = null;
+  let modelCatalogPromise = null;
 
   function beginProviderRetirement(providerConnectionId, reason) {
     if (providerConnectionId !== currentProviderStreamId || !transport || providerRetirementPromise) return;
@@ -175,6 +177,8 @@ function createAppServerAdapter({
         currentProviderStreamId = null;
         initializePromise = null;
         initializeResult = null;
+        modelCatalog = null;
+        modelCatalogPromise = null;
       }
     })().catch((error) => {
       onDiagnostic({ type: "provider_retirement_failed", message: String(error?.message || error).slice(0, 256) });
@@ -701,6 +705,66 @@ function createAppServerAdapter({
     }
   }
 
+  async function readModelCatalog() {
+    if (modelCatalog) return modelCatalog;
+    if (!modelCatalogPromise) {
+      modelCatalogPromise = (async () => {
+        const models = [];
+        let cursor = null;
+        do {
+          const params = { includeHidden: false, limit: 100, ...(cursor ? { cursor } : {}) };
+          validateRequest("model/list", params);
+          const result = await transport.request("model/list", params);
+          validateResponse("model/list", result);
+          for (const candidate of result.data) {
+            if (!candidate || typeof candidate !== "object" || candidate.hidden === true
+              || typeof candidate.id !== "string" || candidate.id === ""
+              || typeof candidate.displayName !== "string" || candidate.displayName === ""
+              || typeof candidate.isDefault !== "boolean"
+              || typeof candidate.defaultReasoningEffort !== "string" || candidate.defaultReasoningEffort === ""
+              || !Array.isArray(candidate.supportedReasoningEfforts)
+              || !Array.isArray(candidate.serviceTiers)) {
+              throw new Error("schema validation failed: model/list returned an invalid model entry");
+            }
+            const supportedReasoningEfforts = candidate.supportedReasoningEfforts.map((entry) => {
+              if (!entry || typeof entry !== "object"
+                || typeof entry.reasoningEffort !== "string" || entry.reasoningEffort === ""
+                || typeof entry.description !== "string") {
+                throw new Error("schema validation failed: model/list returned an invalid reasoning effort");
+              }
+              return { effort: entry.reasoningEffort, description: entry.description };
+            });
+            const serviceTiers = candidate.serviceTiers.map((entry) => {
+              if (!entry || typeof entry !== "object"
+                || typeof entry.id !== "string" || entry.id === ""
+                || typeof entry.name !== "string" || entry.name === ""
+                || typeof entry.description !== "string") {
+                throw new Error("schema validation failed: model/list returned an invalid service tier");
+              }
+              return { id: entry.id, name: entry.name, description: entry.description };
+            });
+            models.push({
+              id: candidate.id,
+              displayName: candidate.displayName,
+              isDefault: candidate.isDefault,
+              defaultReasoningEffort: candidate.defaultReasoningEffort,
+              supportedReasoningEfforts,
+              serviceTiers
+            });
+          }
+          cursor = typeof result.nextCursor === "string" && result.nextCursor !== "" ? result.nextCursor : null;
+          if (models.length > 128) throw new Error("schema validation failed: model/list exceeded the desktop model limit");
+        } while (cursor);
+        modelCatalog = deepFreeze(models);
+        return modelCatalog;
+      })().catch((error) => {
+        modelCatalogPromise = null;
+        throw error;
+      });
+    }
+    return modelCatalogPromise;
+  }
+
   const methods = {
     capabilities: ({ correlationId }) => success("capabilities", correlationId, {
       capabilities: { ...APP_SERVER_CAPABILITIES }
@@ -1130,6 +1194,7 @@ function createAppServerAdapter({
       async () => {
         const runtime = resolveRuntimeResult();
         const initialized = probe ? await ensureInitialized() : null;
+        const models = initialized ? await readModelCatalog() : [];
         return success("runtimeInfo", correlationId, {
           adapter_package: ADAPTER_PACKAGE.name,
           adapter_package_version: ADAPTER_PACKAGE.version,
@@ -1143,7 +1208,8 @@ function createAppServerAdapter({
           platform_family: initialized?.platformFamily ?? null,
           platform_os: initialized?.platformOs ?? null,
           user_agent: initialized?.userAgent ?? null,
-          provider_connection_id: initialized ? currentProviderStreamId : null
+          provider_connection_id: initialized ? currentProviderStreamId : null,
+          models
         });
       }
     ),
@@ -1177,6 +1243,8 @@ function createAppServerAdapter({
           initializePromise = null;
           initializeResult = null;
           resolvedRuntime = null;
+          modelCatalog = null;
+          modelCatalogPromise = null;
         }
       }
       return success("shutdown", correlationId);

@@ -1,5 +1,8 @@
 import type {
   ComposerAttachment,
+  ComposerAccessMode,
+  ComposerRuntimeOptions,
+  ComposerServiceTier,
   ConversationCursor,
   ConversationActivityCursor,
   ConversationReadCheckpoint,
@@ -13,6 +16,8 @@ import type {
   DispatchSendResult,
   DispatchRecovery,
   DispatchRecoveryResult,
+  ProjectFolderSelection,
+  ProjectArchiveMutation,
   ProjectSummary,
   ProjectBootstrapResult,
   RendererAuthority,
@@ -31,6 +36,10 @@ export interface SendMessageInput {
   targetAgentId: string;
   text: string;
   attachmentRefs: Array<{ selectionId: string; publicId: string }>;
+  model: string | null;
+  effort: string | null;
+  accessMode: ComposerAccessMode;
+  serviceTier: ComposerServiceTier;
 }
 
 export interface SteerTurnInput {
@@ -74,9 +83,15 @@ export interface DesktopClient {
   ): Promise<NativeSettings>;
 
   listProjects(renderer: RendererAuthority): Promise<ProjectSummary[]>;
-  forgetRecentProject(renderer: RendererAuthority, projectId: string): Promise<ProjectSummary[]>;
+  listArchivedProjects(renderer: RendererAuthority): Promise<ProjectSummary[]>;
+  archiveProject(renderer: RendererAuthority, projectId: string): Promise<ProjectArchiveMutation>;
+  restoreArchivedProject(renderer: RendererAuthority, projectId: string): Promise<ProjectArchiveMutation>;
   recordLastWorkAgent(authority: RuntimeAuthority, targetAgentId: string): Promise<ProjectSummary>;
-  openProjectFolder(renderer: RendererAuthority): Promise<ProjectSummary | null>;
+  chooseProjectFolder(renderer: RendererAuthority): Promise<ProjectFolderSelection | null>;
+  openProjectFolder(
+    renderer: RendererAuthority,
+    input: { selectionRef: string; projectName: string },
+  ): Promise<ProjectSummary>;
   createStarterProject(
     renderer: RendererAuthority,
     input: { operationRef: string; projectName: string },
@@ -86,6 +101,7 @@ export interface DesktopClient {
   refreshStatus(renderer: RendererAuthority): Promise<RuntimeStatus>;
 
   readSnapshot(authority: RuntimeAuthority): Promise<WorkspaceSnapshot>;
+  readComposerRuntimeOptions(renderer: RendererAuthority): Promise<ComposerRuntimeOptions>;
   bootstrapProject(authority: RuntimeAuthority): Promise<ProjectBootstrapResult>;
   readBusinessWorkOrders(
     authority: RuntimeAuthority,

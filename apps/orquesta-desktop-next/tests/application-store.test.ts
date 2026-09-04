@@ -296,6 +296,11 @@ const VoiceRecoveryTranscriptClient = ((recoveredAtBootstrap = false) => {
   vi.spyOn(client, 'createStarterProject').mockImplementation(async (_renderer, input) => ({
     ...structuredClone(previewProjects[1]), title: input.projectName, creationOperationRef: input.operationRef,
   }));
+  vi.spyOn(client, 'chooseProjectFolder').mockResolvedValue({
+    selectionRef: '44444444-4444-4444-8444-444444444444',
+    rootPath: previewProjects[1].rootPath,
+    suggestedName: previewProjects[1].title,
+  });
   vi.spyOn(client, 'openProjectFolder').mockResolvedValue(structuredClone(previewProjects[1]));
   vi.spyOn(client, 'readVoiceStatus').mockImplementation(async (renderer) => (
     structuredClone(voice ?? await readVoiceFixture(renderer))
@@ -777,11 +782,53 @@ const LauncherWithProjectsClient = ((
   vi.spyOn(client, 'createStarterProject').mockImplementation(async (_renderer, input) => ({
     ...structuredClone(previewProjects[1]), title: input.projectName, creationOperationRef: input.operationRef,
   }));
+  vi.spyOn(client, 'chooseProjectFolder').mockResolvedValue({
+    selectionRef: '44444444-4444-4444-8444-444444444444',
+    rootPath: previewProjects[1].rootPath,
+    suggestedName: previewProjects[1].title,
+  });
   vi.spyOn(client, 'openProjectFolder').mockResolvedValue(structuredClone(previewProjects[1]));
   return withControls(client, { conversationReads, recordedAgents });
 });
 
 describe('ApplicationStore authority boundaries', () => {
+  test('loads the live model catalog and enables runtime choices before a project is selected', async () => {
+    const client = new PreviewDesktopClient({ state: 'empty' });
+    const previewCatalog = await client.readComposerRuntimeOptions({
+      rendererSessionId: 'preview-renderer', rendererGeneration: 1,
+    });
+    const catalog = vi.spyOn(client, 'readComposerRuntimeOptions').mockResolvedValue({
+      models: previewCatalog.models.map((model) => ({ ...model, serviceTiers: [] })),
+    });
+    const store = new ApplicationStore(client);
+
+    await store.initialize();
+    expect(catalog).toHaveBeenCalledWith({
+      rendererSessionId: 'preview-renderer', rendererGeneration: 1,
+    });
+    expect(store.getState()).toMatchObject({
+      phase: 'launcher',
+      runtimeAuthority: null,
+      runtimeModelsLoading: false,
+      composerModelId: 'gpt-5.6-sol',
+      composerReasoningEffort: 'xhigh',
+      composerAccessMode: 'full_access',
+    });
+
+    store.selectComposerModel('gpt-5.6-terra');
+    store.selectComposerReasoningEffort('medium');
+    store.setComposerAccessMode('approval_required');
+    store.setComposerServiceTier('fast');
+    store.selectComposerModel('gpt-5.6-sol');
+    expect(store.getState()).toMatchObject({
+      composerModelId: 'gpt-5.6-sol',
+      composerAccessMode: 'approval_required',
+      composerServiceTier: 'fast',
+    });
+    expect(store.getState().runtimeModels.every((model) => model.serviceTiers.length === 0)).toBe(true);
+    await store.dispose();
+  });
+
   test('keeps renderer-scoped project refresh valid across a same-renderer runtime revision', async () => {
     const client = PassiveStatusClient();
     const projectList = deferred<ProjectSummary[]>();
@@ -801,22 +848,32 @@ describe('ApplicationStore authority boundaries', () => {
     await store.dispose();
   });
 
-  test('removes only an inactive project from the recent list and keeps the active project protected', async () => {
+  test('archives and restores only an inactive project while keeping the active project protected', async () => {
     const client = PassiveStatusClient();
-    const forget = vi.spyOn(client, 'forgetRecentProject').mockResolvedValue([
-      structuredClone(previewProjects[0]),
-    ]);
+    const archive = vi.spyOn(client, 'archiveProject').mockResolvedValue({
+      projects: [structuredClone(previewProjects[0])],
+      archivedProjects: [structuredClone(previewProjects[1])],
+    });
+    const restore = vi.spyOn(client, 'restoreArchivedProject').mockResolvedValue({
+      projects: structuredClone(previewProjects),
+      archivedProjects: [],
+    });
     const store = new ApplicationStore(client);
     await store.initialize();
 
-    await expect(store.forgetRecentProject(previewProjects[1].id)).resolves.toBe(true);
-    expect(forget).toHaveBeenCalledWith(
+    await expect(store.archiveProject(previewProjects[1].id)).resolves.toBe(true);
+    expect(archive).toHaveBeenCalledWith(
       store.getState().rendererAuthority,
       previewProjects[1].id,
     );
     expect(store.getState().projects.map((project) => project.id)).toEqual([previewProjects[0].id]);
-    await expect(store.forgetRecentProject(previewProjects[0].id)).resolves.toBe(false);
-    expect(forget).toHaveBeenCalledTimes(1);
+    expect(store.getState().archivedProjects.map((project) => project.id)).toEqual([previewProjects[1].id]);
+    await expect(store.restoreArchivedProject(previewProjects[1].id)).resolves.toBe(true);
+    expect(restore).toHaveBeenCalledWith(store.getState().rendererAuthority, previewProjects[1].id);
+    expect(store.getState().projects.map((project) => project.id)).toEqual(previewProjects.map((project) => project.id));
+    expect(store.getState().archivedProjects).toEqual([]);
+    await expect(store.archiveProject(previewProjects[0].id)).resolves.toBe(false);
+    expect(archive).toHaveBeenCalledTimes(1);
     await store.dispose();
   });
 
@@ -886,6 +943,7 @@ describe('ApplicationStore authority boundaries', () => {
     await store.updateSettings({
       locale: 'en', theme: settings.theme, reducedMotion: settings.reducedMotion,
       notificationsEnabled: settings.notificationsEnabled,
+      navigationCompact: settings.navigationCompact, workLedgerOpen: settings.workLedgerOpen,
     });
     await initializing;
 
@@ -1366,10 +1424,10 @@ describe('ApplicationStore authority boundaries', () => {
     await store.dispose();
   });
 
-  test('retires a cancelled picker intent while preserving the blank-WORK draft', async () => {
+  test('does not start project entry when the folder picker is cancelled', async () => {
     const client = LauncherWithProjectsClient();
     const createInputs: Array<{ operationRef: string; projectName: string }> = [];
-    vi.spyOn(client, 'openProjectFolder').mockResolvedValue(null);
+    vi.spyOn(client, 'chooseProjectFolder').mockResolvedValue(null);
     vi.spyOn(client, 'createStarterProject').mockImplementation(async (_renderer, input) => {
       createInputs.push({ ...input });
       return null;
@@ -1378,13 +1436,32 @@ describe('ApplicationStore authority boundaries', () => {
     await store.initialize();
     store.setDraft('キャンセルしても残す');
 
-    await expect(store.openProjectFolder()).resolves.toBe(false);
+    await expect(store.chooseProjectFolder()).resolves.toBeNull();
     await expect(store.createStarterProject('一度目')).resolves.toBe(false);
     await expect(store.createStarterProject('一度目')).resolves.toBe(false);
 
     expect(createInputs).toHaveLength(2);
     expect(createInputs[1].operationRef).not.toBe(createInputs[0].operationRef);
     expect(store.getState()).toMatchObject({ phase: 'launcher', draft: 'キャンセルしても残す' });
+    await store.dispose();
+  });
+
+  test('registers a selected folder only after receiving its explicit project name', async () => {
+    const client = LauncherWithProjectsClient();
+    const open = vi.mocked(client.openProjectFolder);
+    const store = new ApplicationStore(client);
+    await store.initialize();
+
+    const selection = await store.chooseProjectFolder();
+    expect(selection).not.toBeNull();
+    expect(open).not.toHaveBeenCalled();
+
+    await expect(store.openProjectFolder(selection!, '  Customer control  ')).resolves.toBe(true);
+    expect(open).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({ rendererSessionId: 'preview-renderer' }),
+      { selectionRef: selection!.selectionRef, projectName: 'Customer control' },
+    );
     await store.dispose();
   });
 
@@ -2014,11 +2091,16 @@ describe('ApplicationStore authority boundaries', () => {
     await waitFor(() => expect(store.getState().executions.orchestrator?.phase).toBe('completed'));
     client.sendCalls.length = 0;
     store.setDraft('別の下書き');
+    store.selectComposerModel('gpt-5.6-terra');
+    store.selectComposerReasoningEffort('medium');
+    store.setComposerAccessMode('approval_required');
+    store.setComposerServiceTier('fast');
 
     await store.retryMessage(message.id);
 
     expect(client.sendCalls).toEqual([{
       targetAgentId: 'orchestrator', text: message.text, attachmentRefs: [],
+      model: 'gpt-5.6-terra', effort: 'medium', accessMode: 'approval_required', serviceTier: 'fast',
     }]);
     expect(store.getState()).toMatchObject({
       draft: '別の下書き', sending: false, conversationAction: null,
@@ -2146,6 +2228,7 @@ describe('ApplicationStore authority boundaries', () => {
         selectionId: '44444444-4444-4444-8444-444444444444',
         publicId: '66666666-6666-4666-8666-666666666666',
       }],
+      model: 'gpt-5.6-sol', effort: 'xhigh', accessMode: 'full_access', serviceTier: 'standard',
     }]);
     expect(store.getState().attachments).toEqual([]);
     await store.dispose();
@@ -2383,6 +2466,7 @@ describe('ApplicationStore authority boundaries', () => {
 
     expect(client.sendCalls).toEqual([{
       targetAgentId: 'security', text: 'この状態を確認して', attachmentRefs: [],
+      model: 'gpt-5.6-sol', effort: 'xhigh', accessMode: 'full_access', serviceTier: 'standard',
     }]);
     expect(store.getState()).toMatchObject({
       sending: false,
@@ -3621,7 +3705,9 @@ describe('ApplicationStore authority boundaries', () => {
     const openStore = new ApplicationStore(VoiceRecoveryTranscriptClient(true));
     await openStore.initialize();
     expect(openStore.getState().draft).toBe('復旧された音声入力');
-    await expect(openStore.openProjectFolder()).resolves.toBe(true);
+    const selection = await openStore.chooseProjectFolder();
+    expect(selection).not.toBeNull();
+    await expect(openStore.openProjectFolder(selection!, selection!.suggestedName)).resolves.toBe(true);
     await openStore.dispose();
   });
 

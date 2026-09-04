@@ -79,7 +79,9 @@
             "locale": "ja",
             "theme": "system",
             "reducedMotion": false,
-            "notificationsEnabled": false
+            "notificationsEnabled": false,
+            "navigationCompact": true,
+            "workLedgerOpen": true
           },
           "projects": [
             {
@@ -132,7 +134,9 @@
           "locale": "ja",
           "theme": "dark",
           "reducedMotion": true,
-          "notificationsEnabled": false
+          "notificationsEnabled": false,
+          "navigationCompact": false,
+          "workLedgerOpen": false
         }
       },
       "response": {
@@ -143,7 +147,9 @@
           "locale": "ja",
           "theme": "dark",
           "reducedMotion": true,
-          "notificationsEnabled": false
+          "notificationsEnabled": false,
+          "navigationCompact": false,
+          "workLedgerOpen": false
         }
       }
     },
@@ -166,7 +172,9 @@
             "locale": "ja",
             "theme": "system",
             "reducedMotion": false,
-            "notificationsEnabled": false
+            "notificationsEnabled": false,
+            "navigationCompact": true,
+            "workLedgerOpen": true
           },
           "projects": [
             {
@@ -234,6 +242,112 @@
         ]
       }
     },
+    "listArchivedProjects": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": [
+          {
+            "projectId": "project-2",
+            "displayName": "Project Two",
+            "rootPath": "/workspace/project-2",
+            "rootIdentity": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "rootIdentityV2": "v2:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "createdAtMs": 1700000003000,
+            "lastOpenedAtMs": 1700000004000,
+            "hiddenFromRecent": true,
+            "lastWorkAgentId": null
+          }
+        ]
+      }
+    },
+    "archiveProject": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-2"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "projects": [
+            {
+              "projectId": "project-1",
+              "displayName": "Project One",
+              "rootPath": "/workspace/project-1",
+              "rootIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "rootIdentityV2": "v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "createdAtMs": 1700000000000,
+              "lastOpenedAtMs": 1700000001000,
+              "hiddenFromRecent": false,
+              "lastWorkAgentId": "orchestrator"
+            }
+          ],
+          "archivedProjects": [
+            {
+              "projectId": "project-2",
+              "displayName": "Project Two",
+              "rootPath": "/workspace/project-2",
+              "rootIdentity": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "rootIdentityV2": "v2:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "createdAtMs": 1700000003000,
+              "lastOpenedAtMs": 1700000004000,
+              "hiddenFromRecent": true,
+              "lastWorkAgentId": null
+            }
+          ]
+        }
+      }
+    },
+    "restoreArchivedProject": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "projectId": "project-2"
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "projects": [
+            {
+              "projectId": "project-1",
+              "displayName": "Project One",
+              "rootPath": "/workspace/project-1",
+              "rootIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "rootIdentityV2": "v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "createdAtMs": 1700000000000,
+              "lastOpenedAtMs": 1700000001000,
+              "hiddenFromRecent": false,
+              "lastWorkAgentId": "orchestrator"
+            },
+            {
+              "projectId": "project-2",
+              "displayName": "Project Two",
+              "rootPath": "/workspace/project-2",
+              "rootIdentity": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "rootIdentityV2": "v2:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "createdAtMs": 1700000003000,
+              "lastOpenedAtMs": 1700000004000,
+              "hiddenFromRecent": false,
+              "lastWorkAgentId": null
+            }
+          ],
+          "archivedProjects": []
+        }
+      }
+    },
     "forgetRecentProject": {
       "args": {
         "input": {
@@ -286,12 +400,31 @@
         }
       }
     },
-    "openProjectFolder": {
+    "chooseProjectFolder": {
       "args": {
         "input": {
           "schemaVersion": 1,
           "rendererSessionId": "11111111-1111-4111-8111-111111111111",
           "rendererGeneration": 7
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "selectionRef": "44444444-4444-4444-8444-444444444444",
+          "rootPath": "/workspace/project-1",
+          "suggestedName": "Project One"
+        }
+      }
+    },
+    "openProjectFolder": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7,
+          "selectionRef": "44444444-4444-4444-8444-444444444444",
+          "projectName": "Project One"
         }
       },
       "response": {
@@ -427,6 +560,56 @@
           "authorityRendererGeneration": null,
           "processTerminationConfirmed": true,
           "lastError": null
+        }
+      }
+    },
+    "readComposerRuntimeOptions": {
+      "args": {
+        "input": {
+          "schemaVersion": 1,
+          "rendererSessionId": "11111111-1111-4111-8111-111111111111",
+          "rendererGeneration": 7
+        }
+      },
+      "response": {
+        "schemaVersion": 1,
+        "result": {
+          "runtime": {
+            "phase": "ready",
+            "runtimeGeneration": "33333333-3333-4333-8333-333333333333",
+            "statusRevision": 7,
+            "pid": 4242,
+            "startedAtMs": 1700000002000,
+            "activeProjectId": "project-1",
+            "authorityActivationToken": "22222222-2222-4222-8222-222222222222",
+            "authorityRendererSessionId": "11111111-1111-4111-8111-111111111111",
+            "authorityRendererGeneration": 7,
+            "processTerminationConfirmed": false,
+            "lastError": null
+          },
+          "info": {
+            "models": [
+              {
+                "id": "gpt-5.6-sol",
+                "displayName": "GPT-5.6-Sol",
+                "isDefault": true,
+                "defaultReasoningEffort": "xhigh",
+                "supportedReasoningEfforts": [
+                  {
+                    "effort": "xhigh",
+                    "description": "Maximum practical reasoning."
+                  }
+                ],
+                "serviceTiers": [
+                  {
+                    "id": "fast",
+                    "name": "Fast",
+                    "description": "1.5x faster; uses more credits."
+                  }
+                ]
+              }
+            ]
+          }
         }
       }
     },
@@ -931,9 +1114,12 @@
           ],
           "selectedContextIds": [],
           "additionalParams": {
+            "approvalPolicy": null,
             "effort": null,
             "recommendedModel": null,
-            "requestedModel": null
+            "requestedModel": null,
+            "sandbox": null,
+            "serviceTier": null
           }
         }
       },

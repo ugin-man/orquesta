@@ -463,6 +463,7 @@ pub struct NativeState {
     dispatch_state_lock: Arc<Mutex<()>>,
     attachment_selection_lock: Arc<Mutex<()>>,
     project_creation_lock: Arc<Mutex<()>>,
+    project_folder_selection: Arc<Mutex<Option<PendingProjectFolderSelection>>>,
     pub exit_lifecycle_state: Arc<AtomicU8>,
     _instance_lock: InstanceLock,
 }
@@ -686,6 +687,7 @@ impl NativeState {
             dispatch_state_lock,
             attachment_selection_lock: Arc::new(Mutex::new(())),
             project_creation_lock: Arc::new(Mutex::new(())),
+            project_folder_selection: Arc::new(Mutex::new(None)),
             exit_lifecycle_state: Arc::new(AtomicU8::new(0)),
             _instance_lock: instance_lock,
             paths,
@@ -1668,6 +1670,8 @@ pub struct SettingsUpdateInput {
     pub theme: String,
     pub reduced_motion: bool,
     pub notifications_enabled: bool,
+    pub navigation_compact: bool,
+    pub work_ledger_open: bool,
 }
 
 #[tauri::command]
@@ -1689,6 +1693,8 @@ pub async fn settings_update(
         theme: input.theme,
         reduced_motion: input.reduced_motion,
         notifications_enabled: input.notifications_enabled,
+        navigation_compact: input.navigation_compact,
+        work_ledger_open: input.work_ledger_open,
     })?;
     Ok(BridgeResponse::new(saved))
 }
@@ -1716,6 +1722,44 @@ async fn projects_list_impl(
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectArchiveMutation {
+    pub projects: Vec<ProjectRecord>,
+    pub archived_projects: Vec<ProjectRecord>,
+}
+
+fn project_archive_mutation(
+    registry: &ProjectRegistry,
+) -> AppResult<ProjectArchiveMutation> {
+    let projects = registry.checked_snapshot()?.projects;
+    Ok(ProjectArchiveMutation {
+        projects,
+        archived_projects: registry.archived_list(),
+    })
+}
+
+#[tauri::command]
+pub async fn projects_archived_list(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    input: BridgeInput<SessionInput>,
+) -> AppResult<BridgeResponse<Vec<ProjectRecord>>> {
+    let _operation = state.runtime_operation_lock.read().await;
+    let _session = current_session_guard(&state, &window, &input.value).await?;
+    let registry = state.registry.lock().await;
+    registry.checked_snapshot()?;
+    Ok(BridgeResponse::new(registry.archived_list()))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectArchiveInput {
+    pub renderer_session_id: String,
+    pub renderer_generation: u64,
+    pub project_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectRecentForgetInput {
     pub renderer_session_id: String,
     pub renderer_generation: u64,
@@ -1729,7 +1773,7 @@ fn ensure_recent_project_is_inactive(
     if active_project_id == Some(target_project_id) {
         return Err(AppError::new(
             "project_recent_forget_active",
-            "Stop the active project before removing it from the recent-project list",
+            "Stop the active project before archiving it",
         ));
     }
     Ok(())
@@ -1806,11 +1850,111 @@ pub async fn project_last_work_agent_set(
     Ok(BridgeResponse::new(record))
 }
 
-async fn project_open_folder_read_only(
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectFolderSelection {
+    pub selection_ref: String,
+    pub root_path: String,
+    pub suggested_name: String,
+}
+
+#[tauri::command]
+pub async fn project_archive(
     window: WebviewWindow,
     state: State<'_, NativeState>,
-    input: SessionInput,
-) -> AppResult<Option<ProjectRecord>> {
+    input: BridgeInput<ProjectArchiveInput>,
+) -> AppResult<BridgeResponse<ProjectArchiveMutation>> {
+    state.admit_commands()?;
+    let input = input.value;
+    let _operation = state.runtime_operation_lock.write().await;
+    let session_input = SessionInput {
+        renderer_session_id: input.renderer_session_id,
+        renderer_generation: input.renderer_generation,
+    };
+    let _session = current_session_guard(&state, &window, &session_input).await?;
+    let status = state.runtime.status().await;
+    ensure_recent_project_is_inactive(status.active_project_id.as_deref(), &input.project_id)?;
+    let mut registry = state.registry.lock().await;
+    registry.archive(&input.project_id)?;
+    Ok(BridgeResponse::new(project_archive_mutation(&registry)?))
+}
+
+#[tauri::command]
+pub async fn project_archive_restore(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    input: BridgeInput<ProjectArchiveInput>,
+) -> AppResult<BridgeResponse<ProjectArchiveMutation>> {
+    state.admit_commands()?;
+    let input = input.value;
+    let _operation = state.runtime_operation_lock.write().await;
+    let session_input = SessionInput {
+        renderer_session_id: input.renderer_session_id,
+        renderer_generation: input.renderer_generation,
+    };
+    let _session = current_session_guard(&state, &window, &session_input).await?;
+    let mut registry = state.registry.lock().await;
+    registry.restore_archived(&input.project_id)?;
+    Ok(BridgeResponse::new(project_archive_mutation(&registry)?))
+}
+
+#[derive(Debug, Clone)]
+struct PendingProjectFolderSelection {
+    selection_ref: String,
+    root_path: String,
+    renderer_session_id: String,
+    renderer_generation: u64,
+    window_label: String,
+}
+
+impl PendingProjectFolderSelection {
+    fn root_for(
+        &self,
+        selection_ref: &str,
+        session: &SessionInput,
+        window_label: &str,
+    ) -> AppResult<String> {
+        if self.selection_ref != selection_ref
+            || self.renderer_session_id != session.renderer_session_id
+            || self.renderer_generation != session.renderer_generation
+            || self.window_label != window_label
+        {
+            return Err(AppError::new(
+                "project_folder_selection_stale",
+                "The selected project folder does not belong to this renderer session",
+            ));
+        }
+        Ok(self.root_path.clone())
+    }
+}
+
+fn project_path_for_display(value: &str) -> String {
+    if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{}", rest);
+    }
+    if let Some(rest) = value.strip_prefix(r"\\?\") {
+        return rest.to_owned();
+    }
+    value.to_owned()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectOpenFolderInput {
+    pub renderer_session_id: String,
+    pub renderer_generation: u64,
+    pub selection_ref: String,
+    pub project_name: String,
+}
+
+#[tauri::command]
+pub async fn project_choose_folder(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    input: BridgeInput<SessionInput>,
+) -> AppResult<BridgeResponse<Option<ProjectFolderSelection>>> {
+    state.admit_commands()?;
+    let input = input.value;
     {
         let _operation = state.runtime_operation_lock.read().await;
         let _session = current_session_guard(&state, &window, &input).await?;
@@ -1820,21 +1964,84 @@ async fn project_open_folder_read_only(
     } else {
         let chosen = window.app_handle().dialog().file().blocking_pick_folder();
         let Some(chosen) = chosen else {
-            return Ok(None);
+            return Ok(BridgeResponse::new(None));
         };
         chosen
             .into_path()
             .map_err(|error| AppError::new("project_path_invalid", error.to_string()))?
     };
-    let root = path
+    let canonical = std::fs::canonicalize(&path)
+        .map_err(|error| AppError::io("canonicalize selected project folder", error))?;
+    if !canonical.is_dir() {
+        return Err(AppError::new(
+            "project_path_invalid",
+            "Selected project path is not a directory",
+        ));
+    }
+    let suggested_name = canonical
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.trim().is_empty())
+        .ok_or_else(|| {
+            AppError::new(
+                "project_name_invalid",
+                "Selected project folder has no usable name",
+            )
+        })?
+        .to_owned();
+    if suggested_name.eq_ignore_ascii_case(".orquesta") {
+        return Err(AppError::new(
+            "project_metadata_directory_selected",
+            "The .orquesta metadata directory cannot be opened as a project; select its parent folder",
+        ));
+    }
+    let root_path = canonical
         .to_str()
         .ok_or_else(|| AppError::new("project_path_not_utf8", "Project path is not valid UTF-8"))?
         .to_owned();
-    let _operation = state.runtime_operation_lock.write().await;
+    let _operation = state.runtime_operation_lock.read().await;
     let _session = current_session_guard(&state, &window, &input).await?;
+    let selection_ref = uuid::Uuid::new_v4().hyphenated().to_string();
+    *state.project_folder_selection.lock().await = Some(PendingProjectFolderSelection {
+        selection_ref: selection_ref.clone(),
+        root_path: root_path.clone(),
+        renderer_session_id: input.renderer_session_id,
+        renderer_generation: input.renderer_generation,
+        window_label: window.label().to_owned(),
+    });
+    Ok(BridgeResponse::new(Some(ProjectFolderSelection {
+        selection_ref,
+        root_path: project_path_for_display(&root_path),
+        suggested_name,
+    })))
+}
+
+async fn project_open_folder_read_only(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    input: ProjectOpenFolderInput,
+) -> AppResult<ProjectRecord> {
+    state.admit_commands()?;
+    let session = SessionInput {
+        renderer_session_id: input.renderer_session_id.clone(),
+        renderer_generation: input.renderer_generation,
+    };
+    let selection_ref = canonical_uuid(&input.selection_ref, "selectionRef")?;
+    let _operation = state.runtime_operation_lock.write().await;
+    let _session = current_session_guard(&state, &window, &session).await?;
+    let root_path = {
+        let selection = state.project_folder_selection.lock().await;
+        let selected = selection.as_ref().ok_or_else(|| {
+            AppError::new(
+                "project_folder_selection_stale",
+                "The selected project folder is no longer available; choose it again",
+            )
+        })?;
+        selected.root_for(&selection_ref, &session, window.label())?
+    };
     let record = {
         let mut registry = state.registry.lock().await;
-        registry.register_read_only_named(&root, None)?
+        registry.register_read_only_named(&root_path, Some(&input.project_name))?
     };
     let record = prepare_registered_project_projection(
         state.registry.clone(),
@@ -1842,15 +2049,22 @@ async fn project_open_folder_read_only(
         record.project_id,
     )
     .await?;
-    Ok(Some(record))
+    let mut selection = state.project_folder_selection.lock().await;
+    if selection
+        .as_ref()
+        .is_some_and(|selected| selected.selection_ref == selection_ref)
+    {
+        *selection = None;
+    }
+    Ok(record)
 }
 
 #[tauri::command]
 pub async fn project_open_folder(
     window: WebviewWindow,
     state: State<'_, NativeState>,
-    input: BridgeInput<SessionInput>,
-) -> AppResult<BridgeResponse<Option<ProjectRecord>>> {
+    input: BridgeInput<ProjectOpenFolderInput>,
+) -> AppResult<BridgeResponse<ProjectRecord>> {
     let value = project_open_folder_read_only(window, state, input.value).await?;
     Ok(BridgeResponse::new(value))
 }
@@ -1913,13 +2127,18 @@ pub async fn project_create_starter(
         let parent = if let Some(path) = measurement_project_selection()? {
             path
         } else {
-            let chosen = window.app_handle().dialog().file().blocking_pick_folder();
-            let Some(chosen) = chosen else {
-                return Ok(BridgeResponse::new(None));
-            };
-            chosen
-                .into_path()
-                .map_err(|error| AppError::new("project_path_invalid", error.to_string()))?
+            let parent = window
+                .app_handle()
+                .path()
+                .document_dir()
+                .map_err(|error| {
+                    AppError::new("managed_project_root_unavailable", error.to_string())
+                })?
+                .join("Orquesta")
+                .join("Projects");
+            std::fs::create_dir_all(&parent)
+                .map_err(|error| AppError::io("create managed project root", error))?;
+            parent
         };
         let _operation = state.runtime_operation_lock.write().await;
         let _session = current_session_guard(&state, &window, &session).await?;
@@ -2731,6 +2950,12 @@ pub struct RuntimeSendAdditionalParams {
     pub recommended_model: Option<String>,
     #[serde(default)]
     pub requested_model: Option<String>,
+    #[serde(default)]
+    pub sandbox: Option<String>,
+    #[serde(default)]
+    pub approval_policy: Option<String>,
+    #[serde(default)]
+    pub service_tier: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3362,6 +3587,9 @@ async fn runtime_send_impl(
         effort: input.additional_params.effort.clone(),
         recommended_model: input.additional_params.recommended_model.clone(),
         requested_model: input.additional_params.requested_model.clone(),
+        sandbox: input.additional_params.sandbox.clone(),
+        approval_policy: input.additional_params.approval_policy.clone(),
+        service_tier: input.additional_params.service_tier.clone(),
     };
     let mut recovery = state.dispatch_recovery.lock().await;
     let preparation = recovery.prepare(
@@ -3492,7 +3720,10 @@ async fn runtime_send_impl(
         "selectedContextIds": input.selected_context_ids,
         "effort": input.additional_params.effort,
         "recommendedModel": input.additional_params.recommended_model,
-        "requestedModel": input.additional_params.requested_model
+        "requestedModel": input.additional_params.requested_model,
+        "sandbox": input.additional_params.sandbox,
+        "approvalPolicy": input.additional_params.approval_policy,
+        "serviceTier": input.additional_params.service_tier
     });
     drop(recovery);
     drop(attachments);
@@ -3546,6 +3777,41 @@ pub struct RuntimeCallInput {
     pub method: String,
     pub params: Value,
     pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComposerRuntimeOptionsResult {
+    pub runtime: RuntimeStatus,
+    pub info: Value,
+}
+
+#[tauri::command]
+pub async fn composer_runtime_options(
+    window: WebviewWindow,
+    state: State<'_, NativeState>,
+    input: BridgeInput<SessionInput>,
+) -> AppResult<BridgeResponse<ComposerRuntimeOptionsResult>> {
+    state.admit_commands()?;
+    let _operation = state.runtime_operation_lock.read().await;
+    let session = current_session_guard(&state, &window, &input.value).await?;
+    drop(session);
+
+    state.runtime.start().await?;
+    let info = state
+        .runtime
+        .call("runtime.info", serde_json::json!({ "probe": true }), 30_000)
+        .await?;
+
+    // Model discovery may start the shared provider before a project is selected.
+    // Return the resulting lifecycle revision so Renderer and Native keep one CAS view.
+    let runtime = state.runtime.status().await;
+    let postcheck = current_session_guard(&state, &window, &input.value).await?;
+    drop(postcheck);
+    Ok(BridgeResponse::new(ComposerRuntimeOptionsResult {
+        runtime,
+        info,
+    }))
 }
 
 #[tauri::command]
@@ -4818,12 +5084,33 @@ mod bridge_contract_tests {
         contract!("updateSettings", SettingsUpdateInput, NativeSettings);
         contract!("reconcileRuntimeSession", SessionInput, NativeBootstrap);
         contract!("listProjects", SessionInput, Vec<ProjectRecord>);
+        contract!("listArchivedProjects", SessionInput, Vec<ProjectRecord>);
+        contract!(
+            "archiveProject",
+            ProjectArchiveInput,
+            ProjectArchiveMutation
+        );
+        contract!(
+            "restoreArchivedProject",
+            ProjectArchiveInput,
+            ProjectArchiveMutation
+        );
+        contract!(
+            "forgetRecentProject",
+            ProjectRecentForgetInput,
+            Vec<ProjectRecord>
+        );
         contract!(
             "recordLastWorkAgent",
             ProjectLastWorkAgentInput,
             ProjectRecord
         );
-        contract!("openProjectFolder", SessionInput, Option<ProjectRecord>);
+        contract!(
+            "chooseProjectFolder",
+            SessionInput,
+            Option<ProjectFolderSelection>
+        );
+        contract!("openProjectFolder", ProjectOpenFolderInput, ProjectRecord);
         contract!(
             "createStarterProject",
             ProjectCreateStarterInput,
@@ -4915,6 +5202,62 @@ mod bridge_contract_tests {
         assert_eq!(
             serde_json::to_value(parsed).expect("status serialization"),
             read_only_ready
+        );
+    }
+
+    #[test]
+    fn project_folder_selection_is_bound_to_the_exact_native_renderer_authority() {
+        let selection_ref = "44444444-4444-4444-8444-444444444444";
+        let session = SessionInput {
+            renderer_session_id: "11111111-1111-4111-8111-111111111111".into(),
+            renderer_generation: 7,
+        };
+        let selected = PendingProjectFolderSelection {
+            selection_ref: selection_ref.into(),
+            root_path: r"C:\Projects\Source".into(),
+            renderer_session_id: session.renderer_session_id.clone(),
+            renderer_generation: session.renderer_generation,
+            window_label: "main".into(),
+        };
+
+        assert_eq!(
+            selected.root_for(selection_ref, &session, "main").unwrap(),
+            r"C:\Projects\Source"
+        );
+        let foreign_session = SessionInput {
+            renderer_session_id: "22222222-2222-4222-8222-222222222222".into(),
+            renderer_generation: session.renderer_generation,
+        };
+        for result in [
+            selected.root_for("55555555-5555-4555-8555-555555555555", &session, "main"),
+            selected.root_for(selection_ref, &foreign_session, "main"),
+            selected.root_for(
+                selection_ref,
+                &SessionInput {
+                    renderer_session_id: session.renderer_session_id.clone(),
+                    renderer_generation: 8,
+                },
+                "main",
+            ),
+            selected.root_for(selection_ref, &session, "secondary"),
+        ] {
+            assert_eq!(result.unwrap_err().code, "project_folder_selection_stale");
+        }
+    }
+
+    #[test]
+    fn project_folder_selection_uses_a_normal_windows_path_for_display() {
+        assert_eq!(
+            project_path_for_display(r"\\?\C:\Projects\Source"),
+            r"C:\Projects\Source"
+        );
+        assert_eq!(
+            project_path_for_display(r"\\?\UNC\server\share\Source"),
+            r"\\server\share\Source"
+        );
+        assert_eq!(
+            project_path_for_display(r"C:\Projects\Source"),
+            r"C:\Projects\Source"
         );
     }
 
